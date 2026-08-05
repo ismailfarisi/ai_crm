@@ -1,0 +1,27 @@
+{
+  "name": "saas-crm",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "dev:api": "pnpm --filter api start:dev",
+    "dev:web": "pnpm --filter web dev",
+    "build": "pnpm --filter shared build && pnpm --filter api build && pnpm --filter web build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm --filter api test",
+    "db:up": "docker compose up -d postgres redis",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v && docker compose up -d postgres redis",
+    "migration:generate": "pnpm --filter api migration:generate",
+    "migration:run": "pnpm --filter api migration:run",
+    "migration:revert": "pnpm --filter api migration:revert",
+    "seed": "pnpm --filter api seed"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
