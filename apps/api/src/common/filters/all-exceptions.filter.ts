@@ -25,7 +25,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     const body = this.toBody(exception);
 
-    if (body.statusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {
+    if (body.statusCode >= 500) {
       this.logger.error(
         `${request.method} ${request.url} → ${body.statusCode}`,
         exception instanceof Error ? exception.stack : String(exception),
@@ -49,7 +49,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
       return {
         statusCode: status,
-        message: Array.isArray(message) ? message.join(', ') : String(message ?? exception.message),
+        message: Array.isArray(message)
+          ? message.join(', ')
+          : typeof message === 'string'
+            ? message
+            : exception.message,
         error: typeof record.error === 'string' ? record.error : exception.name,
         details: record.details as Record<string, string[]> | undefined,
       };

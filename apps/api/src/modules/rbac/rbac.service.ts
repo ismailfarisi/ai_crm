@@ -49,12 +49,16 @@ export class RbacService implements OnModuleInit {
    * cached — but only for a few seconds. A role edit propagates almost
    * immediately without us needing cache invalidation plumbing across instances.
    */
-  private readonly accessCache = new Map<string, { value: ResolvedAccess; expiresAt: number }>();
+  private readonly accessCache = new Map<
+    string,
+    { value: ResolvedAccess; expiresAt: number }
+  >();
   private static readonly CACHE_TTL_MS = 5_000;
 
   constructor(
     @InjectRepository(Role) private readonly roles: Repository<Role>,
-    @InjectRepository(PermissionEntity) private readonly permissions: Repository<PermissionEntity>,
+    @InjectRepository(PermissionEntity)
+    private readonly permissions: Repository<PermissionEntity>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -85,13 +89,15 @@ export class RbacService implements OnModuleInit {
     }
 
     if (toInsert.length) {
-      await this.permissions.insert(toInsert as PermissionEntity[]);
+      await this.permissions.insert(toInsert);
     }
     if (toUpdate.length) {
       await this.permissions.save(toUpdate);
     }
 
-    const stale = existing.filter((p) => !(ALL_PERMISSIONS as string[]).includes(p.key));
+    const stale = existing.filter(
+      (p) => !(ALL_PERMISSIONS as string[]).includes(p.key),
+    );
     if (stale.length) {
       this.logger.warn(
         `Permission catalog contains ${stale.length} key(s) no longer defined in code: ` +
@@ -114,17 +120,24 @@ export class RbacService implements OnModuleInit {
    * never touching custom roles.
    */
   async syncSystemRolesForAllOrganizations(): Promise<void> {
-    const orgs = await this.dataSource.getRepository(Organization).find({ select: { id: true } });
+    const orgs = await this.dataSource
+      .getRepository(Organization)
+      .find({ select: { id: true } });
     if (!orgs.length) return;
 
     const catalog = await this.permissions.find();
     const byKey = new Map(catalog.map((p) => [p.key, p]));
 
-    const definitionsBySlug = new Map(SYSTEM_ROLE_DEFINITIONS.map((r) => [r.slug, r]));
+    const definitionsBySlug = new Map(
+      SYSTEM_ROLE_DEFINITIONS.map((r) => [r.slug, r]),
+    );
 
     let updated = 0;
     for (const org of orgs) {
-      const roles = await this.roles.find({ where: { organizationId: org.id }, relations: { permissions: true } });
+      const roles = await this.roles.find({
+        where: { organizationId: org.id },
+        relations: { permissions: true },
+      });
 
       for (const role of roles) {
         if (!role.isSystem) continue;
@@ -137,7 +150,8 @@ export class RbacService implements OnModuleInit {
         const currentKeys = new Set((role.permissions ?? []).map((p) => p.key));
         const targetKeys = new Set(definition.permissions);
         const same =
-          currentKeys.size === targetKeys.size && [...targetKeys].every((k) => currentKeys.has(k));
+          currentKeys.size === targetKeys.size &&
+          [...targetKeys].every((k) => currentKeys.has(k));
 
         if (same) continue;
 
@@ -150,7 +164,9 @@ export class RbacService implements OnModuleInit {
     }
 
     if (updated) {
-      this.logger.log(`Re-synced ${updated} system role(s) to the current definitions.`);
+      this.logger.log(
+        `Re-synced ${updated} system role(s) to the current definitions.`,
+      );
       // Drop the whole cache — the permission change affects every org.
       this.accessCache.clear();
     }
@@ -160,7 +176,10 @@ export class RbacService implements OnModuleInit {
    * Creates this tenant's copy of the system roles. Called once, inside the
    * signup transaction, so a half-provisioned org can never exist.
    */
-  async provisionSystemRoles(organizationId: string, manager = this.dataSource.manager): Promise<Role[]> {
+  async provisionSystemRoles(
+    organizationId: string,
+    manager = this.dataSource.manager,
+  ): Promise<Role[]> {
     const permissionRepo = manager.getRepository(PermissionEntity);
     const roleRepo = manager.getRepository(Role);
 
@@ -180,7 +199,9 @@ export class RbacService implements OnModuleInit {
         permissions:
           definition.permissions === null
             ? []
-            : definition.permissions.map((key) => byKey.get(key)).filter((p): p is PermissionEntity => !!p),
+            : definition.permissions
+                .map((key) => byKey.get(key))
+                .filter((p): p is PermissionEntity => !!p),
       });
       created.push(await roleRepo.save(role));
     }
@@ -189,7 +210,10 @@ export class RbacService implements OnModuleInit {
   }
 
   /** Resolves the union of permissions across every role the user holds. */
-  async resolveAccess(userId: string, organizationId: string): Promise<ResolvedAccess> {
+  async resolveAccess(
+    userId: string,
+    organizationId: string,
+  ): Promise<ResolvedAccess> {
     const cacheKey = `${organizationId}:${userId}`;
     const cached = this.accessCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
@@ -206,16 +230,27 @@ export class RbacService implements OnModuleInit {
     const grantsEverything = roles.some((role) => role.grantsAllPermissions);
     const permissions = grantsEverything
       ? [...ALL_PERMISSIONS]
-      : [...new Set(roles.flatMap((role) => role.permissions.map((p) => p.key as Permission)))];
+      : [
+          ...new Set(
+            roles.flatMap((role) =>
+              role.permissions.map((p) => p.key as Permission),
+            ),
+          ),
+        ];
 
     const value: ResolvedAccess = {
       permissions,
       roles: roles.map((role) => role.slug),
-      level: roles.length ? Math.min(...roles.map((role) => role.level)) : Number.MAX_SAFE_INTEGER,
+      level: roles.length
+        ? Math.min(...roles.map((role) => role.level))
+        : Number.MAX_SAFE_INTEGER,
       isOwner: roles.some((role) => role.slug === SYSTEM_ROLES.OWNER),
     };
 
-    this.accessCache.set(cacheKey, { value, expiresAt: Date.now() + RbacService.CACHE_TTL_MS });
+    this.accessCache.set(cacheKey, {
+      value,
+      expiresAt: Date.now() + RbacService.CACHE_TTL_MS,
+    });
     return value;
   }
 
@@ -259,11 +294,17 @@ export class RbacService implements OnModuleInit {
     return this.toDto(await this.findRole(organizationId, roleId));
   }
 
-  async createRole(organizationId: string, actor: RbacActor, input: CreateRoleInput): Promise<RoleDto> {
+  async createRole(
+    organizationId: string,
+    actor: RbacActor,
+    input: CreateRoleInput,
+  ): Promise<RoleDto> {
     const slug = this.slugify(input.name);
     const clash = await this.roles.findOne({ where: { organizationId, slug } });
     if (clash) {
-      throw new BadRequestException(`A role named "${input.name}" already exists`);
+      throw new BadRequestException(
+        `A role named "${input.name}" already exists`,
+      );
     }
 
     const requested = (input.permissions ?? []) as Permission[];
@@ -282,7 +323,7 @@ export class RbacService implements OnModuleInit {
 
     const saved = await this.roles.save(role);
     this.invalidate(organizationId);
-    return this.toDto({ ...saved, users: [] } as Role);
+    return this.toDto({ ...saved, users: [] });
   }
 
   async updateRole(
@@ -297,7 +338,9 @@ export class RbacService implements OnModuleInit {
       throw new ForbiddenException('The Owner role cannot be modified');
     }
     if (role.level <= actor.level) {
-      throw new ForbiddenException('You cannot modify a role at or above your own level');
+      throw new ForbiddenException(
+        'You cannot modify a role at or above your own level',
+      );
     }
     if (role.isSystem && input.name && input.name !== role.name) {
       throw new BadRequestException('System roles cannot be renamed');
@@ -321,14 +364,20 @@ export class RbacService implements OnModuleInit {
     return this.toDto(saved);
   }
 
-  async deleteRole(organizationId: string, actor: RbacActor, roleId: string): Promise<void> {
+  async deleteRole(
+    organizationId: string,
+    actor: RbacActor,
+    roleId: string,
+  ): Promise<void> {
     const role = await this.findRole(organizationId, roleId);
 
     if (role.isSystem) {
       throw new ForbiddenException('System roles cannot be deleted');
     }
     if (role.level <= actor.level) {
-      throw new ForbiddenException('You cannot delete a role at or above your own level');
+      throw new ForbiddenException(
+        'You cannot delete a role at or above your own level',
+      );
     }
     if (role.users.length > 0) {
       throw new BadRequestException(
@@ -340,7 +389,10 @@ export class RbacService implements OnModuleInit {
     this.invalidate(organizationId);
   }
 
-  async findRolesByIds(organizationId: string, roleIds: string[]): Promise<Role[]> {
+  async findRolesByIds(
+    organizationId: string,
+    roleIds: string[],
+  ): Promise<Role[]> {
     if (!roleIds.length) return [];
 
     const roles = await this.roles.find({
@@ -349,7 +401,9 @@ export class RbacService implements OnModuleInit {
     });
 
     if (roles.length !== new Set(roleIds).size) {
-      throw new BadRequestException('One or more roles do not exist in this organization');
+      throw new BadRequestException(
+        'One or more roles do not exist in this organization',
+      );
     }
     return roles;
   }
@@ -385,12 +439,16 @@ export class RbacService implements OnModuleInit {
     }
   }
 
-  private async loadPermissions(keys: Permission[]): Promise<PermissionEntity[]> {
+  private async loadPermissions(
+    keys: Permission[],
+  ): Promise<PermissionEntity[]> {
     if (!keys.length) return [];
     const found = await this.permissions.find({ where: { key: In(keys) } });
     if (found.length !== new Set(keys).size) {
       const missing = keys.filter((k) => !found.some((f) => f.key === k));
-      throw new BadRequestException(`Unknown permission(s): ${missing.join(', ')}`);
+      throw new BadRequestException(
+        `Unknown permission(s): ${missing.join(', ')}`,
+      );
     }
     return found;
   }

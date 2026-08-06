@@ -1,4 +1,13 @@
-import { Column, Entity, Index, JoinColumn, JoinTable, ManyToMany, ManyToOne, OneToMany } from 'typeorm';
+import {
+  Column,
+  Entity,
+  Index,
+  JoinColumn,
+  JoinTable,
+  ManyToMany,
+  ManyToOne,
+  OneToMany,
+} from 'typeorm';
 import { BaseEntity } from '@/common/entities/base.entity';
 import { Contact } from '@/modules/contacts/entities/contact.entity';
 import { Organization } from '@/modules/organizations/entities/organization.entity';

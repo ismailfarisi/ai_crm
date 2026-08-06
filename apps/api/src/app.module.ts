@@ -5,11 +5,17 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { join } from 'node:path';
 import { AllExceptionsFilter } from '@/common/filters/all-exceptions.filter';
-import { configuration, validateEnv, type AppConfig } from '@/config/configuration';
+import {
+  configuration,
+  validateEnv,
+  type AppConfig,
+} from '@/config/configuration';
 import { AuthModule } from '@/modules/auth/auth.module';
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
 import { ContactsModule } from '@/modules/contacts/contacts.module';
 import { HealthModule } from '@/modules/health/health.module';
+import { InvitationsModule } from '@/modules/invitations/invitations.module';
+import { MailModule } from '@/modules/mail/mail.module';
 import { PermissionsGuard } from '@/modules/rbac/guards/permissions.guard';
 import { RbacModule } from '@/modules/rbac/rbac.module';
 import { TeamsModule } from '@/modules/teams/teams.module';
@@ -39,7 +45,8 @@ import { UsersModule } from '@/modules/users/users.module';
           ssl: db.ssl ? { rejectUnauthorized: false } : false,
           // `synchronize` is a development convenience only — production runs
           // migrations. Double-guarded so it can never be on by accident.
-          synchronize: db.synchronize && !config.get('isProduction', { infer: true }),
+          synchronize:
+            db.synchronize && !config.get('isProduction', { infer: true }),
           logging: db.logging,
           autoLoadEntities: true,
           migrations: [join(__dirname, 'database', 'migrations', '*.{ts,js}')],
@@ -66,6 +73,9 @@ import { UsersModule } from '@/modules/users/users.module';
     UsersModule,
     AuthModule,
     ContactsModule,
+    TeamsModule,
+    InvitationsModule,
+    MailModule,
     HealthModule,
   ],
   providers: [

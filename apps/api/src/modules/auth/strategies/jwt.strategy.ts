@@ -1,7 +1,11 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
-import { ExtractJwt, Strategy, type StrategyOptionsWithoutRequest } from 'passport-jwt';
+import {
+  ExtractJwt,
+  Strategy,
+  type StrategyOptionsWithoutRequest,
+} from 'passport-jwt';
 import type { Request } from 'express';
 import type { AppConfig } from '@/config/configuration';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
@@ -21,7 +25,8 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       // The browser uses an httpOnly cookie; the Authorization header is kept
       // for server-to-server callers and API tooling.
       jwtFromRequest: ExtractJwt.fromExtractors([
-        (req: Request) => (req.cookies?.[ACCESS_TOKEN_COOKIE] as string | undefined) ?? null,
+        (req: Request) =>
+          (req.cookies?.[ACCESS_TOKEN_COOKIE] as string | undefined) ?? null,
         ExtractJwt.fromAuthHeaderAsBearerToken(),
       ]),
       ignoreExpiration: false,
@@ -37,14 +42,20 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     const user = await this.users.findByIdForAuth(payload.sub);
 
     if (!user || !user.isActive) {
-      throw new UnauthorizedException('Account is inactive or no longer exists');
+      throw new UnauthorizedException(
+        'Account is inactive or no longer exists',
+      );
     }
     if (user.organizationId !== payload.org) {
-      throw new UnauthorizedException('Token does not match the account organization');
+      throw new UnauthorizedException(
+        'Token does not match the account organization',
+      );
     }
 
     // Password change / forced logout invalidates every token minted before it.
-    const credentialsChangedAt = Math.floor(new Date(user.credentialsChangedAt).getTime() / 1000);
+    const credentialsChangedAt = Math.floor(
+      new Date(user.credentialsChangedAt).getTime() / 1000,
+    );
     if (payload.cav < credentialsChangedAt) {
       throw new UnauthorizedException('Session expired, please sign in again');
     }

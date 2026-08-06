@@ -10,11 +10,11 @@ import {
   SYSTEM_ROLES,
   type ChangePasswordInput,
   type LoginInput,
-  type Permission,
   type RegisterInput,
   type SessionDto,
 } from '@saas/shared';
 import { Organization } from '@/modules/organizations/entities/organization.entity';
+import { InvitationsService } from '@/modules/invitations/invitations.service';
 import { RbacService } from '@/modules/rbac/rbac.service';
 import { UsersService } from '@/modules/users/users.service';
 import { TokensService, type IssuedTokens } from './tokens.service';
@@ -29,20 +29,27 @@ export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
   constructor(
-    @InjectRepository(Organization) private readonly organizations: Repository<Organization>,
+    @InjectRepository(Organization)
+    private readonly organizations: Repository<Organization>,
     private readonly users: UsersService,
     private readonly rbac: RbacService,
     private readonly tokens: TokensService,
     private readonly dataSource: DataSource,
+    private readonly invitations: InvitationsService,
   ) {}
 
   /**
    * Signup provisions a whole tenant: organization, its five system roles, and
    * the first user as owner. All inside one transaction.
    */
-  async register(input: RegisterInput, context: RequestContext): Promise<IssuedTokens & { userId: string }> {
+  async register(
+    input: RegisterInput,
+    context: RequestContext,
+  ): Promise<IssuedTokens & { userId: string }> {
     if (await this.users.emailExists(input.email)) {
-      throw new BadRequestException('An account with that email already exists');
+      throw new BadRequestException(
+        'An account with that email already exists',
+      );
     }
 
     const userId = await this.dataSource.transaction(async (manager) => {
@@ -51,11 +58,17 @@ export class AuthService {
       const organization = await orgRepo.save(
         orgRepo.create({
           name: input.organizationName,
-          slug: await this.uniqueSlug(input.organizationName, manager.getRepository(Organization)),
+          slug: await this.uniqueSlug(
+            input.organizationName,
+            manager.getRepository(Organization),
+          ),
         }),
       );
 
-      const roles = await this.rbac.provisionSystemRoles(organization.id, manager);
+      const roles = await this.rbac.provisionSystemRoles(
+        organization.id,
+        manager,
+      );
       const ownerRole = roles.find((role) => role.slug === SYSTEM_ROLES.OWNER);
       if (!ownerRole) {
         throw new Error('Owner role was not provisioned — aborting signup');
@@ -73,7 +86,9 @@ export class AuthService {
         manager,
       );
 
-      this.logger.log(`Provisioned organization "${organization.name}" (${organization.id})`);
+      this.logger.log(
+        `Provisioned organization "${organization.name}" (${organization.id})`,
+      );
       return user.id;
     });
 
@@ -87,7 +102,10 @@ export class AuthService {
     return { ...tokens, userId: user.id };
   }
 
-  async login(input: LoginInput, context: RequestContext): Promise<IssuedTokens & { userId: string }> {
+  async login(
+    input: LoginInput,
+    context: RequestContext,
+  ): Promise<IssuedTokens & { userId: string }> {
     const user = await this.users.findByEmailWithPassword(input.email);
 
     // Same message and roughly the same work either way, so the response does
@@ -108,7 +126,38 @@ export class AuthService {
     return { ...tokens, userId: user.id };
   }
 
-  async refresh(refreshToken: string, context: RequestContext): Promise<IssuedTokens> {
+  /**
+   * Completes an email invite: validates the raw token, creates the invitee's
+   * account with the roles/team the inviter picked, and signs them straight in.
+   */
+  async acceptInvite(
+    token: string,
+    password: string,
+    context: RequestContext,
+  ): Promise<IssuedTokens & { userId: string }> {
+    const { invitation, roles, organizationId } =
+      await this.invitations.consume(token);
+
+    const user = await this.users.createUser({
+      organizationId,
+      email: invitation.email,
+      password,
+      firstName: invitation.firstName,
+      lastName: invitation.lastName,
+      roles,
+      teamId: invitation.teamId,
+    });
+
+    await this.invitations.markAccepted(invitation.id);
+    await this.users.recordLogin(user.id);
+    const tokens = await this.tokens.issue(user, context);
+    return { ...tokens, userId: user.id };
+  }
+
+  async refresh(
+    refreshToken: string,
+    context: RequestContext,
+  ): Promise<IssuedTokens> {
     const { tokens } = await this.tokens.rotate(
       refreshToken,
       (userId) => this.users.findByIdForAuth(userId),
@@ -123,13 +172,19 @@ export class AuthService {
     }
   }
 
-  async changePassword(userId: string, input: ChangePasswordInput): Promise<void> {
+  async changePassword(
+    userId: string,
+    input: ChangePasswordInput,
+  ): Promise<void> {
     const user = await this.users.findByIdWithPassword(userId);
     if (!user) {
       throw new UnauthorizedException('Account no longer exists');
     }
 
-    const matches = await this.users.verifyPassword(input.currentPassword, user.passwordHash);
+    const matches = await this.users.verifyPassword(
+      input.currentPassword,
+      user.passwordHash,
+    );
     if (!matches) {
       throw new BadRequestException('Current password is incorrect');
     }
@@ -140,9 +195,14 @@ export class AuthService {
   }
 
   /** The full session payload the web app hydrates from. */
-  async getSession(userId: string, organizationId: string): Promise<SessionDto> {
+  async getSession(
+    userId: string,
+    organizationId: string,
+  ): Promise<SessionDto> {
     const user = await this.users.findMember(organizationId, userId);
-    const organization = await this.organizations.findOne({ where: { id: organizationId } });
+    const organization = await this.organizations.findOne({
+      where: { id: organizationId },
+    });
     if (!organization) {
       throw new UnauthorizedException('Organization no longer exists');
     }
@@ -157,7 +217,7 @@ export class AuthService {
         slug: organization.slug,
         createdAt: organization.createdAt.toISOString(),
       },
-      permissions: access.permissions as Permission[],
+      permissions: access.permissions,
     };
   }
 
@@ -171,7 +231,10 @@ export class AuthService {
   }
 
   /** Used after a password change so the acting device is not signed out. */
-  async reissueForUser(userId: string, context: RequestContext): Promise<IssuedTokens> {
+  async reissueForUser(
+    userId: string,
+    context: RequestContext,
+  ): Promise<IssuedTokens> {
     const user = await this.users.findByIdForAuth(userId);
     if (!user) {
       throw new UnauthorizedException('Account no longer exists');
@@ -179,7 +242,10 @@ export class AuthService {
     return this.tokens.issue(user, context);
   }
 
-  private async uniqueSlug(name: string, repo: Repository<Organization>): Promise<string> {
+  private async uniqueSlug(
+    name: string,
+    repo: Repository<Organization>,
+  ): Promise<string> {
     const base =
       name
         .toLowerCase()
@@ -202,4 +268,5 @@ export class AuthService {
  * A real bcrypt hash of a value nobody can guess. Comparing against it on the
  * "no such user" path keeps login timing roughly constant.
  */
-const DUMMY_HASH = '$2b$12$C6UzMDM.H6dfI/f/IKcEe.6r1kEuNBEfLdxpMYRtQFEqTfaJXQNiG';
+const DUMMY_HASH =
+  '$2b$12$C6UzMDM.H6dfI/f/IKcEe.6r1kEuNBEfLdxpMYRtQFEqTfaJXQNiG';

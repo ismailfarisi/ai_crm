@@ -1,14 +1,19 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import {
   PERMISSIONS,
   assignRolesSchema,
   assignTeamSchema,
-  inviteUserSchema,
   type AssignRolesInput,
   type AssignTeamInput,
-  type InviteUserInput,
   type UserDto,
 } from '@saas/shared';
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
@@ -38,7 +43,8 @@ export class UsersController {
   @ApiOperation({ summary: 'Update your own name' })
   updateOwnProfile(
     @CurrentUser() user: AuthenticatedUser,
-    @Body(zodBody(updateProfileSchema)) input: z.infer<typeof updateProfileSchema>,
+    @Body(zodBody(updateProfileSchema))
+    input: z.infer<typeof updateProfileSchema>,
   ): Promise<UserDto> {
     return this.users.updateProfile(user.organizationId, user.id, input);
   }
@@ -52,16 +58,6 @@ export class UsersController {
     return this.users.getMember(user.organizationId, id);
   }
 
-  @Post()
-  @RequirePermissions(PERMISSIONS.USER_CREATE)
-  @ApiOperation({ summary: 'Add a team member with an initial password and roles' })
-  invite(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body(zodBody(inviteUserSchema)) input: InviteUserInput,
-  ): Promise<UserDto> {
-    return this.users.inviteMember(user.organizationId, user.level, input);
-  }
-
   @Patch(':id/roles')
   @RequirePermissions(PERMISSIONS.USER_ASSIGN_ROLE)
   @ApiOperation({ summary: "Replace a member's roles" })
@@ -70,18 +66,32 @@ export class UsersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body(zodBody(assignRolesSchema)) input: AssignRolesInput,
   ): Promise<UserDto> {
-    return this.users.assignRoles(user.organizationId, user.id, user.level, id, input);
+    return this.users.assignRoles(
+      user.organizationId,
+      user.id,
+      user.level,
+      id,
+      input,
+    );
   }
 
   @Patch(':id/team')
   @RequirePermissions(PERMISSIONS.USER_UPDATE)
-  @ApiOperation({ summary: 'Assign a member to a team, or remove them with null' })
+  @ApiOperation({
+    summary: 'Assign a member to a team, or remove them with null',
+  })
   assignTeam(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body(zodBody(assignTeamSchema)) input: AssignTeamInput,
   ): Promise<UserDto> {
-    return this.users.assignTeam(user.organizationId, user.id, user.level, id, input.teamId);
+    return this.users.assignTeam(
+      user.organizationId,
+      user.id,
+      user.level,
+      id,
+      input.teamId,
+    );
   }
 
   @Patch(':id/status')
@@ -92,6 +102,12 @@ export class UsersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body(zodBody(setActiveSchema)) input: z.infer<typeof setActiveSchema>,
   ): Promise<UserDto> {
-    return this.users.setActive(user.organizationId, user.id, user.level, id, input.isActive);
+    return this.users.setActive(
+      user.organizationId,
+      user.id,
+      user.level,
+      id,
+      input.isActive,
+    );
   }
 }

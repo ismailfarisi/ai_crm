@@ -1,4 +1,9 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Permission } from '@saas/shared';
 import {
@@ -25,14 +30,14 @@ export class PermissionsGuard implements CanActivate {
     ]);
     if (isPublic) return true;
 
-    const required = this.reflector.getAllAndOverride<Permission[]>(PERMISSIONS_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
-    const requiredRoles = this.reflector.getAllAndOverride<string[]>(ROLES_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const required = this.reflector.getAllAndOverride<Permission[]>(
+      PERMISSIONS_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    const requiredRoles = this.reflector.getAllAndOverride<string[]>(
+      ROLES_KEY,
+      [context.getHandler(), context.getClass()],
+    );
 
     if (!required?.length && !requiredRoles?.length) return true;
 
@@ -44,20 +49,24 @@ export class PermissionsGuard implements CanActivate {
     if (requiredRoles?.length) {
       const hasRole = requiredRoles.some((role) => user.roles.includes(role));
       if (!hasRole) {
-        throw new ForbiddenException(`Requires one of these roles: ${requiredRoles.join(', ')}`);
+        throw new ForbiddenException(
+          `Requires one of these roles: ${requiredRoles.join(', ')}`,
+        );
       }
     }
 
     if (required?.length) {
       const mode =
-        this.reflector.getAllAndOverride<PermissionsMode>(PERMISSIONS_MODE_KEY, [
-          context.getHandler(),
-          context.getClass(),
-        ]) ?? 'all';
+        this.reflector.getAllAndOverride<PermissionsMode>(
+          PERMISSIONS_MODE_KEY,
+          [context.getHandler(), context.getClass()],
+        ) ?? 'all';
 
       const held = new Set(user.permissions);
       const granted =
-        mode === 'any' ? required.some((p) => held.has(p)) : required.every((p) => held.has(p));
+        mode === 'any'
+          ? required.some((p) => held.has(p))
+          : required.every((p) => held.has(p));
 
       if (!granted) {
         const missing = required.filter((p) => !held.has(p));

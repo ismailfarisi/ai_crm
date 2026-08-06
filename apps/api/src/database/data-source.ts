@@ -22,8 +22,8 @@ export const AppDataSource = new DataSource({
   ssl: env.DB_SSL ? { rejectUnauthorized: false } : false,
   synchronize: false,
   logging: env.DB_LOGGING,
-  entities: [join(__dirname, '..', 'modules', '**', 'entities', '*.entity.{ts,js}')],
+  entities: [
+    join(__dirname, '..', 'modules', '**', 'entities', '*.entity.{ts,js}'),
+  ],
   migrations: [join(__dirname, 'migrations', '*.{ts,js}')],
 });
-
-export default AppDataSource;

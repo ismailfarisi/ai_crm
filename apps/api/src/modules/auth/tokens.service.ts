@@ -31,7 +31,8 @@ interface TokenContext {
 @Injectable()
 export class TokensService {
   constructor(
-    @InjectRepository(RefreshToken) private readonly refreshTokens: Repository<RefreshToken>,
+    @InjectRepository(RefreshToken)
+    private readonly refreshTokens: Repository<RefreshToken>,
     private readonly jwt: JwtService,
     private readonly config: ConfigService<AppConfig, true>,
   ) {}
@@ -61,7 +62,9 @@ export class TokensService {
 
     if (stored.revokedAt) {
       await this.revokeFamily(stored.familyId);
-      throw new UnauthorizedException('Refresh token was already used — all sessions revoked');
+      throw new UnauthorizedException(
+        'Refresh token was already used — all sessions revoked',
+      );
     }
 
     if (stored.expiresAt.getTime() <= Date.now()) {
@@ -91,21 +94,32 @@ export class TokensService {
   }
 
   async revokeAllForUser(userId: string): Promise<void> {
-    await this.refreshTokens.update({ userId, revokedAt: IsNull() }, { revokedAt: new Date() });
+    await this.refreshTokens.update(
+      { userId, revokedAt: IsNull() },
+      { revokedAt: new Date() },
+    );
   }
 
   async purgeExpired(): Promise<number> {
-    const result = await this.refreshTokens.delete({ expiresAt: LessThan(new Date()) });
+    const result = await this.refreshTokens.delete({
+      expiresAt: LessThan(new Date()),
+    });
     return result.affected ?? 0;
   }
 
   ttlSeconds(kind: 'access' | 'refresh'): number {
     const raw =
-      kind === 'access' ? this.config.get('jwt.accessTtl', { infer: true }) : this.config.get('jwt.refreshTtl', { infer: true });
+      kind === 'access'
+        ? this.config.get('jwt.accessTtl', { infer: true })
+        : this.config.get('jwt.refreshTtl', { infer: true });
     return parseDuration(raw);
   }
 
-  private async mint(user: User, familyId: string, context: TokenContext): Promise<IssuedTokens> {
+  private async mint(
+    user: User,
+    familyId: string,
+    context: TokenContext,
+  ): Promise<IssuedTokens> {
     const payload: AccessTokenPayload = {
       sub: user.id,
       org: user.organizationId,
@@ -123,7 +137,11 @@ export class TokensService {
 
     // A random jti keeps two refresh tokens minted in the same second distinct.
     const refreshToken = await this.jwt.signAsync(
-      { sub: user.id, org: user.organizationId, jti: randomBytes(16).toString('hex') },
+      {
+        sub: user.id,
+        org: user.organizationId,
+        jti: randomBytes(16).toString('hex'),
+      },
       {
         secret: this.config.get('jwt.refreshSecret', { infer: true }),
         expiresIn: refreshExpiresIn,
@@ -144,7 +162,9 @@ export class TokensService {
     return { accessToken, refreshToken, accessExpiresIn, refreshExpiresIn };
   }
 
-  private async verifyRefreshJwt(token: string): Promise<{ sub: string; org: string }> {
+  private async verifyRefreshJwt(
+    token: string,
+  ): Promise<{ sub: string; org: string }> {
     try {
       return await this.jwt.verifyAsync<{ sub: string; org: string }>(token, {
         secret: this.config.get('jwt.refreshSecret', { infer: true }),
@@ -155,7 +175,10 @@ export class TokensService {
   }
 
   private async revokeFamily(familyId: string): Promise<void> {
-    await this.refreshTokens.update({ familyId, revokedAt: IsNull() }, { revokedAt: new Date() });
+    await this.refreshTokens.update(
+      { familyId, revokedAt: IsNull() },
+      { revokedAt: new Date() },
+    );
   }
 
   private hash(token: string): string {
@@ -167,7 +190,9 @@ export class TokensService {
 export function parseDuration(value: string): number {
   const match = /^(\d+)\s*([smhd])?$/.exec(value.trim());
   if (!match) {
-    throw new Error(`Invalid duration: "${value}". Use formats like 900, 15m, 24h or 7d.`);
+    throw new Error(
+      `Invalid duration: "${value}". Use formats like 900, 15m, 24h or 7d.`,
+    );
   }
   const amount = Number(match[1]);
   const multiplier = { s: 1, m: 60, h: 3600, d: 86400 }[match[2] ?? 's'] ?? 1;

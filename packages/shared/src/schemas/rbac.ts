@@ -20,10 +20,15 @@ export const inviteUserSchema = z.object({
   email: emailSchema,
   firstName: z.string().trim().min(1, 'First name is required').max(80),
   lastName: z.string().trim().min(1, 'Last name is required').max(80),
-  password: passwordSchema,
   roleIds: z.array(z.uuid()).min(1, 'Pick at least one role'),
   /** Optional team the invitee joins on creation. */
   teamId: z.uuid().nullable().optional(),
+});
+
+/** Accepted from the invite email link; sets the invitee's initial password. */
+export const acceptInviteSchema = z.object({
+  token: z.string().min(1, 'Invite token is required'),
+  password: passwordSchema,
 });
 
 export const assignRolesSchema = z.object({
@@ -33,4 +38,5 @@ export const assignRolesSchema = z.object({
 export type CreateRoleInput = z.input<typeof createRoleSchema>;
 export type UpdateRoleInput = z.input<typeof updateRoleSchema>;
 export type InviteUserInput = z.input<typeof inviteUserSchema>;
+export type AcceptInviteInput = z.input<typeof acceptInviteSchema>;
 export type AssignRolesInput = z.input<typeof assignRolesSchema>;

@@ -108,3 +108,16 @@ export interface ContactStatsDto {
   createdThisWeek: number;
   createdThisMonth: number;
 }
+
+/** A pending invite to join an organization. Created by an admin, accepted by the invitee. */
+export interface InvitationDto {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  roleIds: string[];
+  /** The team the invitee joins on acceptance, if one was chosen. */
+  teamId: string | null;
+  expiresAt: string;
+  createdAt: string;
+}

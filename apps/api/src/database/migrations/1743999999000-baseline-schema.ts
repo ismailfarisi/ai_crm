@@ -1,23 +1,19 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 /**
- * Baseline: the complete pre-existing schema.
+ * Baseline: the complete schema as the entities define it.
  *
  * Before this migration, every table was created by TypeORM `synchronize` in
  * development (see `app.module.ts`) and there were no migrations at all. That
  * left production with no path from an empty database to a working schema.
  *
- * This file captures the schema as the entities define it today:
- *   - organizations, users, roles, permissions, contacts, refresh_tokens
- *   - the `role_permissions` / `user_roles` join tables
- *   - the `contact_status` / `contact_source` enum types
- *   - indexes and foreign keys
+ * This file captures the schema exactly as TypeORM would create it from the
+ * entities, including its SHA-1 truncated FK names and the extra FK indices on
+ * the `role_permissions` / `user_roles` join tables. Keeping it byte-for-byte
+ * aligned with the entities means `pnpm migration:generate` against a fresh
+ * migrated database reports no drift.
  *
  * It must run BEFORE the feature migrations (teams etc.) on a fresh database.
- *
- * Names here are explicit and stable (e.g. `organizations_pkey`) rather than
- * TypeORM's SHA-1 truncated hashes, because these tables are only ever created
- * by migrations from now on.
  *
  * If an existing database was previously created by `synchronize`, it already
  * has these tables. On first deploy, mark this baseline as applied WITHOUT
@@ -35,12 +31,12 @@ export class BaselineSchema1743999999000 implements MigrationInterface {
     // uuid PKs use `uuid_generate_v4()`, which lives in the uuid-ossp extension.
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
 
-    // ─── Enums ────────────────────────────────────────────────────────────────
+    // ─── Enums (named to match the entities' `enumName`) ──────────────────────
     await queryRunner.query(
-      `CREATE TYPE "contacts_status_enum" AS ENUM ('lead', 'qualified', 'customer', 'churned', 'archived')`,
+      `CREATE TYPE "contact_status" AS ENUM ('lead', 'qualified', 'customer', 'churned', 'archived')`,
     );
     await queryRunner.query(
-      `CREATE TYPE "contacts_source_enum" AS ENUM ('website', 'referral', 'outbound', 'event', 'partner', 'other')`,
+      `CREATE TYPE "contact_source" AS ENUM ('website', 'referral', 'outbound', 'event', 'partner', 'other')`,
     );
 
     // ─── organizations ────────────────────────────────────────────────────────
@@ -71,11 +67,13 @@ export class BaselineSchema1743999999000 implements MigrationInterface {
         "lastName" varchar(80) NOT NULL,
         "isActive" boolean NOT NULL DEFAULT true,
         "lastLoginAt" timestamptz,
-        "credentialsChangedAt" timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "credentialsChangedAt" timestamptz NOT NULL DEFAULT now(),
         CONSTRAINT "users_pkey" PRIMARY KEY ("id")
       )
     `);
-    await queryRunner.query(`CREATE UNIQUE INDEX "uq_users_email" ON "users" ("email")`);
+    await queryRunner.query(
+      `CREATE UNIQUE INDEX "uq_users_email" ON "users" ("email")`,
+    );
 
     // ─── permissions (global catalog) ─────────────────────────────────────────
     await queryRunner.query(`
@@ -90,7 +88,9 @@ export class BaselineSchema1743999999000 implements MigrationInterface {
         CONSTRAINT "permissions_pkey" PRIMARY KEY ("id")
       )
     `);
-    await queryRunner.query(`CREATE UNIQUE INDEX "uq_permissions_key" ON "permissions" ("key")`);
+    await queryRunner.query(
+      `CREATE UNIQUE INDEX "uq_permissions_key" ON "permissions" ("key")`,
+    );
 
     // ─── roles (per-organization) ─────────────────────────────────────────────
     await queryRunner.query(`
@@ -126,8 +126,8 @@ export class BaselineSchema1743999999000 implements MigrationInterface {
         "phone" varchar(40),
         "company" varchar(120),
         "jobTitle" varchar(120),
-        "status" "contacts_status_enum" NOT NULL DEFAULT 'lead',
-        "source" "contacts_source_enum" NOT NULL DEFAULT 'other',
+        "status" "contact_status" NOT NULL DEFAULT 'lead',
+        "source" "contact_source" NOT NULL DEFAULT 'other',
         "notes" text,
         "ownerId" uuid,
         CONSTRAINT "contacts_pkey" PRIMARY KEY ("id")
@@ -156,7 +156,9 @@ export class BaselineSchema1743999999000 implements MigrationInterface {
         CONSTRAINT "refresh_tokens_pkey" PRIMARY KEY ("id")
       )
     `);
-    await queryRunner.query(`CREATE INDEX "idx_refresh_tokens_user" ON "refresh_tokens" ("userId")`);
+    await queryRunner.query(
+      `CREATE INDEX "idx_refresh_tokens_user" ON "refresh_tokens" ("userId")`,
+    );
     await queryRunner.query(
       `CREATE UNIQUE INDEX "uq_refresh_tokens_hash" ON "refresh_tokens" ("tokenHash")`,
     );
@@ -164,7 +166,7 @@ export class BaselineSchema1743999999000 implements MigrationInterface {
       `CREATE INDEX "idx_refresh_tokens_family" ON "refresh_tokens" ("familyId")`,
     );
 
-    // ─── Join tables ──────────────────────────────────────────────────────────
+    // ─── Join tables (with TypeORM's FK indices on each column) ───────────────
     await queryRunner.query(`
       CREATE TABLE "role_permissions" (
         "roleId" uuid NOT NULL,
@@ -172,6 +174,13 @@ export class BaselineSchema1743999999000 implements MigrationInterface {
         CONSTRAINT "role_permissions_pkey" PRIMARY KEY ("roleId", "permissionId")
       )
     `);
+    await queryRunner.query(
+      `CREATE INDEX "IDX_b4599f8b8f548d35850afa2d12" ON "role_permissions" ("roleId")`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_06792d0c62ce6b0203c03643cd" ON "role_permissions" ("permissionId")`,
+    );
+
     await queryRunner.query(`
       CREATE TABLE "user_roles" (
         "userId" uuid NOT NULL,
@@ -179,62 +188,91 @@ export class BaselineSchema1743999999000 implements MigrationInterface {
         CONSTRAINT "user_roles_pkey" PRIMARY KEY ("userId", "roleId")
       )
     `);
+    await queryRunner.query(
+      `CREATE INDEX "IDX_472b25323af01488f1f66a06b6" ON "user_roles" ("userId")`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_86033897c009fcca8b6505d6be" ON "user_roles" ("roleId")`,
+    );
 
-    // ─── Foreign keys ─────────────────────────────────────────────────────────
+    // ─── Foreign keys (TypeORM's stable SHA-1 names, so no drift) ─────────────
     await queryRunner.query(`
-      ALTER TABLE "users" ADD CONSTRAINT "users_organizationId_fk"
+      ALTER TABLE "users" ADD CONSTRAINT "FK_f3d6aea8fcca58182b2e80ce979"
         FOREIGN KEY ("organizationId") REFERENCES "organizations" ("id") ON DELETE CASCADE
     `);
 
     await queryRunner.query(`
-      ALTER TABLE "roles" ADD CONSTRAINT "roles_organizationId_fk"
+      ALTER TABLE "roles" ADD CONSTRAINT "FK_0933e1dfb2993d672af1a98f08e"
         FOREIGN KEY ("organizationId") REFERENCES "organizations" ("id") ON DELETE CASCADE
     `);
 
     await queryRunner.query(`
-      ALTER TABLE "contacts" ADD CONSTRAINT "contacts_organizationId_fk"
+      ALTER TABLE "contacts" ADD CONSTRAINT "FK_17e19c05cb1da4070f68f83c8e4"
         FOREIGN KEY ("organizationId") REFERENCES "organizations" ("id") ON DELETE CASCADE
     `);
     await queryRunner.query(`
-      ALTER TABLE "contacts" ADD CONSTRAINT "contacts_ownerId_fk"
+      ALTER TABLE "contacts" ADD CONSTRAINT "FK_270a85b7f2d4b6821dc7642e6a8"
         FOREIGN KEY ("ownerId") REFERENCES "users" ("id") ON DELETE SET NULL
     `);
 
     await queryRunner.query(`
-      ALTER TABLE "refresh_tokens" ADD CONSTRAINT "refresh_tokens_userId_fk"
+      ALTER TABLE "refresh_tokens" ADD CONSTRAINT "FK_610102b60fea1455310ccd299de"
         FOREIGN KEY ("userId") REFERENCES "users" ("id") ON DELETE CASCADE
     `);
 
     await queryRunner.query(`
-      ALTER TABLE "role_permissions" ADD CONSTRAINT "role_permissions_roleId_fk"
-        FOREIGN KEY ("roleId") REFERENCES "roles" ("id") ON DELETE CASCADE
+      ALTER TABLE "role_permissions" ADD CONSTRAINT "FK_b4599f8b8f548d35850afa2d12c"
+        FOREIGN KEY ("roleId") REFERENCES "roles" ("id") ON DELETE CASCADE ON UPDATE CASCADE
     `);
     await queryRunner.query(`
-      ALTER TABLE "role_permissions" ADD CONSTRAINT "role_permissions_permissionId_fk"
-        FOREIGN KEY ("permissionId") REFERENCES "permissions" ("id") ON DELETE CASCADE
+      ALTER TABLE "role_permissions" ADD CONSTRAINT "FK_06792d0c62ce6b0203c03643cdd"
+        FOREIGN KEY ("permissionId") REFERENCES "permissions" ("id")
     `);
 
     await queryRunner.query(`
-      ALTER TABLE "user_roles" ADD CONSTRAINT "user_roles_userId_fk"
-        FOREIGN KEY ("userId") REFERENCES "users" ("id") ON DELETE CASCADE
+      ALTER TABLE "user_roles" ADD CONSTRAINT "FK_472b25323af01488f1f66a06b67"
+        FOREIGN KEY ("userId") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE
     `);
     await queryRunner.query(`
-      ALTER TABLE "user_roles" ADD CONSTRAINT "user_roles_roleId_fk"
-        FOREIGN KEY ("roleId") REFERENCES "roles" ("id") ON DELETE CASCADE
+      ALTER TABLE "user_roles" ADD CONSTRAINT "FK_86033897c009fcca8b6505d6be2"
+        FOREIGN KEY ("roleId") REFERENCES "roles" ("id")
     `);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     // Drop FK constraints, then tables, then enums/extension. Order matters.
-    await queryRunner.query(`ALTER TABLE "user_roles" DROP CONSTRAINT "user_roles_roleId_fk"`);
-    await queryRunner.query(`ALTER TABLE "user_roles" DROP CONSTRAINT "user_roles_userId_fk"`);
-    await queryRunner.query(`ALTER TABLE "role_permissions" DROP CONSTRAINT "role_permissions_permissionId_fk"`);
-    await queryRunner.query(`ALTER TABLE "role_permissions" DROP CONSTRAINT "role_permissions_roleId_fk"`);
-    await queryRunner.query(`ALTER TABLE "refresh_tokens" DROP CONSTRAINT "refresh_tokens_userId_fk"`);
-    await queryRunner.query(`ALTER TABLE "contacts" DROP CONSTRAINT "contacts_ownerId_fk"`);
-    await queryRunner.query(`ALTER TABLE "contacts" DROP CONSTRAINT "contacts_organizationId_fk"`);
-    await queryRunner.query(`ALTER TABLE "roles" DROP CONSTRAINT "roles_organizationId_fk"`);
-    await queryRunner.query(`ALTER TABLE "users" DROP CONSTRAINT "users_organizationId_fk"`);
+    await queryRunner.query(
+      `ALTER TABLE "user_roles" DROP CONSTRAINT "FK_86033897c009fcca8b6505d6be2"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "user_roles" DROP CONSTRAINT "FK_472b25323af01488f1f66a06b67"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "role_permissions" DROP CONSTRAINT "FK_06792d0c62ce6b0203c03643cdd"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "role_permissions" DROP CONSTRAINT "FK_b4599f8b8f548d35850afa2d12c"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "refresh_tokens" DROP CONSTRAINT "FK_610102b60fea1455310ccd299de"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "contacts" DROP CONSTRAINT "FK_270a85b7f2d4b6821dc7642e6a8"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "contacts" DROP CONSTRAINT "FK_17e19c05cb1da4070f68f83c8e4"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "roles" DROP CONSTRAINT "FK_0933e1dfb2993d672af1a98f08e"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "users" DROP CONSTRAINT "FK_f3d6aea8fcca58182b2e80ce979"`,
+    );
+
+    await queryRunner.query(`DROP INDEX "IDX_86033897c009fcca8b6505d6be"`);
+    await queryRunner.query(`DROP INDEX "IDX_472b25323af01488f1f66a06b6"`);
+    await queryRunner.query(`DROP INDEX "IDX_06792d0c62ce6b0203c03643cd"`);
+    await queryRunner.query(`DROP INDEX "IDX_b4599f8b8f548d35850afa2d12"`);
 
     await queryRunner.query(`DROP TABLE "user_roles"`);
     await queryRunner.query(`DROP TABLE "role_permissions"`);
@@ -245,7 +283,7 @@ export class BaselineSchema1743999999000 implements MigrationInterface {
     await queryRunner.query(`DROP TABLE "users"`);
     await queryRunner.query(`DROP TABLE "organizations"`);
 
-    await queryRunner.query(`DROP TYPE "contacts_source_enum"`);
-    await queryRunner.query(`DROP TYPE "contacts_status_enum"`);
+    await queryRunner.query(`DROP TYPE "contact_source"`);
+    await queryRunner.query(`DROP TYPE "contact_status"`);
   }
 }

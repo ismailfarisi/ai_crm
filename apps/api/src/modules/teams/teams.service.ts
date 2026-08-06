@@ -6,7 +6,13 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { PERMISSIONS, type CreateTeamInput, type TeamDto, type UpdateTeamInput, type UserDto } from '@saas/shared';
+import {
+  PERMISSIONS,
+  type CreateTeamInput,
+  type TeamDto,
+  type UpdateTeamInput,
+  type UserDto,
+} from '@saas/shared';
 import type { RbacActor } from '@/modules/rbac/rbac.service';
 import { User } from '@/modules/users/entities/user.entity';
 import { Team } from './entities/team.entity';
@@ -35,18 +41,26 @@ export class TeamsService {
       .groupBy('user.teamId')
       .getRawMany<{ teamId: string; count: string }>();
 
-    const counts = new Map(memberCounts.map((row) => [row.teamId, Number(row.count)]));
+    const counts = new Map(
+      memberCounts.map((row) => [row.teamId, Number(row.count)]),
+    );
 
     return teams.map((team) => this.toDto(team, counts.get(team.id) ?? 0));
   }
 
   async getTeam(organizationId: string, teamId: string): Promise<TeamDto> {
     const team = await this.findTeam(organizationId, teamId);
-    const memberCount = await this.users.count({ where: { organizationId, teamId: team.id } });
+    const memberCount = await this.users.count({
+      where: { organizationId, teamId: team.id },
+    });
     return this.toDto(team, memberCount);
   }
 
-  async createTeam(organizationId: string, actor: RbacActor, input: CreateTeamInput): Promise<TeamDto> {
+  async createTeam(
+    organizationId: string,
+    actor: RbacActor,
+    input: CreateTeamInput,
+  ): Promise<TeamDto> {
     this.assertCanManageTeams(actor);
 
     await this.ensureUniqueName(organizationId, input.name);
@@ -65,7 +79,10 @@ export class TeamsService {
 
     // The lead is a member of their own team and reports to nobody below admin.
     if (lead) {
-      await this.users.update({ id: lead.id }, { teamId: saved.id, managerId: null });
+      await this.users.update(
+        { id: lead.id },
+        { teamId: saved.id, managerId: null },
+      );
     }
 
     return this.getTeam(organizationId, saved.id);
@@ -91,11 +108,17 @@ export class TeamsService {
         team.leadId = null;
         team.lead = null;
       } else {
-        const newLead = await this.findMemberInOrg(organizationId, input.leadId);
+        const newLead = await this.findMemberInOrg(
+          organizationId,
+          input.leadId,
+        );
         team.leadId = newLead.id;
         team.lead = newLead;
         // New lead joins the team; the previous lead stays a member.
-        await this.users.update({ id: newLead.id }, { teamId: team.id, managerId: null });
+        await this.users.update(
+          { id: newLead.id },
+          { teamId: team.id, managerId: null },
+        );
       }
     }
 
@@ -103,13 +126,20 @@ export class TeamsService {
     return this.getTeam(organizationId, saved.id);
   }
 
-  async deleteTeam(organizationId: string, actor: RbacActor, teamId: string): Promise<void> {
+  async deleteTeam(
+    organizationId: string,
+    actor: RbacActor,
+    teamId: string,
+  ): Promise<void> {
     this.assertCanManageTeams(actor);
     const team = await this.findTeam(organizationId, teamId);
 
     // Soft delete; members keep existing, their teamId is cleared so nobody is
     // stranded in a deleted team.
-    await this.users.update({ organizationId, teamId: team.id }, { teamId: null, managerId: null });
+    await this.users.update(
+      { organizationId, teamId: team.id },
+      { teamId: null, managerId: null },
+    );
     await this.teams.softRemove(team);
   }
 
@@ -123,7 +153,8 @@ export class TeamsService {
     const user = await this.findMemberInOrg(organizationId, userId);
 
     // A team lead can move members within their own team; owners/admins can move anyone.
-    const managingOwnTeam = teamId !== null && (await this.isLeadOf(organizationId, actor, teamId));
+    const managingOwnTeam =
+      teamId !== null && (await this.isLeadOf(organizationId, actor, teamId));
     if (!managingOwnTeam) {
       this.assertCanManageTeams(actor);
     }
@@ -131,11 +162,19 @@ export class TeamsService {
     if (teamId) {
       const team = await this.findTeam(organizationId, teamId);
       if (team.leadId === user.id) {
-        throw new BadRequestException('Reassign the team lead before moving them to another team');
+        throw new BadRequestException(
+          'Reassign the team lead before moving them to another team',
+        );
       }
-      await this.users.update({ id: user.id }, { teamId: team.id, managerId: null });
+      await this.users.update(
+        { id: user.id },
+        { teamId: team.id, managerId: null },
+      );
     } else {
-      await this.users.update({ id: user.id }, { teamId: null, managerId: null });
+      await this.users.update(
+        { id: user.id },
+        { teamId: null, managerId: null },
+      );
     }
 
     return this.toUserDto(await this.findMemberInOrg(organizationId, user.id));
@@ -143,7 +182,10 @@ export class TeamsService {
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
-  private async findTeam(organizationId: string, teamId: string): Promise<Team> {
+  private async findTeam(
+    organizationId: string,
+    teamId: string,
+  ): Promise<Team> {
     const team = await this.teams.findOne({
       where: { id: teamId, organizationId },
       relations: { lead: true },
@@ -154,7 +196,10 @@ export class TeamsService {
     return team;
   }
 
-  private async findMemberInOrg(organizationId: string, userId: string): Promise<User> {
+  private async findMemberInOrg(
+    organizationId: string,
+    userId: string,
+  ): Promise<User> {
     const user = await this.users.findOne({
       where: { id: userId, organizationId },
       relations: { roles: true },
@@ -165,7 +210,11 @@ export class TeamsService {
     return user;
   }
 
-  private async ensureUniqueName(organizationId: string, name: string, excludeId?: string): Promise<void> {
+  private async ensureUniqueName(
+    organizationId: string,
+    name: string,
+    excludeId?: string,
+  ): Promise<void> {
     const trimmed = name.trim();
     const qb = this.teams
       .createQueryBuilder('team')
@@ -188,7 +237,11 @@ export class TeamsService {
   }
 
   /** Whether the given actor leads the given team. */
-  private async isLeadOf(organizationId: string, actor: RbacActor, teamId: string): Promise<boolean> {
+  private async isLeadOf(
+    organizationId: string,
+    actor: RbacActor,
+    teamId: string,
+  ): Promise<boolean> {
     const team = await this.findTeam(organizationId, teamId);
     return team.leadId !== null && team.leadId === actor.id;
   }

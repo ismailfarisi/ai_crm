@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, type PipeTransform } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  type PipeTransform,
+} from '@nestjs/common';
 import { ZodError, type ZodType } from 'zod';
 
 /**
@@ -34,5 +38,7 @@ export class ZodValidationPipe<T extends ZodType> implements PipeTransform {
 }
 
 /** Sugar so controllers read `@Body(zodBody(createContactSchema))`. */
-export const zodBody = <T extends ZodType>(schema: T) => new ZodValidationPipe(schema);
-export const zodQuery = <T extends ZodType>(schema: T) => new ZodValidationPipe(schema);
+export const zodBody = <T extends ZodType>(schema: T) =>
+  new ZodValidationPipe(schema);
+export const zodQuery = <T extends ZodType>(schema: T) =>
+  new ZodValidationPipe(schema);

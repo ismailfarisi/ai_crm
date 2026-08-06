@@ -5,10 +5,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
-import { UserPlus } from 'lucide-react';
+import { MailPlus, UserPlus } from 'lucide-react';
 import {
   PERMISSIONS,
   inviteUserSchema,
+  type InvitationDto,
   type InviteUserInput,
   type TeamDto,
   type UserDto,
@@ -43,6 +44,22 @@ export function TeamView() {
     queryKey: queryKeys.teams,
     queryFn: api.teams.list,
     enabled: can(PERMISSIONS.USER_UPDATE),
+  });
+
+  const { data: invitations } = useQuery({
+    queryKey: queryKeys.invitations,
+    queryFn: api.invitations.list,
+    enabled: can(PERMISSIONS.USER_READ),
+  });
+
+  const cancelInvite = useMutation({
+    mutationFn: (id: string) => api.invitations.cancel(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.invitations });
+      toast.success('Invite cancelled');
+    },
+    onError: (error) =>
+      toast.error(error instanceof ApiError ? error.message : 'Could not cancel the invite'),
   });
 
   const setActive = useMutation({
@@ -123,7 +140,58 @@ export function TeamView() {
       </Card>
 
       <InviteDialog open={inviting} onClose={() => setInviting(false)} roles={roles ?? []} teams={teams ?? []} />
+
+      {invitations && invitations.length > 0 && (
+        <Card className="mt-4">
+          <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+            <MailPlus className="size-4 text-ink-subtle" />
+            <h2 className="text-sm font-semibold text-ink">Pending invitations</h2>
+          </div>
+          <ul className="divide-y divide-border">
+            {invitations.map((invitation) => (
+              <PendingInviteRow
+                key={invitation.id}
+                invitation={invitation}
+                onCancel={() => cancelInvite.mutate(invitation.id)}
+              />
+            ))}
+          </ul>
+        </Card>
+      )}
     </>
+  );
+}
+
+function PendingInviteRow({
+  invitation,
+  onCancel,
+}: {
+  invitation: InvitationDto;
+  onCancel: () => void;
+}) {
+  return (
+    <li className="flex flex-wrap items-center gap-4 px-4 py-3">
+      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-brand-soft text-xs font-semibold text-brand">
+        {initials(invitation.firstName, invitation.lastName)}
+      </span>
+
+      <div className="min-w-40 flex-1">
+        <p className="text-sm font-medium text-ink">
+          {invitation.firstName} {invitation.lastName}
+        </p>
+        <p className="text-xs text-ink-subtle">{invitation.email}</p>
+      </div>
+
+      <div className="hidden text-xs text-ink-subtle sm:block">
+        Expires {formatRelative(invitation.expiresAt)}
+      </div>
+
+      <Can permission={PERMISSIONS.USER_UPDATE}>
+        <Button variant="ghost" size="sm" onClick={onCancel}>
+          Cancel
+        </Button>
+      </Can>
+    </li>
   );
 }
 
@@ -248,15 +316,14 @@ function InviteDialog({
     formState: { errors, isSubmitting },
   } = useForm<InviteUserInput>({
     resolver: zodResolver(inviteUserSchema),
-    defaultValues: { email: '', firstName: '', lastName: '', password: '', roleIds: [], teamId: null },
+    defaultValues: { email: '', firstName: '', lastName: '', roleIds: [], teamId: null },
   });
 
   const onSubmit = handleSubmit(async (values) => {
     try {
-      await api.users.invite(values);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.users });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.teams });
-      toast.success(`${values.firstName} added to the team`);
+      await api.invitations.invite(values);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.invitations });
+      toast.success(`Invite sent to ${values.email}`);
       reset();
       onClose();
     } catch (error) {
@@ -274,14 +341,14 @@ function InviteDialog({
       open={open}
       onClose={onClose}
       title="Add a team member"
-      description="They'll sign in with the password you set here — ask them to change it."
+      description="We'll email them a link to set their own password and sign in."
       footer={
         <>
           <Button variant="secondary" onClick={onClose} type="button">
             Cancel
           </Button>
           <Button type="submit" form="invite-form" loading={isSubmitting}>
-            Add member
+            Send invite
           </Button>
         </>
       }
@@ -293,15 +360,6 @@ function InviteDialog({
         </div>
 
         <Input label="Email" type="email" required error={errors.email?.message} {...register('email')} />
-
-        <Input
-          label="Temporary password"
-          type="text"
-          required
-          hint="At least 10 characters, with upper case, lower case and a number."
-          error={errors.password?.message}
-          {...register('password')}
-        />
 
         <div className="space-y-1.5">
           <span className="block text-sm font-medium text-ink">Role</span>

@@ -1,6 +1,7 @@
 import { Column, Entity, Index, OneToMany } from 'typeorm';
 import { BaseEntity } from '@/common/entities/base.entity';
 import { Contact } from '@/modules/contacts/entities/contact.entity';
+import { Invitation } from '@/modules/invitations/entities/invitation.entity';
 import { Role } from '@/modules/rbac/entities/role.entity';
 import { Team } from '@/modules/teams/entities/team.entity';
 import { User } from '@/modules/users/entities/user.entity';
@@ -26,4 +27,7 @@ export class Organization extends BaseEntity {
 
   @OneToMany(() => Team, (team) => team.organization)
   teams: Team[];
+
+  @OneToMany(() => Invitation, (invitation) => invitation.organization)
+  invitations: Invitation[];
 }

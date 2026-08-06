@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository, type SelectQueryBuilder } from 'typeorm';
 import {
@@ -17,9 +21,14 @@ import type { ContactQueryDto } from './dto/contact-query.dto';
 
 @Injectable()
 export class ContactsService {
-  constructor(@InjectRepository(Contact) private readonly contacts: Repository<Contact>) {}
+  constructor(
+    @InjectRepository(Contact) private readonly contacts: Repository<Contact>,
+  ) {}
 
-  async list(actor: AuthenticatedUser, query: ContactQueryDto): Promise<PaginatedResult<ContactDto>> {
+  async list(
+    actor: AuthenticatedUser,
+    query: ContactQueryDto,
+  ): Promise<PaginatedResult<ContactDto>> {
     const qb = this.scoped(actor).leftJoinAndSelect('contact.owner', 'owner');
 
     if (query.search) {
@@ -30,7 +39,10 @@ export class ContactsService {
             .orWhere('LOWER(contact.lastName) LIKE :term', { term })
             .orWhere('LOWER(contact.email) LIKE :term', { term })
             .orWhere('LOWER(contact.company) LIKE :term', { term })
-            .orWhere("LOWER(contact.firstName || ' ' || contact.lastName) LIKE :term", { term });
+            .orWhere(
+              "LOWER(contact.firstName || ' ' || contact.lastName) LIKE :term",
+              { term },
+            );
         }),
       );
     }
@@ -85,7 +97,10 @@ export class ContactsService {
     return this.toDto(await this.findEntity(actor, id));
   }
 
-  async create(actor: AuthenticatedUser, input: CreateContactInput): Promise<ContactDto> {
+  async create(
+    actor: AuthenticatedUser,
+    input: CreateContactInput,
+  ): Promise<ContactDto> {
     const parsed = input as Required<CreateContactInput>;
 
     // Without `contact:read_all` a user can only ever create contacts for
@@ -111,7 +126,11 @@ export class ContactsService {
     return this.findOne(actor, saved.id);
   }
 
-  async update(actor: AuthenticatedUser, id: string, input: UpdateContactInput): Promise<ContactDto> {
+  async update(
+    actor: AuthenticatedUser,
+    id: string,
+    input: UpdateContactInput,
+  ): Promise<ContactDto> {
     const contact = await this.findEntity(actor, id);
 
     if (input.ownerId !== undefined) {
@@ -119,9 +138,12 @@ export class ContactsService {
         // Org-wide readers may reassign to anyone, including unassigning.
       } else if (this.canSeeTeam(actor)) {
         const memberIds = await this.teamMemberIds(actor);
-        const targetIsTeam = input.ownerId === null || memberIds.includes(input.ownerId);
+        const targetIsTeam =
+          input.ownerId === null || memberIds.includes(input.ownerId);
         if (!targetIsTeam) {
-          throw new ForbiddenException('You cannot reassign contacts outside your team');
+          throw new ForbiddenException(
+            'You cannot reassign contacts outside your team',
+          );
         }
       } else if (input.ownerId !== actor.id) {
         throw new ForbiddenException('You cannot reassign contacts');
@@ -160,8 +182,12 @@ export class ContactsService {
     const monthAgo = new Date(Date.now() - 30 * 86_400_000);
 
     const [createdThisWeek, createdThisMonth] = await Promise.all([
-      this.scoped(actor).andWhere('contact.createdAt >= :since', { since: weekAgo }).getCount(),
-      this.scoped(actor).andWhere('contact.createdAt >= :since', { since: monthAgo }).getCount(),
+      this.scoped(actor)
+        .andWhere('contact.createdAt >= :since', { since: weekAgo })
+        .getCount(),
+      this.scoped(actor)
+        .andWhere('contact.createdAt >= :since', { since: monthAgo })
+        .getCount(),
     ]);
 
     return { total, byStatus, createdThisWeek, createdThisMonth };
@@ -178,13 +204,17 @@ export class ContactsService {
   private scoped(actor: AuthenticatedUser): SelectQueryBuilder<Contact> {
     const qb = this.contacts
       .createQueryBuilder('contact')
-      .where('contact.organizationId = :organizationId', { organizationId: actor.organizationId });
+      .where('contact.organizationId = :organizationId', {
+        organizationId: actor.organizationId,
+      });
 
     if (!this.canSeeEverything(actor)) {
       if (this.canSeeTeam(actor)) {
         qb.andWhere(
           new Brackets((w) => {
-            w.where('contact.ownerId = :actorId', { actorId: actor.id }).orWhere(
+            w.where('contact.ownerId = :actorId', {
+              actorId: actor.id,
+            }).orWhere(
               'contact.ownerId IN (SELECT "id" FROM "users" WHERE "teamId" = :teamId)',
               { teamId: actor.teamId },
             );
@@ -225,7 +255,10 @@ export class ContactsService {
     return rows.map((row) => row.id);
   }
 
-  private async findEntity(actor: AuthenticatedUser, id: string): Promise<Contact> {
+  private async findEntity(
+    actor: AuthenticatedUser,
+    id: string,
+  ): Promise<Contact> {
     const contact = await this.scoped(actor)
       .leftJoinAndSelect('contact.owner', 'owner')
       .andWhere('contact.id = :id', { id })
@@ -257,7 +290,8 @@ export class ContactsService {
             id: contact.owner.id,
             firstName: contact.owner.firstName,
             lastName: contact.owner.lastName,
-            fullName: `${contact.owner.firstName} ${contact.owner.lastName}`.trim(),
+            fullName:
+              `${contact.owner.firstName} ${contact.owner.lastName}`.trim(),
             email: contact.owner.email,
           }
         : null,

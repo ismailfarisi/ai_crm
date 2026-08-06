@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   ALL_PERMISSIONS,
@@ -23,7 +34,9 @@ export class RbacController {
 
   @Get('permissions')
   @RequirePermissions(PERMISSIONS.ROLE_READ)
-  @ApiOperation({ summary: 'The permission catalog, grouped for the role editor' })
+  @ApiOperation({
+    summary: 'The permission catalog, grouped for the role editor',
+  })
   listPermissions() {
     return {
       permissions: ALL_PERMISSIONS.map((key) => ({
@@ -62,7 +75,7 @@ export class RbacController {
 
   @Patch('roles/:id')
   @RequirePermissions(PERMISSIONS.ROLE_UPDATE)
-  @ApiOperation({ summary: "Rename a role or change its permissions" })
+  @ApiOperation({ summary: 'Rename a role or change its permissions' })
   updateRole(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,

@@ -15,6 +15,7 @@ cp apps/api/.env.example apps/api/.env  # the API
 cp apps/web/.env.example apps/web/.env.local
 
 pnpm db:up      # postgres + redis in docker
+pnpm migration:run   # create the schema (migrations own it, not synchronize)
 pnpm dev        # api on :4000, web on :3000
 ```
 
@@ -77,14 +78,19 @@ Access and refresh tokens are delivered as `httpOnly` cookies, so no token ever 
 | `pnpm build`              | Build shared → api → web                         |
 | `pnpm db:up` / `db:down`  | Start / stop Postgres and Redis                  |
 | `pnpm db:reset`           | Drop the volumes and start fresh                 |
+| `pnpm migration:run`      | Apply pending migrations (do this after db:reset)|
+| `pnpm migration:generate Name` | Diff entities against the database           |
 | `pnpm seed`               | Seed the demo organization                       |
-| `pnpm migration:generate` | Diff entities against the database               |
-| `pnpm migration:run`      | Apply pending migrations                         |
+| `pnpm test`               | Unit tests across api, shared and web            |
+| `pnpm test:e2e`           | API e2e auth flow against a `crm_test` database  |
 
-## Before production
+## Production notes
 
-- `DB_SYNCHRONIZE=true` is a development convenience. Generate a real migration (`pnpm migration:generate src/database/migrations/Init`) and set it to `false`. The API force-disables it whenever `NODE_ENV=production`, but do not rely on that.
-- Replace both JWT secrets with real random values (`openssl rand -base64 48`).
-- Set `COOKIE_SECURE=true`, and `COOKIE_SAME_SITE=none` plus `COOKIE_DOMAIN` if the API and web app are on different subdomains.
+The schema is owned by **migrations**, not `synchronize` — `DB_SYNCHRONIZE` defaults to `false` and the API force-disables it in production. A fresh database is: `pnpm db:reset && pnpm migration:run`.
+
+- The baseline migration matches the entities exactly: `pnpm migration:generate` against a migrated DB reports zero drift.
+- **Secrets:** generate real JWT secrets (`openssl rand -base64 48`). If `NODE_ENV=production` is set with the `.env.example` placeholder secrets, the API refuses to boot.
+- **Cookies:** the API forces `COOKIE_SECURE=true` in production; `COOKIE_SAME_SITE=none` is rejected unless cookies are secure. The refresh cookie is scoped to the auth routes only.
+- **Invites:** team members are invited by email. The invitee sets their own password via `/accept-invite`; the raw token is only ever in the email (a SHA-256 hash is stored). `MAIL_PROVIDER=console` logs the link in development; set `MAIL_PROVIDER=ses` with `MAIL_REGION` for AWS SES in production.
+- **Rate limiting:** register/login/refresh/logout share a tightened auth bucket.
 - Point `API_INTERNAL_URL` at the API's private address so server components skip the public internet.
-- Invites currently set a password directly. Swap in an email-based invite token before real users exist.

@@ -1,4 +1,12 @@
-import { Column, Entity, Index, JoinColumn, JoinTable, ManyToMany, ManyToOne } from 'typeorm';
+import {
+  Column,
+  Entity,
+  Index,
+  JoinColumn,
+  JoinTable,
+  ManyToMany,
+  ManyToOne,
+} from 'typeorm';
 import { CUSTOM_ROLE_LEVEL } from '@saas/shared';
 import { BaseEntity } from '@/common/entities/base.entity';
 import { Organization } from '@/modules/organizations/entities/organization.entity';
@@ -46,7 +54,9 @@ export class Role extends BaseEntity {
   @Column({ type: 'boolean', default: false })
   grantsAllPermissions: boolean;
 
-  @ManyToMany(() => Permission, (permission) => permission.roles, { cascade: false })
+  @ManyToMany(() => Permission, (permission) => permission.roles, {
+    cascade: false,
+  })
   @JoinTable({
     name: 'role_permissions',
     joinColumn: { name: 'roleId', referencedColumnName: 'id' },

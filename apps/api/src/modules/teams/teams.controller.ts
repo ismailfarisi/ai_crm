@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   PERMISSIONS,
@@ -71,13 +82,20 @@ export class TeamsController {
 
   @Patch(':id/members/:userId')
   @RequirePermissions(PERMISSIONS.USER_UPDATE)
-  @ApiOperation({ summary: 'Assign a member to a team (null teamId removes them)' })
+  @ApiOperation({
+    summary: 'Assign a member to a team (null teamId removes them)',
+  })
   assignMember(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('userId', ParseUUIDPipe) userId: string,
     @Body(zodBody(assignTeamSchema)) input: AssignTeamInput,
   ): Promise<UserDto> {
-    return this.teams.setMemberTeam(user.organizationId, user, userId, input.teamId ?? null);
+    return this.teams.setMemberTeam(
+      user.organizationId,
+      user,
+      userId,
+      input.teamId ?? null,
+    );
   }
 }

@@ -1,4 +1,5 @@
 import type {
+  AcceptInviteInput,
   AssignRolesInput,
   ChangePasswordInput,
   ContactDto,
@@ -6,6 +7,7 @@ import type {
   CreateContactPayload,
   CreateRoleInput,
   CreateTeamInput,
+  InvitationDto,
   InviteUserInput,
   LoginInput,
   PaginatedResult,
@@ -39,6 +41,8 @@ export const api = {
       apiFetch<SessionDto>('/auth/login', { method: 'POST', body: input }),
     register: (input: RegisterInput) =>
       apiFetch<SessionDto>('/auth/register', { method: 'POST', body: input }),
+    acceptInvite: (input: AcceptInviteInput) =>
+      apiFetch<SessionDto>('/auth/accept-invite', { method: 'POST', body: input }),
     logout: () => apiFetch<{ success: true }>('/auth/logout', { method: 'POST' }),
     me: () => apiFetch<SessionDto>('/auth/me'),
     changePassword: (input: ChangePasswordInput) =>
@@ -73,7 +77,6 @@ export const api = {
 
   users: {
     list: () => apiFetch<UserDto[]>('/users'),
-    invite: (input: InviteUserInput) => apiFetch<UserDto>('/users', { method: 'POST', body: input }),
     assignRoles: (id: string, input: AssignRolesInput) =>
       apiFetch<UserDto>(`/users/${id}/roles`, { method: 'PATCH', body: input }),
     assignTeam: (id: string, teamId: string | null) =>
@@ -82,6 +85,16 @@ export const api = {
       apiFetch<UserDto>(`/users/${id}/status`, { method: 'PATCH', body: { isActive } }),
     updateOwnProfile: (input: { firstName?: string; lastName?: string }) =>
       apiFetch<UserDto>('/users/me', { method: 'PATCH', body: input }),
+  },
+
+  invitations: {
+    list: () => apiFetch<InvitationDto[]>('/invitations'),
+    invite: (input: InviteUserInput) =>
+      apiFetch<InvitationDto>('/invitations', { method: 'POST', body: input }),
+    resend: (id: string) =>
+      apiFetch<InvitationDto>(`/invitations/${id}/resend`, { method: 'POST' }),
+    cancel: (id: string) =>
+      apiFetch<{ success: true }>(`/invitations/${id}`, { method: 'DELETE' }),
   },
 
   teams: {
@@ -103,4 +116,5 @@ export const queryKeys = {
   permissionCatalog: ['permissions'] as const,
   users: ['users'] as const,
   teams: ['teams'] as const,
+  invitations: ['invitations'] as const,
 };

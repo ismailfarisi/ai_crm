@@ -50,7 +50,9 @@ export class ContactsController {
 
   @Get('stats')
   @RequirePermissions(PERMISSIONS.CONTACT_READ)
-  @ApiOperation({ summary: 'Counts for the dashboard, scoped the same way as the list' })
+  @ApiOperation({
+    summary: 'Counts for the dashboard, scoped the same way as the list',
+  })
   stats(@CurrentUser() user: AuthenticatedUser): Promise<ContactStatsDto> {
     return this.contacts.stats(user);
   }

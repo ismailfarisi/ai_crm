@@ -1,9 +1,14 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
-import type { AssignRolesInput, InviteUserInput, RoleSummaryDto, UserDto } from '@saas/shared';
+import type { AssignRolesInput, RoleSummaryDto, UserDto } from '@saas/shared';
 import type { AppConfig } from '@/config/configuration';
 import { RbacService } from '@/modules/rbac/rbac.service';
 import type { Role } from '@/modules/rbac/entities/role.entity';
@@ -51,7 +56,10 @@ export class UsersService {
   }
 
   async hashPassword(plain: string): Promise<string> {
-    return bcrypt.hash(plain, this.config.get('security.bcryptRounds', { infer: true }));
+    return bcrypt.hash(
+      plain,
+      this.config.get('security.bcryptRounds', { infer: true }),
+    );
   }
 
   async verifyPassword(plain: string, hash: string): Promise<boolean> {
@@ -62,7 +70,10 @@ export class UsersService {
   async setPassword(userId: string, plainPassword: string): Promise<void> {
     await this.users.update(
       { id: userId },
-      { passwordHash: await this.hashPassword(plainPassword), credentialsChangedAt: new Date() },
+      {
+        passwordHash: await this.hashPassword(plainPassword),
+        credentialsChangedAt: new Date(),
+      },
     );
   }
 
@@ -114,10 +125,19 @@ export class UsersService {
   async inviteMember(
     organizationId: string,
     actorLevel: number,
-    input: InviteUserInput,
+    input: {
+      email: string;
+      firstName: string;
+      lastName: string;
+      password: string;
+      roleIds: string[];
+      teamId?: string | null;
+    },
   ): Promise<UserDto> {
     if (await this.emailExists(input.email)) {
-      throw new BadRequestException('An account with that email already exists');
+      throw new BadRequestException(
+        'An account with that email already exists',
+      );
     }
 
     const roles = await this.rbac.findRolesByIds(organizationId, input.roleIds);
@@ -126,9 +146,6 @@ export class UsersService {
     let teamId: string | null = null;
     if (input.teamId) {
       const team = await this.findTeamInOrg(organizationId, input.teamId);
-      // A member who leads a team is the team's lead — if the invitee leads the
-      // team, they join it as lead (managerId null). Otherwise they join as a
-      // regular member.
       teamId = team.id;
     }
 
@@ -158,9 +175,13 @@ export class UsersService {
       throw new ForbiddenException('You cannot change your own roles');
     }
 
-    const targetLevel = user.roles.length ? Math.min(...user.roles.map((r) => r.level)) : Number.MAX_SAFE_INTEGER;
+    const targetLevel = user.roles.length
+      ? Math.min(...user.roles.map((r) => r.level))
+      : Number.MAX_SAFE_INTEGER;
     if (targetLevel <= actorLevel) {
-      throw new ForbiddenException('You cannot modify a user at or above your own level');
+      throw new ForbiddenException(
+        'You cannot modify a user at or above your own level',
+      );
     }
 
     const roles = await this.rbac.findRolesByIds(organizationId, input.roleIds);
@@ -190,13 +211,19 @@ export class UsersService {
       throw new ForbiddenException('You cannot deactivate your own account');
     }
 
-    const targetLevel = user.roles.length ? Math.min(...user.roles.map((r) => r.level)) : Number.MAX_SAFE_INTEGER;
+    const targetLevel = user.roles.length
+      ? Math.min(...user.roles.map((r) => r.level))
+      : Number.MAX_SAFE_INTEGER;
     if (targetLevel <= actorLevel) {
-      throw new ForbiddenException('You cannot modify a user at or above your own level');
+      throw new ForbiddenException(
+        'You cannot modify a user at or above your own level',
+      );
     }
 
     if (!isActive && (await this.isLastActiveOwner(organizationId, user))) {
-      throw new BadRequestException('An organization must keep at least one active owner');
+      throw new BadRequestException(
+        'An organization must keep at least one active owner',
+      );
     }
 
     user.isActive = isActive;
@@ -245,15 +272,21 @@ export class UsersService {
       throw new ForbiddenException('You cannot change your own team');
     }
 
-    const targetLevel = user.roles.length ? Math.min(...user.roles.map((r) => r.level)) : Number.MAX_SAFE_INTEGER;
+    const targetLevel = user.roles.length
+      ? Math.min(...user.roles.map((r) => r.level))
+      : Number.MAX_SAFE_INTEGER;
     if (targetLevel <= actorLevel) {
-      throw new ForbiddenException('You cannot modify a user at or above your own level');
+      throw new ForbiddenException(
+        'You cannot modify a user at or above your own level',
+      );
     }
 
     if (teamId) {
       const team = await this.findTeamInOrg(organizationId, teamId);
       if (team.leadId === user.id) {
-        throw new BadRequestException('Reassign the team lead before moving them to another team');
+        throw new BadRequestException(
+          'Reassign the team lead before moving them to another team',
+        );
       }
       user.teamId = team.id;
       user.managerId = null;
@@ -266,15 +299,23 @@ export class UsersService {
     return this.toDto(await this.findMember(organizationId, user.id));
   }
 
-  private async findTeamInOrg(organizationId: string, teamId: string): Promise<Team> {
-    const team = await this.teams.findOne({ where: { id: teamId, organizationId } });
+  private async findTeamInOrg(
+    organizationId: string,
+    teamId: string,
+  ): Promise<Team> {
+    const team = await this.teams.findOne({
+      where: { id: teamId, organizationId },
+    });
     if (!team) {
       throw new NotFoundException('Team not found');
     }
     return team;
   }
 
-  private async isLastActiveOwner(organizationId: string, user: User): Promise<boolean> {
+  private async isLastActiveOwner(
+    organizationId: string,
+    user: User,
+  ): Promise<boolean> {
     const isOwner = user.roles.some((role) => role.grantsAllPermissions);
     if (!isOwner) return false;
 
@@ -312,15 +353,13 @@ export class UsersService {
       isActive: user.isActive,
       lastLoginAt: user.lastLoginAt ? user.lastLoginAt.toISOString() : null,
       createdAt: user.createdAt.toISOString(),
-      roles: (user.roles ?? []).map(
-        (role): RoleSummaryDto => ({
-          id: role.id,
-          name: role.name,
-          slug: role.slug,
-          isSystem: role.isSystem,
-          level: role.level,
-        }),
-      ),
+      roles: (user.roles ?? []).map((role): RoleSummaryDto => ({
+        id: role.id,
+        name: role.name,
+        slug: role.slug,
+        isSystem: role.isSystem,
+        level: role.level,
+      })),
       teamId: user.teamId ?? null,
       managerId: user.managerId ?? null,
     };

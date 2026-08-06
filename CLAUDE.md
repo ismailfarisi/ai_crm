@@ -30,11 +30,13 @@ The generated `LayoutProps<'/'>` global only exists after a build, so layouts ty
 ## Local dev
 
 ```bash
-pnpm db:up && pnpm dev          # api :4000, web :3000
-pnpm seed                       # 5 users across the role hierarchy, password Password123!
-pnpm db:reset && pnpm seed      # start over
+pnpm db:up && pnpm migration:run && pnpm dev   # api :4000, web :3000
+pnpm seed                        # 5 users across the role hierarchy, password Password123!
+pnpm db:reset && pnpm migration:run && pnpm seed   # start over
 ```
 
 `next dev` falls back to port 3002 if 3000 is taken; `WEB_ORIGIN` in `apps/api/.env` lists both so CORS keeps working.
 
-`DB_SYNCHRONIZE=true` in dev. Before shipping, generate a migration and turn it off.
+The schema is owned by migrations (`DB_SYNCHRONIZE=false` everywhere). After changing an entity, generate a migration: `pnpm migration:generate Name` and run `pnpm migration:run`. `pnpm migration:generate` against a migrated DB must report no drift.
+
+Invites are email-based: `POST /invitations` creates a pending invite and emails a tokenized link; the invitee sets their password at `/auth/accept-invite`. The mail provider is `MAIL_PROVIDER=console` (logs the link) or `ses`.

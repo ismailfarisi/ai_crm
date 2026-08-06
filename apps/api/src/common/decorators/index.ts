@@ -1,6 +1,14 @@
-import { SetMetadata, applyDecorators, createParamDecorator, type ExecutionContext } from '@nestjs/common';
+import {
+  SetMetadata,
+  applyDecorators,
+  createParamDecorator,
+  type ExecutionContext,
+} from '@nestjs/common';
 import type { Permission } from '@saas/shared';
-import type { AuthenticatedRequest, AuthenticatedUser } from '@/common/types/authenticated-user';
+import type {
+  AuthenticatedRequest,
+  AuthenticatedUser,
+} from '@/common/types/authenticated-user';
 
 export const IS_PUBLIC_KEY = 'auth:isPublic';
 export const PERMISSIONS_KEY = 'rbac:permissions';
@@ -27,7 +35,8 @@ export const RequireAnyPermission = (...permissions: Permission[]) =>
   );
 
 /** Route requires one of the listed role slugs. Prefer permissions where you can. */
-export const RequireRoles = (...roles: string[]) => SetMetadata(ROLES_KEY, roles);
+export const RequireRoles = (...roles: string[]) =>
+  SetMetadata(ROLES_KEY, roles);
 
 /** Injects the authenticated user, or one of its properties. */
 export const CurrentUser = createParamDecorator(
