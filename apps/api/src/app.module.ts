@@ -13,12 +13,14 @@ import {
 import { AuthModule } from '@/modules/auth/auth.module';
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
 import { ContactsModule } from '@/modules/contacts/contacts.module';
+import { CustomersModule } from '@/modules/customers/customers.module';
 import { HealthModule } from '@/modules/health/health.module';
 import { InvitationsModule } from '@/modules/invitations/invitations.module';
 import { MailModule } from '@/modules/mail/mail.module';
 import { PermissionsGuard } from '@/modules/rbac/guards/permissions.guard';
 import { RbacModule } from '@/modules/rbac/rbac.module';
 import { TeamsModule } from '@/modules/teams/teams.module';
+import { TemporalModule } from '@/modules/temporal/temporal.module';
 import { UsersModule } from '@/modules/users/users.module';
 
 @Module({
@@ -73,10 +75,12 @@ import { UsersModule } from '@/modules/users/users.module';
     UsersModule,
     AuthModule,
     ContactsModule,
+    CustomersModule,
     TeamsModule,
     InvitationsModule,
     MailModule,
     HealthModule,
+    TemporalModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
