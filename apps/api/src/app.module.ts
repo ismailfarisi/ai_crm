@@ -18,6 +18,7 @@ import { HealthModule } from '@/modules/health/health.module';
 import { InvitationsModule } from '@/modules/invitations/invitations.module';
 import { MailModule } from '@/modules/mail/mail.module';
 import { PermissionsGuard } from '@/modules/rbac/guards/permissions.guard';
+import { QuotesModule } from '@/modules/quotes/quotes.module';
 import { RbacModule } from '@/modules/rbac/rbac.module';
 import { TeamsModule } from '@/modules/teams/teams.module';
 import { TemporalModule } from '@/modules/temporal/temporal.module';
@@ -81,6 +82,7 @@ import { UsersModule } from '@/modules/users/users.module';
     MailModule,
     HealthModule,
     TemporalModule,
+    QuotesModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
