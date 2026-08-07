@@ -109,6 +109,25 @@ export interface ContactStatsDto {
   createdThisMonth: number;
 }
 
+export interface CustomerDto {
+  id: string;
+  companyName: string;
+  contactName: string | null;
+  email: string | null;
+  phone: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  postalCode: string | null;
+  country: string | null;
+  taxId: string | null;
+  currency: string | null;
+  paymentTermsDays: number | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** A pending invite to join an organization. Created by an admin, accepted by the invitee. */
 export interface InvitationDto {
   id: string;
