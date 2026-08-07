@@ -4,12 +4,15 @@ import { useState, useSyncExternalStore, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
+  Building2,
   ChevronRight,
   CircleDot,
+  FileText,
   LayoutDashboard,
   LogOut,
   Menu,
   Moon,
+  Receipt,
   ShieldCheck,
   Sun,
   UserRoundCog,
@@ -43,6 +46,24 @@ const NAV_SECTIONS: { title?: string; items: NavItem[] }[] = [
         label: 'Contacts',
         icon: Users,
         rule: { permission: PERMISSIONS.CONTACT_READ },
+      },
+      {
+        href: '/customers',
+        label: 'Customers',
+        icon: Building2,
+        rule: { permission: PERMISSIONS.CUSTOMER_READ },
+      },
+      {
+        href: '/quotes',
+        label: 'Quotes',
+        icon: FileText,
+        rule: { permission: PERMISSIONS.QUOTE_READ },
+      },
+      {
+        href: '/invoices',
+        label: 'Invoices',
+        icon: Receipt,
+        rule: { permission: PERMISSIONS.INVOICE_READ },
       },
     ],
   },

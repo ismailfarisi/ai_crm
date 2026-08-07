@@ -5,8 +5,10 @@ import type {
   ContactDto,
   ContactStatsDto,
   CreateContactPayload,
+  CreateCustomerPayload,
   CreateRoleInput,
   CreateTeamInput,
+  CustomerDto,
   InvitationDto,
   InviteUserInput,
   LoginInput,
@@ -17,6 +19,7 @@ import type {
   SessionDto,
   TeamDto,
   UpdateContactPayload,
+  UpdateCustomerPayload,
   UpdateRoleInput,
   UpdateTeamInput,
   UserDto,
@@ -30,6 +33,14 @@ export interface ContactListParams {
   status?: string;
   source?: string;
   ownerId?: string;
+  sortBy?: string;
+  sortOrder?: 'ASC' | 'DESC';
+}
+
+export interface CustomerListParams {
+  page?: number;
+  limit?: number;
+  search?: string;
   sortBy?: string;
   sortOrder?: 'ASC' | 'DESC';
 }
@@ -59,6 +70,17 @@ export const api = {
     update: (id: string, input: UpdateContactPayload) =>
       apiFetch<ContactDto>(`/contacts/${id}`, { method: 'PATCH', body: input }),
     remove: (id: string) => apiFetch<void>(`/contacts/${id}`, { method: 'DELETE' }),
+  },
+
+  customers: {
+    list: (params: CustomerListParams = {}) =>
+      apiFetch<PaginatedResult<CustomerDto>>('/customers', { query: params }),
+    get: (id: string) => apiFetch<CustomerDto>(`/customers/${id}`),
+    create: (input: CreateCustomerPayload) =>
+      apiFetch<CustomerDto>('/customers', { method: 'POST', body: input }),
+    update: (id: string, input: UpdateCustomerPayload) =>
+      apiFetch<CustomerDto>(`/customers/${id}`, { method: 'PATCH', body: input }),
+    remove: (id: string) => apiFetch<void>(`/customers/${id}`, { method: 'DELETE' }),
   },
 
   roles: {
@@ -104,6 +126,19 @@ export const api = {
       apiFetch<TeamDto>(`/teams/${id}`, { method: 'PATCH', body: input }),
     remove: (id: string) => apiFetch<void>(`/teams/${id}`, { method: 'DELETE' }),
   },
+
+  quotes: {
+    list: () => apiFetch<any[]>('/quotes'),
+    get: (id: string) => apiFetch<any>(`/quotes/${id}`),
+    create: (payload: { createdBy: 'AI' | 'HUMAN'; title: string; prompt?: string; items?: any[]; totalAmount?: number }) =>
+      apiFetch<any>('/quotes', { method: 'POST', body: payload }),
+    signal: (id: string, payload: { action: 'APPROVE' | 'REJECT' | 'OVERRIDE'; payload?: any }) =>
+      apiFetch<any>(`/quotes/${id}/signal`, { method: 'POST', body: payload }),
+  },
+
+  invoices: {
+    list: () => apiFetch<any[]>('/invoices'),
+  },
 };
 
 export const queryKeys = {
@@ -111,10 +146,15 @@ export const queryKeys = {
   contacts: (params: ContactListParams = {}) => ['contacts', params] as const,
   contact: (id: string) => ['contacts', id] as const,
   contactStats: ['contacts', 'stats'] as const,
+  customers: (params: CustomerListParams = {}) => ['customers', params] as const,
+  customer: (id: string) => ['customers', id] as const,
   roles: ['roles'] as const,
   role: (id: string) => ['roles', id] as const,
   permissionCatalog: ['permissions'] as const,
   users: ['users'] as const,
   teams: ['teams'] as const,
   invitations: ['invitations'] as const,
+  quotes: ['quotes'] as const,
+  quote: (id: string) => ['quotes', id] as const,
+  invoices: ['invoices'] as const,
 };
