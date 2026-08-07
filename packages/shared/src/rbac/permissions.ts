@@ -37,6 +37,20 @@ export const PERMISSIONS = {
   CONTACT_UPDATE: 'contact:update',
   CONTACT_DELETE: 'contact:delete',
   CONTACT_EXPORT: 'contact:export',
+
+  // Customers
+  CUSTOMER_READ: 'customer:read',
+  CUSTOMER_CREATE: 'customer:create',
+  CUSTOMER_UPDATE: 'customer:update',
+  CUSTOMER_DELETE: 'customer:delete',
+
+  // Quotes
+  QUOTE_CREATE: 'quote:create',
+  QUOTE_READ: 'quote:read',
+  QUOTE_APPROVE: 'quote:approve',
+
+  // Invoices
+  INVOICE_READ: 'invoice:read',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -67,6 +81,17 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   [PERMISSIONS.CONTACT_UPDATE]: 'Edit contacts',
   [PERMISSIONS.CONTACT_DELETE]: 'Delete contacts',
   [PERMISSIONS.CONTACT_EXPORT]: 'Export contacts to CSV',
+
+  [PERMISSIONS.CUSTOMER_READ]: 'View customers',
+  [PERMISSIONS.CUSTOMER_CREATE]: 'Create customers',
+  [PERMISSIONS.CUSTOMER_UPDATE]: 'Edit customers',
+  [PERMISSIONS.CUSTOMER_DELETE]: 'Delete customers',
+
+  [PERMISSIONS.QUOTE_CREATE]: 'Create quotes',
+  [PERMISSIONS.QUOTE_READ]: 'View quotes',
+  [PERMISSIONS.QUOTE_APPROVE]: 'Approve quotes',
+
+  [PERMISSIONS.INVOICE_READ]: 'View invoices',
 };
 
 /** Groups drive the layout of the role editor screen. */
@@ -108,6 +133,26 @@ export const PERMISSION_GROUPS: { key: string; label: string; permissions: Permi
       PERMISSIONS.CONTACT_DELETE,
       PERMISSIONS.CONTACT_EXPORT,
     ],
+  },
+  {
+    key: 'customer',
+    label: 'Customers',
+    permissions: [
+      PERMISSIONS.CUSTOMER_READ,
+      PERMISSIONS.CUSTOMER_CREATE,
+      PERMISSIONS.CUSTOMER_UPDATE,
+      PERMISSIONS.CUSTOMER_DELETE,
+    ],
+  },
+  {
+    key: 'quote',
+    label: 'Quotes',
+    permissions: [PERMISSIONS.QUOTE_READ, PERMISSIONS.QUOTE_CREATE, PERMISSIONS.QUOTE_APPROVE],
+  },
+  {
+    key: 'invoice',
+    label: 'Invoices',
+    permissions: [PERMISSIONS.INVOICE_READ],
   },
 ];
 
