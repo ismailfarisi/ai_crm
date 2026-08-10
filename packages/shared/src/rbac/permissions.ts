@@ -51,6 +51,11 @@ export const PERMISSIONS = {
 
   // Invoices
   INVOICE_READ: 'invoice:read',
+
+  // Channels
+  CHANNEL_MANAGE: 'channel:manage',
+  CHANNEL_READ: 'channel:read',
+  CHANNEL_SEND: 'channel:send',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -92,6 +97,10 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   [PERMISSIONS.QUOTE_APPROVE]: 'Approve quotes',
 
   [PERMISSIONS.INVOICE_READ]: 'View invoices',
+
+  [PERMISSIONS.CHANNEL_MANAGE]: 'Manage channel integrations',
+  [PERMISSIONS.CHANNEL_READ]: 'View channels and messages',
+  [PERMISSIONS.CHANNEL_SEND]: 'Send channel messages',
 };
 
 /** Groups drive the layout of the role editor screen. */
@@ -153,6 +162,11 @@ export const PERMISSION_GROUPS: { key: string; label: string; permissions: Permi
     key: 'invoice',
     label: 'Invoices',
     permissions: [PERMISSIONS.INVOICE_READ],
+  },
+  {
+    key: 'channel',
+    label: 'Channels',
+    permissions: [PERMISSIONS.CHANNEL_MANAGE, PERMISSIONS.CHANNEL_READ, PERMISSIONS.CHANNEL_SEND],
   },
 ];
 
