@@ -23,6 +23,7 @@ import type {
   UpdateRoleInput,
   UpdateTeamInput,
   UserDto,
+  SendChannelMessagePayload,
 } from '@saas/shared';
 import { apiFetch } from './client';
 
@@ -151,8 +152,27 @@ export const api = {
       apiFetch<TestChannelConfigResult>(`/channels/configs/${provider}/test`, {
         method: 'POST',
       }),
+    messages: (params: { contactId?: string; limit?: number } = {}) =>
+      apiFetch<ChannelMessageDto[]>('/channels/messages', { query: params }),
+    sendMessage: (input: SendChannelMessagePayload) =>
+      apiFetch<ChannelMessageDto>('/channels/send', { method: 'POST', body: input }),
   },
 };
+
+export interface ChannelMessageDto {
+  id: string;
+  organizationId: string;
+  contactId: string | null;
+  contact?: ContactDto | null;
+  provider: 'WHATSAPP_META' | 'TELEGRAM' | 'EMAIL_SMTP' | 'EMAIL_RESEND';
+  direction: 'INBOUND' | 'OUTBOUND';
+  sender: string;
+  recipient: string;
+  body: string;
+  metadata?: Record<string, any>;
+  status: 'pending' | 'sent' | 'delivered' | 'failed' | 'received';
+  createdAt: string;
+}
 
 export interface ChannelConfigDto {
   id: string | null;
@@ -195,4 +215,6 @@ export const queryKeys = {
   quote: (id: string) => ['quotes', id] as const,
   invoices: ['invoices'] as const,
   channels: ['channels', 'configs'] as const,
+  channelMessages: (params: { contactId?: string; limit?: number } = {}) =>
+    ['channels', 'messages', params] as const,
 };

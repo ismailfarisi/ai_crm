@@ -320,6 +320,7 @@ export class ChannelsService {
     }
     return this.messageRepo.find({
       where,
+      relations: ['contact'],
       order: { createdAt: 'DESC' },
       take: query?.limit || 50,
     });

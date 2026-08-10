@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  MessageSquare,
   Moon,
   Receipt,
   ShieldCheck,
@@ -42,6 +43,12 @@ const NAV_SECTIONS: { title?: string; items: NavItem[] }[] = [
   {
     items: [
       { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      {
+        href: '/inbox',
+        label: 'Inbox',
+        icon: MessageSquare,
+        rule: { permission: PERMISSIONS.CHANNEL_READ },
+      },
       {
         href: '/contacts',
         label: 'Contacts',

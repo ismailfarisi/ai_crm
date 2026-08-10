@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
 import {
@@ -206,7 +207,12 @@ export function ContactsView() {
                     className="border-b border-border last:border-0 hover:bg-surface-muted/60"
                   >
                     <td className="px-4 py-3">
-                      <p className="font-medium text-ink">{contact.fullName}</p>
+                      <Link
+                        href={`/contacts/${contact.id}`}
+                        className="font-medium text-ink hover:text-brand transition-colors"
+                      >
+                        {contact.fullName}
+                      </Link>
                       {contact.email && (
                         <p className="text-xs text-ink-subtle">{contact.email}</p>
                       )}
