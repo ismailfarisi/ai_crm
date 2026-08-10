@@ -139,7 +139,44 @@ export const api = {
   invoices: {
     list: () => apiFetch<any[]>('/invoices'),
   },
+
+  channels: {
+    list: () => apiFetch<ChannelConfigDto[]>('/channels/configs'),
+    saveConfig: (provider: string, input: SaveChannelConfigInput) =>
+      apiFetch<ChannelConfigDto>(`/channels/configs/${provider}`, {
+        method: 'POST',
+        body: input,
+      }),
+    testConfig: (provider: string) =>
+      apiFetch<TestChannelConfigResult>(`/channels/configs/${provider}/test`, {
+        method: 'POST',
+      }),
+  },
 };
+
+export interface ChannelConfigDto {
+  id: string | null;
+  organizationId: string;
+  provider: 'WHATSAPP_META' | 'TELEGRAM' | 'EMAIL_SMTP' | 'EMAIL_RESEND';
+  isEnabled: boolean;
+  status: 'unconfigured' | 'configured' | 'error';
+  credentials: Record<string, any> | null;
+  webhookSecret: string | null;
+  lastTestedAt: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SaveChannelConfigInput {
+  isEnabled?: boolean;
+  credentials?: Record<string, any>;
+}
+
+export interface TestChannelConfigResult {
+  success: boolean;
+  message: string;
+  status: 'unconfigured' | 'configured' | 'error';
+}
 
 export const queryKeys = {
   session: ['session'] as const,
@@ -157,4 +194,5 @@ export const queryKeys = {
   quotes: ['quotes'] as const,
   quote: (id: string) => ['quotes', id] as const,
   invoices: ['invoices'] as const,
+  channels: ['channels', 'configs'] as const,
 };
