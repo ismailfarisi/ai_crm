@@ -56,6 +56,12 @@ export const PERMISSIONS = {
   CHANNEL_MANAGE: 'channel:manage',
   CHANNEL_READ: 'channel:read',
   CHANNEL_SEND: 'channel:send',
+
+  // Email client
+  EMAIL_READ: 'email:read',
+  EMAIL_READ_ALL: 'email:read_all',
+  EMAIL_SEND: 'email:send',
+  EMAIL_MANAGE: 'email:manage',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -101,6 +107,11 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   [PERMISSIONS.CHANNEL_MANAGE]: 'Manage channel integrations',
   [PERMISSIONS.CHANNEL_READ]: 'View channels and messages',
   [PERMISSIONS.CHANNEL_SEND]: 'Send channel messages',
+
+  [PERMISSIONS.EMAIL_READ]: 'View assigned email accounts and threads',
+  [PERMISSIONS.EMAIL_READ_ALL]: 'View all organization email accounts and threads',
+  [PERMISSIONS.EMAIL_SEND]: 'Compose, send, and manage email drafts',
+  [PERMISSIONS.EMAIL_MANAGE]: 'Manage email accounts (IMAP/SMTP/Resend)',
 };
 
 /** Groups drive the layout of the role editor screen. */
@@ -167,6 +178,16 @@ export const PERMISSION_GROUPS: { key: string; label: string; permissions: Permi
     key: 'channel',
     label: 'Channels',
     permissions: [PERMISSIONS.CHANNEL_MANAGE, PERMISSIONS.CHANNEL_READ, PERMISSIONS.CHANNEL_SEND],
+  },
+  {
+    key: 'email',
+    label: 'Email client',
+    permissions: [
+      PERMISSIONS.EMAIL_READ,
+      PERMISSIONS.EMAIL_READ_ALL,
+      PERMISSIONS.EMAIL_SEND,
+      PERMISSIONS.EMAIL_MANAGE,
+    ],
   },
 ];
 
