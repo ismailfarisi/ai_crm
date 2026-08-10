@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
+import { ColumnDef } from '@tanstack/react-table';
+import { Pencil, Plus, Trash2, Users } from 'lucide-react';
 import {
   CONTACT_SOURCES,
   CONTACT_SOURCE_LABELS,
@@ -20,8 +21,10 @@ import { formatRelative } from '@/lib/utils';
 import { Can } from '@/components/auth/can';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
-import { Input, Select } from '@/components/ui/field';
-import { Badge, Card, EmptyState, PageHeader, Skeleton } from '@/components/ui/primitives';
+import { Select } from '@/components/ui/field';
+import { Badge, EmptyState, PageHeader } from '@/components/ui/primitives';
+import { DataTable } from '@/components/ui/data-table';
+import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
 import { ContactFormDialog } from './contact-form-dialog';
 
 const STATUS_TONES: Record<ContactStatus, 'brand' | 'success' | 'warning' | 'danger' | 'neutral'> = {
@@ -80,7 +83,6 @@ export function ContactsView() {
   });
 
   const contacts = data?.items ?? [];
-  const meta = data?.meta;
 
   // Team leads may only reassign within their team — the API enforces this too,
   // so filter the dropdown to their team so the UI matches the server.
@@ -97,6 +99,106 @@ export function ContactsView() {
       ? "Your team's pipeline — contacts owned by you and your team."
       : 'The contacts assigned to you.';
 
+  const columns = useMemo<ColumnDef<ContactDto, any>[]>(
+    () => [
+      {
+        accessorKey: 'fullName',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Name" />,
+        cell: ({ row }) => (
+          <div>
+            <Link
+              href={`/contacts/${row.original.id}`}
+              className="font-medium text-ink hover:text-brand transition-colors"
+            >
+              {row.original.fullName}
+            </Link>
+            {row.original.email && (
+              <p className="text-xs text-ink-subtle">{row.original.email}</p>
+            )}
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'company',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Company" />,
+        cell: ({ row }) => (
+          <div className="text-ink-muted">
+            {row.original.company ?? '—'}
+            {row.original.jobTitle && (
+              <p className="text-xs text-ink-subtle">{row.original.jobTitle}</p>
+            )}
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'status',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
+        cell: ({ row }) => (
+          <Badge tone={STATUS_TONES[row.original.status]}>
+            {CONTACT_STATUS_LABELS[row.original.status]}
+          </Badge>
+        ),
+      },
+      {
+        accessorKey: 'source',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Source" />,
+        cell: ({ row }) => (
+          <span className="text-ink-muted">{CONTACT_SOURCE_LABELS[row.original.source]}</span>
+        ),
+      },
+      ...(canSeeAll || canSeeTeam
+        ? [
+            {
+              id: 'owner',
+              header: ({ column }: any) => <DataTableColumnHeader column={column} title="Owner" />,
+              cell: ({ row }: any) => (
+                <span className="text-ink-muted">
+                  {row.original.owner?.fullName ?? 'Unassigned'}
+                </span>
+              ),
+            } as ColumnDef<ContactDto, any>,
+          ]
+        : []),
+      {
+        accessorKey: 'createdAt',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Added" />,
+        cell: ({ row }) => (
+          <span className="text-ink-subtle text-xs whitespace-nowrap">
+            {formatRelative(row.original.createdAt)}
+          </span>
+        ),
+      },
+      {
+        id: 'actions',
+        cell: ({ row }) => (
+          <div className="flex justify-end gap-1">
+            <Can permission={PERMISSIONS.CONTACT_UPDATE}>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={`Edit ${row.original.fullName}`}
+                onClick={() => setEditing(row.original)}
+              >
+                <Pencil className="size-4" />
+              </Button>
+            </Can>
+            <Can permission={PERMISSIONS.CONTACT_DELETE}>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={`Delete ${row.original.fullName}`}
+                onClick={() => setPendingDelete(row.original)}
+              >
+                <Trash2 className="size-4 text-danger" />
+              </Button>
+            </Can>
+          </div>
+        ),
+      },
+    ],
+    [canSeeAll, canSeeTeam]
+  );
+
   return (
     <>
       <PageHeader
@@ -112,196 +214,56 @@ export function ContactsView() {
         }
       />
 
-      <Card>
-        <div className="flex flex-wrap items-end gap-3 border-b border-border px-4 py-3">
-          <div className="relative min-w-56 flex-1">
-            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-subtle" />
-            <Input
-              aria-label="Search contacts"
-              placeholder="Search name, email or company…"
-              className="pl-9"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </div>
-
-          <Select
-            aria-label="Filter by status"
-            placeholder="All statuses"
-            containerClassName="w-40"
-            value={status}
-            onChange={(event) => {
-              setStatus(event.target.value);
-              setPage(1);
-            }}
-            options={CONTACT_STATUSES.map((s) => ({ value: s, label: CONTACT_STATUS_LABELS[s] }))}
-          />
-
-          <Select
-            aria-label="Filter by source"
-            placeholder="All sources"
-            containerClassName="w-40"
-            value={source}
-            onChange={(event) => {
-              setSource(event.target.value);
-              setPage(1);
-            }}
-            options={CONTACT_SOURCES.map((s) => ({ value: s, label: CONTACT_SOURCE_LABELS[s] }))}
-          />
-        </div>
-
-        {isPending ? (
-          <div className="space-y-3 p-4">
-            {Array.from({ length: 6 }, (_, i) => (
-              <Skeleton key={i} className="h-12 w-full" />
-            ))}
-          </div>
-        ) : isError ? (
-          <EmptyState
-            title="Couldn't load contacts"
-            description={error instanceof Error ? error.message : 'Please try again.'}
-          />
-        ) : contacts.length === 0 ? (
-          <EmptyState
-            icon={<Users className="size-8" />}
-            title={debouncedSearch || status || source ? 'No matching contacts' : 'No contacts yet'}
-            description={
-              debouncedSearch || status || source
-                ? 'Try a different search or clear the filters.'
-                : 'Add your first contact to start building the pipeline.'
-            }
-            action={
-              <Can permission={PERMISSIONS.CONTACT_CREATE}>
-                <Button onClick={() => setCreating(true)}>
-                  <Plus className="size-4" />
-                  New contact
-                </Button>
-              </Can>
-            }
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs text-ink-subtle">
-                  <th scope="col" className="px-4 py-2.5 font-medium">Name</th>
-                  <th scope="col" className="px-4 py-2.5 font-medium">Company</th>
-                  <th scope="col" className="px-4 py-2.5 font-medium">Status</th>
-                  <th scope="col" className="hidden px-4 py-2.5 font-medium md:table-cell">Source</th>
-                  {canSeeAll && (
-                    <th scope="col" className="hidden px-4 py-2.5 font-medium lg:table-cell">Owner</th>
-                  )}
-                  {canSeeTeam && !canSeeAll && (
-                    <th scope="col" className="hidden px-4 py-2.5 font-medium lg:table-cell">Owner</th>
-                  )}
-                  <th scope="col" className="hidden px-4 py-2.5 font-medium sm:table-cell">Added</th>
-                  <th scope="col" className="px-4 py-2.5 text-right font-medium">
-                    <span className="sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {contacts.map((contact) => (
-                  <tr
-                    key={contact.id}
-                    className="border-b border-border last:border-0 hover:bg-surface-muted/60"
-                  >
-                    <td className="px-4 py-3">
-                      <Link
-                        href={`/contacts/${contact.id}`}
-                        className="font-medium text-ink hover:text-brand transition-colors"
-                      >
-                        {contact.fullName}
-                      </Link>
-                      {contact.email && (
-                        <p className="text-xs text-ink-subtle">{contact.email}</p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-ink-muted">
-                      {contact.company ?? '—'}
-                      {contact.jobTitle && (
-                        <p className="text-xs text-ink-subtle">{contact.jobTitle}</p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge tone={STATUS_TONES[contact.status]}>
-                        {CONTACT_STATUS_LABELS[contact.status]}
-                      </Badge>
-                    </td>
-                    <td className="hidden px-4 py-3 text-ink-muted md:table-cell">
-                      {CONTACT_SOURCE_LABELS[contact.source]}
-                    </td>
-                    {canSeeAll && (
-                      <td className="hidden px-4 py-3 text-ink-muted lg:table-cell">
-                        {contact.owner?.fullName ?? 'Unassigned'}
-                      </td>
-                    )}
-                    {canSeeTeam && !canSeeAll && (
-                      <td className="hidden px-4 py-3 text-ink-muted lg:table-cell">
-                        {contact.owner?.fullName ?? 'Unassigned'}
-                      </td>
-                    )}
-                    <td className="hidden px-4 py-3 text-ink-subtle sm:table-cell">
-                      {formatRelative(contact.createdAt)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-1">
-                        <Can permission={PERMISSIONS.CONTACT_UPDATE}>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label={`Edit ${contact.fullName}`}
-                            onClick={() => setEditing(contact)}
-                          >
-                            <Pencil className="size-4" />
-                          </Button>
-                        </Can>
-                        <Can permission={PERMISSIONS.CONTACT_DELETE}>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label={`Delete ${contact.fullName}`}
-                            onClick={() => setPendingDelete(contact)}
-                          >
-                            <Trash2 className="size-4 text-danger" />
-                          </Button>
-                        </Can>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {meta && meta.total > 0 && (
-          <div className="flex items-center justify-between border-t border-border px-4 py-3 text-sm">
-            <p className="text-ink-muted">
-              {(meta.page - 1) * meta.limit + 1}–{Math.min(meta.page * meta.limit, meta.total)} of{' '}
-              {meta.total}
-            </p>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!meta.hasPreviousPage}
-                onClick={() => setPage((p) => p - 1)}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!meta.hasNextPage}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                Next
-              </Button>
+      {isError ? (
+        <EmptyState
+          title="Couldn't load contacts"
+          description={error instanceof Error ? error.message : 'Please try again.'}
+        />
+      ) : (
+        <DataTable
+          columns={columns}
+          data={contacts}
+          isLoading={isPending}
+          getRowId={(row) => row.id}
+          cardTitleKey="fullName"
+          cardSubtitleKey="company"
+          enableRowSelection
+          searchPlaceholder="Search name, email or company…"
+          toolbarActions={
+            <div className="flex items-center gap-2">
+              <Select
+                aria-label="Filter by status"
+                placeholder="All statuses"
+                containerClassName="w-36"
+                value={status}
+                onChange={(event) => {
+                  setStatus(event.target.value);
+                  setPage(1);
+                }}
+                options={CONTACT_STATUSES.map((s) => ({ value: s, label: CONTACT_STATUS_LABELS[s] }))}
+              />
+              <Select
+                aria-label="Filter by source"
+                placeholder="All sources"
+                containerClassName="w-36"
+                value={source}
+                onChange={(event) => {
+                  setSource(event.target.value);
+                  setPage(1);
+                }}
+                options={CONTACT_SOURCES.map((s) => ({ value: s, label: CONTACT_SOURCE_LABELS[s] }))}
+              />
             </div>
-          </div>
-        )}
-      </Card>
+          }
+          emptyTitle={debouncedSearch || status || source ? 'No matching contacts' : 'No contacts yet'}
+          emptyDescription={
+            debouncedSearch || status || source
+              ? 'Try a different search or clear the filters.'
+              : 'Add your first contact to start building the pipeline.'
+          }
+          emptyIcon={<Users className="size-8 text-ink-muted" />}
+        />
+      )}
 
       <ContactFormDialog
         open={creating || editing !== null}

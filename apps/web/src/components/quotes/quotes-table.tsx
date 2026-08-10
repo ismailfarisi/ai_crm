@@ -1,10 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { ColumnDef } from '@tanstack/react-table';
 import { Bot, User, Check, X, FileText } from 'lucide-react';
 import { QuoteStatusBadge } from '@/components/quotes/quote-status-badge';
 import { Button } from '@/components/ui/button';
-import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
+import { Badge } from '@/components/ui/primitives';
+import { DataTable } from '@/components/ui/data-table';
+import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
 import type { Quote } from '@/hooks/use-quotes';
 
 interface QuotesTableProps {
@@ -29,121 +32,133 @@ export function QuotesTable({ quotes, isLoading = false, onSignal }: QuotesTable
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="space-y-3 p-4">
-        <Skeleton className="h-10 w-full" />
-        <Skeleton className="h-16 w-full" />
-        <Skeleton className="h-16 w-full" />
-        <Skeleton className="h-16 w-full" />
-      </div>
-    );
-  }
+  const columns = useMemo<ColumnDef<Quote, any>[]>(
+    () => [
+      {
+        accessorKey: 'title',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Title" />,
+        cell: ({ row }) => (
+          <div>
+            <div className="font-medium text-ink">{row.original.title}</div>
+            {row.original.prompt && (
+              <div className="mt-0.5 text-xs text-ink-subtle line-clamp-1 max-w-xs">
+                Prompt: &quot;{row.original.prompt}&quot;
+              </div>
+            )}
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'createdBy',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Created By" />,
+        cell: ({ row }) =>
+          row.original.createdBy === 'AI' ? (
+            <Badge tone="brand" className="gap-1">
+              <Bot className="size-3" />
+              AI
+            </Badge>
+          ) : (
+            <Badge tone="neutral" className="gap-1">
+              <User className="size-3" />
+              Human
+            </Badge>
+          ),
+      },
+      {
+        id: 'items',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Items" />,
+        cell: ({ row }) => {
+          const itemsCount = row.original.items ? row.original.items.length : 0;
+          return (
+            <span className="text-ink-muted">
+              {itemsCount} {itemsCount === 1 ? 'item' : 'items'}
+            </span>
+          );
+        },
+      },
+      {
+        accessorKey: 'totalAmount',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Total Amount" />,
+        cell: ({ row }) => (
+          <span className="font-medium text-ink">
+            ${(row.original.totalAmount || 0).toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'status',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
+        cell: ({ row }) => <QuoteStatusBadge status={row.original.status} />,
+      },
+      {
+        accessorKey: 'createdAt',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Created At" />,
+        cell: ({ row }) => {
+          const formattedDate = row.original.createdAt
+            ? new Date(row.original.createdAt).toLocaleDateString(undefined, {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+              })
+            : 'N/A';
+          return <span className="text-ink-muted text-xs whitespace-nowrap">{formattedDate}</span>;
+        },
+      },
+      {
+        id: 'actions',
+        cell: ({ row }) => {
+          const quote = row.original;
+          const isProcessing = processingId === quote.id;
 
-  if (!quotes || quotes.length === 0) {
-    return (
-      <EmptyState
-        icon={<FileText className="size-8" />}
-        title="No quotes found"
-        description="Get started by creating a new quote manually or using the AI agent."
-      />
-    );
-  }
+          if (quote.status === 'AWAITING_APPROVAL' && onSignal) {
+            return (
+              <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+                <Button
+                  size="sm"
+                  variant="primary"
+                  loading={isProcessing && processingAction === 'APPROVE'}
+                  disabled={isProcessing}
+                  onClick={() => handleAction(quote.id, 'APPROVE')}
+                >
+                  <Check className="size-3.5" />
+                  Approve
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  loading={isProcessing && processingAction === 'REJECT'}
+                  disabled={isProcessing}
+                  onClick={() => handleAction(quote.id, 'REJECT')}
+                >
+                  <X className="size-3.5" />
+                  Reject
+                </Button>
+              </div>
+            );
+          }
+          return <span className="text-xs text-ink-subtle">—</span>;
+        },
+      },
+    ],
+    [processingId, processingAction, onSignal]
+  );
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm">
-        <thead className="border-b border-border bg-surface-muted/50 text-xs font-medium text-ink-muted uppercase tracking-wider">
-          <tr>
-            <th className="px-4 py-3">Title</th>
-            <th className="px-4 py-3">Created By</th>
-            <th className="px-4 py-3">Items</th>
-            <th className="px-4 py-3">Total Amount</th>
-            <th className="px-4 py-3">Status</th>
-            <th className="px-4 py-3">Created At</th>
-            <th className="px-4 py-3 text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border bg-surface">
-          {quotes.map((quote) => {
-            const isProcessing = processingId === quote.id;
-            const itemsCount = quote.items ? quote.items.length : 0;
-            const formattedDate = quote.createdAt
-              ? new Date(quote.createdAt).toLocaleDateString(undefined, {
-                  year: 'numeric',
-                  month: 'short',
-                  day: 'numeric',
-                })
-              : 'N/A';
-
-            return (
-              <tr key={quote.id} className="transition-colors hover:bg-surface-muted/30">
-                <td className="px-4 py-3.5 font-medium text-ink">
-                  <div>{quote.title}</div>
-                  {quote.prompt && (
-                    <div className="mt-0.5 text-xs text-ink-subtle line-clamp-1 max-w-xs">
-                      Prompt: &quot;{quote.prompt}&quot;
-                    </div>
-                  )}
-                </td>
-                <td className="px-4 py-3.5">
-                  {quote.createdBy === 'AI' ? (
-                    <Badge tone="brand" className="gap-1">
-                      <Bot className="size-3" />
-                      AI
-                    </Badge>
-                  ) : (
-                    <Badge tone="neutral" className="gap-1">
-                      <User className="size-3" />
-                      Human
-                    </Badge>
-                  )}
-                </td>
-                <td className="px-4 py-3.5 text-ink-muted">
-                  {itemsCount} {itemsCount === 1 ? 'item' : 'items'}
-                </td>
-                <td className="px-4 py-3.5 font-medium text-ink">
-                  ${(quote.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </td>
-                <td className="px-4 py-3.5">
-                  <QuoteStatusBadge status={quote.status} />
-                </td>
-                <td className="px-4 py-3.5 text-ink-muted text-xs whitespace-nowrap">
-                  {formattedDate}
-                </td>
-                <td className="px-4 py-3.5 text-right whitespace-nowrap">
-                  {quote.status === 'AWAITING_APPROVAL' && onSignal ? (
-                    <div className="flex items-center justify-end gap-1.5">
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        loading={isProcessing && processingAction === 'APPROVE'}
-                        disabled={isProcessing}
-                        onClick={() => handleAction(quote.id, 'APPROVE')}
-                      >
-                        <Check className="size-3.5" />
-                        Approve
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        loading={isProcessing && processingAction === 'REJECT'}
-                        disabled={isProcessing}
-                        onClick={() => handleAction(quote.id, 'REJECT')}
-                      >
-                        <X className="size-3.5" />
-                        Reject
-                      </Button>
-                    </div>
-                  ) : (
-                    <span className="text-xs text-ink-subtle">—</span>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      columns={columns}
+      data={quotes}
+      isLoading={isLoading}
+      getRowId={(row) => row.id}
+      cardTitleKey="title"
+      cardSubtitleKey="status"
+      enableRowSelection
+      searchPlaceholder="Search quotes..."
+      emptyTitle="No quotes found"
+      emptyDescription="Get started by creating a new quote manually or using the AI agent."
+      emptyIcon={<FileText className="size-8 text-ink-muted" />}
+    />
   );
 }
