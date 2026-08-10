@@ -12,6 +12,7 @@ import {
 } from '@/config/configuration';
 import { AuthModule } from '@/modules/auth/auth.module';
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
+import { ChannelsModule } from '@/modules/channels/channels.module';
 import { ContactsModule } from '@/modules/contacts/contacts.module';
 import { CustomersModule } from '@/modules/customers/customers.module';
 import { HealthModule } from '@/modules/health/health.module';
@@ -83,6 +84,7 @@ import { UsersModule } from '@/modules/users/users.module';
     HealthModule,
     TemporalModule,
     QuotesModule,
+    ChannelsModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
