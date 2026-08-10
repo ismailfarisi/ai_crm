@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { ChannelsService } from './channels.service';
 import { ChannelConfig, ChannelProviderType, ChannelStatus } from './entities/channel-config.entity';
@@ -9,7 +9,7 @@ const orgId = '11111111-1111-1111-1111-111111111111';
 const actorId = '22222222-2222-2222-2222-222222222222';
 const cryptoService = new ChannelCryptoService('secret-key-32-characters-length!!');
 
-function makeService(overrides: { configRepo?: any; messageRepo?: any } = {}) {
+function makeService(overrides: { configRepo?: any; messageRepo?: any; contactsService?: any } = {}) {
   const configs: ChannelConfig[] = [];
   const messages: ChannelMessage[] = [];
 
@@ -67,8 +67,20 @@ function makeService(overrides: { configRepo?: any; messageRepo?: any } = {}) {
     }),
   } as unknown as Repository<ChannelMessage>);
 
-  const service = new ChannelsService(configRepo, messageRepo, cryptoService);
-  return { service, configRepo, messageRepo, configs, messages };
+  const contactsService = overrides.contactsService || ({
+    findOrCreateForChannel: jest.fn().mockImplementation(async (organizationId, senderIdentifier, provider) => ({
+      id: 'contact-uuid-789',
+      organizationId,
+      firstName: senderIdentifier,
+      lastName: '',
+      phone: senderIdentifier.includes('@') ? null : senderIdentifier,
+      email: senderIdentifier.includes('@') ? senderIdentifier : null,
+      source: provider,
+    })),
+  } as any);
+
+  const service = new ChannelsService(configRepo, messageRepo, cryptoService, contactsService);
+  return { service, configRepo, messageRepo, contactsService, configs, messages };
 }
 
 describe('ChannelsService', () => {
@@ -287,6 +299,113 @@ describe('ChannelsService', () => {
       const filtered = await service.getMessages(orgId, { contactId: 'contact-1' });
       expect(filtered).toHaveLength(1);
       expect(filtered[0].id).toBe('1');
+    });
+  });
+
+  describe('verifyMetaChallenge', () => {
+    it('throws UnauthorizedException when config is not found', async () => {
+      const { service } = makeService();
+      await expect(
+        service.verifyMetaChallenge(orgId, 'subscribe', 'token123', 'challenge_str'),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('throws UnauthorizedException when mode is not subscribe', async () => {
+      const { service } = makeService();
+      await service.saveConfig(orgId, ChannelProviderType.WHATSAPP_META, true, {
+        verifyToken: 'my_verify_token',
+      });
+      await expect(
+        service.verifyMetaChallenge(orgId, 'unsubscribe', 'my_verify_token', 'challenge_str'),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('throws UnauthorizedException when token does not match', async () => {
+      const { service } = makeService();
+      await service.saveConfig(orgId, ChannelProviderType.WHATSAPP_META, true, {
+        verifyToken: 'my_verify_token',
+      });
+      await expect(
+        service.verifyMetaChallenge(orgId, 'subscribe', 'wrong_token', 'challenge_str'),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('returns challenge when token and mode are valid', async () => {
+      const { service } = makeService();
+      await service.saveConfig(orgId, ChannelProviderType.WHATSAPP_META, true, {
+        verifyToken: 'my_verify_token',
+      });
+      const result = await service.verifyMetaChallenge(
+        orgId,
+        'subscribe',
+        'my_verify_token',
+        'challenge_str',
+      );
+      expect(result).toBe('challenge_str');
+    });
+  });
+
+  describe('processInboundWebhook', () => {
+    it('returns { ignored: true } if channel config is missing or disabled', async () => {
+      const { service } = makeService();
+      const res = await service.processInboundWebhook(
+        orgId,
+        ChannelProviderType.TELEGRAM,
+        {},
+        { message: { text: 'hi', chat: { id: 123 } } },
+      );
+      expect(res).toEqual({ ignored: true });
+    });
+
+    it('returns { ignored: true } if driver returns null parsed message', async () => {
+      const { service } = makeService();
+      await service.saveConfig(orgId, ChannelProviderType.TELEGRAM, true, {
+        botToken: 'token',
+      });
+      const res = await service.processInboundWebhook(
+        orgId,
+        ChannelProviderType.TELEGRAM,
+        {},
+        {},
+      );
+      expect(res).toEqual({ ignored: true });
+    });
+
+    it('auto-resolves contact and saves inbound message', async () => {
+      const { service, messages, contactsService } = makeService();
+      await service.saveConfig(orgId, ChannelProviderType.TELEGRAM, true, {
+        botToken: 'token',
+      });
+
+      const body = {
+        message: {
+          text: 'Hello from telegram',
+          chat: { id: '998877' },
+          message_id: 12345,
+        },
+      };
+
+      const res = await service.processInboundWebhook(
+        orgId,
+        ChannelProviderType.TELEGRAM,
+        {},
+        body,
+      );
+
+      expect(res.success).toBe(true);
+      expect(res.messageId).toBeDefined();
+      expect(contactsService.findOrCreateForChannel).toHaveBeenCalledWith(
+        orgId,
+        '998877',
+        ChannelProviderType.TELEGRAM,
+      );
+
+      expect(messages).toHaveLength(1);
+      expect(messages[0].direction).toBe(MessageDirection.INBOUND);
+      expect(messages[0].status).toBe(MessageStatus.RECEIVED);
+      expect(messages[0].sender).toBe('998877');
+      expect(messages[0].body).toBe('Hello from telegram');
+      expect(messages[0].contactId).toBe('contact-uuid-789');
     });
   });
 });

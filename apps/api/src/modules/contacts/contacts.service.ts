@@ -6,11 +6,13 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository, type SelectQueryBuilder } from 'typeorm';
 import {
+  CONTACT_SOURCES,
   CONTACT_STATUSES,
   PERMISSIONS,
   type ContactDto,
   type ContactStatsDto,
   type ContactStatus,
+  type ContactSource,
   type CreateContactInput,
   type PaginatedResult,
   type UpdateContactInput,
@@ -24,6 +26,44 @@ export class ContactsService {
   constructor(
     @InjectRepository(Contact) private readonly contacts: Repository<Contact>,
   ) {}
+
+  async findOrCreateForChannel(
+    organizationId: string,
+    senderIdentifier: string,
+    provider: string,
+  ): Promise<Contact> {
+    const cleanIdentifier = senderIdentifier.trim();
+    const isEmail = cleanIdentifier.includes('@');
+    const emailValue = isEmail ? cleanIdentifier.toLowerCase() : null;
+
+    let contact = await this.contacts.findOne({
+      where: isEmail
+        ? [
+            { organizationId, email: emailValue! },
+            { organizationId, phone: cleanIdentifier },
+          ]
+        : [
+            { organizationId, phone: cleanIdentifier },
+            { organizationId, email: cleanIdentifier },
+          ],
+    });
+
+    if (!contact) {
+      contact = this.contacts.create({
+        organizationId,
+        firstName: cleanIdentifier || 'Channel Contact',
+        lastName: '',
+        email: isEmail ? emailValue : null,
+        phone: isEmail ? null : cleanIdentifier,
+        source: (CONTACT_SOURCES as readonly string[]).includes(provider)
+          ? (provider as ContactSource)
+          : 'other',
+      });
+      contact = await this.contacts.save(contact);
+    }
+
+    return contact;
+  }
 
   async list(
     actor: AuthenticatedUser,

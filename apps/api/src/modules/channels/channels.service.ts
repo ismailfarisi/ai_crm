@@ -2,10 +2,12 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
+import { ContactsService } from '../contacts/contacts.service';
 import {
   ChannelConfig,
   ChannelProviderType,
@@ -39,6 +41,7 @@ export class ChannelsService {
     @InjectRepository(ChannelMessage)
     private readonly messageRepo: Repository<ChannelMessage>,
     private readonly cryptoService: ChannelCryptoService,
+    private readonly contactsService: ContactsService,
   ) {}
 
   private getDriver(provider: ChannelProviderType): ChannelDriver {
@@ -320,5 +323,99 @@ export class ChannelsService {
       order: { createdAt: 'DESC' },
       take: query?.limit || 50,
     });
+  }
+
+  async verifyMetaChallenge(
+    orgId: string,
+    mode: string,
+    verifyToken: string,
+    challenge: string,
+  ): Promise<string> {
+    const config = await this.configRepo.findOne({
+      where: {
+        organizationId: orgId,
+        provider: ChannelProviderType.WHATSAPP_META,
+      },
+    });
+
+    if (!config) {
+      throw new UnauthorizedException('Channel configuration not found');
+    }
+
+    let credentialVerifyToken: string | undefined;
+    if (config.encryptedCredentials) {
+      try {
+        const decrypted = this.cryptoService.decrypt(
+          config.encryptedCredentials,
+        );
+        credentialVerifyToken = decrypted?.verifyToken;
+      } catch (e) {
+        // Ignore decryption error
+      }
+    }
+
+    const matchesToken =
+      (credentialVerifyToken && verifyToken === credentialVerifyToken) ||
+      (config.webhookSecret && verifyToken === config.webhookSecret);
+
+    if (mode !== 'subscribe' || !verifyToken || !matchesToken) {
+      throw new UnauthorizedException('Invalid verification token or mode');
+    }
+
+    return challenge;
+  }
+
+  async processInboundWebhook(
+    orgId: string,
+    provider: ChannelProviderType,
+    headers: any,
+    body: any,
+  ): Promise<{ ignored?: boolean; success?: boolean; messageId?: string }> {
+    const config = await this.configRepo.findOne({
+      where: { organizationId: orgId, provider },
+    });
+
+    if (!config || !config.isEnabled) {
+      return { ignored: true };
+    }
+
+    let credentials: Record<string, any> = {};
+    if (config.encryptedCredentials) {
+      try {
+        credentials = this.cryptoService.decrypt(config.encryptedCredentials);
+      } catch (e) {
+        // Ignore decryption error
+      }
+    }
+
+    const driver = this.getDriver(provider);
+    const parsed = await driver.parseWebhookPayload(credentials, headers, body);
+    if (!parsed || !parsed.senderIdentifier) {
+      return { ignored: true };
+    }
+
+    const contact = await this.contactsService.findOrCreateForChannel(
+      orgId,
+      parsed.senderIdentifier,
+      provider,
+    );
+
+    const message = this.messageRepo.create({
+      organizationId: orgId,
+      contactId: contact.id,
+      provider,
+      direction: MessageDirection.INBOUND,
+      sender: parsed.senderIdentifier,
+      recipient: orgId,
+      body: parsed.body,
+      metadata: {
+        externalId: parsed.externalMessageId,
+        rawPayload: parsed.rawPayload,
+      },
+      status: MessageStatus.RECEIVED,
+    });
+
+    const saved = await this.messageRepo.save(message);
+    return { success: true, messageId: saved.id };
   }
 }
