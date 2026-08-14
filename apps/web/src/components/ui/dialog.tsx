@@ -57,12 +57,12 @@ export function Dialog({ open, onClose, title, description, children, footer, si
         if (event.target === ref.current) onClose();
       }}
       className={cn(
-        'w-[calc(100vw-2rem)] rounded-card border border-border bg-surface p-0 text-ink shadow-xl',
-        'backdrop:bg-black/40 backdrop:backdrop-blur-sm',
+        'w-[calc(100vw-2rem)] rounded-2xl border border-border/80 bg-surface p-0 text-ink shadow-xl',
+        'backdrop:bg-black/40 backdrop:backdrop-blur-xs',
         SIZES[size],
       )}
     >
-      <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+      <div className="flex items-start justify-between gap-4 border-b border-border/80 px-5 py-4">
         <div>
           <h2 id="dialog-title" className="text-sm font-semibold text-ink">
             {title}
@@ -73,7 +73,7 @@ export function Dialog({ open, onClose, title, description, children, footer, si
           type="button"
           onClick={onClose}
           aria-label="Close dialog"
-          className="-mr-1 -mt-1 rounded-md p-1.5 text-ink-subtle transition-colors hover:bg-surface-muted hover:text-ink"
+          className="-mr-1 -mt-1 rounded-lg p-1.5 text-ink-subtle transition-colors hover:bg-surface-muted hover:text-ink cursor-pointer"
         >
           <X className="size-4" />
         </button>
@@ -82,7 +82,7 @@ export function Dialog({ open, onClose, title, description, children, footer, si
       <div className="max-h-[65vh] overflow-y-auto px-5 py-4 scrollbar-thin">{children}</div>
 
       {footer && (
-        <div className="flex justify-end gap-2 border-t border-border bg-surface-muted/50 px-5 py-3">
+        <div className="flex justify-end gap-2 border-t border-border/80 bg-surface-muted/50 px-5 py-3">
           {footer}
         </div>
       )}

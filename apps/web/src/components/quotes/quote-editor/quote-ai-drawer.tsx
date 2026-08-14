@@ -289,17 +289,17 @@ export function QuoteAiDrawer({
       />
 
       <div className="fixed inset-y-0 right-0 flex max-w-full pl-10">
-        <div className="w-screen max-w-2xl transform bg-surface shadow-2xl transition-all duration-300 ease-in-out border-l border-border flex flex-col">
+        <div className="w-screen max-w-2xl transform bg-surface shadow-2xl transition-all duration-300 ease-in-out border-l border-border/80 flex flex-col">
           {/* Drawer Header */}
-          <div className="flex items-center justify-between border-b border-border px-6 py-4.5 bg-gradient-to-r from-brand-soft/60 via-surface to-surface">
+          <div className="flex items-center justify-between border-b border-border/80 px-6 py-4.5 bg-gradient-to-r from-brand-soft/60 via-surface to-surface">
             <div className="flex items-center gap-3">
-              <span className="grid size-10 place-items-center rounded-xl bg-brand text-white shadow-sm">
+              <span className="grid size-10 place-items-center rounded-xl bg-brand text-ink shadow-xs">
                 <Sparkles className="size-5" />
               </span>
               <div>
                 <h2 className="text-base font-bold tracking-tight text-ink flex items-center gap-2">
                   <span>AI Quotation Copilot</span>
-                  <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[11px] font-semibold text-brand">
+                  <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[11px] font-semibold text-brand-hover border border-brand/20">
                     v2.0
                   </span>
                 </h2>
@@ -312,7 +312,7 @@ export function QuoteAiDrawer({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg p-2 text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors"
+              className="rounded-lg p-2 text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors cursor-pointer"
               aria-label="Close drawer"
             >
               <X className="size-5" />
@@ -324,7 +324,7 @@ export function QuoteAiDrawer({
             {/* Quick Templates */}
             <div className="space-y-2">
               <label className="text-xs font-semibold text-ink-muted uppercase tracking-wider flex items-center gap-1.5">
-                <Wand2 className="size-3.5 text-brand" />
+                <Wand2 className="size-3.5 text-brand-hover" />
                 <span>Quick Prompt Presets</span>
               </label>
               <div className="grid gap-2 sm:grid-cols-3">
@@ -333,9 +333,9 @@ export function QuoteAiDrawer({
                     key={tmpl.title}
                     type="button"
                     onClick={() => handleUseTemplate(tmpl.prompt)}
-                    className="flex flex-col text-left p-2.5 rounded-lg border border-border bg-surface-muted/30 hover:border-brand hover:bg-brand-soft/30 transition-all text-xs group"
+                    className="flex flex-col text-left p-2.5 rounded-xl border border-border/80 bg-surface-muted/30 hover:border-brand hover:bg-brand-soft/30 transition-all text-xs group cursor-pointer"
                   >
-                    <span className="font-semibold text-ink group-hover:text-brand">
+                    <span className="font-semibold text-ink group-hover:text-brand-hover">
                       {tmpl.title}
                     </span>
                     <span className="text-[11px] text-ink-subtle mt-0.5 line-clamp-2">
@@ -356,7 +356,7 @@ export function QuoteAiDrawer({
                   <button
                     type="button"
                     onClick={() => setPrompt('')}
-                    className="text-xs text-ink-subtle hover:text-danger flex items-center gap-1 transition-colors"
+                    className="text-xs text-ink-subtle hover:text-danger flex items-center gap-1 transition-colors cursor-pointer"
                   >
                     <RotateCcw className="size-3" />
                     Clear
@@ -368,7 +368,7 @@ export function QuoteAiDrawer({
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder="Example: Quote for ACME Corp: Phase 1 Cloud Architecture ($5,000), Phase 2 Custom Temporal Workflow 80 hrs @ $150/hr with 10% discount, and 12-month 24/7 SLA ($1,200/mo, 5% VAT). Payment terms Net 30."
                 rows={5}
-                className="w-full rounded-xl border border-border bg-surface p-3.5 text-sm leading-relaxed text-ink placeholder:text-ink-subtle focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden"
+                className="w-full rounded-xl border border-border/80 bg-surface p-3.5 text-sm leading-relaxed text-ink placeholder:text-ink-subtle focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden"
               />
             </div>
 
@@ -378,7 +378,7 @@ export function QuoteAiDrawer({
               variant="primary"
               loading={isAnalyzing}
               onClick={handleGenerate}
-              className="w-full py-2.5 shadow-sm text-sm font-semibold"
+              className="w-full py-2.5 shadow-xs text-sm font-semibold"
             >
               <Sparkles className="size-4 mr-2" />
               {isAnalyzing ? 'Analyzing & Structuring Quotation...' : 'Analyze & Generate Quotation'}
@@ -386,21 +386,21 @@ export function QuoteAiDrawer({
 
             {/* AI Generated Preview */}
             {generatedDraft && totals && (
-              <div className="space-y-4 rounded-xl border border-brand/40 bg-brand-soft/10 p-5 animate-in fade-in duration-300">
+              <div className="space-y-4 rounded-2xl border border-brand/40 bg-brand-soft/10 p-5 animate-in fade-in duration-300">
                 <div className="flex items-center justify-between border-b border-brand/20 pb-3">
                   <div className="flex items-center gap-2">
-                    <Bot className="size-4 text-brand" />
+                    <Bot className="size-4 text-brand-hover" />
                     <span className="text-sm font-bold text-ink">
                       Structured Quotation Preview
                     </span>
                   </div>
-                  <span className="rounded-full bg-brand-soft px-2.5 py-0.5 text-xs font-semibold text-brand">
+                  <span className="rounded-full bg-brand-soft px-2.5 py-0.5 text-xs font-semibold text-brand-hover border border-brand/20">
                     {generatedDraft.items.length} items parsed
                   </span>
                 </div>
 
                 {/* Title and metadata */}
-                <div className="grid grid-cols-2 gap-3 text-xs bg-surface/80 rounded-lg p-3 border border-border/80">
+                <div className="grid grid-cols-2 gap-3 text-xs bg-surface/80 rounded-xl p-3 border border-border/80">
                   <div>
                     <span className="text-ink-subtle block">Suggested Title</span>
                     <span className="font-semibold text-ink">{generatedDraft.title}</span>
@@ -418,7 +418,7 @@ export function QuoteAiDrawer({
                   <span className="text-xs font-semibold text-ink-muted uppercase tracking-wider block">
                     Extracted Lines
                   </span>
-                  <div className="divide-y divide-border/60 rounded-lg border border-border bg-surface overflow-hidden">
+                  <div className="divide-y divide-border/60 rounded-xl border border-border/80 bg-surface overflow-hidden">
                     {generatedDraft.items.map((item) => {
                       if (item.type === 'section') {
                         return (
@@ -426,7 +426,7 @@ export function QuoteAiDrawer({
                             key={item.id}
                             className="flex items-center gap-2 bg-surface-muted/60 px-3 py-2 text-xs font-semibold text-ink"
                           >
-                            <Layers className="size-3.5 text-brand shrink-0" />
+                            <Layers className="size-3.5 text-brand-hover shrink-0" />
                             <span>{item.description}</span>
                           </div>
                         );
@@ -437,7 +437,7 @@ export function QuoteAiDrawer({
                             key={item.id}
                             className="flex items-center gap-2 bg-surface/40 px-3 py-1.5 text-xs italic text-ink-muted"
                           >
-                            <FileText className="size-3.5 text-amber-500 shrink-0" />
+                            <FileText className="size-3.5 text-warning shrink-0" />
                             <span>{item.description}</span>
                           </div>
                         );
@@ -466,7 +466,7 @@ export function QuoteAiDrawer({
                 </div>
 
                 {/* Financial Summary */}
-                <div className="rounded-lg bg-surface p-3.5 border border-border space-y-1.5 text-xs">
+                <div className="rounded-xl bg-surface p-3.5 border border-border/80 space-y-1.5 text-xs">
                   <div className="flex justify-between text-ink-muted">
                     <span>Untaxed Subtotal:</span>
                     <span className="font-medium text-ink tabular-nums">
@@ -489,7 +489,7 @@ export function QuoteAiDrawer({
                   </div>
                   <div className="flex justify-between text-sm font-bold text-ink border-t border-border/80 pt-2 mt-1">
                     <span>Estimated Total:</span>
-                    <span className="text-brand tabular-nums">
+                    <span className="text-ink tabular-nums font-extrabold">
                       {formatCurrency(totals.totalAmount, currentCurrency)}
                     </span>
                   </div>

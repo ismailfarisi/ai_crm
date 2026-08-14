@@ -27,13 +27,13 @@ export function DataTablePagination<TData>({
   const endRow = Math.min((pageIndex + 1) * pageSize, totalRows);
 
   return (
-    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3 border-t border-border bg-surface text-xs text-ink-muted">
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3 border-t border-border/80 bg-surface text-xs text-ink-muted">
       <div className="flex items-center gap-2">
         <span>Rows per page</span>
         <select
           value={pageSize}
           onChange={(e) => table.setPageSize(Number(e.target.value))}
-          className="h-8 rounded-md border border-border bg-surface px-2 py-1 text-xs text-ink focus:outline-none focus:ring-1 focus:ring-brand cursor-pointer"
+          className="h-8 rounded-lg border border-border/80 bg-surface px-2 py-1 text-xs text-ink focus:outline-none focus:ring-1 focus:ring-brand cursor-pointer"
         >
           {pageSizeOptions.map((size) => (
             <option key={size} value={size}>

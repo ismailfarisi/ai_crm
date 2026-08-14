@@ -12,13 +12,13 @@ export function QuoteStatusBadge({ status, className }: QuoteStatusBadgeProps) {
       return (
         <span
           className={cn(
-            'inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400',
+            'inline-flex items-center rounded-full border border-brand/25 bg-brand-soft px-2.5 py-0.5 text-xs font-semibold text-brand-hover',
             className
           )}
         >
           <span className="relative mr-1.5 flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-brand" />
           </span>
           Awaiting Approval
         </span>
@@ -27,7 +27,7 @@ export function QuoteStatusBadge({ status, className }: QuoteStatusBadgeProps) {
       return (
         <span
           className={cn(
-            'inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400',
+            'inline-flex items-center rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400',
             className
           )}
         >
@@ -39,7 +39,7 @@ export function QuoteStatusBadge({ status, className }: QuoteStatusBadgeProps) {
       return (
         <span
           className={cn(
-            'inline-flex items-center rounded-full border border-rose-500/30 bg-rose-500/10 px-2.5 py-0.5 text-xs font-medium text-rose-700 dark:text-rose-400',
+            'inline-flex items-center rounded-full border border-rose-500/25 bg-rose-500/10 px-2.5 py-0.5 text-xs font-semibold text-rose-700 dark:text-rose-400',
             className
           )}
         >
@@ -52,7 +52,7 @@ export function QuoteStatusBadge({ status, className }: QuoteStatusBadgeProps) {
       return (
         <span
           className={cn(
-            'inline-flex items-center rounded-full border border-border bg-surface-muted px-2.5 py-0.5 text-xs font-medium text-ink-muted',
+            'inline-flex items-center rounded-full border border-border/80 bg-surface-muted px-2.5 py-0.5 text-xs font-medium text-ink-muted',
             className
           )}
         >

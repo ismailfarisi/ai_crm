@@ -45,10 +45,10 @@ export function DataTableCardGrid<TData>({
         return (
           <div
             key={row.id}
-            className={`flex flex-col justify-between rounded-xl border p-4 transition-all ${
+            className={`flex flex-col justify-between rounded-2xl border p-4 transition-all ${
               isSelected
-                ? 'border-brand bg-brand/5 shadow-xs'
-                : 'border-border bg-surface hover:border-brand/40 hover:shadow-xs'
+                ? 'border-brand bg-brand-soft/40 shadow-xs'
+                : 'border-border/80 bg-surface hover:border-brand/40 hover:shadow-xs'
             }`}
           >
             <div>

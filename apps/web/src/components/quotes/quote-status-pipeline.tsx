@@ -62,20 +62,20 @@ export function QuoteStatusPipeline({ status, className }: QuoteStatusPipelinePr
                   className={cn(
                     'group flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition-all sm:px-3.5 sm:py-1.5',
                     state === 'current' &&
-                      'border-brand bg-brand-soft text-brand font-semibold shadow-xs ring-2 ring-brand/20',
+                      'border-brand/40 bg-brand text-ink font-bold shadow-xs ring-2 ring-brand/20',
                     state === 'completed' &&
-                      'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-300',
+                      'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-300 font-semibold',
                     state === 'upcoming' &&
-                      'border-border bg-surface-muted/60 text-ink-subtle',
+                      'border-border/80 bg-surface-muted/60 text-ink-subtle',
                     state === 'rejected' &&
-                      'border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-800/50 dark:bg-rose-950/30 dark:text-rose-300',
+                      'border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-800/50 dark:bg-rose-950/30 dark:text-rose-300 font-semibold',
                   )}
                 >
                   {/* Status icon / Step indicator */}
                   <span
                     className={cn(
                       'flex size-4.5 items-center justify-center rounded-full text-[11px] font-bold',
-                      state === 'current' && 'bg-brand text-white',
+                      state === 'current' && 'bg-ink text-surface',
                       state === 'completed' && 'bg-emerald-600 text-white',
                       state === 'upcoming' && 'bg-border text-ink-muted',
                       state === 'rejected' && 'bg-rose-600 text-white',
@@ -105,7 +105,7 @@ export function QuoteStatusPipeline({ status, className }: QuoteStatusPipelinePr
                   <span
                     className={cn(
                       'mx-1 text-xs select-none',
-                      state === 'completed' ? 'text-emerald-500' : 'text-ink-subtle',
+                      state === 'completed' ? 'text-emerald-600 dark:text-emerald-400' : 'text-ink-subtle',
                     )}
                     aria-hidden="true"
                   >

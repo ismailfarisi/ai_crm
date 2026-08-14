@@ -4,14 +4,17 @@ import { cn } from '@/lib/utils';
 export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn('rounded-card border border-border bg-surface shadow-sm', className)}
+      className={cn(
+        'rounded-2xl border border-border/80 bg-surface shadow-sm hover:shadow-md transition-shadow',
+        className,
+      )}
       {...props}
     />
   );
 }
 
 export function CardHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('border-b border-border px-5 py-4', className)} {...props} />;
+  return <div className={cn('border-b border-border/80 px-5 py-4', className)} {...props} />;
 }
 
 export function CardTitle({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) {
@@ -25,12 +28,12 @@ export function CardBody({ className, ...props }: HTMLAttributes<HTMLDivElement>
 type BadgeTone = 'neutral' | 'brand' | 'success' | 'warning' | 'danger' | 'info';
 
 const BADGE_TONES: Record<BadgeTone, string> = {
-  neutral: 'bg-surface-muted text-ink-muted border-border',
-  brand: 'bg-brand-soft text-brand border-transparent',
-  success: 'bg-success-soft text-success border-transparent',
-  warning: 'bg-warning-soft text-warning border-transparent',
-  danger: 'bg-danger-soft text-danger border-transparent',
-  info: 'bg-info-soft text-info border-transparent',
+  neutral: 'bg-surface-muted text-ink-muted border-border/80',
+  brand: 'bg-brand-soft text-brand-hover border-brand/20 font-medium',
+  success: 'bg-success-soft text-success border-success/20 font-medium',
+  warning: 'bg-warning-soft text-warning border-warning/20 font-medium',
+  danger: 'bg-danger-soft text-danger border-danger/20 font-medium',
+  info: 'bg-info-soft text-info border-info/20 font-medium',
 };
 
 export function Badge({
@@ -41,7 +44,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium whitespace-nowrap',
+        'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap transition-colors',
         BADGE_TONES[tone],
         className,
       )}

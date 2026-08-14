@@ -2,13 +2,13 @@ import { forwardRef, useId, type InputHTMLAttributes, type ReactNode, type Selec
 import { cn } from '@/lib/utils';
 
 const CONTROL_BASE =
-  'w-full rounded-lg border bg-surface px-3 text-sm text-ink placeholder:text-ink-subtle transition-colors ' +
-  'disabled:cursor-not-allowed disabled:opacity-60';
+  'w-full rounded-xl border bg-surface px-3 text-sm text-ink placeholder:text-ink-subtle transition-colors ' +
+  'disabled:cursor-not-allowed disabled:opacity-60 focus:outline-hidden focus:ring-1 focus:ring-brand focus:border-brand';
 
 function controlClasses(hasError: boolean, ...extra: (string | undefined)[]): string {
   return cn(
     CONTROL_BASE,
-    hasError ? 'border-danger' : 'border-border hover:border-border-strong',
+    hasError ? 'border-danger' : 'border-border/80 hover:border-border-strong',
     ...extra,
   );
 }

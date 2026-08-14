@@ -118,11 +118,11 @@ export function QuoteLinesTable({
   let productCounter = 0;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-xs">
+    <div className="overflow-hidden rounded-2xl border border-border/80 bg-surface shadow-sm">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[840px] text-left border-collapse">
           <thead>
-            <tr className="border-b border-border bg-surface-muted/50 text-xs font-semibold text-ink-muted uppercase tracking-wider">
+            <tr className="border-b border-border/80 bg-surface-muted/50 text-xs font-semibold text-ink-muted uppercase tracking-wider">
               <th className="w-12 px-3 py-3 text-center">
                 <Hash className="inline size-3.5" />
               </th>
@@ -136,7 +136,7 @@ export function QuoteLinesTable({
               {!readOnly && <th className="w-12 px-3 py-3 text-center"></th>}
             </tr>
           </thead>
-          <tbody className="divide-y divide-border">
+          <tbody className="divide-y divide-border/80">
             {items.length === 0 ? (
               <tr>
                 <td
@@ -421,15 +421,15 @@ export function QuoteLinesTable({
 
       {/* Action Bar (Odoo Style Add Buttons) */}
       {!readOnly && (
-        <div className="flex flex-wrap items-center gap-2 border-t border-border bg-surface-muted/40 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2 border-t border-border/80 bg-surface-muted/40 px-4 py-3">
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={() => handleAddItem('product')}
-            className="gap-1.5 text-xs"
+            className="gap-1.5 text-xs font-medium"
           >
-            <Plus className="size-3.5 text-brand" />
+            <Plus className="size-3.5 text-brand-hover" />
             Add a product
           </Button>
 
@@ -440,7 +440,7 @@ export function QuoteLinesTable({
             onClick={() => handleAddItem('section')}
             className="gap-1.5 text-xs text-ink-muted hover:text-ink"
           >
-            <Layers className="size-3.5 text-brand" />
+            <Layers className="size-3.5 text-brand-hover" />
             Add a section
           </Button>
 
@@ -451,7 +451,7 @@ export function QuoteLinesTable({
             onClick={() => handleAddItem('note')}
             className="gap-1.5 text-xs text-ink-muted hover:text-ink"
           >
-            <FileText className="size-3.5 text-amber-500" />
+            <FileText className="size-3.5 text-warning" />
             Add a note
           </Button>
         </div>

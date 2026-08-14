@@ -24,16 +24,16 @@ export function QuoteTabsSection({
   const [activeTab, setActiveTab] = useState<ActiveTab>('terms');
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-xs">
+    <div className="overflow-hidden rounded-2xl border border-border/80 bg-surface shadow-sm">
       {/* Tabs Header */}
-      <div className="flex border-b border-border bg-surface-muted/30 px-4">
+      <div className="flex border-b border-border/80 bg-surface-muted/30 px-4">
         <button
           type="button"
           onClick={() => setActiveTab('terms')}
           className={cn(
-            'flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors',
+            'flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors cursor-pointer',
             activeTab === 'terms'
-              ? 'border-brand text-brand font-semibold'
+              ? 'border-brand text-brand-hover font-semibold'
               : 'border-transparent text-ink-muted hover:text-ink',
           )}
         >
@@ -48,16 +48,16 @@ export function QuoteTabsSection({
           type="button"
           onClick={() => setActiveTab('notes')}
           className={cn(
-            'flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors',
+            'flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors cursor-pointer',
             activeTab === 'notes'
-              ? 'border-brand text-brand font-semibold'
+              ? 'border-brand text-brand-hover font-semibold'
               : 'border-transparent text-ink-muted hover:text-ink',
           )}
         >
-          <Lock className="size-4 text-amber-500" />
+          <Lock className="size-4 text-warning" />
           <span>Internal Notes</span>
           {notes && (
-            <span className="size-1.5 rounded-full bg-amber-500" />
+            <span className="size-1.5 rounded-full bg-warning" />
           )}
         </button>
       </div>
@@ -77,7 +77,7 @@ export function QuoteTabsSection({
             </div>
 
             {readOnly ? (
-              <div className="min-h-28 rounded-lg border border-border bg-surface-muted/30 p-3.5 text-sm leading-relaxed text-ink whitespace-pre-wrap">
+              <div className="min-h-28 rounded-xl border border-border/80 bg-surface-muted/30 p-3.5 text-sm leading-relaxed text-ink whitespace-pre-wrap">
                 {termsAndConditions || (
                   <span className="text-ink-subtle italic">No terms specified.</span>
                 )}
@@ -88,7 +88,7 @@ export function QuoteTabsSection({
                 onChange={(e) => onChangeTerms(e.target.value)}
                 placeholder="Specify delivery timeline, payment milestones, scope boundaries, or warranty conditions..."
                 rows={4}
-                className="w-full rounded-lg border border-border bg-surface p-3 text-sm leading-relaxed text-ink placeholder:text-ink-subtle focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden"
+                className="w-full rounded-xl border border-border/80 bg-surface p-3 text-sm leading-relaxed text-ink placeholder:text-ink-subtle focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden"
               />
             )}
           </div>
@@ -98,14 +98,14 @@ export function QuoteTabsSection({
               <label className="text-xs font-semibold text-ink-muted uppercase tracking-wider">
                 Internal Sales & Review Notes
               </label>
-              <span className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+              <span className="text-xs text-warning flex items-center gap-1 font-medium">
                 <Lock className="size-3.5" />
                 Confidential — Internal Team Only
               </span>
             </div>
 
             {readOnly ? (
-              <div className="min-h-28 rounded-lg border border-border bg-surface-muted/30 p-3.5 text-sm leading-relaxed text-ink whitespace-pre-wrap">
+              <div className="min-h-28 rounded-xl border border-border/80 bg-surface-muted/30 p-3.5 text-sm leading-relaxed text-ink whitespace-pre-wrap">
                 {notes || (
                   <span className="text-ink-subtle italic">No internal notes.</span>
                 )}
@@ -116,7 +116,7 @@ export function QuoteTabsSection({
                 onChange={(e) => onChangeNotes(e.target.value)}
                 placeholder="Internal pricing assumptions, profit margins, discount approval notes, or workflow context..."
                 rows={4}
-                className="w-full rounded-lg border border-border bg-surface p-3 text-sm leading-relaxed text-ink placeholder:text-ink-subtle focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden"
+                className="w-full rounded-xl border border-border/80 bg-surface p-3 text-sm leading-relaxed text-ink placeholder:text-ink-subtle focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden"
               />
             )}
           </div>

@@ -76,10 +76,10 @@ export function DataTableToolbar<TData>({
   };
 
   return (
-    <div className="flex flex-col gap-3 p-4 border-b border-border bg-surface">
+    <div className="flex flex-col gap-3 p-4 border-b border-border/80 bg-surface">
       {/* Bulk Action Banner if rows selected */}
       {hasSelection && (
-        <div className="flex items-center justify-between gap-2 p-2.5 rounded-lg border border-brand/20 bg-brand/5 text-xs text-ink">
+        <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-brand/30 bg-brand-soft/50 text-xs text-ink">
           <div className="flex items-center gap-2 font-medium">
             <span className="size-2 rounded-full bg-brand animate-pulse" />
             <span>{selectedRows.length} item(s) selected</span>
@@ -103,19 +103,19 @@ export function DataTableToolbar<TData>({
         {/* Left Side: Search Bar */}
         {enableSearch && (
           <div className="relative flex-1 min-w-[220px] max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-ink-muted" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-ink-muted pointer-events-none" />
             <input
               type="text"
               value={globalFilter ?? ''}
               onChange={(e) => setGlobalFilter(e.target.value)}
               placeholder={searchPlaceholder}
-              className="w-full h-9 pl-9 pr-8 rounded-md border border-border bg-surface text-xs text-ink placeholder:text-ink-muted focus:outline-none focus:ring-1 focus:ring-brand"
+              className="w-full h-9 pl-9 pr-8 rounded-full border border-border/80 bg-surface-muted/50 text-xs text-ink placeholder:text-ink-muted focus:bg-surface focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand transition-colors"
             />
             {globalFilter && (
               <button
                 type="button"
                 onClick={() => setGlobalFilter('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink cursor-pointer"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink cursor-pointer p-0.5 rounded-full hover:bg-surface-muted transition-colors"
               >
                 <X className="size-3.5" />
               </button>
@@ -140,7 +140,7 @@ export function DataTableToolbar<TData>({
                 <span>Columns</span>
               </Button>
               {showColumnDropdown && (
-                <div className="absolute right-0 mt-1 z-20 w-48 rounded-md border border-border bg-surface p-2 shadow-lg max-h-60 overflow-y-auto">
+                <div className="absolute right-0 mt-1 z-20 w-48 rounded-xl border border-border/80 bg-surface p-2 shadow-lg max-h-60 overflow-y-auto">
                   <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted px-2 py-1">
                     Toggle Columns
                   </div>
@@ -150,7 +150,7 @@ export function DataTableToolbar<TData>({
                     .map((col) => (
                       <label
                         key={col.id}
-                        className="flex items-center gap-2 px-2 py-1.5 text-xs text-ink hover:bg-surface-muted rounded cursor-pointer select-none"
+                        className="flex items-center gap-2 px-2 py-1.5 text-xs text-ink hover:bg-surface-muted rounded-lg cursor-pointer select-none transition-colors"
                       >
                         <input
                           type="checkbox"
@@ -197,18 +197,18 @@ export function DataTableToolbar<TData>({
                 <span className="hidden sm:inline">Export</span>
               </Button>
               {showExportDropdown && (
-                <div className="absolute right-0 mt-1 z-20 w-36 rounded-md border border-border bg-surface p-1 shadow-lg">
+                <div className="absolute right-0 mt-1 z-20 w-36 rounded-xl border border-border/80 bg-surface p-1 shadow-lg">
                   <button
                     type="button"
                     onClick={handleExportCSV}
-                    className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-surface-muted rounded cursor-pointer"
+                    className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-surface-muted rounded-lg cursor-pointer transition-colors"
                   >
                     Export as CSV
                   </button>
                   <button
                     type="button"
                     onClick={handleExportJSON}
-                    className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-surface-muted rounded cursor-pointer"
+                    className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-surface-muted rounded-lg cursor-pointer transition-colors"
                   >
                     Export as JSON
                   </button>
@@ -219,12 +219,12 @@ export function DataTableToolbar<TData>({
 
           {/* View Switcher Button Group */}
           {enableViewToggle && (
-            <div className="flex items-center rounded-md border border-border p-0.5 bg-surface-muted/50">
+            <div className="flex items-center rounded-lg border border-border/80 p-0.5 bg-surface-muted/50">
               <button
                 type="button"
                 onClick={() => setViewMode('table')}
                 title="Table View"
-                className={`p-1.5 rounded text-xs transition-colors cursor-pointer ${
+                className={`p-1.5 rounded-md text-xs transition-colors cursor-pointer ${
                   viewMode === 'table' ? 'bg-surface shadow-xs text-ink font-medium' : 'text-ink-muted hover:text-ink'
                 }`}
               >
@@ -234,7 +234,7 @@ export function DataTableToolbar<TData>({
                 type="button"
                 onClick={() => setViewMode('card')}
                 title="Card View"
-                className={`p-1.5 rounded text-xs transition-colors cursor-pointer ${
+                className={`p-1.5 rounded-md text-xs transition-colors cursor-pointer ${
                   viewMode === 'card' ? 'bg-surface shadow-xs text-ink font-medium' : 'text-ink-muted hover:text-ink'
                 }`}
               >

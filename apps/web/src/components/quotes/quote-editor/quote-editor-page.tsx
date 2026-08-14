@@ -353,14 +353,14 @@ export function QuoteEditorPage({
   return (
     <div className="space-y-6 pb-16">
       {/* Top Sticky Header & Actions Ribbon */}
-      <div className="sticky top-0 z-20 -mx-4 -mt-4 border-b border-border bg-surface/95 px-4 py-3.5 backdrop-blur-md sm:-mx-6 sm:px-6">
+      <div className="sticky top-0 z-20 -mx-4 -mt-4 border-b border-border/80 bg-surface/95 px-4 py-3.5 backdrop-blur-md sm:-mx-6 sm:px-6">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           {/* Left: Back button + Title & Pipeline */}
           <div className="flex flex-wrap items-center gap-3 sm:gap-4">
             <button
               type="button"
               onClick={() => (onBack ? onBack() : router.push('/quotes'))}
-              className="flex size-9 items-center justify-center rounded-lg border border-border bg-surface text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors shadow-2xs"
+              className="flex size-9 items-center justify-center rounded-xl border border-border/80 bg-surface text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors shadow-2xs cursor-pointer"
               aria-label="Back to Quotes"
             >
               <ArrowLeft className="size-4" />
@@ -393,9 +393,9 @@ export function QuoteEditorPage({
                 variant="outline"
                 size="sm"
                 onClick={() => setIsAiDrawerOpen(true)}
-                className="border-brand/40 bg-brand-soft/20 text-brand hover:bg-brand-soft hover:border-brand gap-1.5 shadow-2xs font-semibold"
+                className="border-brand/40 bg-brand-soft text-brand-hover hover:bg-brand-soft/80 hover:border-brand gap-1.5 shadow-2xs font-semibold"
               >
-                <Sparkles className="size-4 text-brand" />
+                <Sparkles className="size-4 text-brand-hover" />
                 <span>AI Copilot ✨</span>
               </Button>
             )}
@@ -414,7 +414,7 @@ export function QuoteEditorPage({
 
             {/* Manager Actions if Awaiting Approval */}
             {status === 'AWAITING_APPROVAL' && (
-              <div className="flex items-center gap-2 pl-2 border-l border-border">
+              <div className="flex items-center gap-2 pl-2 border-l border-border/80">
                 <Button
                   type="button"
                   variant="primary"
@@ -422,7 +422,7 @@ export function QuoteEditorPage({
                   loading={isSignaling === 'APPROVE'}
                   disabled={Boolean(isSignaling)}
                   onClick={() => handleSignal('APPROVE')}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 font-semibold"
                 >
                   <CheckCircle2 className="size-4" />
                   <span>Approve Quote</span>
@@ -435,7 +435,7 @@ export function QuoteEditorPage({
                   loading={isSignaling === 'REJECT'}
                   disabled={Boolean(isSignaling)}
                   onClick={() => handleSignal('REJECT')}
-                  className="gap-1.5"
+                  className="gap-1.5 font-semibold"
                 >
                   <XCircle className="size-4" />
                   <span>Reject</span>
@@ -466,7 +466,7 @@ export function QuoteEditorPage({
                   loading={isSubmitting}
                   disabled={isSaving || isSubmitting}
                   onClick={handleSubmitForApproval}
-                  className="gap-1.5 shadow-sm font-semibold"
+                  className="gap-1.5 shadow-xs font-semibold"
                 >
                   <Send className="size-4" />
                   <span>Submit for Approval</span>
@@ -479,7 +479,7 @@ export function QuoteEditorPage({
 
       {/* Read-Only Banner if Approved */}
       {isReadOnly && (
-        <div className="flex items-center gap-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 shadow-2xs">
+        <div className="flex items-center gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 shadow-2xs">
           <CheckCircle2 className="size-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
           <div>
             <p className="font-semibold">Quotation Confirmed & Approved</p>

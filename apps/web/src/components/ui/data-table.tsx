@@ -171,7 +171,7 @@ export function DataTable<TData, TValue>({
 
   if (isLoading) {
     return (
-      <div className="space-y-3 p-4 border border-border rounded-xl bg-surface">
+      <div className="space-y-3 p-4 border border-border/80 rounded-2xl bg-surface">
         <Skeleton className="h-10 w-full" />
         <Skeleton className="h-16 w-full" />
         <Skeleton className="h-16 w-full" />
@@ -181,7 +181,7 @@ export function DataTable<TData, TValue>({
   }
 
   return (
-    <div className={`rounded-xl border border-border bg-surface overflow-hidden shadow-xs ${className}`}>
+    <div className={`rounded-2xl border border-border/80 bg-surface overflow-hidden shadow-xs ${className}`}>
       {/* Header Toolbar */}
       <DataTableToolbar
         table={table}
@@ -216,7 +216,7 @@ export function DataTable<TData, TValue>({
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-border bg-surface-muted/50">
+            <thead className="border-b border-border/80 bg-surface-muted/50">
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
@@ -234,12 +234,12 @@ export function DataTable<TData, TValue>({
                 </tr>
               ))}
             </thead>
-            <tbody className="divide-y divide-border bg-surface">
+            <tbody className="divide-y divide-border/80 bg-surface">
               {table.getRowModel().rows.map((row) => (
                 <tr
                   key={row.id}
                   className={`transition-colors ${
-                    row.getIsSelected() ? 'bg-brand/5' : 'hover:bg-surface-muted/40'
+                    row.getIsSelected() ? 'bg-brand-soft/40' : 'hover:bg-surface-muted/40'
                   }`}
                 >
                   {row.getVisibleCells().map((cell) => (

@@ -138,25 +138,25 @@ export function CreateQuoteModal({ open, onClose, onSubmit }: CreateQuoteModalPr
     >
       <div className="space-y-5">
         {/* Tab Selection */}
-        <div className="flex border-b border-border">
+        <div className="flex border-b border-border/80">
           <button
             type="button"
             onClick={() => setTab('ai')}
-            className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+            className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer ${
               tab === 'ai'
-                ? 'border-brand text-brand'
+                ? 'border-brand text-brand-hover font-semibold'
                 : 'border-transparent text-ink-muted hover:text-ink'
             }`}
           >
-            <Sparkles className="size-4 text-brand" />
+            <Sparkles className="size-4 text-brand-hover" />
             AI Agent Draft
           </button>
           <button
             type="button"
             onClick={() => setTab('manual')}
-            className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+            className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer ${
               tab === 'manual'
-                ? 'border-brand text-brand'
+                ? 'border-brand text-brand-hover font-semibold'
                 : 'border-transparent text-ink-muted hover:text-ink'
             }`}
           >

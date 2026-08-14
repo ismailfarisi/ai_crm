@@ -88,15 +88,13 @@ export function QuotesView() {
         <Stat label="Total Value" value={formattedTotalValue} icon={DollarSign} tone="info" />
       </div>
 
-      <Card>
-        <QuotesTable
-          quotes={quotes}
-          isLoading={isLoading}
-          onSignal={async (id, action) => {
-            await sendSignal(id, action);
-          }}
-        />
-      </Card>
+      <QuotesTable
+        quotes={quotes}
+        isLoading={isLoading}
+        onSignal={async (id, action) => {
+          await sendSignal(id, action);
+        }}
+      />
 
       <CreateQuoteModal
         open={isModalOpen}
