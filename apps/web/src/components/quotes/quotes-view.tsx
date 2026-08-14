@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, FileText, Clock, CheckCircle, DollarSign, type LucideIcon } from 'lucide-react';
+import Link from 'next/link';
+import { Plus, FileText, Clock, CheckCircle, DollarSign, Sparkles, type LucideIcon } from 'lucide-react';
 import { useQuotes } from '@/hooks/use-quotes';
 import { Button } from '@/components/ui/button';
 import { Card, CardBody, PageHeader } from '@/components/ui/primitives';
@@ -65,10 +66,18 @@ export function QuotesView() {
         title="Quotes & Workflow Orchestration"
         description="Manage AI-generated and human quotes with automated approval workflows."
         actions={
-          <Button variant="primary" onClick={() => setIsModalOpen(true)}>
-            <Plus className="size-4 mr-1.5" />
-            Create Quote
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setIsModalOpen(true)}>
+              <Sparkles className="size-4 mr-1.5 text-brand" />
+              Quick AI Modal
+            </Button>
+            <Link href="/quotes/new">
+              <Button variant="primary">
+                <Plus className="size-4 mr-1.5" />
+                New Quotation
+              </Button>
+            </Link>
+          </div>
         }
       />
 

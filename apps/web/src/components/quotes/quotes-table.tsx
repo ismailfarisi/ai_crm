@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import Link from 'next/link';
 import { ColumnDef } from '@tanstack/react-table';
 import { Bot, User, Check, X, FileText } from 'lucide-react';
 import { QuoteStatusBadge } from '@/components/quotes/quote-status-badge';
@@ -39,7 +40,17 @@ export function QuotesTable({ quotes, isLoading = false, onSignal }: QuotesTable
         header: ({ column }) => <DataTableColumnHeader column={column} title="Title" />,
         cell: ({ row }) => (
           <div>
-            <div className="font-medium text-ink">{row.original.title}</div>
+            <Link
+              href={`/quotes/${row.original.id}`}
+              className="font-medium text-ink hover:text-brand hover:underline inline-flex items-center gap-1.5"
+            >
+              {row.original.quoteNumber && (
+                <span className="font-mono text-xs text-ink-muted bg-surface-muted px-1.5 py-0.5 rounded border border-border">
+                  {row.original.quoteNumber}
+                </span>
+              )}
+              <span>{row.original.title}</span>
+            </Link>
             {row.original.prompt && (
               <div className="mt-0.5 text-xs text-ink-subtle line-clamp-1 max-w-xs">
                 Prompt: &quot;{row.original.prompt}&quot;
