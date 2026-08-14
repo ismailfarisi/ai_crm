@@ -6,21 +6,22 @@
  * element.
  */
 @theme {
-  --color-canvas: oklch(0.985 0.002 250);
+  --color-canvas: oklch(0.975 0.015 80);
   --color-surface: oklch(1 0 0);
-  --color-surface-muted: oklch(0.972 0.003 250);
-  --color-border: oklch(0.915 0.005 250);
-  --color-border-strong: oklch(0.855 0.008 250);
+  --color-surface-muted: oklch(0.945 0.02 80);
+  --color-border: oklch(0.905 0.015 80);
+  --color-border-strong: oklch(0.82 0.025 80);
 
-  --color-ink: oklch(0.22 0.015 260);
-  --color-ink-muted: oklch(0.52 0.014 260);
-  --color-ink-subtle: oklch(0.63 0.012 260);
+  --color-ink: oklch(0.18 0.015 60);
+  --color-ink-muted: oklch(0.48 0.02 60);
+  --color-ink-subtle: oklch(0.65 0.015 60);
   --color-ink-inverted: oklch(0.99 0 0);
 
-  --color-brand: oklch(0.55 0.19 265);
-  --color-brand-hover: oklch(0.49 0.19 265);
-  --color-brand-soft: oklch(0.955 0.025 265);
-  --color-brand-ring: oklch(0.72 0.14 265);
+  --color-brand: oklch(0.78 0.16 75);
+  --color-brand-hover: oklch(0.72 0.17 75);
+  --color-brand-soft: oklch(0.96 0.05 85);
+  --color-brand-ring: oklch(0.78 0.16 75);
+  --color-brand-dark: oklch(0.18 0.01 260);
 
   --color-success: oklch(0.62 0.15 155);
   --color-success-soft: oklch(0.955 0.04 155);
@@ -32,26 +33,28 @@
   --color-info: oklch(0.6 0.14 240);
   --color-info-soft: oklch(0.955 0.035 240);
 
-  --radius-card: 0.75rem;
+  --radius-card: 1.25rem;
+  --radius-pill: 9999px;
 }
 
 @layer theme {
   .dark {
-    --color-canvas: oklch(0.17 0.012 265);
-    --color-surface: oklch(0.213 0.014 265);
-    --color-surface-muted: oklch(0.253 0.015 265);
-    --color-border: oklch(0.305 0.016 265);
-    --color-border-strong: oklch(0.38 0.018 265);
+    --color-canvas: oklch(0.15 0.01 60);
+    --color-surface: oklch(0.20 0.012 60);
+    --color-surface-muted: oklch(0.25 0.015 60);
+    --color-border: oklch(0.30 0.015 60);
+    --color-border-strong: oklch(0.38 0.018 60);
 
-    --color-ink: oklch(0.96 0.004 260);
-    --color-ink-muted: oklch(0.74 0.012 260);
-    --color-ink-subtle: oklch(0.62 0.012 260);
-    --color-ink-inverted: oklch(0.18 0.01 260);
+    --color-ink: oklch(0.96 0.005 80);
+    --color-ink-muted: oklch(0.75 0.01 80);
+    --color-ink-subtle: oklch(0.62 0.012 80);
+    --color-ink-inverted: oklch(0.18 0.01 60);
 
-    --color-brand: oklch(0.68 0.16 265);
-    --color-brand-hover: oklch(0.74 0.16 265);
-    --color-brand-soft: oklch(0.3 0.06 265);
-    --color-brand-ring: oklch(0.68 0.16 265);
+    --color-brand: oklch(0.80 0.16 75);
+    --color-brand-hover: oklch(0.84 0.15 75);
+    --color-brand-soft: oklch(0.32 0.06 75);
+    --color-brand-ring: oklch(0.80 0.16 75);
+    --color-brand-dark: oklch(0.12 0.01 60);
 
     --color-success: oklch(0.72 0.15 155);
     --color-success-soft: oklch(0.3 0.05 155);
