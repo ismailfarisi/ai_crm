@@ -1,18 +1,25 @@
+import type { QuoteLineItem } from '@saas/shared';
 import { QuoteWorkflowInput } from './interfaces';
 
 export async function draftQuoteAIActivity(input: QuoteWorkflowInput): Promise<{
-  items: Array<{ description: string; quantity: number; unitPrice: number; total: number }>;
+  items: QuoteLineItem[];
   totalAmount: number;
 }> {
-  const items = input.items && input.items.length > 0 ? input.items : [
+  const items: QuoteLineItem[] = input.items && input.items.length > 0 ? input.items : [
     {
+      id: 'ai-line-1',
+      type: 'product',
       description: `AI Drafted Service for: ${input.title}`,
       quantity: 1,
       unitPrice: input.totalAmount || 500,
-      total: input.totalAmount || 500,
+      subtotal: input.totalAmount || 500,
     },
   ];
-  const totalAmount = items.reduce((acc, item) => acc + item.total, 0);
+  const totalAmount = items.reduce(
+    (acc, item) =>
+      acc + (item.subtotal ?? (Number(item.quantity || 0) * Number(item.unitPrice || 0))),
+    0,
+  );
 
   return {
     items,
@@ -24,7 +31,7 @@ export async function saveQuoteStateActivity(params: {
   quoteId: string;
   tenantId?: string;
   status: string;
-  items?: Array<{ description: string; quantity: number; unitPrice: number; total: number }>;
+  items?: QuoteLineItem[];
   totalAmount?: number;
 }): Promise<void> {
   // Activity implementation for persisting quote state
@@ -55,3 +62,4 @@ export async function sendNotificationActivity(
   const quoteId = typeof params === 'string' ? params : params.quoteId;
   console.log(`[QuoteActivity] sendNotification: quoteId=${quoteId}`);
 }
+

@@ -1,4 +1,5 @@
 import { defineQuery, defineSignal } from '@temporalio/workflow';
+import type { QuoteLineItem } from '@saas/shared';
 
 export interface QuoteWorkflowInput {
   quoteId: string;
@@ -6,12 +7,7 @@ export interface QuoteWorkflowInput {
   mode: 'AI' | 'HUMAN';
   prompt?: string;
   title: string;
-  items?: Array<{
-    description: string;
-    quantity: number;
-    unitPrice: number;
-    total: number;
-  }>;
+  items?: QuoteLineItem[];
   totalAmount?: number;
 }
 
@@ -25,12 +21,7 @@ export interface QuoteWorkflowState {
   quoteId: string;
   tenantId: string;
   status: string;
-  items: Array<{
-    description: string;
-    quantity: number;
-    unitPrice: number;
-    total: number;
-  }>;
+  items: QuoteLineItem[];
   totalAmount: number;
   rejectionReason?: string;
 }
@@ -40,3 +31,4 @@ export const rejectQuoteSignal = defineSignal<[string]>('rejectQuote');
 export const manualOverrideSignal = defineSignal<[any]>('manualOverride');
 export const getQuoteWorkflowStateQuery =
   defineQuery<QuoteWorkflowState>('getQuoteWorkflowState');
+
