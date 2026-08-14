@@ -62,7 +62,7 @@ export interface CreateQuotePayload {
   validUntil?: string | null;
   paymentTerms?: string;
   currency?: string;
-  items: QuoteLineItem[];
+  items?: QuoteLineItem[];
   subtotalAmount?: number;
   discountAmount?: number;
   taxAmount?: number;

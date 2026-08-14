@@ -3,41 +3,37 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api/endpoints';
 import { toast } from 'sonner';
+import type {
+  QuoteDto,
+  CreateQuotePayload,
+  UpdateQuotePayload,
+  QuoteLineItem,
+  QuoteLineItemType,
+  QuoteStatus,
+  QuoteCreatedBy,
+  QuoteTotals,
+} from '@saas/shared';
+import { calculateQuoteTotals } from '@saas/shared';
 
-export type QuoteCreatedBy = 'AI' | 'HUMAN';
-export type QuoteStatus = 'DRAFT' | 'AWAITING_APPROVAL' | 'APPROVED' | 'REJECTED';
+// Re-export shared types for consumers of this hook
+export type {
+  QuoteDto,
+  CreateQuotePayload,
+  UpdateQuotePayload,
+  QuoteLineItem,
+  QuoteLineItemType,
+  QuoteStatus,
+  QuoteCreatedBy,
+  QuoteTotals,
+};
+export { calculateQuoteTotals };
 
-export interface QuoteItem {
-  description: string;
-  quantity: number;
-  unitPrice: number;
-  total: number;
-}
-
-export interface Quote {
-  id: string;
-  tenantId: string;
-  createdBy: QuoteCreatedBy;
-  status: QuoteStatus;
-  title: string;
-  prompt?: string | null;
-  items: QuoteItem[];
-  totalAmount: number;
-  workflowId?: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CreateQuotePayload {
-  createdBy: QuoteCreatedBy;
-  title: string;
-  prompt?: string;
-  items?: QuoteItem[];
-  totalAmount?: number;
-}
+// Backward compatibility aliases
+export type Quote = QuoteDto;
+export type QuoteItem = QuoteLineItem;
 
 export function useQuotes() {
-  const [quotes, setQuotes] = useState<Quote[]>([]);
+  const [quotes, setQuotes] = useState<QuoteDto[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
 
@@ -57,8 +53,28 @@ export function useQuotes() {
   }, []);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    let ignore = false;
+    api.quotes
+      .list()
+      .then((data) => {
+        if (!ignore) {
+          setQuotes(data);
+          setIsLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!ignore) {
+          const errorObj = err instanceof Error ? err : new Error('Failed to fetch quotes');
+          setError(errorObj);
+          setIsLoading(false);
+          toast.error('Failed to load quotes');
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   const createQuote = useCallback(
     async (payload: CreateQuotePayload) => {
@@ -76,8 +92,24 @@ export function useQuotes() {
     [refresh]
   );
 
+  const updateQuote = useCallback(
+    async (id: string, payload: UpdateQuotePayload) => {
+      try {
+        const updatedQuote = await api.quotes.update(id, payload);
+        toast.success('Quote updated successfully');
+        await refresh();
+        return updatedQuote;
+      } catch (err) {
+        const errorObj = err instanceof Error ? err : new Error('Failed to update quote');
+        toast.error(errorObj.message || 'Failed to update quote');
+        throw errorObj;
+      }
+    },
+    [refresh]
+  );
+
   const sendSignal = useCallback(
-    async (id: string, action: 'APPROVE' | 'REJECT' | 'OVERRIDE', payload?: any) => {
+    async (id: string, action: 'APPROVE' | 'REJECT' | 'OVERRIDE', payload?: unknown) => {
       try {
         const updatedQuote = await api.quotes.signal(id, { action, payload });
         toast.success(`Quote ${action.toLowerCase()}d successfully`);
@@ -98,6 +130,71 @@ export function useQuotes() {
     error,
     refresh,
     createQuote,
+    updateQuote,
     sendSignal,
+  };
+}
+
+export function useQuote(id: string | null) {
+  const [quote, setQuote] = useState<QuoteDto | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(Boolean(id));
+  const [error, setError] = useState<Error | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (!id) {
+      setQuote(null);
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await api.quotes.get(id);
+      setQuote(data);
+    } catch (err) {
+      const errorObj = err instanceof Error ? err : new Error('Failed to fetch quote');
+      setError(errorObj);
+      toast.error('Failed to load quote');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) {
+      setQuote(null);
+      setIsLoading(false);
+      return;
+    }
+
+    let ignore = false;
+    api.quotes
+      .get(id)
+      .then((data) => {
+        if (!ignore) {
+          setQuote(data);
+          setIsLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!ignore) {
+          const errorObj = err instanceof Error ? err : new Error('Failed to fetch quote');
+          setError(errorObj);
+          setIsLoading(false);
+          toast.error('Failed to load quote');
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [id]);
+
+  return {
+    quote,
+    isLoading,
+    error,
+    refresh,
+    setQuote,
   };
 }

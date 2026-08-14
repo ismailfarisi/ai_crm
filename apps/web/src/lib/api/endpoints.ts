@@ -24,8 +24,23 @@ import type {
   UpdateTeamInput,
   UserDto,
   SendChannelMessagePayload,
+  QuoteDto,
+  CreateQuotePayload,
+  UpdateQuotePayload,
 } from '@saas/shared';
 import { apiFetch } from './client';
+
+export type InvoiceStatus = 'ISSUED' | 'PAID';
+
+export interface Invoice {
+  id: string;
+  quoteId: string;
+  tenantId: string;
+  invoiceNumber: string;
+  amount: number;
+  status: InvoiceStatus;
+  issuedAt: string;
+}
 
 export interface ContactListParams {
   page?: number;
@@ -129,16 +144,19 @@ export const api = {
   },
 
   quotes: {
-    list: () => apiFetch<any[]>('/quotes'),
-    get: (id: string) => apiFetch<any>(`/quotes/${id}`),
-    create: (payload: { createdBy: 'AI' | 'HUMAN'; title: string; prompt?: string; items?: any[]; totalAmount?: number }) =>
-      apiFetch<any>('/quotes', { method: 'POST', body: payload }),
-    signal: (id: string, payload: { action: 'APPROVE' | 'REJECT' | 'OVERRIDE'; payload?: any }) =>
-      apiFetch<any>(`/quotes/${id}/signal`, { method: 'POST', body: payload }),
+    list: () => apiFetch<QuoteDto[]>('/quotes'),
+    get: (id: string) => apiFetch<QuoteDto>(`/quotes/${id}`),
+    getNextNumber: () => apiFetch<{ nextNumber: string }>('/quotes/next-number'),
+    create: (payload: CreateQuotePayload) =>
+      apiFetch<QuoteDto>('/quotes', { method: 'POST', body: payload }),
+    update: (id: string, payload: UpdateQuotePayload) =>
+      apiFetch<QuoteDto>(`/quotes/${id}`, { method: 'PATCH', body: payload }),
+    signal: (id: string, payload: { action: 'APPROVE' | 'REJECT' | 'OVERRIDE'; payload?: unknown }) =>
+      apiFetch<QuoteDto>(`/quotes/${id}/signal`, { method: 'POST', body: payload }),
   },
 
   invoices: {
-    list: () => apiFetch<any[]>('/invoices'),
+    list: () => apiFetch<Invoice[]>('/invoices'),
   },
 
   channels: {
@@ -169,6 +187,7 @@ export interface ChannelMessageDto {
   sender: string;
   recipient: string;
   body: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   metadata?: Record<string, any>;
   status: 'pending' | 'sent' | 'delivered' | 'failed' | 'received';
   createdAt: string;
@@ -180,6 +199,7 @@ export interface ChannelConfigDto {
   provider: 'WHATSAPP_META' | 'TELEGRAM' | 'EMAIL_SMTP' | 'EMAIL_RESEND';
   isEnabled: boolean;
   status: 'unconfigured' | 'configured' | 'error';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   credentials: Record<string, any> | null;
   webhookSecret: string | null;
   lastTestedAt: string | null;
@@ -189,6 +209,7 @@ export interface ChannelConfigDto {
 
 export interface SaveChannelConfigInput {
   isEnabled?: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   credentials?: Record<string, any>;
 }
 

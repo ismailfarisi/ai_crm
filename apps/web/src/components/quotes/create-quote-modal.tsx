@@ -103,10 +103,14 @@ export function CreateQuoteModal({ open, onClose, onSubmit }: CreateQuoteModalPr
         });
       } else {
         const formattedItems: QuoteItem[] = items.map((item) => ({
+          id: item.id,
+          type: 'product',
           description: item.description.trim() || 'Item',
           quantity: Number(item.quantity) || 1,
           unitPrice: Number(item.unitPrice) || 0,
-          total: (Number(item.quantity) || 1) * (Number(item.unitPrice) || 0),
+          discount: 0,
+          taxRate: 0,
+          subtotal: (Number(item.quantity) || 1) * (Number(item.unitPrice) || 0),
         }));
 
         await onSubmit({

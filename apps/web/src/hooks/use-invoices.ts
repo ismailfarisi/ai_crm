@@ -1,20 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { api } from '@/lib/api/endpoints';
+import { api, type Invoice, type InvoiceStatus } from '@/lib/api/endpoints';
 import { toast } from 'sonner';
 
-export type InvoiceStatus = 'ISSUED' | 'PAID';
-
-export interface Invoice {
-  id: string;
-  quoteId: string;
-  tenantId: string;
-  invoiceNumber: string;
-  amount: number;
-  status: InvoiceStatus;
-  issuedAt: string;
-}
+export type { Invoice, InvoiceStatus };
 
 export function useInvoices() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -37,8 +27,28 @@ export function useInvoices() {
   }, []);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    let ignore = false;
+    api.invoices
+      .list()
+      .then((data) => {
+        if (!ignore) {
+          setInvoices(data);
+          setIsLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!ignore) {
+          const errorObj = err instanceof Error ? err : new Error('Failed to fetch invoices');
+          setError(errorObj);
+          setIsLoading(false);
+          toast.error('Failed to load invoices');
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   return {
     invoices,
