@@ -60,6 +60,15 @@ export function QuotesTable({ quotes, isLoading = false, onSignal }: QuotesTable
         ),
       },
       {
+        accessorKey: 'customerName',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Customer" />,
+        cell: ({ row }) => (
+          <span className="text-ink font-medium">
+            {row.original.customerName || '—'}
+          </span>
+        ),
+      },
+      {
         accessorKey: 'createdBy',
         header: ({ column }) => <DataTableColumnHeader column={column} title="Created By" />,
         cell: ({ row }) =>
