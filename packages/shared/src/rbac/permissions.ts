@@ -47,6 +47,7 @@ export const PERMISSIONS = {
   // Quotes
   QUOTE_CREATE: 'quote:create',
   QUOTE_READ: 'quote:read',
+  QUOTE_UPDATE: 'quote:update',
   QUOTE_APPROVE: 'quote:approve',
 
   // Invoices
@@ -100,6 +101,7 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
 
   [PERMISSIONS.QUOTE_CREATE]: 'Create quotes',
   [PERMISSIONS.QUOTE_READ]: 'View quotes',
+  [PERMISSIONS.QUOTE_UPDATE]: 'Edit quotes',
   [PERMISSIONS.QUOTE_APPROVE]: 'Approve quotes',
 
   [PERMISSIONS.INVOICE_READ]: 'View invoices',
@@ -167,7 +169,7 @@ export const PERMISSION_GROUPS: { key: string; label: string; permissions: Permi
   {
     key: 'quote',
     label: 'Quotes',
-    permissions: [PERMISSIONS.QUOTE_READ, PERMISSIONS.QUOTE_CREATE, PERMISSIONS.QUOTE_APPROVE],
+    permissions: [PERMISSIONS.QUOTE_READ, PERMISSIONS.QUOTE_CREATE, PERMISSIONS.QUOTE_UPDATE, PERMISSIONS.QUOTE_APPROVE],
   },
   {
     key: 'invoice',
