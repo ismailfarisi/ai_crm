@@ -7,3 +7,4 @@ export * from './schemas/customer';
 export * from './schemas/rbac';
 export * from './schemas/teams';
 export * from './types/api';
+export * from './quotes/types';
