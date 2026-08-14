@@ -9,8 +9,8 @@
   --color-canvas: oklch(0.975 0.015 80);
   --color-surface: oklch(1 0 0);
   --color-surface-muted: oklch(0.945 0.02 80);
-  --color-border: oklch(0.905 0.015 80);
-  --color-border-strong: oklch(0.82 0.025 80);
+  --color-border: oklch(0.92 0.012 80);
+  --color-border-strong: oklch(0.84 0.02 80);
 
   --color-ink: oklch(0.18 0.015 60);
   --color-ink-muted: oklch(0.48 0.02 60);
@@ -75,6 +75,7 @@
 
   html {
     color-scheme: light;
+    scroll-behavior: smooth;
   }
 
   html.dark {
@@ -85,9 +86,10 @@
     background-color: var(--color-canvas);
     color: var(--color-ink);
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
-  /* One consistent focus ring everywhere, driven by the brand token. */
+  /* Seamless, subtle focus rings driven by brand token */
   :focus-visible {
     outline: 2px solid var(--color-brand-ring);
     outline-offset: 2px;
@@ -96,11 +98,17 @@
 
 @layer utilities {
   .scrollbar-thin::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb {
     background-color: var(--color-border-strong);
     border-radius: 9999px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-ink-subtle);
   }
 }

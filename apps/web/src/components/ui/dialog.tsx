@@ -57,32 +57,32 @@ export function Dialog({ open, onClose, title, description, children, footer, si
         if (event.target === ref.current) onClose();
       }}
       className={cn(
-        'w-[calc(100vw-2rem)] rounded-2xl border border-border/80 bg-surface p-0 text-ink shadow-xl',
-        'backdrop:bg-black/40 backdrop:backdrop-blur-xs',
+        'w-[calc(100vw-2rem)] rounded-2xl border border-border/30 bg-surface/95 backdrop-blur-md p-0 text-ink shadow-[0_10px_40px_rgba(0,0,0,0.06)]',
+        'backdrop:bg-black/25 backdrop:backdrop-blur-xs',
         SIZES[size],
       )}
     >
-      <div className="flex items-start justify-between gap-4 border-b border-border/80 px-5 py-4">
+      <div className="flex items-start justify-between gap-4 border-b border-border/25 px-6 py-4">
         <div>
-          <h2 id="dialog-title" className="text-sm font-semibold text-ink">
+          <h2 id="dialog-title" className="text-sm font-semibold tracking-tight text-ink">
             {title}
           </h2>
-          {description && <p className="mt-1 text-sm text-ink-muted">{description}</p>}
+          {description && <p className="mt-1 text-xs text-ink-muted">{description}</p>}
         </div>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close dialog"
-          className="-mr-1 -mt-1 rounded-lg p-1.5 text-ink-subtle transition-colors hover:bg-surface-muted hover:text-ink cursor-pointer"
+          className="-mr-1 -mt-1 rounded-full p-1.5 text-ink-subtle transition-colors hover:bg-surface-muted hover:text-ink cursor-pointer"
         >
           <X className="size-4" />
         </button>
       </div>
 
-      <div className="max-h-[65vh] overflow-y-auto px-5 py-4 scrollbar-thin">{children}</div>
+      <div className="max-h-[65vh] overflow-y-auto px-6 py-5 scrollbar-thin">{children}</div>
 
       {footer && (
-        <div className="flex justify-end gap-2 border-t border-border/80 bg-surface-muted/50 px-5 py-3">
+        <div className="flex justify-end gap-2.5 border-t border-border/25 bg-surface-muted/30 px-6 py-3.5">
           {footer}
         </div>
       )}
