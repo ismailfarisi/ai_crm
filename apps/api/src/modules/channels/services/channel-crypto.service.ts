@@ -1,11 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 
 @Injectable()
 export class ChannelCryptoService {
   private readonly key: Buffer;
 
-  constructor(secretKey?: string) {
+  constructor(@Optional() secretKey?: string) {
     const secret = secretKey || process.env.APP_SECRET || 'default-secret-key-at-least-32-chars-long!';
     this.key = Buffer.from(secret.padEnd(32, '0').slice(0, 32));
   }

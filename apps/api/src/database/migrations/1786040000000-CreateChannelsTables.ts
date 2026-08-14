@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateChannelsTables1723284000000 implements MigrationInterface {
-  name = 'CreateChannelsTables1723284000000';
+export class CreateChannelsTables1786040000000 implements MigrationInterface {
+  name = 'CreateChannelsTables1786040000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
