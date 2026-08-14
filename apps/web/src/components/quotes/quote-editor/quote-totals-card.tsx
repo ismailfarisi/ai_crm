@@ -19,8 +19,8 @@ export function QuoteTotalsCard({
 
   return (
     <div className={cn('flex justify-end', className)}>
-      <div className="w-full max-w-sm rounded-2xl border border-border/80 bg-surface p-5 shadow-sm">
-        <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider mb-4 border-b border-border/60 pb-2">
+      <div className="w-full max-w-sm rounded-2xl border border-border/30 bg-surface/90 p-5 shadow-[0_2px_12px_rgba(0,0,0,0.015)] space-y-2.5 text-sm backdrop-blur-xs">
+        <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider mb-4 border-b border-border/25 pb-2">
           Financial Summary
         </h3>
 
@@ -54,7 +54,7 @@ export function QuoteTotalsCard({
           </div>
 
           {/* Grand Total */}
-          <div className="border-t border-border/80 pt-3 mt-2 flex items-baseline justify-between">
+          <div className="border-t border-border/25 pt-3 mt-2 flex items-baseline justify-between">
             <dt className="text-base font-semibold text-ink">
               Total ({currency.toUpperCase()})
             </dt>

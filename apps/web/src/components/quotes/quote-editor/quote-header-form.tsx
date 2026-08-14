@@ -105,16 +105,16 @@ export function QuoteHeaderForm({
     : '';
 
   return (
-    <div className="rounded-2xl border border-border/80 bg-surface p-6 shadow-sm space-y-6">
+    <div className="bg-surface/85 backdrop-blur-xs rounded-2xl border border-border/30 p-6 shadow-[0_2px_12px_rgba(0,0,0,0.015)] space-y-6">
       {/* Top Row: Quote Number badge and Title input */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border/60 pb-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border/25 pb-5">
         <div className="flex-1 space-y-1">
           <div className="flex items-center gap-2 mb-1.5">
             <Tag className="size-4 text-brand-hover" />
             <span className="text-xs font-semibold text-ink-muted uppercase tracking-wider">
               Quotation Header
             </span>
-            <Badge tone="brand" className="font-mono text-xs">
+            <Badge tone="brand" className="font-mono text-xs rounded-full px-2.5 py-0.5">
               {data.quoteNumber || 'NEW DRAFT'}
             </Badge>
           </div>
@@ -129,7 +129,7 @@ export function QuoteHeaderForm({
               value={data.title}
               onChange={(e) => onChange({ title: e.target.value })}
               placeholder="Quotation Title / Subject (e.g. Enterprise CRM Software & Services)"
-              className="w-full rounded-xl border border-border/80 bg-surface px-3.5 py-2 text-base font-semibold text-ink placeholder:text-ink-subtle focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden"
+              className="w-full rounded-xl border border-border/40 bg-surface-muted/40 px-3.5 py-2 text-base font-semibold text-ink placeholder:text-ink-subtle focus:bg-surface focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden transition-colors"
               required
             />
           )}
@@ -145,7 +145,7 @@ export function QuoteHeaderForm({
             Customer / Company
           </label>
           {readOnly ? (
-            <div className="h-10 rounded-xl border border-border/80 bg-surface-muted/40 px-3 py-2 text-sm font-medium text-ink flex items-center">
+            <div className="h-10 rounded-xl border border-border/30 bg-surface-muted/30 px-3 py-2 text-sm font-medium text-ink flex items-center">
               {data.customerName || 'General Customer'}
             </div>
           ) : (
@@ -154,7 +154,7 @@ export function QuoteHeaderForm({
                 value={data.customerId || ''}
                 onChange={(e) => handleCustomerSelect(e.target.value)}
                 disabled={isLoadingCustomers}
-                className="w-full h-10 rounded-xl border border-border/80 bg-surface px-3 text-sm text-ink focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden"
+                className="w-full h-10 rounded-xl border border-border/40 bg-surface-muted/40 px-3 text-sm text-ink focus:bg-surface focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden transition-colors"
               >
                 <option value="">-- Choose Existing Customer --</option>
                 {customers.map((c) => (
@@ -170,7 +170,7 @@ export function QuoteHeaderForm({
                 placeholder="Or enter Customer / Account Name"
                 value={data.customerName || ''}
                 onChange={(e) => onChange({ customerName: e.target.value })}
-                className="w-full h-9 rounded-xl border border-border/70 bg-surface px-3 text-xs text-ink placeholder:text-ink-subtle focus:border-brand focus:outline-hidden"
+                className="w-full h-9 rounded-xl border border-border/40 bg-surface-muted/40 px-3 text-xs text-ink placeholder:text-ink-subtle focus:bg-surface focus:border-brand focus:outline-hidden transition-colors"
               />
             </div>
           )}
@@ -183,7 +183,7 @@ export function QuoteHeaderForm({
             Recipient Email
           </label>
           {readOnly ? (
-            <div className="h-10 rounded-xl border border-border/80 bg-surface-muted/40 px-3 py-2 text-sm text-ink flex items-center">
+            <div className="h-10 rounded-xl border border-border/30 bg-surface-muted/30 px-3 py-2 text-sm text-ink flex items-center">
               {data.customerEmail || '—'}
             </div>
           ) : (
@@ -192,7 +192,7 @@ export function QuoteHeaderForm({
               placeholder="billing@customer.com"
               value={data.customerEmail || ''}
               onChange={(e) => onChange({ customerEmail: e.target.value })}
-              className="w-full h-10 rounded-xl border border-border/80 bg-surface px-3 text-sm text-ink placeholder:text-ink-subtle focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden"
+              className="w-full h-10 rounded-xl border border-border/40 bg-surface-muted/40 px-3 text-sm text-ink placeholder:text-ink-subtle focus:bg-surface focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden transition-colors"
             />
           )}
         </div>
@@ -204,7 +204,7 @@ export function QuoteHeaderForm({
             Expiration Date (Valid Until)
           </label>
           {readOnly ? (
-            <div className="h-10 rounded-xl border border-border/80 bg-surface-muted/40 px-3 py-2 text-sm text-ink flex items-center">
+            <div className="h-10 rounded-xl border border-border/30 bg-surface-muted/30 px-3 py-2 text-sm text-ink flex items-center">
               {dateValue || 'No expiration set'}
             </div>
           ) : (
@@ -212,7 +212,7 @@ export function QuoteHeaderForm({
               type="date"
               value={dateValue}
               onChange={(e) => onChange({ validUntil: e.target.value || null })}
-              className="w-full h-10 rounded-xl border border-border/80 bg-surface px-3 text-sm text-ink focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden"
+              className="w-full h-10 rounded-xl border border-border/40 bg-surface-muted/40 px-3 text-sm text-ink focus:bg-surface focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden transition-colors"
             />
           )}
         </div>
@@ -226,7 +226,7 @@ export function QuoteHeaderForm({
               Terms
             </label>
             {readOnly ? (
-              <div className="h-10 rounded-xl border border-border/80 bg-surface-muted/40 px-3 py-2 text-xs text-ink flex items-center">
+              <div className="h-10 rounded-xl border border-border/30 bg-surface-muted/30 px-3 py-2 text-xs text-ink flex items-center">
                 {PAYMENT_TERMS_OPTIONS.find((p) => p.value === data.paymentTerms)?.label ||
                   data.paymentTerms}
               </div>
@@ -234,7 +234,7 @@ export function QuoteHeaderForm({
               <select
                 value={data.paymentTerms}
                 onChange={(e) => onChange({ paymentTerms: e.target.value })}
-                className="w-full h-10 rounded-xl border border-border/80 bg-surface px-2.5 text-xs text-ink focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden"
+                className="w-full h-10 rounded-xl border border-border/40 bg-surface-muted/40 px-2.5 text-xs text-ink focus:bg-surface focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden transition-colors"
               >
                 {PAYMENT_TERMS_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -252,14 +252,14 @@ export function QuoteHeaderForm({
               Currency
             </label>
             {readOnly ? (
-              <div className="h-10 rounded-xl border border-border/80 bg-surface-muted/40 px-3 py-2 text-xs font-semibold text-ink flex items-center">
+              <div className="h-10 rounded-xl border border-border/30 bg-surface-muted/30 px-3 py-2 text-xs font-semibold text-ink flex items-center">
                 {data.currency}
               </div>
             ) : (
               <select
                 value={data.currency}
                 onChange={(e) => onChange({ currency: e.target.value })}
-                className="w-full h-10 rounded-xl border border-border/80 bg-surface px-2.5 text-xs font-semibold text-ink focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden"
+                className="w-full h-10 rounded-xl border border-border/40 bg-surface-muted/40 px-2.5 text-xs font-semibold text-ink focus:bg-surface focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden transition-colors"
               >
                 {CURRENCY_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
