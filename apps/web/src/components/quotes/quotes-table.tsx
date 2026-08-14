@@ -45,7 +45,7 @@ export function QuotesTable({ quotes, isLoading = false, onSignal }: QuotesTable
               className="font-medium text-ink hover:text-brand hover:underline inline-flex items-center gap-1.5"
             >
               {row.original.quoteNumber && (
-                <span className="font-mono text-xs text-ink-muted bg-surface-muted px-1.5 py-0.5 rounded border border-border">
+                <span className="font-mono text-[11px] text-ink-muted bg-surface-muted/60 px-2 py-0.5 rounded-full border border-border/40">
                   {row.original.quoteNumber}
                 </span>
               )}

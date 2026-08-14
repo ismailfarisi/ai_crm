@@ -76,7 +76,7 @@ export function DataTableToolbar<TData>({
   };
 
   return (
-    <div className="flex flex-col gap-3 p-4 border-b border-border/80 bg-surface">
+    <div className="flex flex-col gap-3 p-4 border-b border-border/30 bg-transparent">
       {/* Bulk Action Banner if rows selected */}
       {hasSelection && (
         <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-brand/30 bg-brand-soft/50 text-xs text-ink">
@@ -90,7 +90,7 @@ export function DataTableToolbar<TData>({
               variant="outline"
               size="sm"
               onClick={() => table.resetRowSelection()}
-              className="text-xs cursor-pointer"
+              className="text-xs rounded-full border-border/40 cursor-pointer"
             >
               Clear Selection
             </Button>
@@ -109,7 +109,7 @@ export function DataTableToolbar<TData>({
               value={globalFilter ?? ''}
               onChange={(e) => setGlobalFilter(e.target.value)}
               placeholder={searchPlaceholder}
-              className="w-full h-9 pl-9 pr-8 rounded-full border border-border/80 bg-surface-muted/50 text-xs text-ink placeholder:text-ink-muted focus:bg-surface focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand transition-colors"
+              className="w-full h-9 pl-9 pr-8 rounded-full border border-border/40 bg-surface-muted/50 text-xs text-ink placeholder:text-ink-muted focus:bg-surface focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand transition-colors"
             />
             {globalFilter && (
               <button
@@ -134,13 +134,13 @@ export function DataTableToolbar<TData>({
                 variant="outline"
                 size="sm"
                 onClick={() => setShowColumnDropdown(!showColumnDropdown)}
-                className="gap-1.5 text-xs cursor-pointer"
+                className="gap-1.5 text-xs rounded-full border-border/40 hover:border-border cursor-pointer"
               >
                 <Columns className="size-3.5" />
                 <span>Columns</span>
               </Button>
               {showColumnDropdown && (
-                <div className="absolute right-0 mt-1 z-20 w-48 rounded-xl border border-border/80 bg-surface p-2 shadow-lg max-h-60 overflow-y-auto">
+                <div className="absolute right-0 mt-1 z-20 w-48 rounded-2xl border border-border/40 bg-surface/95 backdrop-blur-sm p-2 shadow-lg max-h-60 overflow-y-auto">
                   <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted px-2 py-1">
                     Toggle Columns
                   </div>
@@ -173,7 +173,7 @@ export function DataTableToolbar<TData>({
               size="sm"
               onClick={() => setDensity(density === 'comfortable' ? 'compact' : 'comfortable')}
               title={`Switch to ${density === 'comfortable' ? 'compact' : 'comfortable'} mode`}
-              className="gap-1.5 text-xs cursor-pointer"
+              className="gap-1.5 text-xs rounded-full border-border/40 hover:border-border cursor-pointer"
             >
               {density === 'comfortable' ? (
                 <Minimize2 className="size-3.5" />
@@ -191,13 +191,13 @@ export function DataTableToolbar<TData>({
                 variant="outline"
                 size="sm"
                 onClick={() => setShowExportDropdown(!showExportDropdown)}
-                className="gap-1.5 text-xs cursor-pointer"
+                className="gap-1.5 text-xs rounded-full border-border/40 hover:border-border cursor-pointer"
               >
                 <Download className="size-3.5" />
                 <span className="hidden sm:inline">Export</span>
               </Button>
               {showExportDropdown && (
-                <div className="absolute right-0 mt-1 z-20 w-36 rounded-xl border border-border/80 bg-surface p-1 shadow-lg">
+                <div className="absolute right-0 mt-1 z-20 w-36 rounded-2xl border border-border/40 bg-surface/95 backdrop-blur-sm p-1.5 shadow-lg">
                   <button
                     type="button"
                     onClick={handleExportCSV}
@@ -219,12 +219,12 @@ export function DataTableToolbar<TData>({
 
           {/* View Switcher Button Group */}
           {enableViewToggle && (
-            <div className="flex items-center rounded-lg border border-border/80 p-0.5 bg-surface-muted/50">
+            <div className="flex items-center rounded-full border border-border/40 p-0.5 bg-surface-muted/40">
               <button
                 type="button"
                 onClick={() => setViewMode('table')}
                 title="Table View"
-                className={`p-1.5 rounded-md text-xs transition-colors cursor-pointer ${
+                className={`p-1.5 rounded-full text-xs transition-colors cursor-pointer ${
                   viewMode === 'table' ? 'bg-surface shadow-xs text-ink font-medium' : 'text-ink-muted hover:text-ink'
                 }`}
               >
@@ -234,7 +234,7 @@ export function DataTableToolbar<TData>({
                 type="button"
                 onClick={() => setViewMode('card')}
                 title="Card View"
-                className={`p-1.5 rounded-md text-xs transition-colors cursor-pointer ${
+                className={`p-1.5 rounded-full text-xs transition-colors cursor-pointer ${
                   viewMode === 'card' ? 'bg-surface shadow-xs text-ink font-medium' : 'text-ink-muted hover:text-ink'
                 }`}
               >

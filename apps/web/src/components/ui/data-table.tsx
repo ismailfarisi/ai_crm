@@ -171,7 +171,7 @@ export function DataTable<TData, TValue>({
 
   if (isLoading) {
     return (
-      <div className="space-y-3 p-4 border border-border/80 rounded-2xl bg-surface">
+      <div className="space-y-3 p-4 border border-border/30 rounded-2xl bg-surface/85 backdrop-blur-xs shadow-[0_2px_12px_rgba(0,0,0,0.015)]">
         <Skeleton className="h-10 w-full" />
         <Skeleton className="h-16 w-full" />
         <Skeleton className="h-16 w-full" />
@@ -181,7 +181,7 @@ export function DataTable<TData, TValue>({
   }
 
   return (
-    <div className={`rounded-2xl border border-border/80 bg-surface overflow-hidden shadow-xs ${className}`}>
+    <div className={`bg-surface/85 backdrop-blur-xs rounded-2xl border border-border/30 shadow-[0_2px_12px_rgba(0,0,0,0.015)] overflow-hidden ${className}`}>
       {/* Header Toolbar */}
       <DataTableToolbar
         table={table}
@@ -216,7 +216,7 @@ export function DataTable<TData, TValue>({
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-border/80 bg-surface-muted/50">
+            <thead className="border-b border-border/30 bg-surface-muted/30">
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
@@ -224,7 +224,7 @@ export function DataTable<TData, TValue>({
                       key={header.id}
                       className={`px-4 ${
                         density === 'compact' ? 'py-2' : 'py-3'
-                      } text-xs font-medium text-ink-muted uppercase tracking-wider select-none`}
+                      } text-xs font-semibold text-ink-muted/80 uppercase tracking-wider select-none`}
                     >
                       {header.isPlaceholder
                         ? null
@@ -234,12 +234,12 @@ export function DataTable<TData, TValue>({
                 </tr>
               ))}
             </thead>
-            <tbody className="divide-y divide-border/80 bg-surface">
+            <tbody className="divide-y divide-border/20 bg-transparent">
               {table.getRowModel().rows.map((row) => (
                 <tr
                   key={row.id}
-                  className={`transition-colors ${
-                    row.getIsSelected() ? 'bg-brand-soft/40' : 'hover:bg-surface-muted/40'
+                  className={`border-b border-border/20 transition-colors ${
+                    row.getIsSelected() ? 'bg-brand-soft/40' : 'hover:bg-surface-muted/20'
                   }`}
                 >
                   {row.getVisibleCells().map((cell) => (

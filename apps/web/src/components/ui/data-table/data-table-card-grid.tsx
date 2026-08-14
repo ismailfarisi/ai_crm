@@ -48,12 +48,12 @@ export function DataTableCardGrid<TData>({
             className={`flex flex-col justify-between rounded-2xl border p-4 transition-all ${
               isSelected
                 ? 'border-brand bg-brand-soft/40 shadow-xs'
-                : 'border-border/80 bg-surface hover:border-brand/40 hover:shadow-xs'
+                : 'border-border/30 bg-surface/60 hover:border-brand/40 hover:shadow-xs'
             }`}
           >
             <div>
               {/* Card Top Row: Checkbox, Title & Actions */}
-              <div className="flex items-start justify-between gap-2 pb-3 mb-3 border-b border-border/60">
+              <div className="flex items-start justify-between gap-2 pb-3 mb-3 border-b border-border/30">
                 <div className="flex items-center gap-3">
                   {selectCell && (
                     <div className="pt-0.5">
