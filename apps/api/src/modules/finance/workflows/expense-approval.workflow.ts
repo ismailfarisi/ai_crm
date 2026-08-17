@@ -123,7 +123,7 @@ export async function expenseApprovalWorkflow(
     // Wait for manual approval, rejection, or SLA timeout
     const conditionMet = await condition(
       () => isApproved || isRejected,
-      input.slaDuration || '7 days',
+      (input.slaDuration || '7 days') as any,
     );
 
     if (!conditionMet && !isApproved && !isRejected) {
@@ -215,7 +215,7 @@ export async function expenseApprovalWorkflow(
   // 6. Reimbursement Stage
   const reimbursementTriggered = await condition(
     () => isReimbursed,
-    input.reimbursementTimeout || '30 days',
+    (input.reimbursementTimeout || '30 days') as any,
   );
 
   if (isReimbursed || reimbursementTriggered) {
