@@ -25,7 +25,7 @@ export type AutomationNodeType =
   | 'crmMutateNode'
   | 'approvalNode';
 
-export interface AutomationNodeData {
+export interface AutomationNodeData extends Record<string, any> {
   label: string;
   config: Record<string, any>;
   continueOnFail?: boolean;
@@ -105,6 +105,13 @@ export interface UpdateAutomationWorkflowPayload {
   triggerConfig?: Record<string, any>;
   nodes?: AutomationNode[];
   edges?: AutomationEdge[];
+}
+
+export interface SignalAutomationExecutionPayload {
+  action: 'APPROVE' | 'REJECT';
+  nodeId: string;
+  reason?: string;
+  comment?: string;
 }
 
 export function validateWorkflowGraph(
