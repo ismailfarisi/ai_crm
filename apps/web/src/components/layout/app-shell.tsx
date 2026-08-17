@@ -10,6 +10,7 @@ import {
   ChevronRight,
   CircleDot,
   FileText,
+  Landmark,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -79,6 +80,12 @@ const CORE_ACTION_ITEMS: NavItem[] = [
     label: 'Invoices',
     icon: Receipt,
     rule: { permission: PERMISSIONS.INVOICE_READ },
+  },
+  {
+    href: '/finance',
+    label: 'Finance',
+    icon: Landmark,
+    rule: { permission: PERMISSIONS.FINANCE_READ },
   },
   {
     href: '/automations',
