@@ -63,6 +63,14 @@ export const PERMISSIONS = {
   EMAIL_READ_ALL: 'email:read_all',
   EMAIL_SEND: 'email:send',
   EMAIL_MANAGE: 'email:manage',
+
+  // Automations
+  AUTOMATION_READ: 'automation:read',
+  AUTOMATION_CREATE: 'automation:create',
+  AUTOMATION_UPDATE: 'automation:update',
+  AUTOMATION_DELETE: 'automation:delete',
+  AUTOMATION_EXECUTE: 'automation:execute',
+  AUTOMATION_APPROVE: 'automation:approve',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -114,6 +122,13 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   [PERMISSIONS.EMAIL_READ_ALL]: 'View all organization email accounts and threads',
   [PERMISSIONS.EMAIL_SEND]: 'Compose, send, and manage email drafts',
   [PERMISSIONS.EMAIL_MANAGE]: 'Manage email accounts (IMAP/SMTP/Resend)',
+
+  [PERMISSIONS.AUTOMATION_READ]: 'View automation workflows and executions',
+  [PERMISSIONS.AUTOMATION_CREATE]: 'Create automation workflows',
+  [PERMISSIONS.AUTOMATION_UPDATE]: 'Edit automation workflows',
+  [PERMISSIONS.AUTOMATION_DELETE]: 'Delete automation workflows',
+  [PERMISSIONS.AUTOMATION_EXECUTE]: 'Execute and trigger automation workflows',
+  [PERMISSIONS.AUTOMATION_APPROVE]: 'Approve or reject automation workflow approval nodes',
 };
 
 /** Groups drive the layout of the role editor screen. */
@@ -189,6 +204,18 @@ export const PERMISSION_GROUPS: { key: string; label: string; permissions: Permi
       PERMISSIONS.EMAIL_READ_ALL,
       PERMISSIONS.EMAIL_SEND,
       PERMISSIONS.EMAIL_MANAGE,
+    ],
+  },
+  {
+    key: 'automation',
+    label: 'Automations',
+    permissions: [
+      PERMISSIONS.AUTOMATION_READ,
+      PERMISSIONS.AUTOMATION_CREATE,
+      PERMISSIONS.AUTOMATION_UPDATE,
+      PERMISSIONS.AUTOMATION_DELETE,
+      PERMISSIONS.AUTOMATION_EXECUTE,
+      PERMISSIONS.AUTOMATION_APPROVE,
     ],
   },
 ];
