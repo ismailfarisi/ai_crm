@@ -1,14 +1,15 @@
-# Progress Ledger: Enterprise Odoo-Grade Quotation Page
+# Subagent-Driven Development Progress Ledger
 
-Plan: docs/superpowers/plans/2026-08-14-enterprise-odoo-quotes-page.md
-Branch: feat/enterprise-odoo-quotes-page
-Started: 2026-08-14
+Plan: `docs/superpowers/plans/2026-08-17-visual-automation-studio.md`
+Feature: n8n-Style Visual Automation Studio with Temporal Dynamic DAG Orchestration
 
-## Tasks
-- [x] Task 1: Shared Models & Types in `@saas/shared` (commit 0b3c02f)
-- [x] Task 2: Database Schema & Entity Updates in `apps/api` (commit 6ec2aa7)
-- [x] Task 3: Backend Quotes Service & Controller Updates (commit 16e5669)
-- [x] Task 4: Web API Endpoints & React Hooks in `apps/web` (commit 2d31da4)
-- [x] Task 5: Build Enterprise Quotation Components (commit 82142b7)
-- [x] Task 6: Routing & Quotes List Updates (commit 5ab6247)
-- [x] Task 7: End-to-End Verification & Quality Polish (all 145 tests passing)
+## Task Ledger
+- [x] Task 1: Shared RBAC Permissions, Automation Graph & Node Types - Complete (commit `e3e8d58`)
+- [x] Task 2: Backend Database Entities & TypeORM Migration - Complete (commit `821a2fc`)
+- [x] Task 3: Temporal Dynamic DAG Workflow Engine, Expression Evaluator, and Activities - Complete (commit `7d2395c`)
+- [x] Task 4: Automations Backend Service, Controller, Webhook Ingress & Tests - Complete (commit `fc6dddf`)
+- [x] Task 5: Frontend Canvas Dependencies, API Client & State Hooks - Complete (commit `cf3274c`)
+- [x] Task 6: Custom React Flow Node Components & Node Palette Drawer - Complete (commit `42e8a43`)
+- [x] Task 7: Node Inspector Drawer, Expression Previewer & Test Run Drawer - Complete (commit `aee18ed`)
+- [x] Task 8: Full Automations Studio Pages & App Navigation - Complete (commit `d3885e4`)
+- [x] Task 9: Event Bridge & End-to-End Verification - Complete (commit `fc96fa4`)
