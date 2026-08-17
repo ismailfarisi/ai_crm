@@ -71,6 +71,12 @@ export const PERMISSIONS = {
   AUTOMATION_DELETE: 'automation:delete',
   AUTOMATION_EXECUTE: 'automation:execute',
   AUTOMATION_APPROVE: 'automation:approve',
+
+  // Finance & Expenses
+  FINANCE_READ: 'finance:read',
+  FINANCE_MANAGE: 'finance:manage',
+  EXPENSE_SUBMIT: 'expense:submit',
+  EXPENSE_APPROVE: 'expense:approve',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -129,6 +135,11 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   [PERMISSIONS.AUTOMATION_DELETE]: 'Delete automation workflows',
   [PERMISSIONS.AUTOMATION_EXECUTE]: 'Execute and trigger automation workflows',
   [PERMISSIONS.AUTOMATION_APPROVE]: 'Approve or reject automation workflow approval nodes',
+
+  [PERMISSIONS.FINANCE_READ]: 'View financial accounts, treasury and expense reports',
+  [PERMISSIONS.FINANCE_MANAGE]: 'Manage bank accounts, budgets and financial operations',
+  [PERMISSIONS.EXPENSE_SUBMIT]: 'Submit employee expense claims and receipts',
+  [PERMISSIONS.EXPENSE_APPROVE]: 'Approve, reject and reimburse expense claims',
 };
 
 /** Groups drive the layout of the role editor screen. */
@@ -216,6 +227,16 @@ export const PERMISSION_GROUPS: { key: string; label: string; permissions: Permi
       PERMISSIONS.AUTOMATION_DELETE,
       PERMISSIONS.AUTOMATION_EXECUTE,
       PERMISSIONS.AUTOMATION_APPROVE,
+    ],
+  },
+  {
+    key: 'finance',
+    label: 'Finance & Expenses',
+    permissions: [
+      PERMISSIONS.FINANCE_READ,
+      PERMISSIONS.FINANCE_MANAGE,
+      PERMISSIONS.EXPENSE_SUBMIT,
+      PERMISSIONS.EXPENSE_APPROVE,
     ],
   },
 ];

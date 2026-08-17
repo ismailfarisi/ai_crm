@@ -26,6 +26,13 @@ describe('Channel Permissions & Schemas', () => {
     expect(PERMISSIONS.AUTOMATION_APPROVE).toBe('automation:approve');
   });
 
+  it('should include finance permissions in PERMISSIONS catalog', () => {
+    expect(PERMISSIONS.FINANCE_READ).toBe('finance:read');
+    expect(PERMISSIONS.FINANCE_MANAGE).toBe('finance:manage');
+    expect(PERMISSIONS.EXPENSE_SUBMIT).toBe('expense:submit');
+    expect(PERMISSIONS.EXPENSE_APPROVE).toBe('expense:approve');
+  });
+
   it('should validate Meta WhatsApp credentials payload', () => {
     const valid = metaWhatsAppConfigSchema.safeParse({
       phoneNumberId: '123456789',
