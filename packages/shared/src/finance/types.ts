@@ -123,3 +123,112 @@ export function calculateRunwayMonths(totalCash: number, monthlyBurnRate: number
   if (monthlyBurnRate <= 0) return Infinity;
   return Math.round((totalCash / monthlyBurnRate) * 10) / 10;
 }
+
+export interface CreateFinanceAccountPayload {
+  name: string;
+  accountType: AccountType;
+  currency?: string;
+  balance?: number;
+  accountNumber?: string | null;
+  isDefault?: boolean;
+}
+
+export interface TransferFundsPayload {
+  fromAccountId: string;
+  toAccountId: string;
+  amount: number;
+  description?: string;
+}
+
+export interface TransferFundsResult {
+  fromAccount: FinanceAccountDto;
+  toAccount: FinanceAccountDto;
+  journalEntry: JournalEntryDto;
+}
+
+export interface CreateCategoryBudgetPayload {
+  category: string;
+  period: BudgetPeriod;
+  budgetAmount: number;
+  spentAmount?: number;
+  alertThresholdPercent?: number;
+  startDate: string;
+  endDate: string;
+}
+
+export interface CreateRecurringExpensePayload {
+  vendorName: string;
+  category: string;
+  amount: number;
+  billingInterval: 'MONTHLY' | 'ANNUAL';
+  nextBillingDate: string;
+  financeAccountId?: string | null;
+  status?: 'ACTIVE' | 'PAUSED' | 'CANCELLED';
+}
+
+export interface CreateExpenseClaimPayload {
+  claimNumber?: string;
+  employeeId?: string;
+  employeeName?: string;
+  category: string;
+  amount: number;
+  currency?: string;
+  merchantName?: string | null;
+  expenseDate?: string;
+  receiptUrl?: string | null;
+  items?: ExpenseItemDto[];
+  status?: ExpenseStatus;
+}
+
+export interface UpdateExpenseClaimPayload {
+  employeeId?: string;
+  employeeName?: string;
+  category?: string;
+  amount?: number;
+  currency?: string;
+  merchantName?: string | null;
+  expenseDate?: string;
+  receiptUrl?: string | null;
+  rejectionReason?: string | null;
+  items?: ExpenseItemDto[];
+  status?: ExpenseStatus;
+}
+
+export interface ScanReceiptPayload {
+  imageUrl?: string;
+  base64?: string;
+  mimeType?: string;
+  rawText?: string;
+}
+
+export interface ScannedReceiptResult {
+  merchantName: string;
+  amount: number;
+  currency: string;
+  expenseDate: string;
+  category: string;
+  taxAmount?: number;
+  confidence: number;
+  items: ExpenseItemDto[];
+  rawText?: string;
+}
+
+export interface SignalExpenseClaimPayload {
+  action: 'APPROVE' | 'REJECT' | 'REIMBURSE';
+  approvedBy?: string;
+  rejectedBy?: string;
+  reason?: string;
+  accountId?: string;
+  reimbursedBy?: string;
+  notes?: string;
+}
+
+export interface ExpenseListParams {
+  page?: number;
+  limit?: number;
+  status?: ExpenseStatus;
+  category?: string;
+  employeeId?: string;
+  search?: string;
+}
+

@@ -132,4 +132,17 @@ export class FinanceController {
   ): Promise<RecurringExpense> {
     return this.financeService.createSubscription(user.organizationId, dto);
   }
+
+  @Get('journal-entries')
+  @RequirePermissions(PERMISSIONS.FINANCE_READ)
+  @ApiOperation({
+    summary: 'List journal entries',
+    description: 'Lists all double-entry journal entries for tenant',
+  })
+  async findAllJournalEntries(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<JournalEntry[]> {
+    return this.financeService.findAllJournalEntries(user.organizationId);
+  }
 }
+

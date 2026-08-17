@@ -291,4 +291,12 @@ export class FinanceService {
 
     return this.recurringRepository.save(sub);
   }
+
+  async findAllJournalEntries(tenantId: string): Promise<JournalEntry[]> {
+    return this.journalRepository.find({
+      where: { tenantId },
+      order: { entryDate: 'DESC', createdAt: 'DESC' },
+    });
+  }
 }
+

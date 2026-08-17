@@ -42,6 +42,7 @@ describe('FinanceController', () => {
       createBudget: jest.fn().mockResolvedValue({ id: 'bud-1' } as any),
       findAllSubscriptions: jest.fn().mockResolvedValue([]),
       createSubscription: jest.fn().mockResolvedValue({ id: 'sub-1' } as any),
+      findAllJournalEntries: jest.fn().mockResolvedValue([]),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -111,4 +112,10 @@ describe('FinanceController', () => {
     await controller.createSubscription(mockUser, subDto);
     expect(financeService.createSubscription).toHaveBeenCalledWith('tenant-123', subDto);
   });
+
+  it('should list journal entries', async () => {
+    await controller.findAllJournalEntries(mockUser);
+    expect(financeService.findAllJournalEntries).toHaveBeenCalledWith('tenant-123');
+  });
 });
+
