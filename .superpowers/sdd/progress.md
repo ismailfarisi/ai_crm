@@ -1,15 +1,15 @@
 # Subagent-Driven Development Progress Ledger
 
-Plan: `docs/superpowers/plans/2026-08-17-visual-automation-studio.md`
-Feature: n8n-Style Visual Automation Studio with Temporal Dynamic DAG Orchestration
+Plan: `docs/superpowers/plans/2026-08-17-finance-expenses-treasury.md`
+Feature: SME Finance, Expenses, Treasury & Cashflow Engine
 
 ## Task Ledger
-- [x] Task 1: Shared RBAC Permissions, Automation Graph & Node Types - Complete (commit `e3e8d58`)
-- [x] Task 2: Backend Database Entities & TypeORM Migration - Complete (commit `821a2fc`)
-- [x] Task 3: Temporal Dynamic DAG Workflow Engine, Expression Evaluator, and Activities - Complete (commit `7d2395c`)
-- [x] Task 4: Automations Backend Service, Controller, Webhook Ingress & Tests - Complete (commit `fc6dddf`)
-- [x] Task 5: Frontend Canvas Dependencies, API Client & State Hooks - Complete (commit `cf3274c`)
-- [x] Task 6: Custom React Flow Node Components & Node Palette Drawer - Complete (commit `42e8a43`)
-- [x] Task 7: Node Inspector Drawer, Expression Previewer & Test Run Drawer - Complete (commit `aee18ed`)
-- [x] Task 8: Full Automations Studio Pages & App Navigation - Complete (commit `d3885e4`)
-- [x] Task 9: Event Bridge & End-to-End Verification - Complete (commit `fc96fa4`)
+- [x] Task 1: Shared RBAC Permissions, Finance & Expense Types - Complete (commit `3af3636`)
+- [x] Task 2: Backend Database Entities & TypeORM Migration - Complete (commit `fe4052f`)
+- [x] Task 3: Temporal Expense Approval Workflow & Activities - Complete (commit `0bee3bc`)
+- [x] Task 4: Finance & Expense Backend Services, Controllers, AI OCR & Tests - Complete (commit `a985527`)
+- [x] Task 5: Frontend Finance API Client & State Hooks - Complete (commit `b641c2f`)
+- [x] Task 6: Treasury & Cashflow Dashboard Components - Complete (commit `c6852f5`)
+- [x] Task 7: Expense Claims Components, Receipt Zoomer & AI OCR Scanner - Complete (commit `30cbba6`)
+- [x] Task 8: Category Budgets, Accounts & Subscriptions Components - Complete (commit `044b6c7`)
+- [x] Task 9: Full Finance Routes, Navigation & E2E Verification - Complete (commit `ef5c4bb`)
