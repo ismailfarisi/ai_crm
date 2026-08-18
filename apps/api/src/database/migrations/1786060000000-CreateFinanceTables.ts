@@ -6,27 +6,45 @@ export class CreateFinanceTables1786060000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     // ─── Enums ─────────────────────────────────────────────────────────────
     await queryRunner.query(
-      `CREATE TYPE "finance_accounts_account_type_enum" AS ENUM('BANK', 'CASH', 'CREDIT_CARD', 'CLEARING')`,
+      `DO $$ BEGIN
+        CREATE TYPE "finance_accounts_account_type_enum" AS ENUM('BANK', 'CASH', 'CREDIT_CARD', 'CLEARING');
+      EXCEPTION WHEN duplicate_object THEN null;
+      END $$;`,
     );
     await queryRunner.query(
-      `CREATE TYPE "expense_claims_status_enum" AS ENUM('DRAFT', 'SUBMITTED', 'APPROVED', 'PAID', 'REJECTED')`,
+      `DO $$ BEGIN
+        CREATE TYPE "expense_claims_status_enum" AS ENUM('DRAFT', 'SUBMITTED', 'APPROVED', 'PAID', 'REJECTED');
+      EXCEPTION WHEN duplicate_object THEN null;
+      END $$;`,
     );
     await queryRunner.query(
-      `CREATE TYPE "category_budgets_period_enum" AS ENUM('MONTHLY', 'QUARTERLY', 'ANNUAL')`,
+      `DO $$ BEGIN
+        CREATE TYPE "category_budgets_period_enum" AS ENUM('MONTHLY', 'QUARTERLY', 'ANNUAL');
+      EXCEPTION WHEN duplicate_object THEN null;
+      END $$;`,
     );
     await queryRunner.query(
-      `CREATE TYPE "recurring_expenses_billing_interval_enum" AS ENUM('MONTHLY', 'ANNUAL')`,
+      `DO $$ BEGIN
+        CREATE TYPE "recurring_expenses_billing_interval_enum" AS ENUM('MONTHLY', 'ANNUAL');
+      EXCEPTION WHEN duplicate_object THEN null;
+      END $$;`,
     );
     await queryRunner.query(
-      `CREATE TYPE "recurring_expenses_status_enum" AS ENUM('ACTIVE', 'PAUSED', 'CANCELLED')`,
+      `DO $$ BEGIN
+        CREATE TYPE "recurring_expenses_status_enum" AS ENUM('ACTIVE', 'PAUSED', 'CANCELLED');
+      EXCEPTION WHEN duplicate_object THEN null;
+      END $$;`,
     );
     await queryRunner.query(
-      `CREATE TYPE "journal_entries_reference_type_enum" AS ENUM('EXPENSE', 'INVOICE', 'TRANSFER', 'MANUAL')`,
+      `DO $$ BEGIN
+        CREATE TYPE "journal_entries_reference_type_enum" AS ENUM('EXPENSE', 'INVOICE', 'TRANSFER', 'MANUAL');
+      EXCEPTION WHEN duplicate_object THEN null;
+      END $$;`,
     );
 
     // ─── finance_accounts ──────────────────────────────────────────────────
     await queryRunner.query(
-      `CREATE TABLE "finance_accounts" (
+      `CREATE TABLE IF NOT EXISTS "finance_accounts" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "tenantId" uuid NOT NULL,
         "name" character varying(255) NOT NULL,
@@ -41,15 +59,18 @@ export class CreateFinanceTables1786060000000 implements MigrationInterface {
       )`,
     );
     await queryRunner.query(
-      `CREATE INDEX "idx_finance_accounts_tenant_id" ON "finance_accounts" ("tenantId")`,
+      `CREATE INDEX IF NOT EXISTS "idx_finance_accounts_tenant_id" ON "finance_accounts" ("tenantId")`,
     );
     await queryRunner.query(
-      `ALTER TABLE "finance_accounts" ADD CONSTRAINT "FK_finance_accounts_tenant_id" FOREIGN KEY ("tenantId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+      `DO $$ BEGIN
+        ALTER TABLE "finance_accounts" ADD CONSTRAINT "FK_finance_accounts_tenant_id" FOREIGN KEY ("tenantId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+      EXCEPTION WHEN duplicate_object THEN null;
+      END $$;`,
     );
 
     // ─── expense_claims ────────────────────────────────────────────────────
     await queryRunner.query(
-      `CREATE TABLE "expense_claims" (
+      `CREATE TABLE IF NOT EXISTS "expense_claims" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "tenantId" uuid NOT NULL,
         "claimNumber" character varying(100) NOT NULL,
@@ -74,15 +95,18 @@ export class CreateFinanceTables1786060000000 implements MigrationInterface {
       )`,
     );
     await queryRunner.query(
-      `CREATE INDEX "idx_expense_claims_tenant_id" ON "expense_claims" ("tenantId")`,
+      `CREATE INDEX IF NOT EXISTS "idx_expense_claims_tenant_id" ON "expense_claims" ("tenantId")`,
     );
     await queryRunner.query(
-      `ALTER TABLE "expense_claims" ADD CONSTRAINT "FK_expense_claims_tenant_id" FOREIGN KEY ("tenantId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+      `DO $$ BEGIN
+        ALTER TABLE "expense_claims" ADD CONSTRAINT "FK_expense_claims_tenant_id" FOREIGN KEY ("tenantId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+      EXCEPTION WHEN duplicate_object THEN null;
+      END $$;`,
     );
 
     // ─── category_budgets ──────────────────────────────────────────────────
     await queryRunner.query(
-      `CREATE TABLE "category_budgets" (
+      `CREATE TABLE IF NOT EXISTS "category_budgets" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "tenantId" uuid NOT NULL,
         "category" character varying(100) NOT NULL,
@@ -98,15 +122,18 @@ export class CreateFinanceTables1786060000000 implements MigrationInterface {
       )`,
     );
     await queryRunner.query(
-      `CREATE INDEX "idx_category_budgets_tenant_id" ON "category_budgets" ("tenantId")`,
+      `CREATE INDEX IF NOT EXISTS "idx_category_budgets_tenant_id" ON "category_budgets" ("tenantId")`,
     );
     await queryRunner.query(
-      `ALTER TABLE "category_budgets" ADD CONSTRAINT "FK_category_budgets_tenant_id" FOREIGN KEY ("tenantId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+      `DO $$ BEGIN
+        ALTER TABLE "category_budgets" ADD CONSTRAINT "FK_category_budgets_tenant_id" FOREIGN KEY ("tenantId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+      EXCEPTION WHEN duplicate_object THEN null;
+      END $$;`,
     );
 
     // ─── recurring_expenses ────────────────────────────────────────────────
     await queryRunner.query(
-      `CREATE TABLE "recurring_expenses" (
+      `CREATE TABLE IF NOT EXISTS "recurring_expenses" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "tenantId" uuid NOT NULL,
         "vendorName" character varying(255) NOT NULL,
@@ -122,18 +149,24 @@ export class CreateFinanceTables1786060000000 implements MigrationInterface {
       )`,
     );
     await queryRunner.query(
-      `CREATE INDEX "idx_recurring_expenses_tenant_id" ON "recurring_expenses" ("tenantId")`,
+      `CREATE INDEX IF NOT EXISTS "idx_recurring_expenses_tenant_id" ON "recurring_expenses" ("tenantId")`,
     );
     await queryRunner.query(
-      `ALTER TABLE "recurring_expenses" ADD CONSTRAINT "FK_recurring_expenses_tenant_id" FOREIGN KEY ("tenantId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+      `DO $$ BEGIN
+        ALTER TABLE "recurring_expenses" ADD CONSTRAINT "FK_recurring_expenses_tenant_id" FOREIGN KEY ("tenantId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+      EXCEPTION WHEN duplicate_object THEN null;
+      END $$;`,
     );
     await queryRunner.query(
-      `ALTER TABLE "recurring_expenses" ADD CONSTRAINT "FK_recurring_expenses_finance_account_id" FOREIGN KEY ("financeAccountId") REFERENCES "finance_accounts"("id") ON DELETE SET NULL ON UPDATE NO ACTION`,
+      `DO $$ BEGIN
+        ALTER TABLE "recurring_expenses" ADD CONSTRAINT "FK_recurring_expenses_finance_account_id" FOREIGN KEY ("financeAccountId") REFERENCES "finance_accounts"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+      EXCEPTION WHEN duplicate_object THEN null;
+      END $$;`,
     );
 
     // ─── journal_entries ───────────────────────────────────────────────────
     await queryRunner.query(
-      `CREATE TABLE "journal_entries" (
+      `CREATE TABLE IF NOT EXISTS "journal_entries" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "tenantId" uuid NOT NULL,
         "entryNumber" character varying(100) NOT NULL,
@@ -147,10 +180,13 @@ export class CreateFinanceTables1786060000000 implements MigrationInterface {
       )`,
     );
     await queryRunner.query(
-      `CREATE INDEX "idx_journal_entries_tenant_id" ON "journal_entries" ("tenantId")`,
+      `CREATE INDEX IF NOT EXISTS "idx_journal_entries_tenant_id" ON "journal_entries" ("tenantId")`,
     );
     await queryRunner.query(
-      `ALTER TABLE "journal_entries" ADD CONSTRAINT "FK_journal_entries_tenant_id" FOREIGN KEY ("tenantId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+      `DO $$ BEGIN
+        ALTER TABLE "journal_entries" ADD CONSTRAINT "FK_journal_entries_tenant_id" FOREIGN KEY ("tenantId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+      EXCEPTION WHEN duplicate_object THEN null;
+      END $$;`,
     );
   }
 

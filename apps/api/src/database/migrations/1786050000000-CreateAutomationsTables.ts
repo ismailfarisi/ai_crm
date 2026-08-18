@@ -5,10 +5,13 @@ export class CreateAutomationsTables1786050000000 implements MigrationInterface 
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `CREATE TYPE "automation_workflows_status_enum" AS ENUM('DRAFT', 'ACTIVE', 'PAUSED')`,
+      `DO $$ BEGIN
+        CREATE TYPE "automation_workflows_status_enum" AS ENUM('DRAFT', 'ACTIVE', 'PAUSED');
+      EXCEPTION WHEN duplicate_object THEN null;
+      END $$;`,
     );
     await queryRunner.query(
-      `CREATE TABLE "automation_workflows" (
+      `CREATE TABLE IF NOT EXISTS "automation_workflows" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "tenantId" uuid NOT NULL,
         "name" character varying(255) NOT NULL,
@@ -27,17 +30,23 @@ export class CreateAutomationsTables1786050000000 implements MigrationInterface 
       )`,
     );
     await queryRunner.query(
-      `CREATE INDEX "IDX_automation_workflows_tenant_id" ON "automation_workflows" ("tenantId")`,
+      `CREATE INDEX IF NOT EXISTS "IDX_automation_workflows_tenant_id" ON "automation_workflows" ("tenantId")`,
     );
     await queryRunner.query(
-      `ALTER TABLE "automation_workflows" ADD CONSTRAINT "FK_automation_workflows_tenant_id" FOREIGN KEY ("tenantId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+      `DO $$ BEGIN
+        ALTER TABLE "automation_workflows" ADD CONSTRAINT "FK_automation_workflows_tenant_id" FOREIGN KEY ("tenantId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+      EXCEPTION WHEN duplicate_object THEN null;
+      END $$;`,
     );
 
     await queryRunner.query(
-      `CREATE TYPE "automation_executions_status_enum" AS ENUM('RUNNING', 'WAITING_APPROVAL', 'COMPLETED', 'FAILED', 'CANCELLED')`,
+      `DO $$ BEGIN
+        CREATE TYPE "automation_executions_status_enum" AS ENUM('RUNNING', 'WAITING_APPROVAL', 'COMPLETED', 'FAILED', 'CANCELLED');
+      EXCEPTION WHEN duplicate_object THEN null;
+      END $$;`,
     );
     await queryRunner.query(
-      `CREATE TABLE "automation_executions" (
+      `CREATE TABLE IF NOT EXISTS "automation_executions" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "tenantId" uuid NOT NULL,
         "workflowId" uuid NOT NULL,
@@ -52,16 +61,22 @@ export class CreateAutomationsTables1786050000000 implements MigrationInterface 
       )`,
     );
     await queryRunner.query(
-      `CREATE INDEX "IDX_automation_executions_tenant_id" ON "automation_executions" ("tenantId")`,
+      `CREATE INDEX IF NOT EXISTS "IDX_automation_executions_tenant_id" ON "automation_executions" ("tenantId")`,
     );
     await queryRunner.query(
-      `CREATE INDEX "IDX_automation_executions_workflow_id" ON "automation_executions" ("workflowId")`,
+      `CREATE INDEX IF NOT EXISTS "IDX_automation_executions_workflow_id" ON "automation_executions" ("workflowId")`,
     );
     await queryRunner.query(
-      `ALTER TABLE "automation_executions" ADD CONSTRAINT "FK_automation_executions_tenant_id" FOREIGN KEY ("tenantId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+      `DO $$ BEGIN
+        ALTER TABLE "automation_executions" ADD CONSTRAINT "FK_automation_executions_tenant_id" FOREIGN KEY ("tenantId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+      EXCEPTION WHEN duplicate_object THEN null;
+      END $$;`,
     );
     await queryRunner.query(
-      `ALTER TABLE "automation_executions" ADD CONSTRAINT "FK_automation_executions_workflow_id" FOREIGN KEY ("workflowId") REFERENCES "automation_workflows"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+      `DO $$ BEGIN
+        ALTER TABLE "automation_executions" ADD CONSTRAINT "FK_automation_executions_workflow_id" FOREIGN KEY ("workflowId") REFERENCES "automation_workflows"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+      EXCEPTION WHEN duplicate_object THEN null;
+      END $$;`,
     );
   }
 
