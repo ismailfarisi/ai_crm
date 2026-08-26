@@ -12,9 +12,11 @@ import {
 } from '@/config/configuration';
 import { AuthModule } from '@/modules/auth/auth.module';
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
+import { AutomationsModule } from '@/modules/automations/automations.module';
 import { ChannelsModule } from '@/modules/channels/channels.module';
 import { ContactsModule } from '@/modules/contacts/contacts.module';
 import { CustomersModule } from '@/modules/customers/customers.module';
+import { FinanceModule } from '@/modules/finance/finance.module';
 import { HealthModule } from '@/modules/health/health.module';
 import { InvitationsModule } from '@/modules/invitations/invitations.module';
 import { MailModule } from '@/modules/mail/mail.module';
@@ -85,6 +87,8 @@ import { UsersModule } from '@/modules/users/users.module';
     TemporalModule,
     QuotesModule,
     ChannelsModule,
+    AutomationsModule,
+    FinanceModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

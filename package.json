@@ -14,6 +14,7 @@
     "lint": "pnpm -r lint",
     "test": "pnpm -r --filter ./packages/* --filter ./apps/* test",
     "test:e2e": "pnpm --filter api test:e2e",
+    "test:e2e:web": "pnpm --filter web test:e2e",
     "db:up": "docker compose up -d postgres redis temporal",
     "db:down": "docker compose down",
     "db:reset": "docker compose down -v && docker compose up -d postgres redis temporal",

@@ -30,8 +30,7 @@ export function RegisterForm() {
     setFormError(null);
     try {
       await api.auth.register(values);
-      router.replace('/dashboard');
-      router.refresh();
+      window.location.href = '/dashboard';
     } catch (error) {
       if (error instanceof ApiError) {
         for (const [field, message] of Object.entries(error.fieldErrors)) {

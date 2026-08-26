@@ -31,10 +31,8 @@ export function LoginForm() {
     setFormError(null);
     try {
       await api.auth.login(values);
-      // The session cookie is set by the API; refresh so server components
-      // re-render with it before navigating.
-      router.replace(searchParams.get('next') ?? '/dashboard');
-      router.refresh();
+      // Ensure the browser navigates with the newly set cookie headers
+      window.location.href = searchParams.get('next') ?? '/dashboard';
     } catch (error) {
       if (error instanceof ApiError) {
         for (const [field, message] of Object.entries(error.fieldErrors)) {

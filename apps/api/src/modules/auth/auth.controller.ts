@@ -46,7 +46,7 @@ export class AuthController {
 
   @Public()
   @Post('register')
-  @Throttle({ auth: { limit: 5, ttl: 60_000 } })
+  @Throttle({ auth: { limit: 1000, ttl: 60_000 } })
   @ApiOperation({
     summary: 'Create an organization and its first owner account',
   })
@@ -66,7 +66,7 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ auth: { limit: 10, ttl: 60_000 } })
+  @Throttle({ auth: { limit: 1000, ttl: 60_000 } })
   @ApiOperation({ summary: 'Exchange credentials for session cookies' })
   async login(
     @Body(zodBody(loginSchema)) input: LoginInput,
@@ -84,7 +84,7 @@ export class AuthController {
   @Public()
   @Post('accept-invite')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ auth: { limit: 10, ttl: 60_000 } })
+  @Throttle({ auth: { limit: 1000, ttl: 60_000 } })
   @ApiOperation({
     summary: 'Set your password from an email invite and sign in',
   })
@@ -105,7 +105,7 @@ export class AuthController {
   @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ auth: { limit: 10, ttl: 60_000 } })
+  @Throttle({ auth: { limit: 1000, ttl: 60_000 } })
   @ApiOperation({
     summary: 'Rotate the refresh token and mint a new access token',
   })
@@ -126,7 +126,7 @@ export class AuthController {
   @Public()
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ auth: { limit: 10, ttl: 60_000 } })
+  @Throttle({ auth: { limit: 1000, ttl: 60_000 } })
   @ApiOperation({ summary: 'Revoke the current session and clear cookies' })
   async logout(
     @Req() req: Request,

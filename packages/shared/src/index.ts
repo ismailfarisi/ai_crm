@@ -8,3 +8,5 @@ export * from './schemas/rbac';
 export * from './schemas/teams';
 export * from './types/api';
 export * from './quotes/types';
+export * from './automations/types';
+export * from './finance/types';

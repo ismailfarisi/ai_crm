@@ -32,10 +32,7 @@ export function AcceptInviteForm() {
     setFormError(null);
     try {
       await api.auth.acceptInvite(values);
-      // The session cookies are set by the API; refresh so server components
-      // re-render with the session before navigating into the app.
-      router.replace('/dashboard');
-      router.refresh();
+      window.location.href = '/dashboard';
     } catch (error) {
       if (error instanceof ApiError) {
         for (const [field, message] of Object.entries(error.fieldErrors)) {

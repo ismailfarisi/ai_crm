@@ -10,6 +10,7 @@ import {
   ChevronRight,
   CircleDot,
   FileText,
+  Landmark,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -23,6 +24,7 @@ import {
   UserRoundCog,
   Users,
   X,
+  Zap,
 } from 'lucide-react';
 import { PERMISSIONS } from '@saas/shared';
 import type { AccessRule } from '@/lib/access';
@@ -78,6 +80,18 @@ const CORE_ACTION_ITEMS: NavItem[] = [
     label: 'Invoices',
     icon: Receipt,
     rule: { permission: PERMISSIONS.INVOICE_READ },
+  },
+  {
+    href: '/finance',
+    label: 'Finance',
+    icon: Landmark,
+    rule: { permission: PERMISSIONS.FINANCE_READ },
+  },
+  {
+    href: '/automations',
+    label: 'Automations',
+    icon: Zap,
+    rule: { permission: PERMISSIONS.AUTOMATION_READ },
   },
 ];
 

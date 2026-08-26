@@ -17,6 +17,22 @@ describe('Channel Permissions & Schemas', () => {
     expect(PERMISSIONS.CHANNEL_SEND).toBe('channel:send');
   });
 
+  it('should include automation permissions in PERMISSIONS catalog', () => {
+    expect(PERMISSIONS.AUTOMATION_READ).toBe('automation:read');
+    expect(PERMISSIONS.AUTOMATION_CREATE).toBe('automation:create');
+    expect(PERMISSIONS.AUTOMATION_UPDATE).toBe('automation:update');
+    expect(PERMISSIONS.AUTOMATION_DELETE).toBe('automation:delete');
+    expect(PERMISSIONS.AUTOMATION_EXECUTE).toBe('automation:execute');
+    expect(PERMISSIONS.AUTOMATION_APPROVE).toBe('automation:approve');
+  });
+
+  it('should include finance permissions in PERMISSIONS catalog', () => {
+    expect(PERMISSIONS.FINANCE_READ).toBe('finance:read');
+    expect(PERMISSIONS.FINANCE_MANAGE).toBe('finance:manage');
+    expect(PERMISSIONS.EXPENSE_SUBMIT).toBe('expense:submit');
+    expect(PERMISSIONS.EXPENSE_APPROVE).toBe('expense:approve');
+  });
+
   it('should validate Meta WhatsApp credentials payload', () => {
     const valid = metaWhatsAppConfigSchema.safeParse({
       phoneNumberId: '123456789',
