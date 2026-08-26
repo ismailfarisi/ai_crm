@@ -12,7 +12,16 @@ export interface ParsedWebhookMessage {
 }
 
 export interface ChannelDriver {
-  testConnection(credentials: Record<string, any>): Promise<{ success: boolean; message: string }>;
-  sendMessage(credentials: Record<string, any>, payload: OutboundPayload): Promise<{ externalId?: string; rawResponse?: any }>;
-  parseWebhookPayload(credentials: Record<string, any>, headers: any, body: any): Promise<ParsedWebhookMessage | null>;
+  testConnection(
+    credentials: Record<string, any>,
+  ): Promise<{ success: boolean; message: string }>;
+  sendMessage(
+    credentials: Record<string, any>,
+    payload: OutboundPayload,
+  ): Promise<{ externalId?: string; rawResponse?: any }>;
+  parseWebhookPayload(
+    credentials: Record<string, any>,
+    headers: any,
+    body: any,
+  ): Promise<ParsedWebhookMessage | null>;
 }

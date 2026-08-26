@@ -1,4 +1,9 @@
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  OnModuleDestroy,
+  Logger,
+} from '@nestjs/common';
 import { Client, Connection } from '@temporalio/client';
 
 @Injectable()
@@ -15,7 +20,9 @@ export class TemporalService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(`Connected to Temporal Server at ${address}`);
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`Temporal server connection deferred/failed: ${errorMsg}`);
+      this.logger.warn(
+        `Temporal server connection deferred/failed: ${errorMsg}`,
+      );
     }
   }
 
@@ -33,7 +40,9 @@ export class TemporalService implements OnModuleInit, OnModuleDestroy {
 
   getClient(): Client {
     if (!this.client) {
-      throw new Error('Temporal client is not initialized or server is offline');
+      throw new Error(
+        'Temporal client is not initialized or server is offline',
+      );
     }
     return this.client;
   }

@@ -5,19 +5,24 @@ export async function draftQuoteAIActivity(input: QuoteWorkflowInput): Promise<{
   items: QuoteLineItem[];
   totalAmount: number;
 }> {
-  const items: QuoteLineItem[] = input.items && input.items.length > 0 ? input.items : [
-    {
-      id: 'ai-line-1',
-      type: 'product',
-      description: `AI Drafted Service for: ${input.title}`,
-      quantity: 1,
-      unitPrice: input.totalAmount || 500,
-      subtotal: input.totalAmount || 500,
-    },
-  ];
+  const items: QuoteLineItem[] =
+    input.items && input.items.length > 0
+      ? input.items
+      : [
+          {
+            id: 'ai-line-1',
+            type: 'product',
+            description: `AI Drafted Service for: ${input.title}`,
+            quantity: 1,
+            unitPrice: input.totalAmount || 500,
+            subtotal: input.totalAmount || 500,
+          },
+        ];
   const totalAmount = items.reduce(
     (acc, item) =>
-      acc + (item.subtotal ?? (Number(item.quantity || 0) * Number(item.unitPrice || 0))),
+      acc +
+      (item.subtotal ??
+        Number(item.quantity || 0) * Number(item.unitPrice || 0)),
     0,
   );
 
@@ -35,7 +40,9 @@ export async function saveQuoteStateActivity(params: {
   totalAmount?: number;
 }): Promise<void> {
   // Activity implementation for persisting quote state
-  console.log(`[QuoteActivity] saveQuoteState: quoteId=${params.quoteId}, status=${params.status}`);
+  console.log(
+    `[QuoteActivity] saveQuoteState: quoteId=${params.quoteId}, status=${params.status}`,
+  );
 }
 
 export async function updateQuoteStatusActivity(params: {
@@ -44,7 +51,9 @@ export async function updateQuoteStatusActivity(params: {
   reason?: string;
 }): Promise<void> {
   // Activity implementation for updating status (e.g. REJECTED)
-  console.log(`[QuoteActivity] updateQuoteStatus: quoteId=${params.quoteId}, status=${params.status}, reason=${params.reason ?? 'N/A'}`);
+  console.log(
+    `[QuoteActivity] updateQuoteStatus: quoteId=${params.quoteId}, status=${params.status}, reason=${params.reason ?? 'N/A'}`,
+  );
 }
 
 export async function generateInvoiceActivity(
@@ -52,14 +61,17 @@ export async function generateInvoiceActivity(
 ): Promise<string> {
   const quoteId = typeof input === 'string' ? input : input.quoteId;
   const invoiceId = `inv_${Date.now()}_${quoteId.slice(0, 8)}`;
-  console.log(`[QuoteActivity] generateInvoice: quoteId=${quoteId}, invoiceId=${invoiceId}`);
+  console.log(
+    `[QuoteActivity] generateInvoice: quoteId=${quoteId}, invoiceId=${invoiceId}`,
+  );
   return invoiceId;
 }
 
 export async function sendNotificationActivity(
-  params: string | { quoteId: string; tenantId?: string; type?: string; message?: string },
+  params:
+    | string
+    | { quoteId: string; tenantId?: string; type?: string; message?: string },
 ): Promise<void> {
   const quoteId = typeof params === 'string' ? params : params.quoteId;
   console.log(`[QuoteActivity] sendNotification: quoteId=${quoteId}`);
 }
-

@@ -36,10 +36,20 @@ export class Quote {
   @Column({ name: 'customer_id', type: 'uuid', nullable: true })
   customerId: string | null;
 
-  @Column({ name: 'customer_name', type: 'varchar', length: 255, default: 'General Customer' })
+  @Column({
+    name: 'customer_name',
+    type: 'varchar',
+    length: 255,
+    default: 'General Customer',
+  })
   customerName: string;
 
-  @Column({ name: 'customer_email', type: 'varchar', length: 255, nullable: true })
+  @Column({
+    name: 'customer_email',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
   customerEmail: string | null;
 
   @Column({
@@ -64,7 +74,12 @@ export class Quote {
   @Column({ name: 'valid_until', type: 'timestamptz', nullable: true })
   validUntil: Date | null;
 
-  @Column({ name: 'payment_terms', type: 'varchar', length: 50, default: 'immediate' })
+  @Column({
+    name: 'payment_terms',
+    type: 'varchar',
+    length: 50,
+    default: 'immediate',
+  })
   paymentTerms: string;
 
   @Column({ type: 'char', length: 3, default: 'USD' })
@@ -76,13 +91,31 @@ export class Quote {
   @Column({ type: 'jsonb', default: [] })
   items: QuoteLineItem[];
 
-  @Column({ name: 'subtotal_amount', type: 'numeric', precision: 12, scale: 2, default: 0 })
+  @Column({
+    name: 'subtotal_amount',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+  })
   subtotalAmount: number;
 
-  @Column({ name: 'discount_amount', type: 'numeric', precision: 12, scale: 2, default: 0 })
+  @Column({
+    name: 'discount_amount',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+  })
   discountAmount: number;
 
-  @Column({ name: 'tax_amount', type: 'numeric', precision: 12, scale: 2, default: 0 })
+  @Column({
+    name: 'tax_amount',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+  })
   taxAmount: number;
 
   @Column({ type: 'numeric', precision: 12, scale: 2, default: 0 })

@@ -4,7 +4,11 @@ import { Quote, QuoteCreatedBy, QuoteStatus } from './entities/quote.entity';
 import { Invoice } from './entities/invoice.entity';
 import { QuotesService } from './quotes.service';
 import { TemporalService } from '../temporal/temporal.service';
-import { CreateQuotePayload, QuoteLineItem, UpdateQuotePayload } from '@saas/shared';
+import {
+  CreateQuotePayload,
+  QuoteLineItem,
+  UpdateQuotePayload,
+} from '@saas/shared';
 
 describe('QuotesService', () => {
   let service: QuotesService;
@@ -202,7 +206,11 @@ describe('QuotesService', () => {
         items: updatedItems,
       };
 
-      const updated = await service.updateQuote(tenantId, quoteId, updatePayload);
+      const updated = await service.updateQuote(
+        tenantId,
+        quoteId,
+        updatePayload,
+      );
 
       expect(quoteRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -227,7 +235,17 @@ describe('QuotesService', () => {
         discountAmount: 50,
         taxAmount: 45,
         totalAmount: 495,
-        items: [{ id: '1', type: 'product', description: 'Item 1', quantity: 1, unitPrice: 500, discount: 10, taxRate: 10 }],
+        items: [
+          {
+            id: '1',
+            type: 'product',
+            description: 'Item 1',
+            quantity: 1,
+            unitPrice: 500,
+            discount: 10,
+            taxRate: 10,
+          },
+        ],
       } as Quote;
 
       quoteRepo.findOne = jest.fn().mockResolvedValue({ ...existingQuote });
@@ -261,12 +279,16 @@ describe('QuotesService', () => {
 
       const res = await service.findQuoteById(tenantId, quoteId);
       expect(res).toBe(existing);
-      expect(quoteRepo.findOne).toHaveBeenCalledWith({ where: { id: quoteId, tenantId } });
+      expect(quoteRepo.findOne).toHaveBeenCalledWith({
+        where: { id: quoteId, tenantId },
+      });
     });
 
     it('throws NotFoundException when quote is not found', async () => {
       quoteRepo.findOne = jest.fn().mockResolvedValue(null);
-      await expect(service.findQuoteById(tenantId, quoteId)).rejects.toBeInstanceOf(NotFoundException);
+      await expect(
+        service.findQuoteById(tenantId, quoteId),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 
@@ -286,7 +308,12 @@ describe('QuotesService', () => {
 
   describe('sendSignal', () => {
     it('signals APPROVE and updates quote status to APPROVED', async () => {
-      const existing = { id: quoteId, tenantId, status: QuoteStatus.DRAFT, workflowId: `quote-${quoteId}` } as Quote;
+      const existing = {
+        id: quoteId,
+        tenantId,
+        status: QuoteStatus.DRAFT,
+        workflowId: `quote-${quoteId}`,
+      } as Quote;
       quoteRepo.findOne = jest.fn().mockResolvedValue({ ...existing });
 
       const res = await service.sendSignal(tenantId, quoteId, 'APPROVE');
@@ -298,10 +325,17 @@ describe('QuotesService', () => {
     });
 
     it('signals REJECT and updates quote status to REJECTED', async () => {
-      const existing = { id: quoteId, tenantId, status: QuoteStatus.DRAFT, workflowId: `quote-${quoteId}` } as Quote;
+      const existing = {
+        id: quoteId,
+        tenantId,
+        status: QuoteStatus.DRAFT,
+        workflowId: `quote-${quoteId}`,
+      } as Quote;
       quoteRepo.findOne = jest.fn().mockResolvedValue({ ...existing });
 
-      const res = await service.sendSignal(tenantId, quoteId, 'REJECT', { reason: 'Price too high' });
+      const res = await service.sendSignal(tenantId, quoteId, 'REJECT', {
+        reason: 'Price too high',
+      });
       expect(mockWorkflowHandle.signal).toHaveBeenCalled();
       expect(quoteRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({ status: QuoteStatus.REJECTED }),
@@ -310,7 +344,11 @@ describe('QuotesService', () => {
     });
 
     it('throws BadRequestException on invalid action', async () => {
-      const existing = { id: quoteId, tenantId, status: QuoteStatus.DRAFT } as Quote;
+      const existing = {
+        id: quoteId,
+        tenantId,
+        status: QuoteStatus.DRAFT,
+      } as Quote;
       quoteRepo.findOne = jest.fn().mockResolvedValue(existing);
 
       await expect(

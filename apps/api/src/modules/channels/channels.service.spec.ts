@@ -1,19 +1,39 @@
-import { BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { ChannelsService } from './channels.service';
-import { ChannelConfig, ChannelProviderType, ChannelStatus } from './entities/channel-config.entity';
-import { ChannelMessage, MessageDirection, MessageStatus } from './entities/channel-message.entity';
+import {
+  ChannelConfig,
+  ChannelProviderType,
+  ChannelStatus,
+} from './entities/channel-config.entity';
+import {
+  ChannelMessage,
+  MessageDirection,
+  MessageStatus,
+} from './entities/channel-message.entity';
 import { ChannelCryptoService } from './services/channel-crypto.service';
 
 const orgId = '11111111-1111-1111-1111-111111111111';
 const actorId = '22222222-2222-2222-2222-222222222222';
-const cryptoService = new ChannelCryptoService('secret-key-32-characters-length!!');
+const cryptoService = new ChannelCryptoService(
+  'secret-key-32-characters-length!!',
+);
 
-function makeService(overrides: { configRepo?: any; messageRepo?: any; contactsService?: any } = {}) {
+function makeService(
+  overrides: {
+    configRepo?: any;
+    messageRepo?: any;
+    contactsService?: any;
+  } = {},
+) {
   const configs: ChannelConfig[] = [];
   const messages: ChannelMessage[] = [];
 
-  const configRepo = overrides.configRepo || ({
+  const configRepo = overrides.configRepo || {
     find: jest.fn().mockImplementation(async ({ where }) => {
       return configs.filter((c) => c.organizationId === where.organizationId);
     }),
@@ -46,9 +66,9 @@ function makeService(overrides: { configRepo?: any; messageRepo?: any; contactsS
       configs.push(config);
       return config;
     }),
-  } as unknown as Repository<ChannelConfig>);
+  };
 
-  const messageRepo = overrides.messageRepo || ({
+  const messageRepo = overrides.messageRepo || {
     find: jest.fn().mockImplementation(async ({ where }) => {
       return messages.filter((m) => {
         if (m.organizationId !== where.organizationId) return false;
@@ -65,22 +85,40 @@ function makeService(overrides: { configRepo?: any; messageRepo?: any; contactsS
       messages.push(msg);
       return msg;
     }),
-  } as unknown as Repository<ChannelMessage>);
+  };
 
-  const contactsService = overrides.contactsService || ({
-    findOrCreateForChannel: jest.fn().mockImplementation(async (organizationId, senderIdentifier, provider) => ({
-      id: 'contact-uuid-789',
-      organizationId,
-      firstName: senderIdentifier,
-      lastName: '',
-      phone: senderIdentifier.includes('@') ? null : senderIdentifier,
-      email: senderIdentifier.includes('@') ? senderIdentifier : null,
-      source: provider,
-    })),
-  } as any);
+  const contactsService =
+    overrides.contactsService ||
+    ({
+      findOrCreateForChannel: jest
+        .fn()
+        .mockImplementation(
+          async (organizationId, senderIdentifier, provider) => ({
+            id: 'contact-uuid-789',
+            organizationId,
+            firstName: senderIdentifier,
+            lastName: '',
+            phone: senderIdentifier.includes('@') ? null : senderIdentifier,
+            email: senderIdentifier.includes('@') ? senderIdentifier : null,
+            source: provider,
+          }),
+        ),
+    } as any);
 
-  const service = new ChannelsService(configRepo, messageRepo, cryptoService, contactsService);
-  return { service, configRepo, messageRepo, contactsService, configs, messages };
+  const service = new ChannelsService(
+    configRepo,
+    messageRepo,
+    cryptoService,
+    contactsService,
+  );
+  return {
+    service,
+    configRepo,
+    messageRepo,
+    contactsService,
+    configs,
+    messages,
+  };
 }
 
 describe('ChannelsService', () => {
@@ -129,7 +167,9 @@ describe('ChannelsService', () => {
       expect(res.provider).toBe(ChannelProviderType.EMAIL_RESEND);
       expect(res.webhookSecret).toBeDefined();
       expect(res.status).toBe(ChannelStatus.CONFIGURED);
-      expect(configs[0].encryptedCredentials).not.toContain('re_123456789_abcdef');
+      expect(configs[0].encryptedCredentials).not.toContain(
+        're_123456789_abcdef',
+      );
     });
 
     it('preserves existing decrypted credentials when updating with masked values', async () => {
@@ -296,7 +336,9 @@ describe('ChannelsService', () => {
       const all = await service.getMessages(orgId);
       expect(all).toHaveLength(2);
 
-      const filtered = await service.getMessages(orgId, { contactId: 'contact-1' });
+      const filtered = await service.getMessages(orgId, {
+        contactId: 'contact-1',
+      });
       expect(filtered).toHaveLength(1);
       expect(filtered[0].id).toBe('1');
     });
@@ -306,7 +348,12 @@ describe('ChannelsService', () => {
     it('throws UnauthorizedException when config is not found', async () => {
       const { service } = makeService();
       await expect(
-        service.verifyMetaChallenge(orgId, 'subscribe', 'token123', 'challenge_str'),
+        service.verifyMetaChallenge(
+          orgId,
+          'subscribe',
+          'token123',
+          'challenge_str',
+        ),
       ).rejects.toThrow(UnauthorizedException);
     });
 
@@ -316,7 +363,12 @@ describe('ChannelsService', () => {
         verifyToken: 'my_verify_token',
       });
       await expect(
-        service.verifyMetaChallenge(orgId, 'unsubscribe', 'my_verify_token', 'challenge_str'),
+        service.verifyMetaChallenge(
+          orgId,
+          'unsubscribe',
+          'my_verify_token',
+          'challenge_str',
+        ),
       ).rejects.toThrow(UnauthorizedException);
     });
 
@@ -326,7 +378,12 @@ describe('ChannelsService', () => {
         verifyToken: 'my_verify_token',
       });
       await expect(
-        service.verifyMetaChallenge(orgId, 'subscribe', 'wrong_token', 'challenge_str'),
+        service.verifyMetaChallenge(
+          orgId,
+          'subscribe',
+          'wrong_token',
+          'challenge_str',
+        ),
       ).rejects.toThrow(UnauthorizedException);
     });
 

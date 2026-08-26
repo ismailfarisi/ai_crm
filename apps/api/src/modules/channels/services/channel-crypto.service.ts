@@ -6,7 +6,10 @@ export class ChannelCryptoService {
   private readonly key: Buffer;
 
   constructor(@Optional() secretKey?: string) {
-    const secret = secretKey || process.env.APP_SECRET || 'default-secret-key-at-least-32-chars-long!';
+    const secret =
+      secretKey ||
+      process.env.APP_SECRET ||
+      'default-secret-key-at-least-32-chars-long!';
     this.key = Buffer.from(secret.padEnd(32, '0').slice(0, 32));
   }
 

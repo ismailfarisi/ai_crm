@@ -29,6 +29,6 @@ export interface QuoteWorkflowState {
 export const approveQuoteSignal = defineSignal('approveQuote');
 export const rejectQuoteSignal = defineSignal<[string]>('rejectQuote');
 export const manualOverrideSignal = defineSignal<[any]>('manualOverride');
-export const getQuoteWorkflowStateQuery =
-  defineQuery<QuoteWorkflowState>('getQuoteWorkflowState');
-
+export const getQuoteWorkflowStateQuery = defineQuery<QuoteWorkflowState>(
+  'getQuoteWorkflowState',
+);

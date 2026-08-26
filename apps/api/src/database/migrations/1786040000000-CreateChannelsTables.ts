@@ -71,9 +71,7 @@ export class CreateChannelsTables1786040000000 implements MigrationInterface {
       `DROP INDEX "public"."IDX_34a2381dd9a2d031c846866180"`,
     );
     await queryRunner.query(`DROP TABLE "channel_configs"`);
-    await queryRunner.query(
-      `DROP TYPE "public"."channel_configs_status_enum"`,
-    );
+    await queryRunner.query(`DROP TYPE "public"."channel_configs_status_enum"`);
     await queryRunner.query(
       `DROP TYPE "public"."channel_configs_provider_enum"`,
     );

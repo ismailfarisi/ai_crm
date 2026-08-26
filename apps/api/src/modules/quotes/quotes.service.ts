@@ -125,7 +125,9 @@ export class QuotesService {
       quote.customerEmail = payload.customerEmail;
     }
     if (payload.validUntil !== undefined) {
-      quote.validUntil = payload.validUntil ? new Date(payload.validUntil) : null;
+      quote.validUntil = payload.validUntil
+        ? new Date(payload.validUntil)
+        : null;
     }
     if (payload.paymentTerms !== undefined) {
       quote.paymentTerms = payload.paymentTerms;
@@ -193,7 +195,9 @@ export class QuotesService {
     } catch (err: unknown) {
       if (err instanceof BadRequestException) throw err;
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`Failed to send signal to workflow ${workflowId}: ${msg}`);
+      this.logger.warn(
+        `Failed to send signal to workflow ${workflowId}: ${msg}`,
+      );
       if (action === 'APPROVE') {
         quote.status = QuoteStatus.APPROVED;
       } else if (action === 'REJECT') {

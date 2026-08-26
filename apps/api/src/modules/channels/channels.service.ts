@@ -59,7 +59,9 @@ export class ChannelsService {
     }
   }
 
-  private maskCredentials(credentials: Record<string, any>): Record<string, any> {
+  private maskCredentials(
+    credentials: Record<string, any>,
+  ): Record<string, any> {
     const masked: Record<string, any> = {};
     const sensitiveKeys = [
       'accesstoken',
@@ -112,7 +114,9 @@ export class ChannelsService {
       let credentials: Record<string, any> | null = null;
       if (config.encryptedCredentials) {
         try {
-          const decrypted = this.cryptoService.decrypt(config.encryptedCredentials);
+          const decrypted = this.cryptoService.decrypt(
+            config.encryptedCredentials,
+          );
           credentials = this.maskCredentials(decrypted);
         } catch (e) {
           credentials = {};
@@ -180,7 +184,10 @@ export class ChannelsService {
         config.encryptedCredentials = encryptedCredentials;
       }
       config.webhookSecret = webhookSecret;
-      if (config.status === ChannelStatus.UNCONFIGURED && encryptedCredentials) {
+      if (
+        config.status === ChannelStatus.UNCONFIGURED &&
+        encryptedCredentials
+      ) {
         config.status = ChannelStatus.CONFIGURED;
       }
     } else {

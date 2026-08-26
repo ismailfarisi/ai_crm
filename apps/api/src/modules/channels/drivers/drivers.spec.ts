@@ -40,7 +40,9 @@ describe('Channel Drivers', () => {
           success: true,
           message: 'Connected to Telegram bot @TestBot',
         });
-        expect(global.fetch).toHaveBeenCalledWith('https://api.telegram.org/bot12345:ABC/getMe');
+        expect(global.fetch).toHaveBeenCalledWith(
+          'https://api.telegram.org/bot12345:ABC/getMe',
+        );
       });
 
       it('returns success false when botToken is invalid', async () => {
@@ -107,7 +109,10 @@ describe('Channel Drivers', () => {
         } as any);
 
         await expect(
-          driver.sendMessage({ botToken: '123' }, { recipient: 'bad_id', body: 'Hi' }),
+          driver.sendMessage(
+            { botToken: '123' },
+            { recipient: 'bad_id', body: 'Hi' },
+          ),
         ).rejects.toThrow('Chat not found');
       });
 
@@ -137,7 +142,11 @@ describe('Channel Drivers', () => {
       });
 
       it('returns null for empty or non-text message', async () => {
-        const parsed = await driver.parseWebhookPayload({}, {}, { message: {} });
+        const parsed = await driver.parseWebhookPayload(
+          {},
+          {},
+          { message: {} },
+        );
         expect(parsed).toBeNull();
       });
     });
@@ -298,7 +307,9 @@ describe('Channel Drivers', () => {
         verify: jest.fn().mockResolvedValue(true),
         sendMail: jest.fn().mockResolvedValue({ messageId: '<msg123@smtp>' }),
       };
-      (nodemailer.createTransport as jest.Mock).mockReturnValue(mockTransporter);
+      (nodemailer.createTransport as jest.Mock).mockReturnValue(
+        mockTransporter,
+      );
     });
 
     describe('testConnection', () => {
@@ -324,7 +335,9 @@ describe('Channel Drivers', () => {
       });
 
       it('returns success false when verify fails', async () => {
-        mockTransporter.verify.mockRejectedValue(new Error('Connection timeout'));
+        mockTransporter.verify.mockRejectedValue(
+          new Error('Connection timeout'),
+        );
         const res = await driver.testConnection({ host: 'smtp.example.com' });
         expect(res).toEqual({
           success: false,
@@ -337,7 +350,11 @@ describe('Channel Drivers', () => {
       it('sends email successfully via SMTP', async () => {
         const res = await driver.sendMessage(
           { host: 'smtp.example.com', user: 'sender@example.com' },
-          { recipient: 'dest@example.com', subject: 'Subject', body: 'Body content' },
+          {
+            recipient: 'dest@example.com',
+            subject: 'Subject',
+            body: 'Body content',
+          },
         );
 
         expect(res.externalId).toBe('<msg123@smtp>');
@@ -374,7 +391,11 @@ describe('Channel Drivers', () => {
       });
 
       it('returns null if sender missing', async () => {
-        const parsed = await driver.parseWebhookPayload({}, {}, { text: 'no sender' });
+        const parsed = await driver.parseWebhookPayload(
+          {},
+          {},
+          { text: 'no sender' },
+        );
         expect(parsed).toBeNull();
       });
     });
@@ -391,10 +412,14 @@ describe('Channel Drivers', () => {
           list: jest.fn().mockResolvedValue({ data: [] }),
         },
         emails: {
-          send: jest.fn().mockResolvedValue({ data: { id: 'resend_123' }, error: null }),
+          send: jest
+            .fn()
+            .mockResolvedValue({ data: { id: 'resend_123' }, error: null }),
         },
       };
-      (Resend as unknown as jest.Mock).mockImplementation(() => mockResendInstance);
+      (Resend as unknown as jest.Mock).mockImplementation(
+        () => mockResendInstance,
+      );
     });
 
     describe('testConnection', () => {
@@ -428,7 +453,11 @@ describe('Channel Drivers', () => {
       it('sends email successfully via Resend', async () => {
         const res = await driver.sendMessage(
           { apiKey: 're_123', fromEmail: 'sales@example.com' },
-          { recipient: 'lead@example.com', subject: 'Demo', body: 'Resend email body' },
+          {
+            recipient: 'lead@example.com',
+            subject: 'Demo',
+            body: 'Resend email body',
+          },
         );
 
         expect(res.externalId).toBe('resend_123');

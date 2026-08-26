@@ -1,11 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Param,
-  Post,
-  Query,
-} from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   PERMISSIONS,
@@ -25,14 +18,18 @@ export class ChannelsController {
 
   @Get('configs')
   @RequirePermissions(PERMISSIONS.CHANNEL_READ)
-  @ApiOperation({ summary: 'Get all channel configurations for the organization' })
+  @ApiOperation({
+    summary: 'Get all channel configurations for the organization',
+  })
   getConfigs(@CurrentUser() user: AuthenticatedUser) {
     return this.channelsService.getConfigs(user.organizationId);
   }
 
   @Post('configs/:provider')
   @RequirePermissions(PERMISSIONS.CHANNEL_MANAGE)
-  @ApiOperation({ summary: 'Save or update channel configuration for a provider' })
+  @ApiOperation({
+    summary: 'Save or update channel configuration for a provider',
+  })
   saveConfig(
     @CurrentUser() user: AuthenticatedUser,
     @Param('provider') provider: ChannelProviderType,
@@ -77,13 +74,9 @@ export class ChannelsController {
     @CurrentUser() user: AuthenticatedUser,
     @Body(zodBody(sendChannelMessageSchema)) body: SendChannelMessagePayload,
   ) {
-    return this.channelsService.sendMessage(
-      user.organizationId,
-      user.id,
-      {
-        ...body,
-        provider: body.provider as ChannelProviderType,
-      },
-    );
+    return this.channelsService.sendMessage(user.organizationId, user.id, {
+      ...body,
+      provider: body.provider as ChannelProviderType,
+    });
   }
 }
