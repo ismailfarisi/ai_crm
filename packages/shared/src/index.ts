@@ -10,3 +10,4 @@ export * from './types/api';
 export * from './quotes/types';
 export * from './automations/types';
 export * from './finance/types';
+export * from './ai/types';

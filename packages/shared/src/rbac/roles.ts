@@ -73,6 +73,7 @@ export const SYSTEM_ROLE_DEFINITIONS: SystemRoleDefinition[] = [
       PERMISSIONS.EXPENSE_SUBMIT,
       PERMISSIONS.EXPENSE_APPROVE,
       PERMISSIONS.AI_USE,
+      PERMISSIONS.AI_MANAGE,
     ],
     level: 10,
   },

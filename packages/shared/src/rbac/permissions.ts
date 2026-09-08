@@ -80,6 +80,7 @@ export const PERMISSIONS = {
 
   // AI
   AI_USE: 'ai:use',
+  AI_MANAGE: 'ai:manage',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -145,6 +146,7 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   [PERMISSIONS.EXPENSE_APPROVE]: 'Approve, reject and reimburse expense claims',
 
   [PERMISSIONS.AI_USE]: 'Use AI-powered features (receipt scanning, automation AI steps, quote drafting)',
+  [PERMISSIONS.AI_MANAGE]: 'Configure AI budgets and view AI usage across the organization',
 };
 
 /** Groups drive the layout of the role editor screen. */
@@ -247,7 +249,7 @@ export const PERMISSION_GROUPS: { key: string; label: string; permissions: Permi
   {
     key: 'ai',
     label: 'AI',
-    permissions: [PERMISSIONS.AI_USE],
+    permissions: [PERMISSIONS.AI_USE, PERMISSIONS.AI_MANAGE],
   },
 ];
 

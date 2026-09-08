@@ -8,6 +8,7 @@ import { JournalEntry } from './entities/journal-entry.entity';
 import { TemporalService } from '../temporal/temporal.service';
 import { AiService } from '../ai/ai.service';
 import { AiNotConfiguredException } from '../ai/interfaces/ai-provider.interface';
+import { AiBudgetExceededException } from '../ai/exceptions/ai-budget-exceeded.exception';
 import {
   CreateExpenseClaimDto,
   UpdateExpenseClaimDto,
@@ -408,6 +409,17 @@ describe('ExpensesService', () => {
     it('degrades gracefully without throwing when the AI call fails', async () => {
       (aiService.generateStructured as jest.Mock).mockRejectedValue(
         new Error('Network error'),
+      );
+
+      const dto: ScanReceiptDto = { rawText: 'some receipt text' };
+      const scanResult = await service.scanReceipt(dto, actor);
+
+      expect(scanResult.confidence).toBe(0);
+    });
+
+    it('degrades gracefully without throwing when the org has hit its AI budget', async () => {
+      (aiService.generateStructured as jest.Mock).mockRejectedValue(
+        new AiBudgetExceededException(tenantId, 10.5, 10),
       );
 
       const dto: ScanReceiptDto = { rawText: 'some receipt text' };

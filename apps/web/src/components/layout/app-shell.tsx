@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Bell,
+  Bot,
   Building2,
   ChevronDown,
   ChevronRight,
@@ -122,6 +123,12 @@ const SECONDARY_SECTIONS: NavSection[] = [
         label: 'Channels',
         icon: Radio,
         rule: { permission: PERMISSIONS.CHANNEL_MANAGE },
+      },
+      {
+        href: '/settings/ai',
+        label: 'AI Cost Guard',
+        icon: Bot,
+        rule: { permission: PERMISSIONS.AI_MANAGE },
       },
     ],
   },

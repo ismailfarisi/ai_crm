@@ -49,6 +49,10 @@ import type {
   ScannedReceiptResult,
   SignalExpenseClaimPayload,
   ExpenseListParams,
+  AiBudgetDto,
+  AiBudgetStatusDto,
+  UpsertAiBudgetPayload,
+  AiUsageLogDto,
 } from '@saas/shared';
 import { apiFetch } from './client';
 
@@ -257,6 +261,13 @@ export const api = {
         body: payload,
       }),
   },
+
+  ai: {
+    getBudget: () => apiFetch<AiBudgetStatusDto>('/ai/budget'),
+    upsertBudget: (payload: UpsertAiBudgetPayload) =>
+      apiFetch<AiBudgetDto>('/ai/budget', { method: 'PATCH', body: payload }),
+    listUsage: () => apiFetch<AiUsageLogDto[]>('/ai/usage'),
+  },
 };
 
 export interface ChannelMessageDto {
@@ -337,5 +348,8 @@ export const queryKeys = {
   // Expenses
   expenses: (params: ExpenseListParams = {}) => ['finance', 'expenses', params] as const,
   expense: (id: string) => ['finance', 'expenses', id] as const,
+  // AI
+  aiBudget: ['ai', 'budget'] as const,
+  aiUsage: ['ai', 'usage'] as const,
 };
 
