@@ -5,4 +5,5 @@ export * from './create-recurring-expense.dto';
 export * from './create-expense-claim.dto';
 export * from './update-expense-claim.dto';
 export * from './scan-receipt.dto';
+export * from './scanned-receipt.schema';
 export * from './signal-expense.dto';

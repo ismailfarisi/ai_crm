@@ -6,7 +6,14 @@ import { FinanceAccount } from './entities/finance-account.entity';
 import { CategoryBudget } from './entities/category-budget.entity';
 import { JournalEntry } from './entities/journal-entry.entity';
 import { TemporalService } from '../temporal/temporal.service';
-import { CreateExpenseClaimDto, UpdateExpenseClaimDto, SignalExpenseDto, ScanReceiptDto } from './dto';
+import { AiService } from '../ai/ai.service';
+import { AiNotConfiguredException } from '../ai/interfaces/ai-provider.interface';
+import {
+  CreateExpenseClaimDto,
+  UpdateExpenseClaimDto,
+  SignalExpenseDto,
+  ScanReceiptDto,
+} from './dto';
 
 describe('ExpensesService', () => {
   let service: ExpensesService;
@@ -15,10 +22,12 @@ describe('ExpensesService', () => {
   let budgetRepo: jest.Mocked<Partial<Repository<CategoryBudget>>>;
   let journalRepo: jest.Mocked<Partial<Repository<JournalEntry>>>;
   let temporalService: jest.Mocked<Partial<TemporalService>>;
+  let aiService: jest.Mocked<Partial<AiService>>;
   let mockWorkflowHandle: any;
 
   const tenantId = '11111111-1111-1111-1111-111111111111';
   const expenseId = '22222222-2222-2222-2222-222222222222';
+  const actor = { organizationId: tenantId, userId: 'user-1' };
 
   beforeEach(() => {
     mockWorkflowHandle = {
@@ -66,12 +75,17 @@ describe('ExpensesService', () => {
       } as any),
     };
 
+    aiService = {
+      generateStructured: jest.fn(),
+    };
+
     service = new ExpensesService(
       expenseRepo as unknown as Repository<ExpenseClaim>,
       accountRepo as unknown as Repository<FinanceAccount>,
       budgetRepo as unknown as Repository<CategoryBudget>,
       journalRepo as unknown as Repository<JournalEntry>,
       temporalService as unknown as TemporalService,
+      aiService as unknown as AiService,
     );
   });
 
@@ -101,7 +115,9 @@ describe('ExpensesService', () => {
 
     it('throws NotFoundException when claim is not found', async () => {
       expenseRepo.findOne = jest.fn().mockResolvedValue(null);
-      await expect(service.findById(tenantId, 'non-existent')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(
+        service.findById(tenantId, 'non-existent'),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 
@@ -117,7 +133,14 @@ describe('ExpensesService', () => {
         expenseDate: '2026-08-15',
         employeeId: 'emp-101',
         employeeName: 'Sarah Connor',
-        items: [{ description: 'Flight to SFO', quantity: 1, unitPrice: 250, amount: 250 }],
+        items: [
+          {
+            description: 'Flight to SFO',
+            quantity: 1,
+            unitPrice: 250,
+            amount: 250,
+          },
+        ],
       };
 
       const result = await service.create(tenantId, dto);
@@ -141,7 +164,9 @@ describe('ExpensesService', () => {
     it('handles Temporal server offline gracefully during creation', async () => {
       temporalService.getClient = jest.fn().mockReturnValue({
         workflow: {
-          start: jest.fn().mockRejectedValue(new Error('Temporal connection failed')),
+          start: jest
+            .fn()
+            .mockRejectedValue(new Error('Temporal connection failed')),
         },
       } as any);
 
@@ -160,7 +185,12 @@ describe('ExpensesService', () => {
 
   describe('update', () => {
     it('updates expense claim properties', async () => {
-      const existing = { id: expenseId, tenantId, category: 'Meals', amount: 30 } as ExpenseClaim;
+      const existing = {
+        id: expenseId,
+        tenantId,
+        category: 'Meals',
+        amount: 30,
+      } as ExpenseClaim;
       expenseRepo.findOne = jest.fn().mockResolvedValue(existing);
 
       const updateDto: UpdateExpenseClaimDto = {
@@ -183,7 +213,12 @@ describe('ExpensesService', () => {
 
   describe('sendSignal', () => {
     it('signals APPROVE and updates status to APPROVED', async () => {
-      const existing = { id: expenseId, tenantId, status: 'SUBMITTED', temporalWorkflowId: `expense-${expenseId}` } as ExpenseClaim;
+      const existing = {
+        id: expenseId,
+        tenantId,
+        status: 'SUBMITTED',
+        temporalWorkflowId: `expense-${expenseId}`,
+      } as ExpenseClaim;
       expenseRepo.findOne = jest.fn().mockResolvedValue({ ...existing });
 
       const signalDto: SignalExpenseDto = {
@@ -203,7 +238,12 @@ describe('ExpensesService', () => {
     });
 
     it('signals REJECT and updates status to REJECTED with reason', async () => {
-      const existing = { id: expenseId, tenantId, status: 'SUBMITTED', temporalWorkflowId: `expense-${expenseId}` } as ExpenseClaim;
+      const existing = {
+        id: expenseId,
+        tenantId,
+        status: 'SUBMITTED',
+        temporalWorkflowId: `expense-${expenseId}`,
+      } as ExpenseClaim;
       expenseRepo.findOne = jest.fn().mockResolvedValue({ ...existing });
 
       const signalDto: SignalExpenseDto = {
@@ -224,7 +264,13 @@ describe('ExpensesService', () => {
     });
 
     it('signals REIMBURSE and updates status to PAID', async () => {
-      const existing = { id: expenseId, tenantId, amount: 80, status: 'APPROVED', temporalWorkflowId: `expense-${expenseId}` } as ExpenseClaim;
+      const existing = {
+        id: expenseId,
+        tenantId,
+        amount: 80,
+        status: 'APPROVED',
+        temporalWorkflowId: `expense-${expenseId}`,
+      } as ExpenseClaim;
       expenseRepo.findOne = jest.fn().mockResolvedValue({ ...existing });
 
       const signalDto: SignalExpenseDto = {
@@ -244,7 +290,11 @@ describe('ExpensesService', () => {
     });
 
     it('throws BadRequestException for invalid signal action', async () => {
-      const existing = { id: expenseId, tenantId, status: 'SUBMITTED' } as ExpenseClaim;
+      const existing = {
+        id: expenseId,
+        tenantId,
+        status: 'SUBMITTED',
+      } as ExpenseClaim;
       expenseRepo.findOne = jest.fn().mockResolvedValue(existing);
 
       await expect(
@@ -254,43 +304,123 @@ describe('ExpensesService', () => {
   });
 
   describe('scanReceipt (AI OCR)', () => {
-    it('extracts merchant, amount, items, and date from raw receipt text', async () => {
-      const receiptText = `
-        STARBUCKS STORE #1042
-        Date: 2026-08-10
-        1x Caramel Macchiato    $5.50
-        1x Blueberry Muffin     $3.75
-        Subtotal:               $9.25
-        Tax (8%):               $0.74
-        Total:                 $9.99
-      `;
+    const validAiResult = {
+      merchantName: 'Starbucks Store #1042',
+      amount: 9.99,
+      currency: 'USD',
+      expenseDate: '2026-08-10',
+      category: 'Meals & Entertainment',
+      taxAmount: 0.74,
+      confidence: 0.95,
+      items: [
+        {
+          description: 'Caramel Macchiato',
+          quantity: 1,
+          unitPrice: 5.5,
+          amount: 5.5,
+        },
+        {
+          description: 'Blueberry Muffin',
+          quantity: 1,
+          unitPrice: 3.75,
+          amount: 3.75,
+        },
+      ],
+    };
+
+    it('extracts structured data via AiService for raw receipt text', async () => {
+      (aiService.generateStructured as jest.Mock).mockResolvedValue({
+        data: validAiResult,
+        usage: { inputTokens: 100, outputTokens: 50 },
+        model: 'claude-sonnet-5',
+      });
 
       const dto: ScanReceiptDto = {
-        rawText: receiptText,
+        rawText: 'STARBUCKS STORE #1042\nTotal: $9.99',
       };
+      const scanResult = await service.scanReceipt(dto, actor);
 
-      const scanResult = await service.scanReceipt(dto);
-
-      expect(scanResult.merchantName).toContain('STARBUCKS');
+      expect(aiService.generateStructured).toHaveBeenCalledWith(
+        'expense.scan_receipt',
+        expect.objectContaining({
+          messages: expect.any(Array),
+          schemaName: 'extract_receipt',
+        }),
+        actor,
+      );
+      expect(scanResult.merchantName).toBe('Starbucks Store #1042');
       expect(scanResult.amount).toBe(9.99);
-      expect(scanResult.currency).toBe('USD');
       expect(scanResult.category).toBe('Meals & Entertainment');
-      expect(scanResult.confidence).toBeGreaterThan(0.8);
-      expect(scanResult.items.length).toBeGreaterThanOrEqual(1);
+      expect(scanResult.items).toHaveLength(2);
+      expect(scanResult.rawText).toContain('STARBUCKS');
     });
 
-    it('provides intelligent fallback structured receipt if image url is provided', async () => {
+    it('sends an image content block for base64/imageUrl input', async () => {
+      (aiService.generateStructured as jest.Mock).mockResolvedValue({
+        data: validAiResult,
+        usage: { inputTokens: 200, outputTokens: 50 },
+        model: 'claude-sonnet-5',
+      });
+
       const dto: ScanReceiptDto = {
-        imageUrl: 'https://storage.crm.example/receipts/rec-sample-uber.png',
+        imageUrl: 'https://storage.crm.example/receipts/rec-sample.png',
+        mimeType: 'image/png',
       };
+      await service.scanReceipt(dto, actor);
 
-      const scanResult = await service.scanReceipt(dto);
+      const callArgs = (aiService.generateStructured as jest.Mock).mock
+        .calls[0][1];
+      const content = callArgs.messages[0].content;
+      expect(content[0]).toEqual(
+        expect.objectContaining({
+          type: 'image',
+          url: dto.imageUrl,
+          mimeType: 'image/png',
+        }),
+      );
+    });
 
-      expect(scanResult.merchantName).toBeDefined();
-      expect(scanResult.amount).toBeGreaterThan(0);
-      expect(scanResult.currency).toBe('USD');
-      expect(scanResult.category).toBeDefined();
-      expect(scanResult.confidence).toBeGreaterThan(0.7);
+    it('throws BadRequestException when the AI response fails schema validation', async () => {
+      (aiService.generateStructured as jest.Mock).mockResolvedValue({
+        data: { merchantName: 'X' }, // missing required fields
+        usage: { inputTokens: 10, outputTokens: 5 },
+        model: 'claude-sonnet-5',
+      });
+
+      const dto: ScanReceiptDto = { rawText: 'some receipt text' };
+      await expect(service.scanReceipt(dto, actor)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
+    it('degrades gracefully without throwing when AI is not configured', async () => {
+      (aiService.generateStructured as jest.Mock).mockRejectedValue(
+        new AiNotConfiguredException(),
+      );
+
+      const dto: ScanReceiptDto = { rawText: 'some receipt text' };
+      const scanResult = await service.scanReceipt(dto, actor);
+
+      expect(scanResult.confidence).toBe(0);
+      expect(scanResult.amount).toBe(0);
+    });
+
+    it('degrades gracefully without throwing when the AI call fails', async () => {
+      (aiService.generateStructured as jest.Mock).mockRejectedValue(
+        new Error('Network error'),
+      );
+
+      const dto: ScanReceiptDto = { rawText: 'some receipt text' };
+      const scanResult = await service.scanReceipt(dto, actor);
+
+      expect(scanResult.confidence).toBe(0);
+    });
+
+    it('does not call AiService when neither rawText nor image is provided', async () => {
+      const scanResult = await service.scanReceipt({}, actor);
+
+      expect(aiService.generateStructured).not.toHaveBeenCalled();
+      expect(scanResult.confidence).toBe(0);
     });
   });
 });

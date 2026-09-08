@@ -10,6 +10,7 @@ import {
   validateEnv,
   type AppConfig,
 } from '@/config/configuration';
+import { AiModule } from '@/modules/ai/ai.module';
 import { AuthModule } from '@/modules/auth/auth.module';
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
 import { AutomationsModule } from '@/modules/automations/automations.module';
@@ -75,6 +76,7 @@ import { UsersModule } from '@/modules/users/users.module';
       },
     }),
 
+    AiModule,
     RbacModule,
     UsersModule,
     AuthModule,

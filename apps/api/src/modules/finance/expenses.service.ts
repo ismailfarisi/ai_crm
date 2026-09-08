@@ -11,6 +11,11 @@ import { FinanceAccount } from './entities/finance-account.entity';
 import { CategoryBudget } from './entities/category-budget.entity';
 import { JournalEntry } from './entities/journal-entry.entity';
 import { TemporalService } from '../temporal/temporal.service';
+import { AiService } from '../ai/ai.service';
+import {
+  AiNotConfiguredException,
+  AiImageContent,
+} from '../ai/interfaces/ai-provider.interface';
 import { expenseApprovalWorkflow } from './workflows/expense-approval.workflow';
 import {
   approveExpenseSignal,
@@ -23,8 +28,10 @@ import {
   SignalExpenseDto,
   ScanReceiptDto,
   ScannedReceiptResult,
+  scannedReceiptResultSchema,
+  scannedReceiptJsonSchema,
 } from './dto';
-import type { ExpenseItemDto, ExpenseStatus } from '@saas/shared';
+import type { ExpenseStatus } from '@saas/shared';
 
 @Injectable()
 export class ExpensesService {
@@ -40,6 +47,7 @@ export class ExpensesService {
     @InjectRepository(JournalEntry)
     private readonly journalRepository: Repository<JournalEntry>,
     private readonly temporalService: TemporalService,
+    private readonly aiService: AiService,
   ) {}
 
   async generateNextClaimNumber(tenantId: string): Promise<string> {
@@ -75,13 +83,9 @@ export class ExpensesService {
   ): Promise<ExpenseClaim> {
     const claimNumber =
       dto.claimNumber || (await this.generateNextClaimNumber(tenantId));
-    const employeeId =
-      dto.employeeId || currentUser?.id || 'employee-unknown';
+    const employeeId = dto.employeeId || currentUser?.id || 'employee-unknown';
     const employeeName =
-      dto.employeeName ||
-      currentUser?.name ||
-      currentUser?.email ||
-      'Employee';
+      dto.employeeName || currentUser?.name || currentUser?.email || 'Employee';
     const items = dto.items || [];
     const status: ExpenseStatus = dto.status || 'SUBMITTED';
 
@@ -147,7 +151,9 @@ export class ExpensesService {
     if (dto.currency !== undefined) claim.currency = dto.currency;
     if (dto.merchantName !== undefined) claim.merchantName = dto.merchantName;
     if (dto.expenseDate !== undefined) {
-      claim.expenseDate = dto.expenseDate ? new Date(dto.expenseDate) : new Date();
+      claim.expenseDate = dto.expenseDate
+        ? new Date(dto.expenseDate)
+        : new Date();
     }
     if (dto.receiptUrl !== undefined) claim.receiptUrl = dto.receiptUrl;
     if (dto.rejectionReason !== undefined) {
@@ -230,177 +236,105 @@ export class ExpensesService {
     return this.expenseRepository.save(claim);
   }
 
-  async scanReceipt(dto: ScanReceiptDto): Promise<ScannedReceiptResult> {
-    const rawText = dto.rawText || '';
+  private static readonly DEGRADED_RESULT: Omit<
+    ScannedReceiptResult,
+    'rawText'
+  > = {
+    merchantName: '',
+    amount: 0,
+    currency: 'USD',
+    expenseDate: new Date().toISOString().split('T')[0],
+    category: 'General Expense',
+    confidence: 0,
+    items: [],
+  };
 
-    let merchantName = 'Receipt Vendor';
-    let amount = 0;
-    let currency = 'USD';
-    let expenseDate = new Date().toISOString().split('T')[0];
-    let category = 'General Expense';
-    let taxAmount: number | undefined = undefined;
-    const items: ExpenseItemDto[] = [];
-    let confidence = 0.92;
+  async scanReceipt(
+    dto: ScanReceiptDto,
+    actor: { organizationId: string; userId: string },
+  ): Promise<ScannedReceiptResult> {
+    const rawText = dto.rawText?.trim() || '';
+    const hasImage = Boolean(dto.base64 || dto.imageUrl);
 
-    if (rawText.length > 0) {
-      const lines = rawText
-        .split('\n')
-        .map((l) => l.trim())
-        .filter(Boolean);
-
-      if (lines.length > 0) {
-        merchantName = lines[0].replace(/[#*_-]/g, '').trim() || 'Receipt Merchant';
-      }
-
-      // Regex matching for total amount (ignoring subtotal)
-      const totalMatch = rawText.match(
-        /(?:(?<!sub)total|amount due|balance due|final total|grand total)[:\s]*\$?\s*([0-9]+(?:\.[0-9]{2})?)/i,
-      );
-      if (totalMatch) {
-        amount = parseFloat(totalMatch[1]);
-      } else {
-        // Find highest dollar amount in receipt
-        const allAmounts = [
-          ...rawText.matchAll(/\$?\s*([0-9]+\.[0-9]{2})/g),
-        ].map((m) => parseFloat(m[1]));
-        if (allAmounts.length > 0) {
-          amount = Math.max(...allAmounts);
-        }
-      }
-
-      // Tax match
-      const taxMatch = rawText.match(
-        /(?:tax|vat|gst)[^$0-9]*\$?\s*([0-9]+\.[0-9]{2})/i,
-      );
-      if (taxMatch) {
-        taxAmount = parseFloat(taxMatch[1]);
-      }
-
-      // Date match
-      const dateMatch = rawText.match(
-        /(\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{4})/i,
-      );
-      if (dateMatch) {
-        const parsedDate = new Date(dateMatch[1]);
-        if (!isNaN(parsedDate.getTime())) {
-          expenseDate = parsedDate.toISOString().split('T')[0];
-        }
-      }
-
-      // Parse item lines (e.g. 1x Item Name $5.00 or Item Name $5.00)
-      for (const line of lines) {
-        const itemMatch = line.match(
-          /^(?:(\d+)x?\s+)?(.+?)\s+\$?\s*([0-9]+\.[0-9]{2})$/i,
-        );
-        if (itemMatch && !line.toLowerCase().includes('total') && !line.toLowerCase().includes('tax') && !line.toLowerCase().includes('subtotal')) {
-          const qty = itemMatch[1] ? parseInt(itemMatch[1], 10) : 1;
-          const desc = itemMatch[2].trim();
-          const lineAmt = parseFloat(itemMatch[3]);
-          const unitPrice = Math.round((lineAmt / qty) * 100) / 100;
-          items.push({
-            description: desc,
-            quantity: qty,
-            unitPrice,
-            amount: lineAmt,
-          });
-        }
-      }
-
-      if (items.length === 0 && amount > 0) {
-        items.push({
-          description: merchantName,
-          quantity: 1,
-          unitPrice: amount,
-          amount,
-        });
-      }
-
-      // Intelligent category detection
-      const lowerRaw = rawText.toLowerCase();
-      if (
-        lowerRaw.includes('starbucks') ||
-        lowerRaw.includes('coffee') ||
-        lowerRaw.includes('cafe') ||
-        lowerRaw.includes('restaurant') ||
-        lowerRaw.includes('muffin') ||
-        lowerRaw.includes('dinner') ||
-        lowerRaw.includes('lunch')
-      ) {
-        category = 'Meals & Entertainment';
-      } else if (
-        lowerRaw.includes('uber') ||
-        lowerRaw.includes('lyft') ||
-        lowerRaw.includes('airline') ||
-        lowerRaw.includes('flight') ||
-        lowerRaw.includes('hotel') ||
-        lowerRaw.includes('delta') ||
-        lowerRaw.includes('united')
-      ) {
-        category = 'Travel';
-      } else if (
-        lowerRaw.includes('aws') ||
-        lowerRaw.includes('github') ||
-        lowerRaw.includes('slack') ||
-        lowerRaw.includes('figma') ||
-        lowerRaw.includes('software') ||
-        lowerRaw.includes('subscription')
-      ) {
-        category = 'Software & Subscriptions';
-      } else if (
-        lowerRaw.includes('staples') ||
-        lowerRaw.includes('office') ||
-        lowerRaw.includes('depot') ||
-        lowerRaw.includes('paper')
-      ) {
-        category = 'Office Supplies';
-      }
-      confidence = 0.95;
-    } else if (dto.imageUrl || dto.base64) {
-      const url = (dto.imageUrl || '').toLowerCase();
-      if (url.includes('uber')) {
-        merchantName = 'Uber Technologies';
-        amount = 32.5;
-        category = 'Travel';
-        items.push({
-          description: 'Uber Ride - Downtown to Airport',
-          quantity: 1,
-          unitPrice: 32.5,
-          amount: 32.5,
-        });
-      } else if (url.includes('starbucks')) {
-        merchantName = 'Starbucks Coffee';
-        amount = 14.75;
-        category = 'Meals & Entertainment';
-        items.push({
-          description: 'Coffee & Pastry',
-          quantity: 1,
-          unitPrice: 14.75,
-          amount: 14.75,
-        });
-      } else {
-        merchantName = 'Scanned Vendor';
-        amount = 45.0;
-        category = 'General Expense';
-        items.push({
-          description: 'Scanned Purchase Item',
-          quantity: 1,
-          unitPrice: 45.0,
-          amount: 45.0,
-        });
-      }
-      confidence = 0.88;
+    if (!rawText && !hasImage) {
+      return { ...ExpensesService.DEGRADED_RESULT, currency: 'USD' };
     }
 
-    return {
-      merchantName,
-      amount,
-      currency,
-      expenseDate,
-      category,
-      taxAmount,
-      confidence,
-      items,
-      rawText: rawText || undefined,
-    };
+    const instruction =
+      'Extract structured expense data from this receipt. Categorize into one of: ' +
+      'Meals & Entertainment, Travel, Software & Subscriptions, Office Supplies, General Expense. ' +
+      'If a field is unclear or missing, make your best estimate and lower the confidence score accordingly.';
+
+    const content: (AiImageContent | { type: 'text'; text: string })[] = [];
+    if (hasImage) {
+      content.push(
+        dto.imageUrl
+          ? {
+              type: 'image',
+              mimeType: this.normalizeMimeType(dto.mimeType),
+              url: dto.imageUrl,
+            }
+          : {
+              type: 'image',
+              mimeType: this.normalizeMimeType(dto.mimeType),
+              data: dto.base64,
+            },
+      );
+      content.push({ type: 'text', text: instruction });
+    } else {
+      content.push({
+        type: 'text',
+        text: `${instruction}\n\nReceipt text:\n${rawText}`,
+      });
+    }
+
+    try {
+      const result = await this.aiService.generateStructured<unknown>(
+        'expense.scan_receipt',
+        {
+          messages: [{ role: 'user', content }],
+          jsonSchema: scannedReceiptJsonSchema,
+          schemaName: 'extract_receipt',
+        },
+        actor,
+      );
+
+      const parsed = scannedReceiptResultSchema.safeParse(result.data);
+      if (!parsed.success) {
+        this.logger.warn(
+          `AI receipt extraction returned malformed data: ${parsed.error.message}`,
+        );
+        throw new BadRequestException(
+          'AI could not confidently extract receipt data — please enter details manually',
+        );
+      }
+
+      return { ...parsed.data, rawText: rawText || undefined };
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+
+      const msg = err instanceof Error ? err.message : String(err);
+      if (err instanceof AiNotConfiguredException) {
+        this.logger.warn('AI receipt scan skipped: provider not configured');
+      } else {
+        this.logger.warn(`AI receipt scan failed, degrading: ${msg}`);
+      }
+      return {
+        ...ExpensesService.DEGRADED_RESULT,
+        rawText: rawText || undefined,
+      };
+    }
+  }
+
+  private normalizeMimeType(mimeType?: string): AiImageContent['mimeType'] {
+    const allowed = [
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+    ] as const;
+    return (allowed as readonly string[]).includes(mimeType || '')
+      ? (mimeType as AiImageContent['mimeType'])
+      : 'image/jpeg';
   }
 }

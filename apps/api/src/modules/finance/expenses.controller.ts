@@ -46,7 +46,8 @@ export class ExpensesController {
   @RequirePermissions(PERMISSIONS.EXPENSE_SUBMIT)
   @ApiOperation({
     summary: 'Submit expense claim',
-    description: 'Submits a new expense claim and starts Temporal approval workflow',
+    description:
+      'Submits a new expense claim and starts Temporal approval workflow',
   })
   async create(
     @CurrentUser() user: AuthenticatedUser,
@@ -56,15 +57,20 @@ export class ExpensesController {
   }
 
   @Post('scan-receipt')
-  @RequirePermissions(PERMISSIONS.EXPENSE_SUBMIT)
+  @RequirePermissions(PERMISSIONS.EXPENSE_SUBMIT, PERMISSIONS.AI_USE)
   @ApiOperation({
     summary: 'Scan receipt with AI OCR',
-    description: 'Extracts merchant, amount, date, category, and items from receipt image or text',
+    description:
+      'Extracts merchant, amount, date, category, and items from receipt image or text',
   })
   async scanReceipt(
+    @CurrentUser() user: AuthenticatedUser,
     @Body() dto: ScanReceiptDto,
   ): Promise<ScannedReceiptResult> {
-    return this.expensesService.scanReceipt(dto);
+    return this.expensesService.scanReceipt(dto, {
+      organizationId: user.organizationId,
+      userId: user.id,
+    });
   }
 
   @Get(':id')
@@ -98,7 +104,8 @@ export class ExpensesController {
   @RequirePermissions(PERMISSIONS.EXPENSE_APPROVE)
   @ApiOperation({
     summary: 'Signal expense claim',
-    description: 'Approve, reject, or reimburse an expense claim via Temporal workflow',
+    description:
+      'Approve, reject, or reimburse an expense claim via Temporal workflow',
   })
   async signal(
     @CurrentUser() user: AuthenticatedUser,

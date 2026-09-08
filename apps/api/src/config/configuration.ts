@@ -68,6 +68,13 @@ const envSchema = z.object({
   // Only used when MAIL_PROVIDER=ses. Credentials come from the SDK's default
   // chain (env vars, ~/.aws/credentials, IAM role, ...), never from .env.
   MAIL_REGION: z.string().optional(),
+
+  // AI (see modules/ai — providers are switchable via this enum, only
+  // 'anthropic' implemented). AI_ANTHROPIC_API_KEY is deliberately optional —
+  // a missing key degrades AI features at call time, it must never block boot.
+  AI_PROVIDER: z.enum(['anthropic']).default('anthropic'),
+  AI_ANTHROPIC_API_KEY: z.string().optional(),
+  AI_ANTHROPIC_MODEL: z.string().default('claude-sonnet-5'),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -177,6 +184,11 @@ export function configuration() {
       provider: env.MAIL_PROVIDER,
       from: env.MAIL_FROM,
       region: env.MAIL_REGION,
+    },
+    ai: {
+      provider: env.AI_PROVIDER,
+      anthropicApiKey: env.AI_ANTHROPIC_API_KEY,
+      anthropicModel: env.AI_ANTHROPIC_MODEL,
     },
   };
 }

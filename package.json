@@ -10,6 +10,7 @@
     "dev": "pnpm --parallel --filter \"./apps/*\" dev",
     "dev:api": "pnpm --filter api start:dev",
     "dev:web": "pnpm --filter web dev",
+    "dev:worker": "pnpm --filter api worker:dev",
     "build": "pnpm --filter shared build && pnpm --filter api build && pnpm --filter web build",
     "lint": "pnpm -r lint",
     "test": "pnpm -r --filter ./packages/* --filter ./apps/* test",

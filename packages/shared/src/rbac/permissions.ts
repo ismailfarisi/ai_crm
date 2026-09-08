@@ -77,6 +77,9 @@ export const PERMISSIONS = {
   FINANCE_MANAGE: 'finance:manage',
   EXPENSE_SUBMIT: 'expense:submit',
   EXPENSE_APPROVE: 'expense:approve',
+
+  // AI
+  AI_USE: 'ai:use',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -140,6 +143,8 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   [PERMISSIONS.FINANCE_MANAGE]: 'Manage bank accounts, budgets and financial operations',
   [PERMISSIONS.EXPENSE_SUBMIT]: 'Submit employee expense claims and receipts',
   [PERMISSIONS.EXPENSE_APPROVE]: 'Approve, reject and reimburse expense claims',
+
+  [PERMISSIONS.AI_USE]: 'Use AI-powered features (receipt scanning, automation AI steps, quote drafting)',
 };
 
 /** Groups drive the layout of the role editor screen. */
@@ -238,6 +243,11 @@ export const PERMISSION_GROUPS: { key: string; label: string; permissions: Permi
       PERMISSIONS.EXPENSE_SUBMIT,
       PERMISSIONS.EXPENSE_APPROVE,
     ],
+  },
+  {
+    key: 'ai',
+    label: 'AI',
+    permissions: [PERMISSIONS.AI_USE],
   },
 ];
 

@@ -66,6 +66,26 @@ services:
     ports:
       - "127.0.0.1:4100:4000"
 
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: crm_staging_worker
+    restart: unless-stopped
+    command: ["node", "dist/temporal-worker.js"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    env_file:
+      - .env.staging
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      TEMPORAL_ADDRESS: temporal:7233
+    # No ports — this process doesn't serve HTTP, only consumes Temporal task queues.
+
   web:
     build:
       context: .

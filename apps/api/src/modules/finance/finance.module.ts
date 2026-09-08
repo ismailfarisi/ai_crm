@@ -10,6 +10,7 @@ import { ExpensesService } from './expenses.service';
 import { FinanceController } from './finance.controller';
 import { ExpensesController } from './expenses.controller';
 import { TemporalModule } from '../temporal/temporal.module';
+import { AiModule } from '../ai/ai.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { TemporalModule } from '../temporal/temporal.module';
       JournalEntry,
     ]),
     TemporalModule,
+    AiModule,
   ],
   controllers: [FinanceController, ExpensesController],
   providers: [FinanceService, ExpensesService],
