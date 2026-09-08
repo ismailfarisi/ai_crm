@@ -12,7 +12,6 @@ import {
 } from '@saas/shared';
 import { api, queryKeys, type ChannelConfigDto } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/client';
-import { useSession } from '@/lib/session-context';
 import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/field';
@@ -24,13 +23,6 @@ interface ChannelConfigModalProps {
   config: ChannelConfigDto | null;
 }
 
-const PROVIDER_SLUGS: Record<ChannelConfigDto['provider'], string> = {
-  WHATSAPP_META: 'whatsapp',
-  TELEGRAM: 'telegram',
-  EMAIL_SMTP: 'email_smtp',
-  EMAIL_RESEND: 'email_resend',
-};
-
 const PROVIDER_TITLES: Record<ChannelConfigDto['provider'], string> = {
   WHATSAPP_META: 'Meta WhatsApp Cloud API Configuration',
   TELEGRAM: 'Telegram Bot Configuration',
@@ -40,7 +32,6 @@ const PROVIDER_TITLES: Record<ChannelConfigDto['provider'], string> = {
 
 export function ChannelConfigModal({ open, onClose, config }: ChannelConfigModalProps) {
   const queryClient = useQueryClient();
-  const { session } = useSession();
   const [copied, setCopied] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -48,12 +39,11 @@ export function ChannelConfigModal({ open, onClose, config }: ChannelConfigModal
   const [formData, setFormData] = useState<Record<string, any>>({});
 
   const provider = config?.provider ?? 'WHATSAPP_META';
-  const providerSlug = PROVIDER_SLUGS[provider];
 
-  const webhookUrl =
-    typeof window !== 'undefined'
-      ? `${window.location.origin}/api/webhooks/channels/${providerSlug}/${session.organization.id}`
-      : `/api/webhooks/channels/${providerSlug}/${session.organization.id}`;
+  // The API is the source of truth for its own public URL — building this
+  // client-side previously pointed at the web app's origin with the wrong
+  // path and provider casing, which silently broke inbound webhooks.
+  const webhookUrl = config?.webhookUrl ?? '';
 
   useEffect(() => {
     if (config?.credentials) {
@@ -130,9 +120,19 @@ export function ChannelConfigModal({ open, onClose, config }: ChannelConfigModal
         credentials: payloadCredentials,
       });
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.channels });
-      toast.success('Channel configuration saved successfully');
+      if (result.webhookRegistration) {
+        if (result.webhookRegistration.success) {
+          toast.success(`Configuration saved — ${result.webhookRegistration.message}`);
+        } else {
+          toast.warning(
+            `Configuration saved, but the webhook could not be registered: ${result.webhookRegistration.message}`,
+          );
+        }
+      } else {
+        toast.success('Channel configuration saved successfully');
+      }
       onClose();
     },
     onError: (error) => {
@@ -199,7 +199,9 @@ export function ChannelConfigModal({ open, onClose, config }: ChannelConfigModal
             </Button>
           </div>
           <p className="text-[11px] text-ink-subtle">
-            Paste this URL into your {PROVIDER_TITLES[provider].split(' ')[0]} webhook settings.
+            {provider === 'TELEGRAM'
+              ? 'Registered with Telegram automatically when you save — no manual setup needed.'
+              : `Paste this URL into your ${PROVIDER_TITLES[provider].split(' ')[0]} webhook settings.`}
           </p>
         </div>
 

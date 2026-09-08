@@ -51,6 +51,7 @@ export function ChannelsView() {
       status: 'unconfigured',
       credentials: null,
       webhookSecret: null,
+      webhookUrl: '',
       lastTestedAt: null,
     };
   });

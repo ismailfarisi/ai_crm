@@ -51,6 +51,12 @@ const envSchema = z.object({
   COOKIE_SAME_SITE: z.enum(['lax', 'strict', 'none']).default('lax'),
   WEB_ORIGIN: z.string().default('http://localhost:3000'),
 
+  // Public URL the API is reachable at — used to build webhook URLs (e.g. for
+  // Telegram's setWebhook). Point this at your ngrok/tunnel URL in local dev,
+  // or your real API domain in production. Falls back to localhost, which
+  // works for display purposes but isn't reachable from Telegram's servers.
+  PUBLIC_API_URL: z.string().optional(),
+
   // Rate limiting
   THROTTLE_TTL: z.coerce.number().int().positive().default(60_000),
   THROTTLE_LIMIT: z.coerce.number().int().positive().default(120),
@@ -132,6 +138,9 @@ export function configuration() {
     isProduction: env.NODE_ENV === 'production',
     port: env.PORT,
     apiPrefix: env.API_PREFIX,
+    publicApiUrl:
+      env.PUBLIC_API_URL?.replace(/\/$/, '') ??
+      `http://localhost:${env.PORT}/${env.API_PREFIX}`,
     webOrigin: env.WEB_ORIGIN.split(',').map((o) => o.trim()),
     database: {
       host: env.DB_HOST,

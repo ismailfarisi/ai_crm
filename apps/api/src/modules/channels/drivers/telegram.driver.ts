@@ -58,6 +58,38 @@ export class TelegramDriver implements ChannelDriver {
     return { externalId: String(data.result.message_id), rawResponse: data };
   }
 
+  async registerWebhook(
+    credentials: Record<string, any>,
+    webhookUrl: string,
+  ): Promise<{ success: boolean; message: string }> {
+    if (!credentials?.botToken) {
+      return { success: false, message: 'Missing botToken in credentials' };
+    }
+    try {
+      const res = await fetch(
+        `https://api.telegram.org/bot${credentials.botToken}/setWebhook`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: webhookUrl }),
+        },
+      );
+      const data = await res.json();
+      if (!data.ok) {
+        return {
+          success: false,
+          message: data.description || 'Telegram rejected the webhook URL',
+        };
+      }
+      return { success: true, message: 'Telegram webhook registered' };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'Failed to register Telegram webhook',
+      };
+    }
+  }
+
   async parseWebhookPayload(
     _credentials: Record<string, any>,
     _headers: any,

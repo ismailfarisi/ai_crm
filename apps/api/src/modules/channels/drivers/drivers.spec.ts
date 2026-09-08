@@ -150,6 +150,61 @@ describe('Channel Drivers', () => {
         expect(parsed).toBeNull();
       });
     });
+
+    describe('registerWebhook', () => {
+      it('calls Telegram setWebhook with the given URL', async () => {
+        global.fetch = jest.fn().mockResolvedValue({
+          json: jest.fn().mockResolvedValue({ ok: true, result: true }),
+        } as any);
+
+        const res = await driver.registerWebhook(
+          { botToken: '12345:ABC' },
+          'https://example.com/api/v1/webhooks/channels/TELEGRAM/org-1',
+        );
+
+        expect(res).toEqual({ success: true, message: 'Telegram webhook registered' });
+        expect(global.fetch).toHaveBeenCalledWith(
+          'https://api.telegram.org/bot12345:ABC/setWebhook',
+          expect.objectContaining({
+            method: 'POST',
+            body: JSON.stringify({
+              url: 'https://example.com/api/v1/webhooks/channels/TELEGRAM/org-1',
+            }),
+          }),
+        );
+      });
+
+      it('returns success false when Telegram rejects the URL', async () => {
+        global.fetch = jest.fn().mockResolvedValue({
+          json: jest.fn().mockResolvedValue({ ok: false, description: 'Bad webhook: HTTPS url must be provided' }),
+        } as any);
+
+        const res = await driver.registerWebhook(
+          { botToken: '12345:ABC' },
+          'http://not-https.example.com',
+        );
+
+        expect(res).toEqual({
+          success: false,
+          message: 'Bad webhook: HTTPS url must be provided',
+        });
+      });
+
+      it('handles missing botToken gracefully', async () => {
+        const res = await driver.registerWebhook({}, 'https://example.com/hook');
+        expect(res.success).toBe(false);
+        expect(res.message).toContain('Missing botToken');
+      });
+
+      it('handles fetch network error', async () => {
+        global.fetch = jest.fn().mockRejectedValue(new Error('Network error'));
+        const res = await driver.registerWebhook(
+          { botToken: '123' },
+          'https://example.com/hook',
+        );
+        expect(res).toEqual({ success: false, message: 'Network error' });
+      });
+    });
   });
 
   describe('MetaWhatsAppDriver', () => {

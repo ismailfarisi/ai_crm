@@ -5,8 +5,10 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
+import type { AppConfig } from '@/config/configuration';
 import { ContactsService } from '../contacts/contacts.service';
 import {
   ChannelConfig,
@@ -42,7 +44,14 @@ export class ChannelsService {
     private readonly messageRepo: Repository<ChannelMessage>,
     private readonly cryptoService: ChannelCryptoService,
     private readonly contactsService: ContactsService,
+    private readonly configService: ConfigService<AppConfig, true>,
   ) {}
+
+  /** The URL the given provider's inbound webhook is reachable at — must match the route in ChannelsWebhookController. */
+  private buildWebhookUrl(orgId: string, provider: ChannelProviderType): string {
+    const base = this.configService.get('publicApiUrl', { infer: true });
+    return `${base}/webhooks/channels/${provider}/${orgId}`;
+  }
 
   private getDriver(provider: ChannelProviderType): ChannelDriver {
     switch (provider) {
@@ -107,6 +116,7 @@ export class ChannelsService {
           status: ChannelStatus.UNCONFIGURED,
           credentials: null,
           webhookSecret: null,
+          webhookUrl: this.buildWebhookUrl(orgId, provider),
           lastTestedAt: null,
         };
       }
@@ -127,6 +137,7 @@ export class ChannelsService {
       return {
         ...rest,
         credentials,
+        webhookUrl: this.buildWebhookUrl(orgId, provider),
       };
     });
   }
@@ -203,7 +214,22 @@ export class ChannelsService {
       });
     }
 
-    const saved = await this.configRepo.save(config);
+    let saved = await this.configRepo.save(config);
+
+    // Providers with an API-registrable webhook (currently just Telegram) get
+    // their webhook (re-)registered on every save — cheap and idempotent, and
+    // means the "register with curl" step from the setup docs isn't needed.
+    let webhookRegistration: { success: boolean; message: string } | undefined;
+    const driver = this.getDriver(provider);
+    if (driver.registerWebhook && isEnabled && saved.encryptedCredentials) {
+      const finalCreds = this.cryptoService.decrypt(saved.encryptedCredentials);
+      const webhookUrl = this.buildWebhookUrl(orgId, provider);
+      webhookRegistration = await driver.registerWebhook(finalCreds, webhookUrl);
+      saved.status = webhookRegistration.success
+        ? ChannelStatus.CONFIGURED
+        : ChannelStatus.ERROR;
+      saved = await this.configRepo.save(saved);
+    }
 
     let decryptedCreds: Record<string, any> | null = null;
     if (saved.encryptedCredentials) {
@@ -219,6 +245,8 @@ export class ChannelsService {
     return {
       ...rest,
       credentials: decryptedCreds,
+      webhookUrl: this.buildWebhookUrl(orgId, provider),
+      ...(webhookRegistration ? { webhookRegistration } : {}),
     };
   }
 

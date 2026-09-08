@@ -284,6 +284,10 @@ export interface ChannelConfigDto {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   credentials: Record<string, any> | null;
   webhookSecret: string | null;
+  /** Inbound webhook URL for this provider, as the API server sees it — build this server-side, never on the client. */
+  webhookUrl: string;
+  /** Present only right after a save that auto-registers the webhook with the provider (currently Telegram). */
+  webhookRegistration?: { success: boolean; message: string };
   lastTestedAt: string | null;
   createdAt?: string;
   updatedAt?: string;

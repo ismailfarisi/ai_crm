@@ -28,6 +28,7 @@ function makeService(
     configRepo?: any;
     messageRepo?: any;
     contactsService?: any;
+    configService?: any;
   } = {},
 ) {
   const configs: ChannelConfig[] = [];
@@ -105,23 +106,47 @@ function makeService(
         ),
     } as any);
 
+  const configService =
+    overrides.configService ||
+    ({
+      get: jest.fn().mockReturnValue('http://localhost:4000/api/v1'),
+    } as any);
+
   const service = new ChannelsService(
     configRepo,
     messageRepo,
     cryptoService,
     contactsService,
+    configService,
   );
   return {
     service,
     configRepo,
     messageRepo,
     contactsService,
+    configService,
     configs,
     messages,
   };
 }
 
 describe('ChannelsService', () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    // Default: any incidental Telegram registerWebhook call (fired on every
+    // saveConfig for an enabled Telegram config) succeeds without hitting the
+    // network. Tests that care about a specific fetch response set their own
+    // mock afterwards, which overrides this.
+    global.fetch = jest.fn().mockResolvedValue({
+      json: async () => ({ ok: true, result: true }),
+    } as any);
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
   describe('getConfigs', () => {
     it('returns default unconfigured list for all 4 providers when empty', async () => {
       const { service } = makeService();
@@ -197,6 +222,58 @@ describe('ChannelsService', () => {
       const dec = cryptoService.decrypt(dbConfig!.encryptedCredentials!);
       expect(dec.botToken).toBe('real-super-secret-token');
       expect(dec.botUsername).toBe('NewUsername');
+    });
+
+    it('registers the Telegram webhook automatically using the configured public API URL', async () => {
+      const { service } = makeService();
+
+      const res = await service.saveConfig(orgId, ChannelProviderType.TELEGRAM, true, {
+        botToken: '12345:ABC',
+        botUsername: 'TestBot',
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://api.telegram.org/bot12345:ABC/setWebhook',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            url: `http://localhost:4000/api/v1/webhooks/channels/${ChannelProviderType.TELEGRAM}/${orgId}`,
+          }),
+        }),
+      );
+      expect(res.webhookUrl).toBe(
+        `http://localhost:4000/api/v1/webhooks/channels/${ChannelProviderType.TELEGRAM}/${orgId}`,
+      );
+      expect(res.webhookRegistration).toEqual({
+        success: true,
+        message: 'Telegram webhook registered',
+      });
+      expect(res.status).toBe(ChannelStatus.CONFIGURED);
+    });
+
+    it('marks the channel status as error when Telegram rejects the webhook URL', async () => {
+      const { service } = makeService();
+      global.fetch = jest.fn().mockResolvedValue({
+        json: async () => ({ ok: false, description: 'Bad webhook' }),
+      } as any);
+
+      const res = await service.saveConfig(orgId, ChannelProviderType.TELEGRAM, true, {
+        botToken: '12345:ABC',
+        botUsername: 'TestBot',
+      });
+
+      expect(res.status).toBe(ChannelStatus.ERROR);
+      expect(res.webhookRegistration).toEqual({ success: false, message: 'Bad webhook' });
+    });
+
+    it('does not attempt webhook registration for providers without one (e.g. Resend)', async () => {
+      const { service } = makeService();
+      await service.saveConfig(orgId, ChannelProviderType.EMAIL_RESEND, true, {
+        apiKey: 're_123456789_abcdef',
+        fromEmail: 'test@example.com',
+      });
+
+      expect(global.fetch).not.toHaveBeenCalled();
     });
   });
 

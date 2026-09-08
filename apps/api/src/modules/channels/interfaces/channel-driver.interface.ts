@@ -24,4 +24,9 @@ export interface ChannelDriver {
     headers: any,
     body: any,
   ): Promise<ParsedWebhookMessage | null>;
+  /** Providers whose webhook is registered via API call (e.g. Telegram's setWebhook) implement this. */
+  registerWebhook?(
+    credentials: Record<string, any>,
+    webhookUrl: string,
+  ): Promise<{ success: boolean; message: string }>;
 }
