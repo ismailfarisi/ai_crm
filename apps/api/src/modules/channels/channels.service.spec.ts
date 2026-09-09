@@ -3,7 +3,6 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { Repository } from 'typeorm';
 import { ChannelsService } from './channels.service';
 import {
   ChannelConfig,
@@ -16,6 +15,7 @@ import {
   MessageStatus,
 } from './entities/channel-message.entity';
 import { ChannelCryptoService } from './services/channel-crypto.service';
+import { ChannelCommandService } from './services/channel-command.service';
 
 const orgId = '11111111-1111-1111-1111-111111111111';
 const actorId = '22222222-2222-2222-2222-222222222222';
@@ -29,6 +29,7 @@ function makeService(
     messageRepo?: any;
     contactsService?: any;
     configService?: any;
+    channelCommandService?: any;
   } = {},
 ) {
   const configs: ChannelConfig[] = [];
@@ -112,12 +113,19 @@ function makeService(
       get: jest.fn().mockReturnValue('http://localhost:4000/api/v1'),
     } as any);
 
+  const channelCommandService =
+    overrides.channelCommandService ||
+    ({
+      handleInboundMessage: jest.fn().mockResolvedValue({ handled: false }),
+    } as any);
+
   const service = new ChannelsService(
     configRepo,
     messageRepo,
     cryptoService,
     contactsService,
     configService,
+    channelCommandService,
   );
   return {
     service,
@@ -125,6 +133,7 @@ function makeService(
     messageRepo,
     contactsService,
     configService,
+    channelCommandService,
     configs,
     messages,
   };
@@ -227,10 +236,15 @@ describe('ChannelsService', () => {
     it('registers the Telegram webhook automatically using the configured public API URL', async () => {
       const { service } = makeService();
 
-      const res = await service.saveConfig(orgId, ChannelProviderType.TELEGRAM, true, {
-        botToken: '12345:ABC',
-        botUsername: 'TestBot',
-      });
+      const res = await service.saveConfig(
+        orgId,
+        ChannelProviderType.TELEGRAM,
+        true,
+        {
+          botToken: '12345:ABC',
+          botUsername: 'TestBot',
+        },
+      );
 
       expect(global.fetch).toHaveBeenCalledWith(
         'https://api.telegram.org/bot12345:ABC/setWebhook',
@@ -257,13 +271,21 @@ describe('ChannelsService', () => {
         json: async () => ({ ok: false, description: 'Bad webhook' }),
       } as any);
 
-      const res = await service.saveConfig(orgId, ChannelProviderType.TELEGRAM, true, {
-        botToken: '12345:ABC',
-        botUsername: 'TestBot',
-      });
+      const res = await service.saveConfig(
+        orgId,
+        ChannelProviderType.TELEGRAM,
+        true,
+        {
+          botToken: '12345:ABC',
+          botUsername: 'TestBot',
+        },
+      );
 
       expect(res.status).toBe(ChannelStatus.ERROR);
-      expect(res.webhookRegistration).toEqual({ success: false, message: 'Bad webhook' });
+      expect(res.webhookRegistration).toEqual({
+        success: false,
+        message: 'Bad webhook',
+      });
     });
 
     it('does not attempt webhook registration for providers without one (e.g. Resend)', async () => {
@@ -540,6 +562,89 @@ describe('ChannelsService', () => {
       expect(messages[0].sender).toBe('998877');
       expect(messages[0].body).toBe('Hello from telegram');
       expect(messages[0].contactId).toBe('contact-uuid-789');
+    });
+
+    it('does not create a contact when a staff command handled the message', async () => {
+      const channelCommandService = {
+        handleInboundMessage: jest.fn().mockResolvedValue({
+          handled: true,
+          userId: 'staff-user-1',
+          reply: { body: 'Approved.' },
+        }),
+      };
+      const { service, contactsService, messages } = makeService({
+        channelCommandService,
+      });
+      await service.saveConfig(orgId, ChannelProviderType.TELEGRAM, true, {
+        botToken: 'token',
+      });
+
+      const res = await service.processInboundWebhook(
+        orgId,
+        ChannelProviderType.TELEGRAM,
+        {},
+        {
+          message: {
+            text: 'approve QT-2026-0004',
+            chat: { id: '998877' },
+            message_id: 1,
+          },
+        },
+      );
+
+      expect(res).toEqual({ success: true });
+      expect(contactsService.findOrCreateForChannel).not.toHaveBeenCalled();
+      // The reply is sent back out through sendMessage, producing an outbound message row.
+      expect(messages).toHaveLength(1);
+      expect(messages[0].direction).toBe(MessageDirection.OUTBOUND);
+      expect(messages[0].body).toBe('Approved.');
+    });
+
+    it('behaves exactly as before for an ordinary customer message, using the real ChannelCommandService', async () => {
+      const emptyRepo = {
+        findOne: jest.fn().mockResolvedValue(null),
+        find: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockImplementation((dto: any) => dto),
+        save: jest.fn().mockImplementation(async (e: any) => e),
+      };
+      const realChannelCommandService = new ChannelCommandService(
+        emptyRepo as any,
+        emptyRepo as any,
+        emptyRepo as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+      );
+
+      const { service, messages, contactsService } = makeService({
+        channelCommandService: realChannelCommandService,
+      });
+      await service.saveConfig(orgId, ChannelProviderType.TELEGRAM, true, {
+        botToken: 'token',
+      });
+
+      const res = await service.processInboundWebhook(
+        orgId,
+        ChannelProviderType.TELEGRAM,
+        {},
+        {
+          message: {
+            text: 'Hello from telegram',
+            chat: { id: '998877' },
+            message_id: 12345,
+          },
+        },
+      );
+
+      expect(res.success).toBe(true);
+      expect(contactsService.findOrCreateForChannel).toHaveBeenCalledWith(
+        orgId,
+        '998877',
+        ChannelProviderType.TELEGRAM,
+      );
+      expect(messages).toHaveLength(1);
+      expect(messages[0].direction).toBe(MessageDirection.INBOUND);
     });
   });
 });

@@ -77,6 +77,103 @@ export interface UpdateQuotePayload extends Partial<CreateQuotePayload> {
   status?: QuoteStatus;
 }
 
+export type InvoiceStatus = 'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'CANCELLED';
+
+export interface InvoiceDto {
+  id: string;
+  tenantId: string;
+  quoteId: string;
+  invoiceNumber: string;
+  customerId?: string | null;
+  customerName: string;
+  customerEmail?: string | null;
+  currency: string;
+  items: QuoteLineItem[];
+  subtotalAmount: number;
+  discountAmount: number;
+  taxAmount: number;
+  amount: number;
+  status: InvoiceStatus;
+  paymentTerms: string;
+  dueDate?: string | null;
+  notes?: string | null;
+  paidAt?: string | null;
+  paidAmount?: number | null;
+  paidViaAccountId?: string | null;
+  sentAt?: string | null;
+  voidedAt?: string | null;
+  voidedById?: string | null;
+  voidReason?: string | null;
+  overdueNotifiedAt?: string | null;
+  issuedAt: string;
+}
+
+export interface InvoicePaymentDto {
+  id: string;
+  tenantId: string;
+  invoiceId: string;
+  amount: number;
+  paidAt: string;
+  accountId?: string | null;
+  recordedById?: string | null;
+  notes?: string | null;
+  createdAt: string;
+}
+
+/** @deprecated use RecordInvoicePaymentPayload with POST /invoices/:id/payments */
+export interface MarkInvoicePaidPayload {
+  accountId: string;
+  paidAmount?: number;
+  paidAt?: string;
+  notes?: string;
+}
+
+export interface RecordInvoicePaymentPayload {
+  accountId: string;
+  /** Omit to pay off the remaining balance in full. */
+  amount?: number;
+  paidAt?: string;
+  notes?: string;
+}
+
+export interface VoidInvoicePayload {
+  reason?: string;
+}
+
+/** Derived, not stored — "overdue" is a view of (dueDate, status), never its own status value. */
+export function isInvoiceOverdue(
+  invoice: Pick<InvoiceDto, 'dueDate' | 'status'>,
+  now: Date = new Date(),
+): boolean {
+  if (!invoice.dueDate) return false;
+  if (invoice.status !== 'ISSUED' && invoice.status !== 'PARTIALLY_PAID') return false;
+  return new Date(invoice.dueDate).getTime() < now.getTime();
+}
+
+/**
+ * Shared by the Nest service (sync fallback) and the DI-free Temporal
+ * activity that creates the invoice on quote approval, so both paths agree
+ * on how a quote's paymentTerms turn into a due date.
+ */
+export function calculateInvoiceDueDate(issuedAt: Date, paymentTerms: string): Date | null {
+  if (paymentTerms === 'immediate') {
+    return new Date(issuedAt);
+  }
+
+  const netMatch = /^net_(\d+)$/.exec(paymentTerms);
+  if (netMatch) {
+    const due = new Date(issuedAt);
+    due.setDate(due.getDate() + Number(netMatch[1]));
+    return due;
+  }
+
+  if (paymentTerms === 'end_of_month') {
+    return new Date(issuedAt.getFullYear(), issuedAt.getMonth() + 1, 0);
+  }
+
+  return null;
+}
+
 export interface QuoteDto {
   id: string;
   tenantId: string;

@@ -21,6 +21,7 @@ import {
   MessageStatus,
 } from './entities/channel-message.entity';
 import { ChannelCryptoService } from './services/channel-crypto.service';
+import { ChannelCommandService } from './services/channel-command.service';
 import { ChannelDriver } from './interfaces/channel-driver.interface';
 import { MetaWhatsAppDriver } from './drivers/meta-whatsapp.driver';
 import { TelegramDriver } from './drivers/telegram.driver';
@@ -45,10 +46,14 @@ export class ChannelsService {
     private readonly cryptoService: ChannelCryptoService,
     private readonly contactsService: ContactsService,
     private readonly configService: ConfigService<AppConfig, true>,
+    private readonly channelCommandService: ChannelCommandService,
   ) {}
 
   /** The URL the given provider's inbound webhook is reachable at — must match the route in ChannelsWebhookController. */
-  private buildWebhookUrl(orgId: string, provider: ChannelProviderType): string {
+  private buildWebhookUrl(
+    orgId: string,
+    provider: ChannelProviderType,
+  ): string {
     const base = this.configService.get('publicApiUrl', { infer: true });
     return `${base}/webhooks/channels/${provider}/${orgId}`;
   }
@@ -224,7 +229,10 @@ export class ChannelsService {
     if (driver.registerWebhook && isEnabled && saved.encryptedCredentials) {
       const finalCreds = this.cryptoService.decrypt(saved.encryptedCredentials);
       const webhookUrl = this.buildWebhookUrl(orgId, provider);
-      webhookRegistration = await driver.registerWebhook(finalCreds, webhookUrl);
+      webhookRegistration = await driver.registerWebhook(
+        finalCreds,
+        webhookUrl,
+      );
       saved.status = webhookRegistration.success
         ? ChannelStatus.CONFIGURED
         : ChannelStatus.ERROR;
@@ -428,6 +436,27 @@ export class ChannelsService {
     const parsed = await driver.parseWebhookPayload(credentials, headers, body);
     if (!parsed || !parsed.senderIdentifier) {
       return { ignored: true };
+    }
+
+    // Staff commands (quote approval via chat) are routed here, before any
+    // customer-contact side effect. `handled: false` means this sender has
+    // no linked staff identity and no active linking code — fall through to
+    // the ordinary customer path exactly as before.
+    const commandResult = await this.channelCommandService.handleInboundMessage(
+      orgId,
+      provider,
+      parsed.senderIdentifier,
+      parsed.body,
+    );
+    if (commandResult.handled) {
+      if (commandResult.reply && commandResult.userId) {
+        await this.sendMessage(orgId, commandResult.userId, {
+          provider,
+          recipient: parsed.senderIdentifier,
+          body: commandResult.reply.body,
+        });
+      }
+      return { success: true };
     }
 
     const contact = await this.contactsService.findOrCreateForChannel(

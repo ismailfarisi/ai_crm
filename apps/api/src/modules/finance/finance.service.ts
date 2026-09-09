@@ -100,7 +100,8 @@ export class FinanceService {
         .reduce((sum, e) => sum + Number(e.amount || 0), 0);
 
       const dayRecurring = recurringMonthly / 30;
-      const dayOutflow = Math.round((dayExpenseTotal + dayRecurring) * 100) / 100;
+      const dayOutflow =
+        Math.round((dayExpenseTotal + dayRecurring) * 100) / 100;
       const dayInflow = 0;
 
       recentCashflowSeries.push({
@@ -164,29 +165,39 @@ export class FinanceService {
     journalEntry: JournalEntry;
   }> {
     if (!dto.fromAccountId || !dto.toAccountId) {
-      throw new BadRequestException('Source and destination accounts are required');
+      throw new BadRequestException(
+        'Source and destination accounts are required',
+      );
     }
 
     if (dto.fromAccountId === dto.toAccountId) {
-      throw new BadRequestException('Cannot transfer funds to the same account');
+      throw new BadRequestException(
+        'Cannot transfer funds to the same account',
+      );
     }
 
     if (!dto.amount || dto.amount <= 0) {
-      throw new BadRequestException('Transfer amount must be greater than zero');
+      throw new BadRequestException(
+        'Transfer amount must be greater than zero',
+      );
     }
 
     const fromAccount = await this.accountRepository.findOne({
       where: { id: dto.fromAccountId, tenantId },
     });
     if (!fromAccount) {
-      throw new NotFoundException(`Source account ${dto.fromAccountId} not found`);
+      throw new NotFoundException(
+        `Source account ${dto.fromAccountId} not found`,
+      );
     }
 
     const toAccount = await this.accountRepository.findOne({
       where: { id: dto.toAccountId, tenantId },
     });
     if (!toAccount) {
-      throw new NotFoundException(`Destination account ${dto.toAccountId} not found`);
+      throw new NotFoundException(
+        `Destination account ${dto.toAccountId} not found`,
+      );
     }
 
     const currentBalance = Number(fromAccount.balance);
@@ -239,6 +250,132 @@ export class FinanceService {
       toAccount,
       journalEntry: savedJournal,
     };
+  }
+
+  async recordInvoicePayment(
+    tenantId: string,
+    params: {
+      invoiceId: string;
+      accountId: string;
+      amount: number;
+      description?: string;
+    },
+  ): Promise<{ account: FinanceAccount; journalEntry: JournalEntry }> {
+    if (!params.amount || params.amount <= 0) {
+      throw new BadRequestException('Payment amount must be greater than zero');
+    }
+
+    const account = await this.accountRepository.findOne({
+      where: { id: params.accountId, tenantId },
+    });
+    if (!account) {
+      throw new NotFoundException(`Account ${params.accountId} not found`);
+    }
+
+    account.balance = Number(account.balance) + params.amount;
+    await this.accountRepository.save(account);
+
+    const randomSuffix = Math.floor(Math.random() * 1000)
+      .toString()
+      .padStart(3, '0');
+    const entryNumber = `JE-INV-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}${randomSuffix}`;
+    const description = params.description || `Invoice payment received`;
+
+    const journalEntry = this.journalRepository.create({
+      tenantId,
+      entryNumber,
+      referenceType: 'INVOICE',
+      referenceId: params.invoiceId,
+      entryDate: new Date(),
+      totalAmount: params.amount,
+      lines: [
+        {
+          accountId: account.id,
+          accountName: account.name,
+          debit: params.amount,
+          credit: 0,
+          description,
+        },
+        {
+          accountName: 'Accounts Receivable',
+          debit: 0,
+          credit: params.amount,
+          description,
+        },
+      ],
+    });
+
+    const savedJournal = await this.journalRepository.save(journalEntry);
+
+    return { account, journalEntry: savedJournal };
+  }
+
+  /**
+   * Reverses a previously recorded invoice payment (e.g. when the invoice is
+   * voided) — mirrors `recordInvoicePayment`'s lines exactly in reverse. No
+   * insufficient-balance guard: this is a bookkeeping correction for cash
+   * already recorded, not a live funds check (`recordInvoicePayment` has no
+   * upper bound either).
+   */
+  async reverseInvoicePayment(
+    tenantId: string,
+    params: {
+      invoiceId: string;
+      paymentId: string;
+      accountId: string;
+      amount: number;
+      description?: string;
+    },
+  ): Promise<{ account: FinanceAccount; journalEntry: JournalEntry }> {
+    if (!params.amount || params.amount <= 0) {
+      throw new BadRequestException(
+        'Reversal amount must be greater than zero',
+      );
+    }
+
+    const account = await this.accountRepository.findOne({
+      where: { id: params.accountId, tenantId },
+    });
+    if (!account) {
+      throw new NotFoundException(`Account ${params.accountId} not found`);
+    }
+
+    account.balance = Number(account.balance) - params.amount;
+    await this.accountRepository.save(account);
+
+    const randomSuffix = Math.floor(Math.random() * 1000)
+      .toString()
+      .padStart(3, '0');
+    const entryNumber = `JE-VOID-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}${randomSuffix}`;
+    const description = params.description || 'Invoice payment reversal';
+
+    const journalEntry = this.journalRepository.create({
+      tenantId,
+      entryNumber,
+      referenceType: 'INVOICE',
+      referenceId: params.paymentId,
+      entryDate: new Date(),
+      totalAmount: params.amount,
+      lines: [
+        {
+          accountName: 'Accounts Receivable',
+          debit: params.amount,
+          credit: 0,
+          description,
+        },
+        {
+          accountId: account.id,
+          accountName: account.name,
+          debit: 0,
+          credit: params.amount,
+          description,
+        },
+      ],
+    });
+
+    const savedJournal = await this.journalRepository.save(journalEntry);
+
+    return { account, journalEntry: savedJournal };
   }
 
   async findAllBudgets(tenantId: string): Promise<CategoryBudget[]> {
@@ -299,4 +436,3 @@ export class FinanceService {
     });
   }
 }
-

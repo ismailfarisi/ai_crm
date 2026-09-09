@@ -6,21 +6,29 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Res,
+  StreamableFile,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 import {
   CreateQuotePayload,
+  MarkInvoicePaidPayload,
   PERMISSIONS,
   QuoteCreatedBy as SharedQuoteCreatedBy,
   QuoteLineItem,
   QuoteStatus as SharedQuoteStatus,
+  RecordInvoicePaymentPayload,
   UpdateQuotePayload,
+  VoidInvoicePayload,
 } from '@saas/shared';
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { QuotesService } from './quotes.service';
+import { InvoicesService } from './invoices.service';
 import { Quote } from './entities/quote.entity';
 import { Invoice } from './entities/invoice.entity';
+import { InvoicePayment } from './entities/invoice-payment.entity';
 
 export class CreateQuoteDto implements CreateQuotePayload {
   title: string;
@@ -68,21 +76,43 @@ export class SignalQuoteDto {
   payload?: any;
 }
 
+export class MarkInvoicePaidDto implements MarkInvoicePaidPayload {
+  accountId: string;
+  paidAmount?: number;
+  paidAt?: string;
+  notes?: string;
+}
+
+export class RecordInvoicePaymentDto implements RecordInvoicePaymentPayload {
+  accountId: string;
+  amount?: number;
+  paidAt?: string;
+  notes?: string;
+}
+
+export class VoidInvoiceDto implements VoidInvoicePayload {
+  reason?: string;
+}
+
 @ApiTags('quotes')
 @Controller()
 export class QuotesController {
-  constructor(private readonly quotesService: QuotesService) {}
+  constructor(
+    private readonly quotesService: QuotesService,
+    private readonly invoicesService: InvoicesService,
+  ) {}
 
   @Get('quotes/next-number')
   @RequirePermissions(PERMISSIONS.QUOTE_READ)
   @ApiOperation({
-    summary: 'Generate next quote number',
-    description: 'Generates next sequential quote number for tenant',
+    summary: 'Preview next quote number',
+    description:
+      'Previews the next sequential quote number for tenant without allocating it',
   })
   async getNextQuoteNumber(
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<{ nextNumber: string }> {
-    const nextNumber = await this.quotesService.generateNextQuoteNumber(
+    const nextNumber = await this.quotesService.peekNextQuoteNumber(
       user.organizationId,
     );
     return { nextNumber };
@@ -169,5 +199,120 @@ export class QuotesController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<Invoice[]> {
     return this.quotesService.findAllInvoices(user.organizationId);
+  }
+
+  @Get('invoices/:id')
+  @RequirePermissions(PERMISSIONS.INVOICE_READ)
+  @ApiOperation({
+    summary: 'Get invoice',
+    description: 'Get single invoice by ID',
+  })
+  async findInvoiceById(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<Invoice> {
+    return this.invoicesService.findById(user.organizationId, id);
+  }
+
+  @Patch('invoices/:id/mark-paid')
+  @RequirePermissions(PERMISSIONS.INVOICE_MANAGE)
+  @ApiOperation({
+    summary: 'Mark invoice paid (deprecated)',
+    deprecated: true,
+    description: 'Deprecated — use POST /invoices/:id/payments',
+  })
+  async markInvoicePaid(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: MarkInvoicePaidDto,
+  ): Promise<Invoice> {
+    return this.invoicesService.markPaid(user.organizationId, id, dto, user.id);
+  }
+
+  @Post('invoices/:id/payments')
+  @RequirePermissions(PERMISSIONS.INVOICE_MANAGE)
+  @ApiOperation({
+    summary: 'Record invoice payment',
+    description: 'Records a full or partial payment against a finance account',
+  })
+  async recordInvoicePayment(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RecordInvoicePaymentDto,
+  ): Promise<Invoice> {
+    return this.invoicesService.recordPayment(
+      user.organizationId,
+      id,
+      dto,
+      user.id,
+    );
+  }
+
+  @Get('invoices/:id/payments')
+  @RequirePermissions(PERMISSIONS.INVOICE_READ)
+  @ApiOperation({
+    summary: 'List invoice payments',
+    description: 'Lists the payment history recorded against an invoice',
+  })
+  async findInvoicePayments(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<InvoicePayment[]> {
+    return this.invoicesService.findPayments(user.organizationId, id);
+  }
+
+  @Post('invoices/:id/void')
+  @RequirePermissions(PERMISSIONS.INVOICE_MANAGE)
+  @ApiOperation({
+    summary: 'Void invoice',
+    description:
+      'Cancels an invoice, automatically reversing any recorded payments',
+  })
+  async voidInvoice(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: VoidInvoiceDto,
+  ): Promise<Invoice> {
+    return this.invoicesService.voidInvoice(
+      user.organizationId,
+      id,
+      dto,
+      user.id,
+    );
+  }
+
+  @Post('invoices/:id/send')
+  @RequirePermissions(PERMISSIONS.INVOICE_MANAGE)
+  @ApiOperation({
+    summary: 'Send invoice',
+    description: 'Emails the invoice PDF to the customer',
+  })
+  async sendInvoice(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<Invoice> {
+    return this.invoicesService.sendToCustomer(user.organizationId, id);
+  }
+
+  @Get('invoices/:id/pdf')
+  @RequirePermissions(PERMISSIONS.INVOICE_READ)
+  @ApiOperation({
+    summary: 'Download invoice PDF',
+    description: 'Returns the invoice as a PDF file',
+  })
+  async downloadInvoicePdf(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const { buffer, filename } = await this.invoicesService.getPdf(
+      user.organizationId,
+      id,
+    );
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    return new StreamableFile(buffer);
   }
 }

@@ -1,9 +1,21 @@
 'use client';
 
+import { useState } from 'react';
 import { Receipt, DollarSign, CheckCircle, type LucideIcon } from 'lucide-react';
-import { useInvoices } from '@/hooks/use-invoices';
+import type { InvoiceDto } from '@saas/shared';
+import {
+  useDownloadInvoicePdf,
+  useInvoices,
+  useRecordInvoicePayment,
+  useSendInvoice,
+  useVoidInvoice,
+} from '@/hooks/use-invoices';
+import { useFinanceAccounts } from '@/hooks/use-finance';
 import { PageHeader } from '@/components/ui/primitives';
 import { InvoicesTable } from '@/components/invoices/invoices-table';
+import { RecordPaymentModal } from '@/components/invoices/record-payment-modal';
+import { InvoicePaymentsModal } from '@/components/invoices/invoice-payments-modal';
+import { VoidInvoiceModal } from '@/components/invoices/void-invoice-modal';
 
 const STAT_TONES = {
   brand: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
@@ -38,12 +50,20 @@ function Stat({
 
 export function InvoicesView() {
   const { invoices, isLoading } = useInvoices();
+  const { data: accounts = [] } = useFinanceAccounts();
+  const recordPayment = useRecordInvoicePayment();
+  const sendInvoice = useSendInvoice();
+  const voidInvoice = useVoidInvoice();
+  const downloadPdf = useDownloadInvoicePdf();
+
+  const [payingInvoice, setPayingInvoice] = useState<InvoiceDto | null>(null);
+  const [historyInvoice, setHistoryInvoice] = useState<InvoiceDto | null>(null);
+  const [voidingInvoice, setVoidingInvoice] = useState<InvoiceDto | null>(null);
+  const [sendingId, setSendingId] = useState<string | null>(null);
 
   const issuedInvoicesCount = invoices.length;
   const totalIssuedAmount = invoices.reduce((acc, inv) => acc + (inv.amount || 0), 0);
-  const paidAmount = invoices
-    .filter((inv) => inv.status === 'PAID')
-    .reduce((acc, inv) => acc + (inv.amount || 0), 0);
+  const paidAmount = invoices.reduce((acc, inv) => acc + (inv.paidAmount || 0), 0);
 
   const formattedTotalIssued = `$${totalIssuedAmount.toLocaleString(undefined, {
     minimumFractionDigits: 2,
@@ -54,6 +74,15 @@ export function InvoicesView() {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+
+  const handleSend = async (invoice: InvoiceDto) => {
+    setSendingId(invoice.id);
+    try {
+      await sendInvoice.mutateAsync(invoice.id);
+    } finally {
+      setSendingId(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -68,8 +97,45 @@ export function InvoicesView() {
         <Stat label="Paid Amount" value={formattedPaidAmount} icon={CheckCircle} tone="success" />
       </div>
 
-      <InvoicesTable invoices={invoices} isLoading={isLoading} />
+      <InvoicesTable
+        invoices={invoices}
+        isLoading={isLoading}
+        onRecordPayment={setPayingInvoice}
+        onSend={handleSend}
+        onDownload={downloadPdf}
+        onViewHistory={setHistoryInvoice}
+        onVoid={setVoidingInvoice}
+        sendingId={sendingId}
+      />
+
+      <RecordPaymentModal
+        open={payingInvoice !== null}
+        onClose={() => setPayingInvoice(null)}
+        invoice={payingInvoice}
+        accounts={accounts}
+        isLoading={recordPayment.isPending}
+        onSubmit={async (payload) => {
+          if (!payingInvoice) return;
+          await recordPayment.mutateAsync({ id: payingInvoice.id, payload });
+        }}
+      />
+
+      <InvoicePaymentsModal
+        open={historyInvoice !== null}
+        onClose={() => setHistoryInvoice(null)}
+        invoice={historyInvoice}
+      />
+
+      <VoidInvoiceModal
+        open={voidingInvoice !== null}
+        onClose={() => setVoidingInvoice(null)}
+        invoice={voidingInvoice}
+        isLoading={voidInvoice.isPending}
+        onSubmit={async (payload) => {
+          if (!voidingInvoice) return;
+          await voidInvoice.mutateAsync({ id: voidingInvoice.id, payload });
+        }}
+      />
     </div>
   );
 }
-

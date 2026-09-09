@@ -13,6 +13,7 @@ import {
 } from '@saas/shared';
 import { Quote, QuoteCreatedBy, QuoteStatus } from './entities/quote.entity';
 import { Invoice } from './entities/invoice.entity';
+import { InvoicesService } from './invoices.service';
 import { TemporalService } from '../temporal/temporal.service';
 import { quoteWorkflow } from './workflows/quote.workflow';
 import {
@@ -20,6 +21,12 @@ import {
   manualOverrideSignal,
   rejectQuoteSignal,
 } from './workflows/interfaces';
+import { AutomationEventBridgeService } from '../automations/services/automation-event-bridge.service';
+import {
+  allocateNextSequenceValue,
+  formatSequenceNumber,
+  peekNextSequenceValue,
+} from '../../database/tenant-sequence.util';
 
 @Injectable()
 export class QuotesService {
@@ -31,13 +38,28 @@ export class QuotesService {
     @InjectRepository(Invoice)
     private readonly invoiceRepository: Repository<Invoice>,
     private readonly temporalService: TemporalService,
+    private readonly invoicesService: InvoicesService,
+    private readonly automationEventBridgeService: AutomationEventBridgeService,
   ) {}
 
+  /** Non-mutating preview for the "new quote" UI — must not burn a sequence value. */
+  async peekNextQuoteNumber(tenantId: string): Promise<string> {
+    const value = await peekNextSequenceValue(
+      this.quoteRepository.manager,
+      tenantId,
+      'quote_number',
+    );
+    return formatSequenceNumber('QT', value);
+  }
+
+  /** Atomically allocates the next quote number — call only when actually creating a quote. */
   async generateNextQuoteNumber(tenantId: string): Promise<string> {
-    const count = await this.quoteRepository.count({ where: { tenantId } });
-    const year = new Date().getFullYear();
-    const seq = String(count + 1).padStart(4, '0');
-    return `QT-${year}-${seq}`;
+    const value = await allocateNextSequenceValue(
+      this.quoteRepository.manager,
+      tenantId,
+      'quote_number',
+    );
+    return formatSequenceNumber('QT', value);
   }
 
   async createQuote(
@@ -205,7 +227,50 @@ export class QuotesService {
       }
     }
 
-    return await this.quoteRepository.save(quote);
+    const savedQuote = await this.quoteRepository.save(quote);
+
+    // Guarantees an invoice exists even if Temporal never picks up the
+    // signal, or hasn't finished `generateInvoiceActivity` by the time this
+    // request returns. `createFromQuote` is idempotent so whichever path
+    // gets there first wins.
+    if (savedQuote.status === QuoteStatus.APPROVED) {
+      try {
+        const { invoice, isNew } = await this.invoicesService.createFromQuote(
+          tenantId,
+          savedQuote,
+        );
+        if (isNew) {
+          try {
+            await this.automationEventBridgeService.handleCrmEvent({
+              tenantId,
+              eventType: 'invoice.issued',
+              entityId: invoice.id,
+              data: {
+                invoiceId: invoice.id,
+                invoiceNumber: invoice.invoiceNumber,
+                quoteId: savedQuote.id,
+                amount: invoice.amount,
+                dueDate: invoice.dueDate,
+                customerId: invoice.customerId,
+                customerEmail: invoice.customerEmail,
+              },
+            });
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            this.logger.warn(
+              `Failed to emit invoice.issued for invoice ${invoice.id}: ${msg}`,
+            );
+          }
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `Failed to create invoice for quote ${quoteId}: ${msg}`,
+        );
+      }
+    }
+
+    return savedQuote;
   }
 
   async findAllQuotes(tenantId: string): Promise<Quote[]> {

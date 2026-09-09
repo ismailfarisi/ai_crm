@@ -56,6 +56,50 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
 }
 
 /**
+ * Like `apiFetch`, but for binary responses (e.g. a PDF download) that can't
+ * be parsed as JSON. Shares the same credentialed-cookie + silent-refresh
+ * handling so a download doesn't just 401 once the access token expires.
+ */
+export async function apiFetchBlob(
+  path: string,
+  options: RequestOptions = {},
+): Promise<Blob> {
+  const { body, query, _retried, headers, ...init } = options;
+
+  const url = new URL(`${API_PUBLIC_URL}${path}`);
+  if (query) {
+    for (const [key, value] of Object.entries(query as Record<string, unknown>)) {
+      if (value !== undefined && value !== null && value !== '') {
+        url.searchParams.set(key, String(value));
+      }
+    }
+  }
+
+  const response = await fetch(url.toString(), {
+    ...init,
+    credentials: 'include',
+    headers: {
+      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      ...headers,
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+
+  if (response.status === 401 && !_retried) {
+    const refreshed = await silentRefresh();
+    if (refreshed) {
+      return apiFetchBlob(path, { ...options, _retried: true });
+    }
+  }
+
+  if (!response.ok) {
+    throw await toApiError(response);
+  }
+
+  return response.blob();
+}
+
+/**
  * Several requests can 401 at once after an access token expires. They all share
  * one in-flight refresh so we don't rotate the refresh token N times in
  * parallel — which the API would treat as token reuse and revoke the session.

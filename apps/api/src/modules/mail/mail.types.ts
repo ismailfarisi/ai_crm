@@ -6,6 +6,8 @@
 export interface MailProvider {
   /** Send a "you've been invited to X" email. */
   sendInvite(mail: InviteMail): Promise<void>;
+  /** Send an arbitrary transactional email, optionally with attachments. */
+  sendMail(mail: GenericMail): Promise<void>;
   readonly name: string;
 }
 
@@ -19,4 +21,18 @@ export interface InviteMail {
   /** Absolute URL to the accept-invite page, including the token. */
   acceptUrl: string;
   expiresAt: Date;
+}
+
+export interface MailAttachment {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
+}
+
+export interface GenericMail {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+  attachments?: MailAttachment[];
 }

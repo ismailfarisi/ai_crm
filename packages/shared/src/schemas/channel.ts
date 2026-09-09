@@ -57,3 +57,17 @@ export type EmailSmtpConfig = z.infer<typeof emailSmtpConfigSchema>;
 export type EmailResendConfig = z.infer<typeof emailResendConfigSchema>;
 export type ChannelConfigPayload = z.infer<typeof channelConfigSchema>;
 export type SendChannelMessagePayload = z.infer<typeof sendChannelMessageSchema>;
+
+/** A staff member's channel identity, linked via a one-time code so they can send quote-approval commands. */
+export interface StaffChannelIdentityDto {
+  id: string;
+  provider: ChannelProvider;
+  /** Masked for display — never the raw phone/telegram-id/email. */
+  identifierPreview: string;
+  createdAt: string;
+}
+
+export interface ChannelLinkCodeDto {
+  code: string;
+  expiresAt: string;
+}

@@ -6,6 +6,7 @@ import { api, queryKeys, type ChannelConfigDto } from '@/lib/api/endpoints';
 import { PageHeader, Skeleton } from '@/components/ui/primitives';
 import { ChannelCard } from './channel-card';
 import { ChannelConfigModal } from './channel-config-modal';
+import { ChannelIdentityLinking } from './channel-identity-linking';
 
 const DEFAULT_PROVIDERS: ChannelConfigDto['provider'][] = [
   'WHATSAPP_META',
@@ -72,6 +73,8 @@ export function ChannelsView() {
           />
         ))}
       </div>
+
+      <ChannelIdentityLinking />
 
       <ChannelConfigModal
         open={Boolean(editingConfig)}

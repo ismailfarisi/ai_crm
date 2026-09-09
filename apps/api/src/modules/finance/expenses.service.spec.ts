@@ -25,6 +25,7 @@ describe('ExpensesService', () => {
   let temporalService: jest.Mocked<Partial<TemporalService>>;
   let aiService: jest.Mocked<Partial<AiService>>;
   let mockWorkflowHandle: any;
+  let claimSequenceValue: number;
 
   const tenantId = '11111111-1111-1111-1111-111111111111';
   const expenseId = '22222222-2222-2222-2222-222222222222';
@@ -36,6 +37,7 @@ describe('ExpensesService', () => {
       signal: jest.fn().mockResolvedValue(undefined),
     };
 
+    claimSequenceValue = 0;
     expenseRepo = {
       count: jest.fn().mockResolvedValue(0),
       find: jest.fn().mockResolvedValue([]),
@@ -50,6 +52,12 @@ describe('ExpensesService', () => {
         id: expenseId,
         ...exp,
       })),
+      manager: {
+        query: jest.fn().mockImplementation(async () => {
+          claimSequenceValue += 1;
+          return [{ current_value: claimSequenceValue }];
+        }),
+      } as any,
     };
 
     accountRepo = {
@@ -124,7 +132,7 @@ describe('ExpensesService', () => {
 
   describe('create', () => {
     it('creates expense claim with sequential claim number and starts Temporal workflow', async () => {
-      expenseRepo.count = jest.fn().mockResolvedValue(4);
+      claimSequenceValue = 4;
 
       const dto: CreateExpenseClaimDto = {
         category: 'Travel',

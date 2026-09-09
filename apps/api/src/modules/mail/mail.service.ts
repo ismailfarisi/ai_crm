@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { MailProvider } from './mail.types';
+import type { GenericMail, MailProvider } from './mail.types';
 import { MAIL_PROVIDER } from './mail.types';
 
 /** Facade over the active provider; callers depend on this, not on a concrete class. */
@@ -13,5 +13,9 @@ export class MailService implements MailProvider {
 
   sendInvite(mail: Parameters<MailProvider['sendInvite']>[0]): Promise<void> {
     return this.provider.sendInvite(mail);
+  }
+
+  sendMail(mail: GenericMail): Promise<void> {
+    return this.provider.sendMail(mail);
   }
 }

@@ -32,6 +32,10 @@ import {
   scannedReceiptJsonSchema,
 } from './dto';
 import type { ExpenseStatus } from '@saas/shared';
+import {
+  allocateNextSequenceValue,
+  formatSequenceNumber,
+} from '../../database/tenant-sequence.util';
 
 @Injectable()
 export class ExpensesService {
@@ -51,10 +55,12 @@ export class ExpensesService {
   ) {}
 
   async generateNextClaimNumber(tenantId: string): Promise<string> {
-    const count = await this.expenseRepository.count({ where: { tenantId } });
-    const year = new Date().getFullYear();
-    const seq = String(count + 1).padStart(4, '0');
-    return `EXP-${year}-${seq}`;
+    const value = await allocateNextSequenceValue(
+      this.expenseRepository.manager,
+      tenantId,
+      'claim_number',
+    );
+    return formatSequenceNumber('EXP', value);
   }
 
   async findAll(tenantId: string): Promise<ExpenseClaim[]> {

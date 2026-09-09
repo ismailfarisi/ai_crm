@@ -17,6 +17,7 @@ const {
   sendNotificationActivity,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: '1 minute',
+  retry: { maximumAttempts: 3 },
 });
 
 export async function quoteWorkflow(
@@ -92,7 +93,10 @@ export async function quoteWorkflow(
   }
 
   status = 'APPROVED';
-  const invoiceId = await generateInvoiceActivity(input.quoteId);
+  const invoiceId = await generateInvoiceActivity({
+    quoteId: input.quoteId,
+    tenantId: input.tenantId,
+  });
   await sendNotificationActivity({
     quoteId: input.quoteId,
     tenantId: input.tenantId,

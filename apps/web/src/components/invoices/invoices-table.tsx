@@ -3,36 +3,72 @@
 import React, { useMemo } from 'react';
 import Link from 'next/link';
 import { ColumnDef } from '@tanstack/react-table';
-import { CheckCircle, Clock } from 'lucide-react';
+import { AlertTriangle, Ban, CheckCircle, Clock, Download, History, Mail, Wallet } from 'lucide-react';
+import type { InvoiceDto, InvoiceStatus } from '@saas/shared';
+import { PERMISSIONS, isInvoiceOverdue } from '@saas/shared';
 import { Badge } from '@/components/ui/primitives';
+import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
-import type { Invoice, InvoiceStatus } from '@/hooks/use-invoices';
+import { useCan } from '@/lib/session-context';
 
 interface InvoicesTableProps {
-  invoices: Invoice[];
+  invoices: InvoiceDto[];
   isLoading?: boolean;
+  onRecordPayment?: (invoice: InvoiceDto) => void;
+  onSend?: (invoice: InvoiceDto) => void;
+  onDownload?: (invoice: InvoiceDto) => void;
+  onViewHistory?: (invoice: InvoiceDto) => void;
+  onVoid?: (invoice: InvoiceDto) => void;
+  sendingId?: string | null;
 }
 
 export function InvoiceStatusBadge({ status }: { status: InvoiceStatus }) {
-  if (status === 'PAID') {
-    return (
-      <Badge tone="success" className="gap-1">
-        <CheckCircle className="size-3" />
-        Paid
-      </Badge>
-    );
+  switch (status) {
+    case 'PAID':
+      return (
+        <Badge tone="success" className="gap-1">
+          <CheckCircle className="size-3" />
+          Paid
+        </Badge>
+      );
+    case 'PARTIALLY_PAID':
+      return (
+        <Badge tone="info" className="gap-1">
+          <Clock className="size-3" />
+          Partially Paid
+        </Badge>
+      );
+    case 'CANCELLED':
+      return (
+        <Badge tone="neutral" className="gap-1">
+          <Ban className="size-3" />
+          Voided
+        </Badge>
+      );
+    default:
+      return (
+        <Badge tone="warning" className="gap-1">
+          <Clock className="size-3" />
+          Issued
+        </Badge>
+      );
   }
-  return (
-    <Badge tone="warning" className="gap-1">
-      <Clock className="size-3" />
-      Issued
-    </Badge>
-  );
 }
 
-export function InvoicesTable({ invoices, isLoading = false }: InvoicesTableProps) {
-  const columns = useMemo<ColumnDef<Invoice, any>[]>(
+export function InvoicesTable({
+  invoices,
+  isLoading = false,
+  onRecordPayment,
+  onSend,
+  onDownload,
+  onViewHistory,
+  onVoid,
+  sendingId = null,
+}: InvoicesTableProps) {
+  const canManage = useCan({ permission: PERMISSIONS.INVOICE_MANAGE });
+
+  const columns = useMemo<ColumnDef<InvoiceDto>[]>(
     () => [
       {
         accessorKey: 'invoiceNumber',
@@ -40,6 +76,11 @@ export function InvoicesTable({ invoices, isLoading = false }: InvoicesTableProp
         cell: ({ row }) => (
           <span className="font-mono font-medium text-ink">{row.original.invoiceNumber}</span>
         ),
+      },
+      {
+        accessorKey: 'customerName',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Customer" />,
+        cell: ({ row }) => <span className="text-ink font-medium">{row.original.customerName}</span>,
       },
       {
         accessorKey: 'quoteId',
@@ -68,7 +109,17 @@ export function InvoicesTable({ invoices, isLoading = false }: InvoicesTableProp
       {
         accessorKey: 'status',
         header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
-        cell: ({ row }) => <InvoiceStatusBadge status={row.original.status} />,
+        cell: ({ row }) => (
+          <div className="flex items-center gap-1.5">
+            <InvoiceStatusBadge status={row.original.status} />
+            {isInvoiceOverdue(row.original) && (
+              <Badge tone="danger" className="gap-1">
+                <AlertTriangle className="size-3" />
+                Overdue
+              </Badge>
+            )}
+          </div>
+        ),
       },
       {
         accessorKey: 'issuedAt',
@@ -84,8 +135,54 @@ export function InvoicesTable({ invoices, isLoading = false }: InvoicesTableProp
           return <span className="text-ink-muted text-xs whitespace-nowrap">{dateStr}</span>;
         },
       },
+      {
+        id: 'actions',
+        cell: ({ row }) => {
+          const invoice = row.original;
+          const isFinal = invoice.status === 'PAID' || invoice.status === 'CANCELLED';
+          const isSending = sendingId === invoice.id;
+
+          return (
+            <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+              {onDownload && (
+                <Button size="sm" variant="ghost" onClick={() => onDownload(invoice)}>
+                  <Download className="size-3.5" />
+                </Button>
+              )}
+              {onViewHistory && (invoice.paidAmount ?? 0) > 0 && (
+                <Button size="sm" variant="ghost" onClick={() => onViewHistory(invoice)}>
+                  <History className="size-3.5" />
+                </Button>
+              )}
+              {canManage && onSend && invoice.status !== 'CANCELLED' && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  loading={isSending}
+                  disabled={isSending || !invoice.customerEmail}
+                  title={invoice.customerEmail ? undefined : 'Invoice has no customer email'}
+                  onClick={() => onSend(invoice)}
+                >
+                  <Mail className="size-3.5" />
+                </Button>
+              )}
+              {canManage && onRecordPayment && !isFinal && (
+                <Button size="sm" variant="primary" onClick={() => onRecordPayment(invoice)}>
+                  <Wallet className="size-3.5" />
+                  Record Payment
+                </Button>
+              )}
+              {canManage && onVoid && invoice.status !== 'CANCELLED' && (
+                <Button size="sm" variant="danger" onClick={() => onVoid(invoice)}>
+                  <Ban className="size-3.5" />
+                </Button>
+              )}
+            </div>
+          );
+        },
+      },
     ],
-    []
+    [canManage, onRecordPayment, onSend, onDownload, onViewHistory, onVoid, sendingId]
   );
 
   return (

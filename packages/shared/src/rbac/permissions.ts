@@ -52,6 +52,7 @@ export const PERMISSIONS = {
 
   // Invoices
   INVOICE_READ: 'invoice:read',
+  INVOICE_MANAGE: 'invoice:manage',
 
   // Channels
   CHANNEL_MANAGE: 'channel:manage',
@@ -123,6 +124,7 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   [PERMISSIONS.QUOTE_APPROVE]: 'Approve quotes',
 
   [PERMISSIONS.INVOICE_READ]: 'View invoices',
+  [PERMISSIONS.INVOICE_MANAGE]: 'Mark invoices as paid and send them to customers',
 
   [PERMISSIONS.CHANNEL_MANAGE]: 'Manage channel integrations',
   [PERMISSIONS.CHANNEL_READ]: 'View channels and messages',
@@ -207,7 +209,7 @@ export const PERMISSION_GROUPS: { key: string; label: string; permissions: Permi
   {
     key: 'invoice',
     label: 'Invoices',
-    permissions: [PERMISSIONS.INVOICE_READ],
+    permissions: [PERMISSIONS.INVOICE_READ, PERMISSIONS.INVOICE_MANAGE],
   },
   {
     key: 'channel',

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { MailProvider, type InviteMail } from '../mail.types';
+import { MailProvider, type GenericMail, type InviteMail } from '../mail.types';
 
 /**
  * Development provider: prints the invite email (including the clickable link)
@@ -26,6 +26,26 @@ export class ConsoleMailProvider implements MailProvider {
         'Accept the invite:',
         mail.acceptUrl,
         '',
+      ].join('\n'),
+    );
+    return Promise.resolve();
+  }
+
+  sendMail(mail: GenericMail): Promise<void> {
+    this.logger.log(
+      [
+        '',
+        '┌──────────────────────────────────────────────────────────┐',
+        '│  EMAIL (console mail provider — not actually sent)        │',
+        '└──────────────────────────────────────────────────────────┘',
+        `To:      ${mail.to}`,
+        `Subject: ${mail.subject}`,
+        '',
+        mail.text || mail.html,
+        '',
+        ...(mail.attachments?.map(
+          (a) => `Attachment: ${a.filename} (${a.content.length} bytes)`,
+        ) || []),
       ].join('\n'),
     );
     return Promise.resolve();

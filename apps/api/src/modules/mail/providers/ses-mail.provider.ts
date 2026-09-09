@@ -5,8 +5,9 @@ import {
   SendEmailCommand,
   type SendEmailCommandInput,
 } from '@aws-sdk/client-sesv2';
+import MailComposer from 'nodemailer/lib/mail-composer';
 import type { AppConfig } from '@/config/configuration';
-import { MailProvider, type InviteMail } from '../mail.types';
+import { MailProvider, type GenericMail, type InviteMail } from '../mail.types';
 
 /**
  * Amazon SES provider. Credentials come from the AWS SDK's default chain
@@ -60,6 +61,34 @@ export class SesMailProvider implements MailProvider {
 
     await this.client.send(new SendEmailCommand(input));
     this.logger.log(`Sent invite email to ${mail.to}`);
+  }
+
+  async sendMail(mail: GenericMail): Promise<void> {
+    // SES's Content.Simple can't carry attachments — build a raw MIME
+    // message with nodemailer's composer and send it via Content.Raw.
+    const composer = new MailComposer({
+      from: this.from,
+      to: mail.to,
+      subject: mail.subject,
+      html: mail.html,
+      text: mail.text,
+      attachments: mail.attachments?.map((a) => ({
+        filename: a.filename,
+        content: a.content,
+        contentType: a.contentType,
+      })),
+    });
+
+    const raw = await composer.compile().build();
+
+    await this.client.send(
+      new SendEmailCommand({
+        FromEmailAddress: this.from,
+        Destination: { ToAddresses: [mail.to] },
+        Content: { Raw: { Data: raw } },
+      }),
+    );
+    this.logger.log(`Sent email to ${mail.to}`);
   }
 }
 

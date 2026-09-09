@@ -3,7 +3,9 @@ import { Repository } from 'typeorm';
 import { Quote, QuoteCreatedBy, QuoteStatus } from './entities/quote.entity';
 import { Invoice } from './entities/invoice.entity';
 import { QuotesService } from './quotes.service';
+import { InvoicesService } from './invoices.service';
 import { TemporalService } from '../temporal/temporal.service';
+import { AutomationEventBridgeService } from '../automations/services/automation-event-bridge.service';
 import {
   CreateQuotePayload,
   QuoteLineItem,
@@ -15,7 +17,12 @@ describe('QuotesService', () => {
   let quoteRepo: jest.Mocked<Partial<Repository<Quote>>>;
   let invoiceRepo: jest.Mocked<Partial<Repository<Invoice>>>;
   let temporalService: jest.Mocked<Partial<TemporalService>>;
+  let invoicesService: jest.Mocked<Partial<InvoicesService>>;
+  let automationEventBridgeService: jest.Mocked<
+    Partial<AutomationEventBridgeService>
+  >;
   let mockWorkflowHandle: any;
+  let sequenceValue: number;
 
   const tenantId = '11111111-1111-1111-1111-111111111111';
   const quoteId = '22222222-2222-2222-2222-222222222222';
@@ -26,6 +33,7 @@ describe('QuotesService', () => {
       signal: jest.fn().mockResolvedValue(undefined),
     };
 
+    sequenceValue = 0;
     quoteRepo = {
       count: jest.fn().mockResolvedValue(0),
       find: jest.fn().mockResolvedValue([]),
@@ -40,6 +48,17 @@ describe('QuotesService', () => {
         id: quoteId,
         ...quote,
       })),
+      manager: {
+        // Mimics the real allocate (INSERT ... RETURNING, increments) vs.
+        // peek (SELECT, non-mutating) split in tenant-sequence.util.ts.
+        query: jest.fn().mockImplementation(async (sql: string) => {
+          if (sql.trim().toUpperCase().startsWith('INSERT')) {
+            sequenceValue += 1;
+            return [{ current_value: sequenceValue }];
+          }
+          return sequenceValue > 0 ? [{ current_value: sequenceValue }] : [];
+        }),
+      } as any,
     };
 
     invoiceRepo = {
@@ -55,27 +74,48 @@ describe('QuotesService', () => {
       } as any),
     };
 
+    invoicesService = {
+      createFromQuote: jest.fn().mockResolvedValue({
+        invoice: { id: 'invoice-1', invoiceNumber: 'INV-2026-0001' } as Invoice,
+        isNew: false,
+      }),
+    };
+
+    automationEventBridgeService = {
+      handleCrmEvent: jest.fn().mockResolvedValue([]),
+    };
+
     service = new QuotesService(
       quoteRepo as unknown as Repository<Quote>,
       invoiceRepo as unknown as Repository<Invoice>,
       temporalService as unknown as TemporalService,
+      invoicesService as unknown as InvoicesService,
+      automationEventBridgeService as unknown as AutomationEventBridgeService,
     );
   });
 
   describe('generateNextQuoteNumber', () => {
     it('generates QT-YYYY-0001 for the first quote of the tenant', async () => {
-      quoteRepo.count = jest.fn().mockResolvedValue(0);
       const nextNumber = await service.generateNextQuoteNumber(tenantId);
       const year = new Date().getFullYear();
       expect(nextNumber).toBe(`QT-${year}-0001`);
-      expect(quoteRepo.count).toHaveBeenCalledWith({ where: { tenantId } });
+      expect(quoteRepo.manager!.query).toHaveBeenCalled();
     });
 
-    it('generates sequential padded number based on count', async () => {
-      quoteRepo.count = jest.fn().mockResolvedValue(41);
+    it('generates sequential padded number based on the current sequence value', async () => {
+      sequenceValue = 41;
       const nextNumber = await service.generateNextQuoteNumber(tenantId);
       const year = new Date().getFullYear();
       expect(nextNumber).toBe(`QT-${year}-0042`);
+    });
+  });
+
+  describe('peekNextQuoteNumber', () => {
+    it('previews the next number without mutating state observably differently from allocate', async () => {
+      sequenceValue = 4;
+      const nextNumber = await service.peekNextQuoteNumber(tenantId);
+      const year = new Date().getFullYear();
+      expect(nextNumber).toBe(`QT-${year}-0005`);
     });
   });
 
@@ -93,7 +133,7 @@ describe('QuotesService', () => {
     ];
 
     it('creates quote with auto-generated quote number and calculated totals', async () => {
-      quoteRepo.count = jest.fn().mockResolvedValue(2);
+      sequenceValue = 2;
 
       const payload: CreateQuotePayload = {
         title: 'Project Alpha Proposal',
@@ -150,7 +190,7 @@ describe('QuotesService', () => {
           quoteNumber: 'CUSTOM-2026-99',
         }),
       );
-      expect(quoteRepo.count).not.toHaveBeenCalled();
+      expect(quoteRepo.manager!.query).not.toHaveBeenCalled();
     });
 
     it('handles Temporal start errors gracefully and falls back to deterministic workflowId', async () => {
@@ -322,6 +362,34 @@ describe('QuotesService', () => {
         expect.objectContaining({ status: QuoteStatus.APPROVED }),
       );
       expect(res.status).toBe(QuoteStatus.APPROVED);
+      // Default mock resolves isNew: false — no event should fire.
+      expect(
+        automationEventBridgeService.handleCrmEvent,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('emits invoice.issued only when createFromQuote reports a newly created invoice', async () => {
+      const existing = {
+        id: quoteId,
+        tenantId,
+        status: QuoteStatus.DRAFT,
+        workflowId: `quote-${quoteId}`,
+      } as Quote;
+      quoteRepo.findOne = jest.fn().mockResolvedValue({ ...existing });
+      invoicesService.createFromQuote = jest.fn().mockResolvedValue({
+        invoice: { id: 'invoice-2', invoiceNumber: 'INV-2026-0002' } as Invoice,
+        isNew: true,
+      });
+
+      await service.sendSignal(tenantId, quoteId, 'APPROVE');
+
+      expect(automationEventBridgeService.handleCrmEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId,
+          eventType: 'invoice.issued',
+          entityId: 'invoice-2',
+        }),
+      );
     });
 
     it('signals REJECT and updates quote status to REJECTED', async () => {

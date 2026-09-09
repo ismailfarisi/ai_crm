@@ -2,6 +2,8 @@ import type {
   AcceptInviteInput,
   AssignRolesInput,
   ChangePasswordInput,
+  ChannelLinkCodeDto,
+  StaffChannelIdentityDto,
   ContactDto,
   ContactStatsDto,
   CreateContactPayload,
@@ -27,6 +29,10 @@ import type {
   QuoteDto,
   CreateQuotePayload,
   UpdateQuotePayload,
+  InvoiceDto,
+  InvoicePaymentDto,
+  RecordInvoicePaymentPayload,
+  VoidInvoicePayload,
   AutomationWorkflowDto,
   AutomationExecutionDto,
   CreateAutomationWorkflowPayload,
@@ -54,19 +60,8 @@ import type {
   UpsertAiBudgetPayload,
   AiUsageLogDto,
 } from '@saas/shared';
-import { apiFetch } from './client';
-
-export type InvoiceStatus = 'ISSUED' | 'PAID';
-
-export interface Invoice {
-  id: string;
-  quoteId: string;
-  tenantId: string;
-  invoiceNumber: string;
-  amount: number;
-  status: InvoiceStatus;
-  issuedAt: string;
-}
+import { apiFetch, apiFetchBlob } from './client';
+import { API_PUBLIC_URL } from './config';
 
 export interface ContactListParams {
   page?: number;
@@ -182,7 +177,21 @@ export const api = {
   },
 
   invoices: {
-    list: () => apiFetch<Invoice[]>('/invoices'),
+    list: () => apiFetch<InvoiceDto[]>('/invoices'),
+    get: (id: string) => apiFetch<InvoiceDto>(`/invoices/${id}`),
+    recordPayment: (id: string, payload: RecordInvoicePaymentPayload) =>
+      apiFetch<InvoiceDto>(`/invoices/${id}/payments`, {
+        method: 'POST',
+        body: payload,
+      }),
+    payments: (id: string) => apiFetch<InvoicePaymentDto[]>(`/invoices/${id}/payments`),
+    void: (id: string, payload: VoidInvoicePayload) =>
+      apiFetch<InvoiceDto>(`/invoices/${id}/void`, { method: 'POST', body: payload }),
+    send: (id: string) =>
+      apiFetch<InvoiceDto>(`/invoices/${id}/send`, { method: 'POST' }),
+    downloadPdf: (id: string) => apiFetchBlob(`/invoices/${id}/pdf`),
+    /** Absolute URL, for reference only — never navigate to it directly (cookie auth). */
+    pdfUrl: (id: string) => `${API_PUBLIC_URL}/invoices/${id}/pdf`,
   },
 
   channels: {
@@ -200,6 +209,13 @@ export const api = {
       apiFetch<ChannelMessageDto[]>('/channels/messages', { query: params }),
     sendMessage: (input: SendChannelMessagePayload) =>
       apiFetch<ChannelMessageDto>('/channels/send', { method: 'POST', body: input }),
+    identities: {
+      list: () => apiFetch<StaffChannelIdentityDto[]>('/channels/identities'),
+      createLinkCode: () =>
+        apiFetch<ChannelLinkCodeDto>('/channels/identities/link-code', { method: 'POST' }),
+      revoke: (id: string) =>
+        apiFetch<{ success: true }>(`/channels/identities/${id}`, { method: 'DELETE' }),
+    },
   },
 
   automations: {
@@ -332,7 +348,10 @@ export const queryKeys = {
   quotes: ['quotes'] as const,
   quote: (id: string) => ['quotes', id] as const,
   invoices: ['invoices'] as const,
+  invoice: (id: string) => ['invoices', id] as const,
+  invoicePayments: (id: string) => ['invoices', id, 'payments'] as const,
   channels: ['channels', 'configs'] as const,
+  channelIdentities: ['channels', 'identities'] as const,
   channelMessages: (params: { contactId?: string; limit?: number } = {}) =>
     ['channels', 'messages', params] as const,
   automations: ['automations'] as const,

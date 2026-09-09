@@ -6,7 +6,12 @@ import { CategoryBudget } from './entities/category-budget.entity';
 import { RecurringExpense } from './entities/recurring-expense.entity';
 import { JournalEntry } from './entities/journal-entry.entity';
 import { ExpenseClaim } from './entities/expense-claim.entity';
-import { CreateFinanceAccountDto, CreateCategoryBudgetDto, CreateRecurringExpenseDto, TransferFundsDto } from './dto';
+import {
+  CreateFinanceAccountDto,
+  CreateCategoryBudgetDto,
+  CreateRecurringExpenseDto,
+  TransferFundsDto,
+} from './dto';
 
 describe('FinanceService', () => {
   let service: FinanceService;
@@ -23,7 +28,9 @@ describe('FinanceService', () => {
       find: jest.fn().mockResolvedValue([]),
       findOne: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockImplementation((dto) => ({ id: 'acc-1', ...dto })),
-      save: jest.fn().mockImplementation(async (acc) => ({ id: 'acc-1', ...acc })),
+      save: jest
+        .fn()
+        .mockImplementation(async (acc) => ({ id: 'acc-1', ...acc })),
       update: jest.fn().mockResolvedValue({} as any),
     };
 
@@ -31,14 +38,18 @@ describe('FinanceService', () => {
       find: jest.fn().mockResolvedValue([]),
       findOne: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockImplementation((dto) => ({ id: 'bud-1', ...dto })),
-      save: jest.fn().mockImplementation(async (bud) => ({ id: 'bud-1', ...bud })),
+      save: jest
+        .fn()
+        .mockImplementation(async (bud) => ({ id: 'bud-1', ...bud })),
     };
 
     recurringRepo = {
       find: jest.fn().mockResolvedValue([]),
       findOne: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockImplementation((dto) => ({ id: 'rec-1', ...dto })),
-      save: jest.fn().mockImplementation(async (rec) => ({ id: 'rec-1', ...rec })),
+      save: jest
+        .fn()
+        .mockImplementation(async (rec) => ({ id: 'rec-1', ...rec })),
     };
 
     journalRepo = {
@@ -63,18 +74,66 @@ describe('FinanceService', () => {
   describe('getOverview', () => {
     it('calculates total cash, monthly burn rate, runway months, and cashflow series', async () => {
       const mockAccounts = [
-        { id: 'acc-1', tenantId, name: 'Operating Bank', accountType: 'BANK', currency: 'USD', balance: 50000, isDefault: true, createdAt: new Date(), updatedAt: new Date() },
-        { id: 'acc-2', tenantId, name: 'Petty Cash', accountType: 'CASH', currency: 'USD', balance: 10000, isDefault: false, createdAt: new Date(), updatedAt: new Date() },
+        {
+          id: 'acc-1',
+          tenantId,
+          name: 'Operating Bank',
+          accountType: 'BANK',
+          currency: 'USD',
+          balance: 50000,
+          isDefault: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        {
+          id: 'acc-2',
+          tenantId,
+          name: 'Petty Cash',
+          accountType: 'CASH',
+          currency: 'USD',
+          balance: 10000,
+          isDefault: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
       ] as FinanceAccount[];
 
       const mockRecurring = [
-        { id: 'rec-1', tenantId, vendorName: 'AWS', category: 'Infrastructure', amount: 2000, billingInterval: 'MONTHLY', status: 'ACTIVE' },
-        { id: 'rec-2', tenantId, vendorName: 'GitHub', category: 'Software', amount: 500, billingInterval: 'MONTHLY', status: 'ACTIVE' },
+        {
+          id: 'rec-1',
+          tenantId,
+          vendorName: 'AWS',
+          category: 'Infrastructure',
+          amount: 2000,
+          billingInterval: 'MONTHLY',
+          status: 'ACTIVE',
+        },
+        {
+          id: 'rec-2',
+          tenantId,
+          vendorName: 'GitHub',
+          category: 'Software',
+          amount: 500,
+          billingInterval: 'MONTHLY',
+          status: 'ACTIVE',
+        },
       ] as RecurringExpense[];
 
       const mockExpenses = [
-        { id: 'exp-1', tenantId, amount: 2500, status: 'APPROVED', createdAt: new Date() },
-        { id: 'exp-2', tenantId, amount: 1000, status: 'PAID', createdAt: new Date() },
+        {
+          id: 'exp-1',
+          tenantId,
+          amount: 2500,
+          status: 'APPROVED',
+          createdAt: new Date(),
+        },
+        {
+          id: 'exp-2',
+          tenantId,
+          amount: 1000,
+          status: 'PAID',
+          createdAt: new Date(),
+        },
       ] as ExpenseClaim[];
 
       accountRepo.find = jest.fn().mockResolvedValue(mockAccounts);
@@ -94,7 +153,13 @@ describe('FinanceService', () => {
 
     it('handles zero burn rate with infinite runway', async () => {
       accountRepo.find = jest.fn().mockResolvedValue([
-        { id: 'acc-1', tenantId, name: 'Bank', balance: 10000, currency: 'USD' } as FinanceAccount,
+        {
+          id: 'acc-1',
+          tenantId,
+          name: 'Bank',
+          balance: 10000,
+          currency: 'USD',
+        } as FinanceAccount,
       ]);
       recurringRepo.find = jest.fn().mockResolvedValue([]);
       expenseRepo.find = jest.fn().mockResolvedValue([]);
@@ -137,8 +202,20 @@ describe('FinanceService', () => {
     });
 
     it('transfers funds between accounts and records double-entry journal entry', async () => {
-      const fromAcc = { id: 'acc-1', tenantId, name: 'Bank A', balance: 5000, currency: 'USD' } as FinanceAccount;
-      const toAcc = { id: 'acc-2', tenantId, name: 'Bank B', balance: 1000, currency: 'USD' } as FinanceAccount;
+      const fromAcc = {
+        id: 'acc-1',
+        tenantId,
+        name: 'Bank A',
+        balance: 5000,
+        currency: 'USD',
+      } as FinanceAccount;
+      const toAcc = {
+        id: 'acc-2',
+        tenantId,
+        name: 'Bank B',
+        balance: 1000,
+        currency: 'USD',
+      } as FinanceAccount;
 
       accountRepo.findOne = jest
         .fn()
@@ -164,8 +241,16 @@ describe('FinanceService', () => {
           referenceType: 'TRANSFER',
           totalAmount: 2000,
           lines: expect.arrayContaining([
-            expect.objectContaining({ accountId: 'acc-1', credit: 2000, debit: 0 }),
-            expect.objectContaining({ accountId: 'acc-2', debit: 2000, credit: 0 }),
+            expect.objectContaining({
+              accountId: 'acc-1',
+              credit: 2000,
+              debit: 0,
+            }),
+            expect.objectContaining({
+              accountId: 'acc-2',
+              debit: 2000,
+              credit: 0,
+            }),
           ]),
         }),
       );
@@ -181,7 +266,9 @@ describe('FinanceService', () => {
         amount: 500,
       };
 
-      await expect(service.transferFunds(tenantId, transferDto)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(
+        service.transferFunds(tenantId, transferDto),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('throws BadRequestException on negative or zero transfer amount', async () => {
@@ -191,7 +278,9 @@ describe('FinanceService', () => {
         amount: 0,
       };
 
-      await expect(service.transferFunds(tenantId, transferDto)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(
+        service.transferFunds(tenantId, transferDto),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('throws NotFoundException when account does not exist', async () => {
@@ -203,12 +292,26 @@ describe('FinanceService', () => {
         amount: 100,
       };
 
-      await expect(service.transferFunds(tenantId, transferDto)).rejects.toBeInstanceOf(NotFoundException);
+      await expect(
+        service.transferFunds(tenantId, transferDto),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('throws BadRequestException when insufficient balance', async () => {
-      const fromAcc = { id: 'acc-1', tenantId, name: 'Bank A', balance: 100, currency: 'USD' } as FinanceAccount;
-      const toAcc = { id: 'acc-2', tenantId, name: 'Bank B', balance: 1000, currency: 'USD' } as FinanceAccount;
+      const fromAcc = {
+        id: 'acc-1',
+        tenantId,
+        name: 'Bank A',
+        balance: 100,
+        currency: 'USD',
+      } as FinanceAccount;
+      const toAcc = {
+        id: 'acc-2',
+        tenantId,
+        name: 'Bank B',
+        balance: 1000,
+        currency: 'USD',
+      } as FinanceAccount;
 
       accountRepo.findOne = jest
         .fn()
@@ -221,7 +324,126 @@ describe('FinanceService', () => {
         amount: 500,
       };
 
-      await expect(service.transferFunds(tenantId, transferDto)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(
+        service.transferFunds(tenantId, transferDto),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe('recordInvoicePayment & reverseInvoicePayment', () => {
+    it('records an invoice payment: bumps the balance and posts a debit-account/credit-AR journal entry', async () => {
+      const account = {
+        id: 'acc-1',
+        tenantId,
+        name: 'Operating Bank',
+        balance: 1000,
+        currency: 'USD',
+      } as FinanceAccount;
+      accountRepo.findOne = jest.fn().mockResolvedValue(account);
+
+      const res = await service.recordInvoicePayment(tenantId, {
+        invoiceId: 'inv-1',
+        accountId: 'acc-1',
+        amount: 400,
+      });
+
+      expect(account.balance).toBe(1400);
+      expect(accountRepo.save).toHaveBeenCalledWith(account);
+      expect(journalRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId,
+          referenceType: 'INVOICE',
+          referenceId: 'inv-1',
+          totalAmount: 400,
+          lines: expect.arrayContaining([
+            expect.objectContaining({
+              accountId: 'acc-1',
+              debit: 400,
+              credit: 0,
+            }),
+            expect.objectContaining({
+              accountName: 'Accounts Receivable',
+              debit: 0,
+              credit: 400,
+            }),
+          ]),
+        }),
+      );
+      expect(res.account.balance).toBe(1400);
+    });
+
+    it('throws BadRequestException on a zero or negative payment amount', async () => {
+      await expect(
+        service.recordInvoicePayment(tenantId, {
+          invoiceId: 'inv-1',
+          accountId: 'acc-1',
+          amount: 0,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('throws NotFoundException when the account does not exist', async () => {
+      accountRepo.findOne = jest.fn().mockResolvedValue(null);
+      await expect(
+        service.recordInvoicePayment(tenantId, {
+          invoiceId: 'inv-1',
+          accountId: 'missing',
+          amount: 100,
+        }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('reverses an invoice payment: drops the balance and posts a debit-AR/credit-account journal entry', async () => {
+      const account = {
+        id: 'acc-1',
+        tenantId,
+        name: 'Operating Bank',
+        balance: 1400,
+        currency: 'USD',
+      } as FinanceAccount;
+      accountRepo.findOne = jest.fn().mockResolvedValue(account);
+
+      const res = await service.reverseInvoicePayment(tenantId, {
+        invoiceId: 'inv-1',
+        paymentId: 'pay-1',
+        accountId: 'acc-1',
+        amount: 400,
+      });
+
+      expect(account.balance).toBe(1000);
+      expect(accountRepo.save).toHaveBeenCalledWith(account);
+      expect(journalRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId,
+          referenceType: 'INVOICE',
+          referenceId: 'pay-1',
+          totalAmount: 400,
+          lines: expect.arrayContaining([
+            expect.objectContaining({
+              accountName: 'Accounts Receivable',
+              debit: 400,
+              credit: 0,
+            }),
+            expect.objectContaining({
+              accountId: 'acc-1',
+              debit: 0,
+              credit: 400,
+            }),
+          ]),
+        }),
+      );
+      expect(res.account.balance).toBe(1000);
+    });
+
+    it('reverseInvoicePayment throws BadRequestException on a zero or negative amount', async () => {
+      await expect(
+        service.reverseInvoicePayment(tenantId, {
+          invoiceId: 'inv-1',
+          paymentId: 'pay-1',
+          accountId: 'acc-1',
+          amount: 0,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 
@@ -237,7 +459,13 @@ describe('FinanceService', () => {
       };
 
       const created = await service.createBudget(tenantId, budgetDto);
-      expect(budgetRepo.create).toHaveBeenCalledWith(expect.objectContaining({ tenantId, category: 'Marketing', budgetAmount: 10000 }));
+      expect(budgetRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId,
+          category: 'Marketing',
+          budgetAmount: 10000,
+        }),
+      );
       expect(created.id).toBe('bud-1');
 
       budgetRepo.find = jest.fn().mockResolvedValue([created]);
@@ -256,7 +484,9 @@ describe('FinanceService', () => {
       };
 
       const created = await service.createSubscription(tenantId, subDto);
-      expect(recurringRepo.create).toHaveBeenCalledWith(expect.objectContaining({ tenantId, vendorName: 'Figma', amount: 45 }));
+      expect(recurringRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId, vendorName: 'Figma', amount: 45 }),
+      );
       expect(created.id).toBe('rec-1');
 
       recurringRepo.find = jest.fn().mockResolvedValue([created]);
