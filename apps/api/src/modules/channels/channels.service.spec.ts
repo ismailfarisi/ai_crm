@@ -105,6 +105,16 @@ function makeService(
             source: provider,
           }),
         ),
+      // Mirrors ContactsService.toDto: `fullName` is a getter on the entity,
+      // dropped by JSON serialization, so callers must map through this.
+      toDto: jest.fn((contact: any) => ({
+        id: contact.id,
+        firstName: contact.firstName,
+        lastName: contact.lastName,
+        fullName: `${contact.firstName} ${contact.lastName}`.trim(),
+        email: contact.email ?? null,
+        phone: contact.phone ?? null,
+      })),
     } as any);
 
   const configService =
@@ -440,6 +450,33 @@ describe('ChannelsService', () => {
       });
       expect(filtered).toHaveLength(1);
       expect(filtered[0].id).toBe('1');
+    });
+
+    it('maps the embedded contact through toDto so fullName is a real value', async () => {
+      const { service, messages, contactsService } = makeService();
+      messages.push({
+        id: '3',
+        organizationId: orgId,
+        contactId: 'contact-3',
+        contact: { id: 'contact-3', firstName: '447700900000', lastName: '' },
+        provider: ChannelProviderType.TELEGRAM,
+        direction: MessageDirection.INBOUND,
+        sender: '447700900000',
+        recipient: orgId,
+        body: 'Hi',
+        metadata: {},
+        status: MessageStatus.RECEIVED,
+        createdAt: new Date(),
+      } as unknown as ChannelMessage);
+
+      const [result] = await service.getMessages(orgId, {
+        contactId: 'contact-3',
+      });
+
+      expect(contactsService.toDto).toHaveBeenCalled();
+      expect(result.contact).toEqual(
+        expect.objectContaining({ fullName: '447700900000' }),
+      );
     });
   });
 

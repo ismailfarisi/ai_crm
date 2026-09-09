@@ -361,12 +361,22 @@ export class ChannelsService {
     if (query?.contactId) {
       where.contactId = query.contactId;
     }
-    return this.messageRepo.find({
+    const messages = await this.messageRepo.find({
       where,
       relations: { contact: true },
       order: { createdAt: 'DESC' },
       take: query?.limit || 50,
     });
+
+    // `Contact.fullName` is a getter, not a column — it's dropped by JSON
+    // serialization unless run through the same DTO mapping the contacts
+    // endpoints use, so the embedded `contact` here must go through it too.
+    return messages.map((message) => ({
+      ...message,
+      contact: message.contact
+        ? (this.contactsService.toDto(message.contact) as any)
+        : null,
+    }));
   }
 
   async verifyMetaChallenge(
