@@ -69,9 +69,11 @@ const envSchema = z.object({
   // chain (env vars, ~/.aws/credentials, IAM role, ...), never from .env.
   MAIL_REGION: z.string().optional(),
 
-  // AI (see modules/ai — providers are switchable via this enum, only
-  // 'anthropic' implemented). AI_ANTHROPIC_API_KEY is deliberately optional —
-  // a missing key degrades AI features at call time, it must never block boot.
+  // AI — DEAD as of the per-org AiConfig table (see modules/ai/entities/ai-config.entity.ts).
+  // AiService now resolves provider credentials from the DB only, per organization;
+  // these env vars are unread. Left here rather than removed to avoid touching
+  // .env.example/docker-compose env passthrough in the same change — remove once
+  // every environment has migrated to configuring a provider via Settings > AI.
   AI_PROVIDER: z.enum(['anthropic']).default('anthropic'),
   AI_ANTHROPIC_API_KEY: z.string().optional(),
   AI_ANTHROPIC_MODEL: z.string().default('claude-sonnet-5'),

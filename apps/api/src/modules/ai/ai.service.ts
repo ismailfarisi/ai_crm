@@ -1,20 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type { AiBudgetStatusDto } from '@saas/shared';
-import type { AppConfig } from '@/config/configuration';
 import { getAiProvider } from './ai-provider.factory';
 import {
   AiGenerateOptions,
   AiGenerateResult,
   AiStructuredOptions,
   AiStructuredResult,
+  AiNotConfiguredException,
 } from './interfaces/ai-provider.interface';
 import { AiUsageLog } from './entities/ai-usage-log.entity';
 import { AiBudget } from './entities/ai-budget.entity';
 import { AiBudgetExceededException } from './exceptions/ai-budget-exceeded.exception';
 import { UpsertAiBudgetDto } from './dto/upsert-ai-budget.dto';
+import { AiConfigService } from './services/ai-config.service';
 
 export interface AiActor {
   organizationId: string;
@@ -41,16 +41,21 @@ export class AiService {
   private readonly logger = new Logger(AiService.name);
 
   constructor(
-    private readonly configService: ConfigService<AppConfig, true>,
+    private readonly aiConfigService: AiConfigService,
     @InjectRepository(AiUsageLog)
     private readonly usageLogRepo: Repository<AiUsageLog>,
     @InjectRepository(AiBudget)
     private readonly budgetRepo: Repository<AiBudget>,
   ) {}
 
-  isConfigured(): boolean {
-    const ai = this.configService.get('ai', { infer: true });
-    return Boolean(ai.anthropicApiKey);
+  async isConfigured(organizationId: string): Promise<boolean> {
+    try {
+      await this.aiConfigService.resolveProviderConfig(organizationId);
+      return true;
+    } catch (err) {
+      if (err instanceof AiNotConfiguredException) return false;
+      throw err;
+    }
   }
 
   async generateText(
@@ -59,8 +64,11 @@ export class AiService {
     actor: AiActor,
   ): Promise<AiGenerateResult> {
     const started = Date.now();
-    const ai = this.configService.get('ai', { infer: true });
-    const provider = getAiProvider(ai);
+    const providerConfig = await this.aiConfigService.resolveProviderConfig(
+      actor.organizationId,
+      options.provider,
+    );
+    const provider = getAiProvider(providerConfig);
 
     try {
       await this.enforceBudget(actor.organizationId);
@@ -96,8 +104,11 @@ export class AiService {
     actor: AiActor,
   ): Promise<AiStructuredResult<T>> {
     const started = Date.now();
-    const ai = this.configService.get('ai', { infer: true });
-    const provider = getAiProvider(ai);
+    const providerConfig = await this.aiConfigService.resolveProviderConfig(
+      actor.organizationId,
+      options.provider,
+    );
+    const provider = getAiProvider(providerConfig);
 
     try {
       await this.enforceBudget(actor.organizationId);

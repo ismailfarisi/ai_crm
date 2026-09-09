@@ -1,4 +1,5 @@
 import { ServiceUnavailableException } from '@nestjs/common';
+import { AiProviderType } from '../entities/ai-config.entity';
 
 export interface AiTextContent {
   type: 'text';
@@ -21,6 +22,8 @@ export interface AiMessage {
 }
 
 export interface AiGenerateOptions {
+  /** Request a specific org-configured provider for this call instead of the org's default — lets a future per-feature (e.g. workflow step) config pick its own provider. */
+  provider?: AiProviderType;
   /** Provider-specific model id; falls back to the provider's configured default. */
   model?: string;
   system?: string;

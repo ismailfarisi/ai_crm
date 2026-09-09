@@ -148,7 +148,7 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   [PERMISSIONS.EXPENSE_APPROVE]: 'Approve, reject and reimburse expense claims',
 
   [PERMISSIONS.AI_USE]: 'Use AI-powered features (receipt scanning, automation AI steps, quote drafting)',
-  [PERMISSIONS.AI_MANAGE]: 'Configure AI budgets and view AI usage across the organization',
+  [PERMISSIONS.AI_MANAGE]: 'Configure AI providers and budgets, and view AI usage across the organization',
 };
 
 /** Groups drive the layout of the role editor screen. */

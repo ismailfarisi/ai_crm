@@ -283,6 +283,20 @@ export const api = {
     upsertBudget: (payload: UpsertAiBudgetPayload) =>
       apiFetch<AiBudgetDto>('/ai/budget', { method: 'PATCH', body: payload }),
     listUsage: () => apiFetch<AiUsageLogDto[]>('/ai/usage'),
+    listConfigs: () => apiFetch<AiConfigDto[]>('/ai/configs'),
+    saveConfig: (provider: string, input: SaveAiConfigInput) =>
+      apiFetch<AiConfigDto>(`/ai/configs/${provider}`, {
+        method: 'POST',
+        body: input,
+      }),
+    testConfig: (provider: string) =>
+      apiFetch<TestAiConfigResult>(`/ai/configs/${provider}/test`, {
+        method: 'POST',
+      }),
+    setDefaultConfig: (provider: string) =>
+      apiFetch<AiConfigDto>(`/ai/configs/${provider}/default`, {
+        method: 'POST',
+      }),
   },
 };
 
@@ -332,6 +346,30 @@ export interface TestChannelConfigResult {
   status: 'unconfigured' | 'configured' | 'error';
 }
 
+export interface AiConfigDto {
+  id: string | null;
+  organizationId: string;
+  provider: 'OPENAI' | 'ANTHROPIC' | 'OPENROUTER';
+  isEnabled: boolean;
+  isDefault: boolean;
+  status: 'unconfigured' | 'configured' | 'error';
+  credentials: { apiKey?: string; model?: string } | null;
+  lastTestedAt: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SaveAiConfigInput {
+  isEnabled?: boolean;
+  credentials?: { apiKey?: string; model?: string };
+}
+
+export interface TestAiConfigResult {
+  success: boolean;
+  message: string;
+  status: 'unconfigured' | 'configured' | 'error';
+}
+
 export const queryKeys = {
   session: ['session'] as const,
   contacts: (params: ContactListParams = {}) => ['contacts', params] as const,
@@ -351,6 +389,7 @@ export const queryKeys = {
   invoice: (id: string) => ['invoices', id] as const,
   invoicePayments: (id: string) => ['invoices', id, 'payments'] as const,
   channels: ['channels', 'configs'] as const,
+  aiConfigs: ['ai', 'configs'] as const,
   channelIdentities: ['channels', 'identities'] as const,
   channelMessages: (params: { contactId?: string; limit?: number } = {}) =>
     ['channels', 'messages', params] as const,

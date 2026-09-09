@@ -1,4 +1,3 @@
-import { BadRequestException } from '@nestjs/common';
 import { AiService } from './ai.service';
 import {
   AiNotConfiguredException,
@@ -23,17 +22,21 @@ function makeQueryBuilderMock(sum: string | undefined) {
 }
 
 function makeService(
-  overrides: { configService?: any; usageLogRepo?: any; budgetRepo?: any } = {},
+  overrides: {
+    aiConfigService?: any;
+    usageLogRepo?: any;
+    budgetRepo?: any;
+  } = {},
 ) {
   const savedLogs: any[] = [];
 
-  const configService =
-    overrides.configService ||
+  const aiConfigService =
+    overrides.aiConfigService ||
     ({
-      get: jest.fn().mockReturnValue({
+      resolveProviderConfig: jest.fn().mockResolvedValue({
         provider: 'anthropic',
-        anthropicApiKey: 'test-key',
-        anthropicModel: 'claude-sonnet-5',
+        apiKey: 'test-key',
+        model: 'claude-sonnet-5',
       }),
     } as any);
 
@@ -57,8 +60,8 @@ function makeService(
       save: jest.fn().mockImplementation(async (b) => b),
     } as any);
 
-  const service = new AiService(configService, usageLogRepo, budgetRepo);
-  return { service, configService, usageLogRepo, budgetRepo, savedLogs };
+  const service = new AiService(aiConfigService, usageLogRepo, budgetRepo);
+  return { service, aiConfigService, usageLogRepo, budgetRepo, savedLogs };
 }
 
 describe('AiService', () => {
@@ -67,32 +70,43 @@ describe('AiService', () => {
   });
 
   describe('isConfigured', () => {
-    it('returns true when an API key is set', () => {
+    it('returns true when the org has a resolvable provider config', async () => {
       const { service } = makeService();
-      expect(service.isConfigured()).toBe(true);
+      await expect(service.isConfigured(orgId)).resolves.toBe(true);
     });
 
-    it('returns false when no API key is set', () => {
+    it('returns false when the org has no resolvable provider config', async () => {
       const { service } = makeService({
-        configService: {
-          get: jest.fn().mockReturnValue({
-            provider: 'anthropic',
-            anthropicModel: 'claude-sonnet-5',
-          }),
+        aiConfigService: {
+          resolveProviderConfig: jest
+            .fn()
+            .mockRejectedValue(new AiNotConfiguredException()),
         },
       });
-      expect(service.isConfigured()).toBe(false);
+      await expect(service.isConfigured(orgId)).resolves.toBe(false);
+    });
+
+    it('rethrows an unrelated error instead of swallowing it as unconfigured', async () => {
+      const { service } = makeService({
+        aiConfigService: {
+          resolveProviderConfig: jest
+            .fn()
+            .mockRejectedValue(new Error('DB unavailable')),
+        },
+      });
+      await expect(service.isConfigured(orgId)).rejects.toThrow(
+        'DB unavailable',
+      );
     });
   });
 
   describe('generateText', () => {
-    it('throws AiNotConfiguredException when no API key is configured, without logging usage', async () => {
+    it('throws AiNotConfiguredException when the org has no enabled provider, without logging usage', async () => {
       const { service, savedLogs } = makeService({
-        configService: {
-          get: jest.fn().mockReturnValue({
-            provider: 'anthropic',
-            anthropicModel: 'claude-sonnet-5',
-          }),
+        aiConfigService: {
+          resolveProviderConfig: jest
+            .fn()
+            .mockRejectedValue(new AiNotConfiguredException()),
         },
       });
 
@@ -109,27 +123,32 @@ describe('AiService', () => {
       expect(savedLogs).toHaveLength(0);
     });
 
-    it('throws BadRequestException for an unsupported provider', async () => {
-      const { service } = makeService({
-        configService: {
-          get: jest.fn().mockReturnValue({
-            provider: 'unsupported',
-            anthropicApiKey: 'x',
-            anthropicModel: 'claude-sonnet-5',
-          }),
-        },
+    it('forwards an explicit options.provider to resolveProviderConfig, overriding the org default', async () => {
+      jest.spyOn(factory, 'getAiProvider').mockReturnValue({
+        name: 'openai',
+        generateText: jest.fn().mockResolvedValue({
+          text: 'hi',
+          usage: { inputTokens: 1, outputTokens: 1 },
+          model: 'gpt-4o',
+          stopReason: 'stop',
+        }),
+        generateStructured: jest.fn(),
       });
+      const { service, aiConfigService } = makeService();
 
-      await expect(
-        service.generateText(
-          'test.feature',
-          { messages: [{ role: 'user', content: 'hi' }] },
-          {
-            organizationId: orgId,
-            userId,
-          },
-        ),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      await service.generateText(
+        'test.feature',
+        {
+          provider: 'OPENAI' as any,
+          messages: [{ role: 'user', content: 'hi' }],
+        },
+        { organizationId: orgId, userId },
+      );
+
+      expect(aiConfigService.resolveProviderConfig).toHaveBeenCalledWith(
+        orgId,
+        'OPENAI',
+      );
     });
 
     it('writes a usage log on success', async () => {

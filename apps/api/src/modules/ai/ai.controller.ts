@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@saas/shared';
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
@@ -7,12 +15,68 @@ import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '@/modules/rbac/guards/permissions.guard';
 import { AiService } from './ai.service';
 import { UpsertAiBudgetDto } from './dto/upsert-ai-budget.dto';
+import { AiConfigService } from './services/ai-config.service';
+import { AiProviderType } from './entities/ai-config.entity';
 
 @ApiTags('ai')
 @Controller('ai')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class AiController {
-  constructor(private readonly aiService: AiService) {}
+  constructor(
+    private readonly aiService: AiService,
+    private readonly aiConfigService: AiConfigService,
+  ) {}
+
+  @Get('configs')
+  @RequirePermissions(PERMISSIONS.AI_MANAGE)
+  @ApiOperation({
+    summary: 'Get all AI provider configurations for the organization',
+  })
+  getConfigs(@CurrentUser() user: AuthenticatedUser) {
+    return this.aiConfigService.getConfigs(user.organizationId);
+  }
+
+  @Post('configs/:provider')
+  @RequirePermissions(PERMISSIONS.AI_MANAGE)
+  @ApiOperation({
+    summary: 'Save or update AI provider configuration for a provider',
+  })
+  saveConfig(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('provider') provider: AiProviderType,
+    @Body()
+    body: {
+      isEnabled?: boolean;
+      credentials?: { apiKey?: string; model?: string };
+    },
+  ) {
+    return this.aiConfigService.saveConfig(
+      user.organizationId,
+      provider,
+      body.isEnabled ?? true,
+      body.credentials,
+    );
+  }
+
+  @Post('configs/:provider/test')
+  @RequirePermissions(PERMISSIONS.AI_MANAGE)
+  @ApiOperation({ summary: 'Test connection for an AI provider' })
+  testConfig(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('provider') provider: AiProviderType,
+  ) {
+    return this.aiConfigService.testConnection(user.organizationId, provider);
+  }
+
+  @Post('configs/:provider/default')
+  @RequirePermissions(PERMISSIONS.AI_MANAGE)
+  @ApiOperation({ summary: "Set an AI provider as the organization's default" })
+  setDefaultConfig(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('provider') provider: AiProviderType,
+  ) {
+    return this.aiConfigService.setDefault(user.organizationId, provider);
+  }
 
   @Get('budget')
   @RequirePermissions(PERMISSIONS.AI_MANAGE)

@@ -4,11 +4,13 @@ import {
   AiNotConfiguredException,
 } from './interfaces/ai-provider.interface';
 import { AnthropicProvider } from './providers/anthropic.provider';
+import { OpenAiCompatibleProvider } from './providers/openai-compatible.provider';
 
 export interface AiProviderConfig {
+  /** Lowercase provider id: 'anthropic' | 'openai' | 'openrouter'. */
   provider: string;
-  anthropicApiKey?: string;
-  anthropicModel: string;
+  apiKey?: string;
+  model: string;
 }
 
 /**
@@ -19,12 +21,32 @@ export interface AiProviderConfig {
 export function getAiProvider(config: AiProviderConfig): AiProvider {
   switch (config.provider) {
     case 'anthropic':
-      if (!config.anthropicApiKey) {
+      if (!config.apiKey) {
         throw new AiNotConfiguredException();
       }
       return new AnthropicProvider({
-        apiKey: config.anthropicApiKey,
-        defaultModel: config.anthropicModel,
+        apiKey: config.apiKey,
+        defaultModel: config.model,
+      });
+    case 'openai':
+      if (!config.apiKey) {
+        throw new AiNotConfiguredException();
+      }
+      return new OpenAiCompatibleProvider({
+        name: 'openai',
+        apiKey: config.apiKey,
+        baseUrl: 'https://api.openai.com/v1',
+        defaultModel: config.model,
+      });
+    case 'openrouter':
+      if (!config.apiKey) {
+        throw new AiNotConfiguredException();
+      }
+      return new OpenAiCompatibleProvider({
+        name: 'openrouter',
+        apiKey: config.apiKey,
+        baseUrl: 'https://openrouter.ai/api/v1',
+        defaultModel: config.model,
       });
     default:
       throw new BadRequestException(
