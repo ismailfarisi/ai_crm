@@ -8,8 +8,10 @@ import { ChannelMessage } from './entities/channel-message.entity';
 import { StaffChannelIdentity } from './entities/staff-channel-identity.entity';
 import { ChannelLinkCode } from './entities/channel-link-code.entity';
 import { PendingChannelCommand } from './entities/pending-channel-command.entity';
+import { AiAgent } from './entities/ai-agent.entity';
 import { ChannelCryptoService } from './services/channel-crypto.service';
 import { ChannelCommandService } from './services/channel-command.service';
+import { AiAgentService } from './services/ai-agent.service';
 import { ChannelsService } from './channels.service';
 import { ChannelsController } from './channels.controller';
 import { ChannelsWebhookController } from './channels-webhook.controller';
@@ -22,13 +24,19 @@ import { ChannelsWebhookController } from './channels-webhook.controller';
       StaffChannelIdentity,
       ChannelLinkCode,
       PendingChannelCommand,
+      AiAgent,
     ]),
     ContactsModule,
     QuotesModule,
     AiModule,
   ],
   controllers: [ChannelsController, ChannelsWebhookController],
-  providers: [ChannelsService, ChannelCryptoService, ChannelCommandService],
-  exports: [ChannelsService, ChannelCryptoService],
+  providers: [
+    ChannelsService,
+    ChannelCryptoService,
+    ChannelCommandService,
+    AiAgentService,
+  ],
+  exports: [ChannelsService, ChannelCryptoService, AiAgentService],
 })
 export class ChannelsModule {}

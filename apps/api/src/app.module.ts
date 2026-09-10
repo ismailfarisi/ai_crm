@@ -1,15 +1,10 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigService } from '@nestjs/config';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { join } from 'node:path';
 import { AllExceptionsFilter } from '@/common/filters/all-exceptions.filter';
-import {
-  configuration,
-  validateEnv,
-  type AppConfig,
-} from '@/config/configuration';
+import type { AppConfig } from '@/config/configuration';
+import { buildConfigModule, buildTypeOrmModule } from '@/config/root-imports';
 import { AiModule } from '@/modules/ai/ai.module';
 import { AuthModule } from '@/modules/auth/auth.module';
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
@@ -30,37 +25,9 @@ import { UsersModule } from '@/modules/users/users.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-      cache: true,
-      load: [configuration],
-      validate: validateEnv,
-      envFilePath: ['.env.local', '.env'],
-    }),
+    buildConfigModule(),
 
-    TypeOrmModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService<AppConfig, true>) => {
-        const db = config.get('database', { infer: true });
-        return {
-          type: 'postgres' as const,
-          host: db.host,
-          port: db.port,
-          username: db.username,
-          password: db.password,
-          database: db.database,
-          ssl: db.ssl ? { rejectUnauthorized: false } : false,
-          // `synchronize` is a development convenience only — production runs
-          // migrations. Double-guarded so it can never be on by accident.
-          synchronize:
-            db.synchronize && !config.get('isProduction', { infer: true }),
-          logging: db.logging,
-          autoLoadEntities: true,
-          migrations: [join(__dirname, 'database', 'migrations', '*.{ts,js}')],
-          migrationsRun: false,
-        };
-      },
-    }),
+    buildTypeOrmModule(),
 
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],

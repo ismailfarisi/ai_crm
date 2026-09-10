@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -11,15 +12,20 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   PERMISSIONS,
   sendChannelMessageSchema,
+  createAiAgentSchema,
+  updateAiAgentSchema,
   type ChannelLinkCodeDto,
+  type CreateAiAgentPayload,
   type SendChannelMessagePayload,
   type StaffChannelIdentityDto,
+  type UpdateAiAgentPayload,
 } from '@saas/shared';
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
 import { zodBody } from '@/common/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { ChannelsService } from './channels.service';
 import { ChannelCommandService } from './services/channel-command.service';
+import { AiAgentService } from './services/ai-agent.service';
 import { ChannelProviderType } from './entities/channel-config.entity';
 
 @ApiTags('channels')
@@ -28,6 +34,7 @@ export class ChannelsController {
   constructor(
     private readonly channelsService: ChannelsService,
     private readonly channelCommandService: ChannelCommandService,
+    private readonly aiAgentService: AiAgentService,
   ) {}
 
   @Get('configs')
@@ -140,6 +147,56 @@ export class ChannelsController {
       user.id,
       id,
     );
+    return { success: true };
+  }
+  @Get('ai-agents')
+  @RequirePermissions(PERMISSIONS.AI_MANAGE)
+  @ApiOperation({
+    summary: 'List the organization\'s AI agents (intent -> action dispatch rules)',
+  })
+  listAiAgents(@CurrentUser() user: AuthenticatedUser) {
+    return this.aiAgentService.findAll(user.organizationId);
+  }
+
+  @Get('ai-agents/:id')
+  @RequirePermissions(PERMISSIONS.AI_MANAGE)
+  @ApiOperation({ summary: 'Get one AI agent' })
+  getAiAgent(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.aiAgentService.findOne(user.organizationId, id);
+  }
+
+  @Post('ai-agents')
+  @RequirePermissions(PERMISSIONS.AI_MANAGE)
+  @ApiOperation({ summary: 'Create an AI agent' })
+  createAiAgent(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(zodBody(createAiAgentSchema)) body: CreateAiAgentPayload,
+  ) {
+    return this.aiAgentService.create(user.organizationId, body);
+  }
+
+  @Patch('ai-agents/:id')
+  @RequirePermissions(PERMISSIONS.AI_MANAGE)
+  @ApiOperation({ summary: 'Update an AI agent' })
+  updateAiAgent(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(zodBody(updateAiAgentSchema)) body: UpdateAiAgentPayload,
+  ) {
+    return this.aiAgentService.update(user.organizationId, id, body);
+  }
+
+  @Delete('ai-agents/:id')
+  @RequirePermissions(PERMISSIONS.AI_MANAGE)
+  @ApiOperation({ summary: 'Delete an AI agent' })
+  async deleteAiAgent(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ): Promise<{ success: true }> {
+    await this.aiAgentService.remove(user.organizationId, id);
     return { success: true };
   }
 }

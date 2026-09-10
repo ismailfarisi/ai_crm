@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -10,6 +11,7 @@ import { Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
 import type { AppConfig } from '@/config/configuration';
 import { ContactsService } from '../contacts/contacts.service';
+import { TemporalService } from '../temporal/temporal.service';
 import {
   ChannelConfig,
   ChannelProviderType,
@@ -17,6 +19,7 @@ import {
 } from './entities/channel-config.entity';
 import {
   ChannelMessage,
+  MessageAiProcessingStatus,
   MessageDirection,
   MessageStatus,
 } from './entities/channel-message.entity';
@@ -27,6 +30,7 @@ import { MetaWhatsAppDriver } from './drivers/meta-whatsapp.driver';
 import { TelegramDriver } from './drivers/telegram.driver';
 import { EmailSmtpDriver } from './drivers/email-smtp.driver';
 import { EmailResendDriver } from './drivers/email-resend.driver';
+import { channelAiWorkflow } from './workflows/channel-ai.workflow';
 
 export interface SendMessageDto {
   contactId?: string;
@@ -38,6 +42,8 @@ export interface SendMessageDto {
 
 @Injectable()
 export class ChannelsService {
+  private readonly logger = new Logger(ChannelsService.name);
+
   constructor(
     @InjectRepository(ChannelConfig)
     private readonly configRepo: Repository<ChannelConfig>,
@@ -47,6 +53,7 @@ export class ChannelsService {
     private readonly contactsService: ContactsService,
     private readonly configService: ConfigService<AppConfig, true>,
     private readonly channelCommandService: ChannelCommandService,
+    private readonly temporalService: TemporalService,
   ) {}
 
   /** The URL the given provider's inbound webhook is reachable at — must match the route in ChannelsWebhookController. */
@@ -488,9 +495,51 @@ export class ChannelsService {
         rawPayload: parsed.rawPayload,
       },
       status: MessageStatus.RECEIVED,
+      aiProcessingStatus: MessageAiProcessingStatus.PENDING,
     });
 
     const saved = await this.messageRepo.save(message);
+
+    try {
+      const client = this.temporalService.getClient();
+      await client.workflow.start(channelAiWorkflow, {
+        taskQueue: 'channel-ai-queue',
+        workflowId: `channel-ai-${saved.id}`,
+        args: [
+          {
+            messageId: saved.id,
+            organizationId: orgId,
+            contactId: contact.id,
+            provider,
+            senderIdentifier: parsed.senderIdentifier,
+            body: parsed.body,
+          },
+        ],
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Channel AI workflow start deferred/failed: ${msg}`);
+    }
+
     return { success: true, messageId: saved.id };
+  }
+
+  async updateAiClassification(
+    messageId: string,
+    patch: Partial<
+      Pick<
+        ChannelMessage,
+        | 'aiIntent'
+        | 'aiConfidence'
+        | 'aiSummary'
+        | 'aiSuggestedReply'
+        | 'aiSuggestedReplyOptions'
+        | 'aiProcessingStatus'
+        | 'aiAutoAcked'
+        | 'aiCreatedQuoteId'
+      >
+    >,
+  ): Promise<void> {
+    await this.messageRepo.update({ id: messageId }, patch);
   }
 }
