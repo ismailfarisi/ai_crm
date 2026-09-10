@@ -24,6 +24,8 @@ export const channelIntentSchema = z.object({
     .array(z.object({ label: z.string(), body: z.string() }))
     .min(2)
     .max(4),
+  /** Present only when confidence is low — one short question to ask the sender instead of guessing. */
+  clarifyingQuestion: z.string().optional(),
 });
 
 export type ChannelIntent = z.infer<typeof channelIntentSchema>;
@@ -57,7 +59,7 @@ export const channelIntentJsonSchema = {
     },
     summary: {
       type: 'string',
-      description: "One sentence summarizing what the sender wants.",
+      description: 'One sentence summarizing what the sender wants.',
     },
     suggestedReply: {
       type: 'string',
@@ -71,12 +73,25 @@ export const channelIntentJsonSchema = {
       items: {
         type: 'object',
         properties: {
-          label: { type: 'string', description: 'Short label for this reply option, e.g. "Confirm availability".' },
-          body: { type: 'string', description: 'The full text of this reply option.' },
+          label: {
+            type: 'string',
+            description:
+              'Short label for this reply option, e.g. "Confirm availability".',
+          },
+          body: {
+            type: 'string',
+            description: 'The full text of this reply option.',
+          },
         },
         required: ['label', 'body'],
       },
-      description: '2-4 short alternative quick-reply options for staff to choose from.',
+      description:
+        '2-4 short alternative quick-reply options for staff to choose from.',
+    },
+    clarifyingQuestion: {
+      type: 'string',
+      description:
+        'One short question to ask the sender when you are not confident enough in the classification to act on it yet. Omit this field entirely once you are confident.',
     },
   },
   required: ['intent', 'confidence', 'summary', 'suggestedReply', 'options'],

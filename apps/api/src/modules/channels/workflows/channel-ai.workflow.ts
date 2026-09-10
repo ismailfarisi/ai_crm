@@ -1,12 +1,20 @@
-import { proxyActivities } from '@temporalio/workflow';
+import { condition, proxyActivities, setHandler } from '@temporalio/workflow';
 import type * as activities from './activities/channel-ai.activities';
-import { ChannelAiWorkflowInput, ChannelAiWorkflowResult } from './interfaces';
+import {
+  ChannelAiWorkflowInput,
+  ChannelAiWorkflowResult,
+  ChannelConversationWorkflowInput,
+  NewInboundMessagePayload,
+  newInboundMessageSignal,
+} from './interfaces';
+import { ChannelTranscriptTurn } from '../agents/intent-classifier.agent';
 
 const {
   classifyMessageActivity,
   persistClassificationActivity,
   dispatchAgentActivity,
   persistDispatchResultActivity,
+  sendClarifyingQuestionActivity,
 } = proxyActivities<ReturnType<typeof activities.createChannelAiActivities>>({
   startToCloseTimeout: '30 seconds',
   retry: { maximumAttempts: 3 },
@@ -16,14 +24,16 @@ const {
  * One-shot job (classify -> maybe dispatch to an agent) — no signals/queries,
  * unlike the long-running approval workflows elsewhere in this codebase.
  * Capability-agnostic by design: adding a new AiAgent action type never
- * touches this file.
+ * touches this file. Used for every provider that never auto-chats (email)
+ * and for the very first read on chat-eligible providers when it's already
+ * confident enough to skip the back-and-forth.
  */
 export async function channelAiWorkflow(
   input: ChannelAiWorkflowInput,
 ): Promise<ChannelAiWorkflowResult> {
   const classified = await classifyMessageActivity({
     organizationId: input.organizationId,
-    messageBody: input.body,
+    transcript: [{ role: 'customer', body: input.body }],
   });
 
   if (classified.skipped) {
@@ -66,4 +76,112 @@ export async function channelAiWorkflow(
     autoAcked: dispatchResult.autoAcked,
     createdQuoteId: dispatchResult.createdQuoteId,
   };
+}
+
+const MAX_CONVERSATION_TURNS = 5;
+const REPLY_TIMEOUT = '15 minutes';
+
+/**
+ * Long-running, per-contact conversation: waits for each inbound message via
+ * `newInboundMessageSignal` (delivered by `ChannelsService.processInboundWebhook`
+ * through `client.workflow.signalWithStart`, so the workflow id is keyed by
+ * contact, not by message — a follow-up reply lands on this same execution).
+ * Every message, including the first, arrives via the signal so there's no
+ * risk of double-counting the opening message between start args and signal.
+ *
+ * Only used for providers confirmed safe to auto-chat on (WhatsApp/Telegram) —
+ * email always uses the one-shot `channelAiWorkflow` above instead.
+ */
+export async function channelConversationWorkflow(
+  input: ChannelConversationWorkflowInput,
+): Promise<ChannelAiWorkflowResult> {
+  const queue: NewInboundMessagePayload[] = [];
+  setHandler(newInboundMessageSignal, (payload) => {
+    queue.push(payload);
+  });
+
+  const transcript: ChannelTranscriptTurn[] = [];
+
+  for (let turn = 0; turn < MAX_CONVERSATION_TURNS; turn++) {
+    const gotMessage = await condition(() => queue.length > 0, REPLY_TIMEOUT);
+    if (!gotMessage) {
+      // Customer went quiet — stop waiting rather than leaving this
+      // workflow open indefinitely; whatever was last persisted stands.
+      break;
+    }
+    const message = queue.shift()!;
+    transcript.push({ role: 'customer', body: message.body });
+
+    const classified = await classifyMessageActivity({
+      organizationId: input.organizationId,
+      transcript,
+    });
+
+    if (classified.skipped) {
+      await persistClassificationActivity({
+        messageId: message.messageId,
+        status: 'SKIPPED',
+      });
+      return { status: 'SKIPPED', autoAcked: false };
+    }
+
+    await persistClassificationActivity({
+      messageId: message.messageId,
+      status: 'COMPLETED',
+      intent: classified.intent,
+      confidence: classified.confidence,
+      summary: classified.summary,
+      suggestedReply: classified.suggestedReply,
+      options: classified.options,
+    });
+
+    const dispatchResult = await dispatchAgentActivity({
+      organizationId: input.organizationId,
+      provider: input.provider,
+      senderIdentifier: input.senderIdentifier,
+      contactId: input.contactId,
+      messageBody: message.body,
+      intent: classified.intent!,
+      confidence: classified.confidence!,
+      summary: classified.summary!,
+    });
+
+    if (dispatchResult.reason === 'DISPATCHED') {
+      await persistDispatchResultActivity({
+        messageId: message.messageId,
+        autoAcked: dispatchResult.autoAcked,
+        createdQuoteId: dispatchResult.createdQuoteId,
+      });
+      return {
+        status: 'COMPLETED',
+        autoAcked: dispatchResult.autoAcked,
+        createdQuoteId: dispatchResult.createdQuoteId,
+      };
+    }
+
+    if (
+      dispatchResult.reason !== 'LOW_CONFIDENCE' ||
+      !classified.clarifyingQuestion
+    ) {
+      // No agent configured for this intent (or provider ineligible) — no
+      // specialist to eventually hand off to, so stop chatting and leave it
+      // classified for a human, same ending as the one-shot path's fallback.
+      return { status: 'COMPLETED', autoAcked: false };
+    }
+
+    await persistClassificationActivity({
+      messageId: message.messageId,
+      status: 'AWAITING_REPLY',
+    });
+    await sendClarifyingQuestionActivity({
+      organizationId: input.organizationId,
+      provider: input.provider,
+      senderIdentifier: input.senderIdentifier,
+      contactId: input.contactId,
+      question: classified.clarifyingQuestion,
+    });
+    transcript.push({ role: 'agent', body: classified.clarifyingQuestion });
+  }
+
+  return { status: 'COMPLETED', autoAcked: false };
 }

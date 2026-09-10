@@ -30,7 +30,21 @@ import { MetaWhatsAppDriver } from './drivers/meta-whatsapp.driver';
 import { TelegramDriver } from './drivers/telegram.driver';
 import { EmailSmtpDriver } from './drivers/email-smtp.driver';
 import { EmailResendDriver } from './drivers/email-resend.driver';
-import { channelAiWorkflow } from './workflows/channel-ai.workflow';
+import {
+  channelAiWorkflow,
+  channelConversationWorkflow,
+} from './workflows/channel-ai.workflow';
+import { newInboundMessageSignal } from './workflows/interfaces';
+
+/**
+ * Providers confirmed safe to let the AI agent auto-chat on (send its own
+ * clarifying questions) — email never gets AI-authored freeform text sent
+ * automatically, only the fixed canned auto-ack template.
+ */
+const CHAT_ENABLED_PROVIDERS: ChannelProviderType[] = [
+  ChannelProviderType.TELEGRAM,
+  ChannelProviderType.WHATSAPP_META,
+];
 
 export interface SendMessageDto {
   contactId?: string;
@@ -502,20 +516,41 @@ export class ChannelsService {
 
     try {
       const client = this.temporalService.getClient();
-      await client.workflow.start(channelAiWorkflow, {
-        taskQueue: 'channel-ai-queue',
-        workflowId: `channel-ai-${saved.id}`,
-        args: [
-          {
-            messageId: saved.id,
-            organizationId: orgId,
-            contactId: contact.id,
-            provider,
-            senderIdentifier: parsed.senderIdentifier,
-            body: parsed.body,
-          },
-        ],
-      });
+      if (CHAT_ENABLED_PROVIDERS.includes(provider)) {
+        // Per-contact, long-running conversation — the first message and
+        // every follow-up reply both flow in purely via signal, so this
+        // correlates back to the same in-progress workflow instead of
+        // starting an unrelated one per message.
+        await client.workflow.signalWithStart(channelConversationWorkflow, {
+          taskQueue: 'channel-ai-queue',
+          workflowId: `channel-conv-${orgId}-${provider}-${contact.id}`,
+          args: [
+            {
+              organizationId: orgId,
+              provider,
+              contactId: contact.id,
+              senderIdentifier: parsed.senderIdentifier,
+            },
+          ],
+          signal: newInboundMessageSignal,
+          signalArgs: [{ messageId: saved.id, body: parsed.body }],
+        });
+      } else {
+        await client.workflow.start(channelAiWorkflow, {
+          taskQueue: 'channel-ai-queue',
+          workflowId: `channel-ai-${saved.id}`,
+          args: [
+            {
+              messageId: saved.id,
+              organizationId: orgId,
+              contactId: contact.id,
+              provider,
+              senderIdentifier: parsed.senderIdentifier,
+              body: parsed.body,
+            },
+          ],
+        });
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Channel AI workflow start deferred/failed: ${msg}`);

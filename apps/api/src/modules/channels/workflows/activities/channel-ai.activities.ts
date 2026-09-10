@@ -15,6 +15,7 @@ import {
   DispatchAgentResult,
   PersistClassificationParams,
   PersistDispatchResultParams,
+  SendClarifyingQuestionParams,
 } from '../interfaces';
 
 /**
@@ -41,7 +42,7 @@ export function createChannelAiActivities(deps: {
     ): Promise<ClassifyMessageResult> {
       const result = await classifier.classify(
         params.organizationId,
-        params.messageBody,
+        params.transcript,
       );
       if (result.skipped) {
         return { skipped: true };
@@ -54,6 +55,7 @@ export function createChannelAiActivities(deps: {
         summary: c.summary,
         suggestedReply: c.suggestedReply,
         options: c.options,
+        clarifyingQuestion: c.clarifyingQuestion,
       };
     },
 
@@ -62,11 +64,15 @@ export function createChannelAiActivities(deps: {
     ): Promise<void> {
       await deps.channelsService.updateAiClassification(params.messageId, {
         aiProcessingStatus: params.status as MessageAiProcessingStatus,
-        aiIntent: params.intent ?? null,
-        aiConfidence: params.confidence ?? null,
-        aiSummary: params.summary ?? null,
-        aiSuggestedReply: params.suggestedReply ?? null,
-        aiSuggestedReplyOptions: params.options ?? [],
+        ...(params.status === 'AWAITING_REPLY'
+          ? {}
+          : {
+              aiIntent: params.intent ?? null,
+              aiConfidence: params.confidence ?? null,
+              aiSummary: params.summary ?? null,
+              aiSuggestedReply: params.suggestedReply ?? null,
+              aiSuggestedReplyOptions: params.options ?? [],
+            }),
       });
     },
 
@@ -77,18 +83,18 @@ export function createChannelAiActivities(deps: {
         params.organizationId,
         params.intent,
       );
-      if (!agent) return { autoAcked: false };
-      if (params.confidence < agent.confidenceThreshold) {
-        return { autoAcked: false };
-      }
+      if (!agent) return { autoAcked: false, reason: 'NO_AGENT' };
       if (!agent.eligibleProviders.includes(params.provider)) {
-        return { autoAcked: false };
+        return { autoAcked: false, reason: 'PROVIDER_INELIGIBLE' };
+      }
+      if (params.confidence < agent.confidenceThreshold) {
+        return { autoAcked: false, reason: 'LOW_CONFIDENCE' };
       }
 
       const handler = actionHandlers[agent.actionType];
-      if (!handler) return { autoAcked: false };
+      if (!handler) return { autoAcked: false, reason: 'NO_AGENT' };
 
-      return handler.handle(
+      const result = await handler.handle(
         {
           organizationId: params.organizationId,
           provider: params.provider,
@@ -103,6 +109,8 @@ export function createChannelAiActivities(deps: {
         },
         agent,
       );
+
+      return { ...result, reason: 'DISPATCHED' };
     },
 
     async persistDispatchResultActivity(
@@ -114,6 +122,21 @@ export function createChannelAiActivities(deps: {
           ? { aiCreatedQuoteId: params.createdQuoteId }
           : {}),
       });
+    },
+
+    async sendClarifyingQuestionActivity(
+      params: SendClarifyingQuestionParams,
+    ): Promise<void> {
+      await deps.channelsService.sendMessage(
+        params.organizationId,
+        'system:ai-clarify',
+        {
+          provider: params.provider,
+          recipient: params.senderIdentifier,
+          contactId: params.contactId,
+          body: params.question,
+        },
+      );
     },
   };
 }

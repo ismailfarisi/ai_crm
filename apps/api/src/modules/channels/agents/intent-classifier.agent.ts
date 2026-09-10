@@ -8,13 +8,28 @@ import {
 } from '../dto/channel-intent.schema';
 
 export type ClassifyResult =
-  | { skipped: false; classification: ChannelIntent }
-  | { skipped: true };
+  { skipped: false; classification: ChannelIntent } | { skipped: true };
+
+export interface ChannelTranscriptTurn {
+  /** 'agent' is this classifier's own past clarifying questions, not a human staff reply. */
+  role: 'customer' | 'agent';
+  body: string;
+}
+
+const SYSTEM_PROMPT =
+  'You are classifying what a customer wants from an inbound message on a business messaging channel. ' +
+  'If you are confident in the intent, classify it and leave clarifyingQuestion out. ' +
+  'If you are not confident, set a lower confidence score and ask exactly one short, specific clarifyingQuestion ' +
+  'that would help you pin down the intent — do not guess just to avoid asking.';
 
 /**
  * Always runs first for every unhandled inbound message — the only AI call
  * in this feature that's coupled 1:1 to the fixed ChannelMessage AI columns,
  * so it stays code-defined rather than a database-configurable agent.
+ *
+ * Takes the running transcript (not just the latest message) so the same
+ * classifier serves both the one-shot workflow (single-turn transcript) and
+ * the multi-turn conversation workflow (growing transcript).
  */
 export class IntentClassifierAgent {
   private readonly logger = new Logger(IntentClassifierAgent.name);
@@ -23,13 +38,17 @@ export class IntentClassifierAgent {
 
   async classify(
     organizationId: string,
-    messageBody: string,
+    transcript: ChannelTranscriptTurn[],
   ): Promise<ClassifyResult> {
     try {
       const result = await this.aiService.generateStructured<unknown>(
         'channels.classify_intent',
         {
-          messages: [{ role: 'user', content: messageBody }],
+          system: SYSTEM_PROMPT,
+          messages: transcript.map((turn) => ({
+            role: turn.role === 'customer' ? 'user' : 'assistant',
+            content: turn.body,
+          })),
           jsonSchema: channelIntentJsonSchema,
           schemaName: 'channel_intent',
         },
@@ -50,7 +69,9 @@ export class IntentClassifierAgent {
         );
       } else {
         const msg = err instanceof Error ? err.message : String(err);
-        this.logger.warn(`Channel intent classification failed, skipping: ${msg}`);
+        this.logger.warn(
+          `Channel intent classification failed, skipping: ${msg}`,
+        );
       }
       return { skipped: true };
     }

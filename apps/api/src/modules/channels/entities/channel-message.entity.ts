@@ -39,6 +39,7 @@ export enum MessageAiIntent {
 export enum MessageAiProcessingStatus {
   NONE = 'NONE',
   PENDING = 'PENDING',
+  AWAITING_REPLY = 'AWAITING_REPLY',
   COMPLETED = 'COMPLETED',
   FAILED = 'FAILED',
   SKIPPED = 'SKIPPED',
