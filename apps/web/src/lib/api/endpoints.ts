@@ -59,6 +59,9 @@ import type {
   AiBudgetStatusDto,
   UpsertAiBudgetPayload,
   AiUsageLogDto,
+  AiAgentDto,
+  CreateAiAgentPayload,
+  UpdateAiAgentPayload,
 } from '@saas/shared';
 import { apiFetch, apiFetchBlob } from './client';
 import { API_PUBLIC_URL } from './config';
@@ -216,6 +219,17 @@ export const api = {
       revoke: (id: string) =>
         apiFetch<{ success: true }>(`/channels/identities/${id}`, { method: 'DELETE' }),
     },
+  },
+
+  aiAgents: {
+    list: () => apiFetch<AiAgentDto[]>('/channels/ai-agents'),
+    get: (id: string) => apiFetch<AiAgentDto>(`/channels/ai-agents/${id}`),
+    create: (input: CreateAiAgentPayload) =>
+      apiFetch<AiAgentDto>('/channels/ai-agents', { method: 'POST', body: input }),
+    update: (id: string, input: UpdateAiAgentPayload) =>
+      apiFetch<AiAgentDto>(`/channels/ai-agents/${id}`, { method: 'PATCH', body: input }),
+    remove: (id: string) =>
+      apiFetch<{ success: true }>(`/channels/ai-agents/${id}`, { method: 'DELETE' }),
   },
 
   automations: {
@@ -409,5 +423,6 @@ export const queryKeys = {
   // AI
   aiBudget: ['ai', 'budget'] as const,
   aiUsage: ['ai', 'usage'] as const,
+  aiAgents: ['ai', 'agents'] as const,
 };
 
