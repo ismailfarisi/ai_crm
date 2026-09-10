@@ -35,16 +35,7 @@ import {
   channelConversationWorkflow,
 } from './workflows/channel-ai.workflow';
 import { newInboundMessageSignal } from './workflows/interfaces';
-
-/**
- * Providers confirmed safe to let the AI agent auto-chat on (send its own
- * clarifying questions) — email never gets AI-authored freeform text sent
- * automatically, only the fixed canned auto-ack template.
- */
-const CHAT_ENABLED_PROVIDERS: ChannelProviderType[] = [
-  ChannelProviderType.TELEGRAM,
-  ChannelProviderType.WHATSAPP_META,
-];
+import { IntentAgentConfigService } from './services/intent-agent-config.service';
 
 export interface SendMessageDto {
   contactId?: string;
@@ -68,6 +59,7 @@ export class ChannelsService {
     private readonly configService: ConfigService<AppConfig, true>,
     private readonly channelCommandService: ChannelCommandService,
     private readonly temporalService: TemporalService,
+    private readonly intentAgentConfigService: IntentAgentConfigService,
   ) {}
 
   /** The URL the given provider's inbound webhook is reachable at — must match the route in ChannelsWebhookController. */
@@ -516,11 +508,17 @@ export class ChannelsService {
 
     try {
       const client = this.temporalService.getClient();
-      if (CHAT_ENABLED_PROVIDERS.includes(provider)) {
+      const intentConfig =
+        await this.intentAgentConfigService.getEffective(orgId);
+      if (
+        intentConfig.isEnabled &&
+        intentConfig.eligibleProviders.includes(provider)
+      ) {
         // Per-contact, long-running conversation — the first message and
         // every follow-up reply both flow in purely via signal, so this
         // correlates back to the same in-progress workflow instead of
-        // starting an unrelated one per message.
+        // starting an unrelated one per message. Settings are resolved once,
+        // here, and carried in the workflow's input for its whole lifetime.
         await client.workflow.signalWithStart(channelConversationWorkflow, {
           taskQueue: 'channel-ai-queue',
           workflowId: `channel-conv-${orgId}-${provider}-${contact.id}`,
@@ -530,6 +528,9 @@ export class ChannelsService {
               provider,
               contactId: contact.id,
               senderIdentifier: parsed.senderIdentifier,
+              maxTurns: intentConfig.maxTurns,
+              replyTimeoutMinutes: intentConfig.replyTimeoutMinutes,
+              systemPrompt: intentConfig.systemPrompt,
             },
           ],
           signal: newInboundMessageSignal,

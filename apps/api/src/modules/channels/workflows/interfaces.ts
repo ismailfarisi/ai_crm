@@ -21,6 +21,8 @@ export interface ChannelAiWorkflowResult {
 export interface ClassifyMessageParams {
   organizationId: string;
   transcript: ChannelTranscriptTurn[];
+  /** Overrides IntentClassifierAgent's built-in system prompt when set — sourced from IntentAgentConfig. */
+  systemPromptOverride?: string;
 }
 
 export interface ClassifyMessageResult {
@@ -80,6 +82,10 @@ export interface ChannelConversationWorkflowInput {
   provider: ChannelProviderType;
   contactId: string;
   senderIdentifier: string;
+  /** Resolved once from IntentAgentConfig by ChannelsService before the workflow starts. */
+  maxTurns: number;
+  replyTimeoutMinutes: number;
+  systemPrompt: string | null;
 }
 
 export interface NewInboundMessagePayload {

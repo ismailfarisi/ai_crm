@@ -39,12 +39,13 @@ export class IntentClassifierAgent {
   async classify(
     organizationId: string,
     transcript: ChannelTranscriptTurn[],
+    systemPromptOverride?: string,
   ): Promise<ClassifyResult> {
     try {
       const result = await this.aiService.generateStructured<unknown>(
         'channels.classify_intent',
         {
-          system: SYSTEM_PROMPT,
+          system: systemPromptOverride || SYSTEM_PROMPT,
           messages: transcript.map((turn) => ({
             role: turn.role === 'customer' ? 'user' : 'assistant',
             content: turn.body,

@@ -14,11 +14,13 @@ import {
   sendChannelMessageSchema,
   createAiAgentSchema,
   updateAiAgentSchema,
+  upsertIntentAgentConfigSchema,
   type ChannelLinkCodeDto,
   type CreateAiAgentPayload,
   type SendChannelMessagePayload,
   type StaffChannelIdentityDto,
   type UpdateAiAgentPayload,
+  type UpsertIntentAgentConfigPayload,
 } from '@saas/shared';
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
 import { zodBody } from '@/common/pipes/zod-validation.pipe';
@@ -26,6 +28,7 @@ import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { ChannelsService } from './channels.service';
 import { ChannelCommandService } from './services/channel-command.service';
 import { AiAgentService } from './services/ai-agent.service';
+import { IntentAgentConfigService } from './services/intent-agent-config.service';
 import { ChannelProviderType } from './entities/channel-config.entity';
 
 @ApiTags('channels')
@@ -35,6 +38,7 @@ export class ChannelsController {
     private readonly channelsService: ChannelsService,
     private readonly channelCommandService: ChannelCommandService,
     private readonly aiAgentService: AiAgentService,
+    private readonly intentAgentConfigService: IntentAgentConfigService,
   ) {}
 
   @Get('configs')
@@ -152,7 +156,8 @@ export class ChannelsController {
   @Get('ai-agents')
   @RequirePermissions(PERMISSIONS.AI_MANAGE)
   @ApiOperation({
-    summary: 'List the organization\'s AI agents (intent -> action dispatch rules)',
+    summary:
+      "List the organization's AI agents (intent -> action dispatch rules)",
   })
   listAiAgents(@CurrentUser() user: AuthenticatedUser) {
     return this.aiAgentService.findAll(user.organizationId);
@@ -161,10 +166,7 @@ export class ChannelsController {
   @Get('ai-agents/:id')
   @RequirePermissions(PERMISSIONS.AI_MANAGE)
   @ApiOperation({ summary: 'Get one AI agent' })
-  getAiAgent(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-  ) {
+  getAiAgent(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.aiAgentService.findOne(user.organizationId, id);
   }
 
@@ -198,6 +200,28 @@ export class ChannelsController {
   ): Promise<{ success: true }> {
     await this.aiAgentService.remove(user.organizationId, id);
     return { success: true };
+  }
+
+  @Get('intent-agent')
+  @RequirePermissions(PERMISSIONS.AI_MANAGE)
+  @ApiOperation({
+    summary: "Get the org's intent-clarifying agent configuration",
+  })
+  getIntentAgentConfig(@CurrentUser() user: AuthenticatedUser) {
+    return this.intentAgentConfigService.getEffective(user.organizationId);
+  }
+
+  @Patch('intent-agent')
+  @RequirePermissions(PERMISSIONS.AI_MANAGE)
+  @ApiOperation({
+    summary: "Update the org's intent-clarifying agent configuration",
+  })
+  updateIntentAgentConfig(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(zodBody(upsertIntentAgentConfigSchema))
+    body: UpsertIntentAgentConfigPayload,
+  ) {
+    return this.intentAgentConfigService.upsert(user.organizationId, body);
   }
 }
 

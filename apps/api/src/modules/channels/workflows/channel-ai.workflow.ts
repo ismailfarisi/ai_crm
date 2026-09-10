@@ -78,9 +78,6 @@ export async function channelAiWorkflow(
   };
 }
 
-const MAX_CONVERSATION_TURNS = 5;
-const REPLY_TIMEOUT = '15 minutes';
-
 /**
  * Long-running, per-contact conversation: waits for each inbound message via
  * `newInboundMessageSignal` (delivered by `ChannelsService.processInboundWebhook`
@@ -89,8 +86,11 @@ const REPLY_TIMEOUT = '15 minutes';
  * Every message, including the first, arrives via the signal so there's no
  * risk of double-counting the opening message between start args and signal.
  *
- * Only used for providers confirmed safe to auto-chat on (WhatsApp/Telegram) —
- * email always uses the one-shot `channelAiWorkflow` above instead.
+ * Only used for providers an org has enabled auto-chat for via IntentAgentConfig
+ * (defaults to WhatsApp/Telegram) — email always uses the one-shot
+ * `channelAiWorkflow` above instead. `maxTurns`/`replyTimeoutMinutes`/
+ * `systemPrompt` are resolved once by the caller and carried in `input` for
+ * this conversation's whole lifetime, even if the org's settings change mid-chat.
  */
 export async function channelConversationWorkflow(
   input: ChannelConversationWorkflowInput,
@@ -102,8 +102,13 @@ export async function channelConversationWorkflow(
 
   const transcript: ChannelTranscriptTurn[] = [];
 
-  for (let turn = 0; turn < MAX_CONVERSATION_TURNS; turn++) {
-    const gotMessage = await condition(() => queue.length > 0, REPLY_TIMEOUT);
+  for (let turn = 0; turn < input.maxTurns; turn++) {
+    const gotMessage = await condition(
+      () => queue.length > 0,
+      // Dynamic duration built from org config — same `as any` escape used
+      // by expense-approval.workflow.ts for its configurable SLA/timeout durations.
+      `${input.replyTimeoutMinutes} minutes` as any,
+    );
     if (!gotMessage) {
       // Customer went quiet — stop waiting rather than leaving this
       // workflow open indefinitely; whatever was last persisted stands.
@@ -115,6 +120,7 @@ export async function channelConversationWorkflow(
     const classified = await classifyMessageActivity({
       organizationId: input.organizationId,
       transcript,
+      systemPromptOverride: input.systemPrompt ?? undefined,
     });
 
     if (classified.skipped) {

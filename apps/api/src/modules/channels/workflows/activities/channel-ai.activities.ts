@@ -43,6 +43,7 @@ export function createChannelAiActivities(deps: {
       const result = await classifier.classify(
         params.organizationId,
         params.transcript,
+        params.systemPromptOverride,
       );
       if (result.skipped) {
         return { skipped: true };

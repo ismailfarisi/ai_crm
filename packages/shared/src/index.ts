@@ -4,6 +4,7 @@ export * from './schemas/auth';
 export * from './schemas/channel';
 export * from './schemas/ai-provider';
 export * from './schemas/ai-agent';
+export * from './schemas/intent-agent-config';
 export * from './schemas/contact';
 export * from './schemas/customer';
 export * from './schemas/rbac';

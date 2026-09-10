@@ -9,9 +9,11 @@ import { StaffChannelIdentity } from './entities/staff-channel-identity.entity';
 import { ChannelLinkCode } from './entities/channel-link-code.entity';
 import { PendingChannelCommand } from './entities/pending-channel-command.entity';
 import { AiAgent } from './entities/ai-agent.entity';
+import { IntentAgentConfig } from './entities/intent-agent-config.entity';
 import { ChannelCryptoService } from './services/channel-crypto.service';
 import { ChannelCommandService } from './services/channel-command.service';
 import { AiAgentService } from './services/ai-agent.service';
+import { IntentAgentConfigService } from './services/intent-agent-config.service';
 import { ChannelsService } from './channels.service';
 import { ChannelsController } from './channels.controller';
 import { ChannelsWebhookController } from './channels-webhook.controller';
@@ -25,6 +27,7 @@ import { ChannelsWebhookController } from './channels-webhook.controller';
       ChannelLinkCode,
       PendingChannelCommand,
       AiAgent,
+      IntentAgentConfig,
     ]),
     ContactsModule,
     QuotesModule,
@@ -36,6 +39,7 @@ import { ChannelsWebhookController } from './channels-webhook.controller';
     ChannelCryptoService,
     ChannelCommandService,
     AiAgentService,
+    IntentAgentConfigService,
   ],
   exports: [ChannelsService, ChannelCryptoService, AiAgentService],
 })

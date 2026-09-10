@@ -62,6 +62,8 @@ import type {
   AiAgentDto,
   CreateAiAgentPayload,
   UpdateAiAgentPayload,
+  IntentAgentConfigDto,
+  UpsertIntentAgentConfigPayload,
 } from '@saas/shared';
 import { apiFetch, apiFetchBlob } from './client';
 import { API_PUBLIC_URL } from './config';
@@ -230,6 +232,15 @@ export const api = {
       apiFetch<AiAgentDto>(`/channels/ai-agents/${id}`, { method: 'PATCH', body: input }),
     remove: (id: string) =>
       apiFetch<{ success: true }>(`/channels/ai-agents/${id}`, { method: 'DELETE' }),
+  },
+
+  intentAgentConfig: {
+    get: () => apiFetch<IntentAgentConfigDto>('/channels/intent-agent'),
+    update: (input: UpsertIntentAgentConfigPayload) =>
+      apiFetch<IntentAgentConfigDto>('/channels/intent-agent', {
+        method: 'PATCH',
+        body: input,
+      }),
   },
 
   automations: {
@@ -424,5 +435,6 @@ export const queryKeys = {
   aiBudget: ['ai', 'budget'] as const,
   aiUsage: ['ai', 'usage'] as const,
   aiAgents: ['ai', 'agents'] as const,
+  intentAgentConfig: ['ai', 'intent-agent-config'] as const,
 };
 
