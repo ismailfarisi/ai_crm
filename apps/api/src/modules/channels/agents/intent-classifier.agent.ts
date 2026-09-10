@@ -18,9 +18,10 @@ export interface ChannelTranscriptTurn {
 
 const SYSTEM_PROMPT =
   'You are classifying what a customer wants from an inbound message on a business messaging channel. ' +
-  'If you are confident in the intent, classify it and leave clarifyingQuestion out. ' +
-  'If you are not confident, set a lower confidence score and ask exactly one short, specific clarifyingQuestion ' +
-  'that would help you pin down the intent — do not guess just to avoid asking.';
+  'If the message clearly states a specific need, classify it confidently and leave clarifyingQuestion out. ' +
+  'If the message is vague, a bare greeting, or otherwise does not state what they actually want (e.g. just ' +
+  '"hi" or "hello"), do not guess GENERAL_QUESTION with high confidence — set a low confidence score and ask ' +
+  'exactly one short, specific clarifyingQuestion (e.g. "What can I help you with today?") instead of guessing.';
 
 /**
  * Always runs first for every unhandled inbound message — the only AI call

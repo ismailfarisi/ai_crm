@@ -202,13 +202,16 @@ export async function channelConversationWorkflow(
       };
     }
 
-    if (
-      dispatchResult.reason !== 'LOW_CONFIDENCE' ||
-      !classified.clarifyingQuestion
-    ) {
-      // No agent configured for this intent (or provider ineligible) — no
-      // specialist to eventually hand off to, so stop chatting and leave it
-      // classified for a human, same ending as the one-shot path's fallback.
+    if (!classified.clarifyingQuestion) {
+      // The classifier is confident enough that it isn't asking a follow-up
+      // question — whatever dispatch's reason was (no agent configured,
+      // provider ineligible), there's nothing more clarifying would change,
+      // so stop and leave it classified for a human. Deliberately NOT gated
+      // on dispatchResult.reason === 'LOW_CONFIDENCE': a low-confidence
+      // first guess (e.g. a bare "hi" reading as GENERAL_QUESTION, which has
+      // no agent) is exactly the case that should keep chatting — the real
+      // intent may only emerge, and map to a configured agent, after a turn
+      // or two of clarification.
       return { status: 'COMPLETED', autoAcked: false };
     }
 
