@@ -31,10 +31,22 @@ const {
 export async function channelAiWorkflow(
   input: ChannelAiWorkflowInput,
 ): Promise<ChannelAiWorkflowResult> {
-  const classified = await classifyMessageActivity({
-    organizationId: input.organizationId,
-    transcript: [{ role: 'customer', body: input.body }],
-  });
+  let classified: Awaited<ReturnType<typeof classifyMessageActivity>>;
+  try {
+    classified = await classifyMessageActivity({
+      organizationId: input.organizationId,
+      transcript: [{ role: 'customer', body: input.body }],
+    });
+  } catch {
+    // Exhausted retries (e.g. the org's AI provider is unreachable or too
+    // slow) — mark it FAILED instead of leaving the message stuck at PENDING
+    // forever with no way for a human to tell something went wrong.
+    await persistClassificationActivity({
+      messageId: input.messageId,
+      status: 'FAILED',
+    });
+    return { status: 'FAILED', autoAcked: false };
+  }
 
   if (classified.skipped) {
     await persistClassificationActivity({
@@ -54,28 +66,34 @@ export async function channelAiWorkflow(
     options: classified.options,
   });
 
-  const dispatchResult = await dispatchAgentActivity({
-    organizationId: input.organizationId,
-    provider: input.provider,
-    senderIdentifier: input.senderIdentifier,
-    contactId: input.contactId,
-    messageBody: input.body,
-    intent: classified.intent!,
-    confidence: classified.confidence!,
-    summary: classified.summary!,
-  });
+  try {
+    const dispatchResult = await dispatchAgentActivity({
+      organizationId: input.organizationId,
+      provider: input.provider,
+      senderIdentifier: input.senderIdentifier,
+      contactId: input.contactId,
+      messageBody: input.body,
+      intent: classified.intent!,
+      confidence: classified.confidence!,
+      summary: classified.summary!,
+    });
 
-  await persistDispatchResultActivity({
-    messageId: input.messageId,
-    autoAcked: dispatchResult.autoAcked,
-    createdQuoteId: dispatchResult.createdQuoteId,
-  });
+    await persistDispatchResultActivity({
+      messageId: input.messageId,
+      autoAcked: dispatchResult.autoAcked,
+      createdQuoteId: dispatchResult.createdQuoteId,
+    });
 
-  return {
-    status: 'COMPLETED',
-    autoAcked: dispatchResult.autoAcked,
-    createdQuoteId: dispatchResult.createdQuoteId,
-  };
+    return {
+      status: 'COMPLETED',
+      autoAcked: dispatchResult.autoAcked,
+      createdQuoteId: dispatchResult.createdQuoteId,
+    };
+  } catch {
+    // Classification already succeeded and is persisted — leave it for a
+    // human rather than failing the whole workflow over the action step.
+    return { status: 'COMPLETED', autoAcked: false };
+  }
 }
 
 /**
@@ -117,11 +135,23 @@ export async function channelConversationWorkflow(
     const message = queue.shift()!;
     transcript.push({ role: 'customer', body: message.body });
 
-    const classified = await classifyMessageActivity({
-      organizationId: input.organizationId,
-      transcript,
-      systemPromptOverride: input.systemPrompt ?? undefined,
-    });
+    let classified: Awaited<ReturnType<typeof classifyMessageActivity>>;
+    try {
+      classified = await classifyMessageActivity({
+        organizationId: input.organizationId,
+        transcript,
+        systemPromptOverride: input.systemPrompt ?? undefined,
+      });
+    } catch {
+      // Exhausted retries — mark it FAILED instead of leaving the message
+      // stuck at PENDING/AWAITING_REPLY forever with no way for a human to
+      // tell the conversation stalled.
+      await persistClassificationActivity({
+        messageId: message.messageId,
+        status: 'FAILED',
+      });
+      return { status: 'FAILED', autoAcked: false };
+    }
 
     if (classified.skipped) {
       await persistClassificationActivity({
@@ -141,16 +171,23 @@ export async function channelConversationWorkflow(
       options: classified.options,
     });
 
-    const dispatchResult = await dispatchAgentActivity({
-      organizationId: input.organizationId,
-      provider: input.provider,
-      senderIdentifier: input.senderIdentifier,
-      contactId: input.contactId,
-      messageBody: message.body,
-      intent: classified.intent!,
-      confidence: classified.confidence!,
-      summary: classified.summary!,
-    });
+    let dispatchResult: Awaited<ReturnType<typeof dispatchAgentActivity>>;
+    try {
+      dispatchResult = await dispatchAgentActivity({
+        organizationId: input.organizationId,
+        provider: input.provider,
+        senderIdentifier: input.senderIdentifier,
+        contactId: input.contactId,
+        messageBody: message.body,
+        intent: classified.intent!,
+        confidence: classified.confidence!,
+        summary: classified.summary!,
+      });
+    } catch {
+      // Classification already succeeded and is persisted — leave it for a
+      // human rather than failing the whole conversation over the action step.
+      return { status: 'COMPLETED', autoAcked: false };
+    }
 
     if (dispatchResult.reason === 'DISPATCHED') {
       await persistDispatchResultActivity({
@@ -175,16 +212,24 @@ export async function channelConversationWorkflow(
       return { status: 'COMPLETED', autoAcked: false };
     }
 
+    try {
+      // Send before marking AWAITING_REPLY: if delivery fails, the message
+      // stays at the already-persisted COMPLETED classification instead of
+      // being stuck showing "waiting for a reply" that will never come.
+      await sendClarifyingQuestionActivity({
+        organizationId: input.organizationId,
+        provider: input.provider,
+        senderIdentifier: input.senderIdentifier,
+        contactId: input.contactId,
+        question: classified.clarifyingQuestion,
+      });
+    } catch {
+      return { status: 'COMPLETED', autoAcked: false };
+    }
+
     await persistClassificationActivity({
       messageId: message.messageId,
       status: 'AWAITING_REPLY',
-    });
-    await sendClarifyingQuestionActivity({
-      organizationId: input.organizationId,
-      provider: input.provider,
-      senderIdentifier: input.senderIdentifier,
-      contactId: input.contactId,
-      question: classified.clarifyingQuestion,
     });
     transcript.push({ role: 'agent', body: classified.clarifyingQuestion });
   }

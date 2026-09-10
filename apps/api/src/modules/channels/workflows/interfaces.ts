@@ -13,7 +13,7 @@ export interface ChannelAiWorkflowInput {
 }
 
 export interface ChannelAiWorkflowResult {
-  status: 'COMPLETED' | 'SKIPPED';
+  status: 'COMPLETED' | 'SKIPPED' | 'FAILED';
   autoAcked: boolean;
   createdQuoteId?: string;
 }
