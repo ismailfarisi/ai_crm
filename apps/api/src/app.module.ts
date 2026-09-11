@@ -9,6 +9,7 @@ import { AiModule } from '@/modules/ai/ai.module';
 import { AuthModule } from '@/modules/auth/auth.module';
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
 import { AutomationsModule } from '@/modules/automations/automations.module';
+import { CatalogModule } from '@/modules/catalog/catalog.module';
 import { ChannelsModule } from '@/modules/channels/channels.module';
 import { ContactsModule } from '@/modules/contacts/contacts.module';
 import { CustomersModule } from '@/modules/customers/customers.module';
@@ -55,6 +56,7 @@ import { UsersModule } from '@/modules/users/users.module';
     HealthModule,
     TemporalModule,
     QuotesModule,
+    CatalogModule,
     ChannelsModule,
     AutomationsModule,
     FinanceModule,
