@@ -49,6 +49,12 @@ export const PERMISSIONS = {
   QUOTE_READ: 'quote:read',
   QUOTE_UPDATE: 'quote:update',
   QUOTE_APPROVE: 'quote:approve',
+  QUOTE_VIEW_COST: 'quote:view_cost',
+  QUOTE_APPROVE_BELOW_MARGIN: 'quote:approve_below_margin',
+
+  // Product catalog and costing model
+  CATALOG_READ: 'catalog:read',
+  CATALOG_MANAGE: 'catalog:manage',
 
   // Invoices
   INVOICE_READ: 'invoice:read',
@@ -122,6 +128,14 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   [PERMISSIONS.QUOTE_READ]: 'View quotes',
   [PERMISSIONS.QUOTE_UPDATE]: 'Edit quotes',
   [PERMISSIONS.QUOTE_APPROVE]: 'Approve quotes',
+  [PERMISSIONS.QUOTE_VIEW_COST]:
+    'See cost and margin on quotes. Without it the API strips cost from every response.',
+  [PERMISSIONS.QUOTE_APPROVE_BELOW_MARGIN]:
+    'Approve a quote that breaks the margin floor or discount cap',
+
+  [PERMISSIONS.CATALOG_READ]: 'Browse catalog items and product templates when building a quote',
+  [PERMISSIONS.CATALOG_MANAGE]:
+    'Edit materials, work centres, tooling, catalog items and product templates',
 
   [PERMISSIONS.INVOICE_READ]: 'View invoices',
   [PERMISSIONS.INVOICE_MANAGE]: 'Mark invoices as paid and send them to customers',
@@ -204,7 +218,19 @@ export const PERMISSION_GROUPS: { key: string; label: string; permissions: Permi
   {
     key: 'quote',
     label: 'Quotes',
-    permissions: [PERMISSIONS.QUOTE_READ, PERMISSIONS.QUOTE_CREATE, PERMISSIONS.QUOTE_UPDATE, PERMISSIONS.QUOTE_APPROVE],
+    permissions: [
+      PERMISSIONS.QUOTE_READ,
+      PERMISSIONS.QUOTE_CREATE,
+      PERMISSIONS.QUOTE_UPDATE,
+      PERMISSIONS.QUOTE_APPROVE,
+      PERMISSIONS.QUOTE_VIEW_COST,
+      PERMISSIONS.QUOTE_APPROVE_BELOW_MARGIN,
+    ],
+  },
+  {
+    key: 'catalog',
+    label: 'Product catalog',
+    permissions: [PERMISSIONS.CATALOG_READ, PERMISSIONS.CATALOG_MANAGE],
   },
   {
     key: 'invoice',
