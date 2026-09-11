@@ -186,7 +186,22 @@ export class QuotesController {
       id,
       dto.action,
       dto.payload,
+      user.id,
     );
+  }
+
+  @Get('quotes/:id/guardrails')
+  @RequirePermissions(PERMISSIONS.QUOTE_READ)
+  @ApiOperation({
+    summary: 'Preview the commercial checks on a quote',
+    description:
+      'Re-costs the quote from the catalog and returns anything that would block approval, so the editor can warn before the button is pressed',
+  })
+  async evaluateQuote(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.quotesService.evaluateQuote(user.organizationId, id);
   }
 
   @Get('invoices')

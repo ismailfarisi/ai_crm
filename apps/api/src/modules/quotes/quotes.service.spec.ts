@@ -6,8 +6,12 @@ import { QuotesService } from './quotes.service';
 import { InvoicesService } from './invoices.service';
 import { TemporalService } from '../temporal/temporal.service';
 import { AutomationEventBridgeService } from '../automations/services/automation-event-bridge.service';
+import { CostingService } from '../catalog/costing.service';
+import { RbacService } from '../rbac/rbac.service';
 import {
+  calculateQuoteTotals,
   CreateQuotePayload,
+  PERMISSIONS,
   QuoteLineItem,
   UpdateQuotePayload,
 } from '@saas/shared';
@@ -21,6 +25,8 @@ describe('QuotesService', () => {
   let automationEventBridgeService: jest.Mocked<
     Partial<AutomationEventBridgeService>
   >;
+  let costingService: jest.Mocked<Partial<CostingService>>;
+  let rbacService: jest.Mocked<Partial<RbacService>>;
   let mockWorkflowHandle: any;
   let sequenceValue: number;
 
@@ -85,12 +91,33 @@ describe('QuotesService', () => {
       handleCrmEvent: jest.fn().mockResolvedValue([]),
     };
 
+    // Default: lines pass through unchanged and nothing breaches policy, so
+    // the existing expectations still describe the same behaviour.
+    costingService = {
+      recostLines: jest.fn().mockImplementation(async (_tenantId, items) => ({
+        items,
+        totals: calculateQuoteTotals(items),
+        violations: [],
+        staleLineIds: [],
+      })),
+    };
+    rbacService = {
+      resolveAccess: jest.fn().mockResolvedValue({
+        permissions: [PERMISSIONS.QUOTE_APPROVE],
+        roles: ['manager'],
+        level: 20,
+        isOwner: false,
+      }),
+    };
+
     service = new QuotesService(
       quoteRepo as unknown as Repository<Quote>,
       invoiceRepo as unknown as Repository<Invoice>,
       temporalService as unknown as TemporalService,
       invoicesService as unknown as InvoicesService,
       automationEventBridgeService as unknown as AutomationEventBridgeService,
+      costingService as unknown as CostingService,
+      rbacService as unknown as RbacService,
     );
   });
 

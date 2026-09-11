@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -9,7 +10,11 @@ import { Repository } from 'typeorm';
 import {
   calculateQuoteTotals,
   CreateQuotePayload,
+  PERMISSIONS,
   UpdateQuotePayload,
+  type GuardrailViolation,
+  type Permission,
+  type QuoteLineItem,
 } from '@saas/shared';
 import { Quote, QuoteCreatedBy, QuoteStatus } from './entities/quote.entity';
 import { Invoice } from './entities/invoice.entity';
@@ -22,6 +27,8 @@ import {
   rejectQuoteSignal,
 } from './workflows/interfaces';
 import { AutomationEventBridgeService } from '../automations/services/automation-event-bridge.service';
+import { CostingService } from '../catalog/costing.service';
+import { RbacService } from '../rbac/rbac.service';
 import {
   allocateNextSequenceValue,
   formatSequenceNumber,
@@ -40,7 +47,64 @@ export class QuotesService {
     private readonly temporalService: TemporalService,
     private readonly invoicesService: InvoicesService,
     private readonly automationEventBridgeService: AutomationEventBridgeService,
+    private readonly costingService: CostingService,
+    private readonly rbacService: RbacService,
   ) {}
+
+  /**
+   * Re-prices every line from the catalog and checks the tenant's floors.
+   *
+   * Called on the way in for both create and update, so a client-supplied
+   * `cost` never reaches the database. The browser can send whatever it likes;
+   * only what the catalog says survives.
+   */
+  private async recost(
+    tenantId: string,
+    items: QuoteLineItem[],
+  ): Promise<{ items: QuoteLineItem[]; violations: GuardrailViolation[] }> {
+    const { items: recosted, violations, staleLineIds } =
+      await this.costingService.recostLines(tenantId, items);
+
+    if (staleLineIds.length) {
+      this.logger.warn(
+        `Quote lines no longer cost against the catalog and were marked manual: ${staleLineIds.join(', ')}`,
+      );
+    }
+
+    return { items: recosted, violations };
+  }
+
+  /**
+   * Enforced here rather than in the controller, and against the actor's own
+   * effective permissions rather than their role — the same reasoning as
+   * `assertActorCanGrant`. A role-level check would sweep in anyone senior
+   * enough to *look* like an approver without actually holding the override.
+   */
+  private async assertActorMayApprove(
+    tenantId: string,
+    actorUserId: string | undefined,
+    violations: GuardrailViolation[],
+  ): Promise<void> {
+    if (!violations.length) return;
+
+    const permissions: Permission[] = actorUserId
+      ? (await this.rbacService.resolveAccess(actorUserId, tenantId)).permissions
+      : // No actor means an automated path. A bot must never be the thing
+        // that waives a margin floor.
+        [];
+
+    if (permissions.includes(PERMISSIONS.QUOTE_APPROVE_BELOW_MARGIN)) return;
+
+    throw new ForbiddenException({
+      statusCode: 403,
+      error: 'Forbidden',
+      message:
+        violations.length === 1
+          ? violations[0].message
+          : `This quote breaks ${violations.length} commercial rules`,
+      violations,
+    });
+  }
 
   /** Non-mutating preview for the "new quote" UI — must not burn a sequence value. */
   async peekNextQuoteNumber(tenantId: string): Promise<string> {
@@ -68,7 +132,7 @@ export class QuotesService {
   ): Promise<Quote> {
     const quoteNumber =
       payload.quoteNumber || (await this.generateNextQuoteNumber(tenantId));
-    const items = payload.items || [];
+    const { items } = await this.recost(tenantId, payload.items || []);
     const totals = calculateQuoteTotals(items);
     const mode = payload.createdBy || QuoteCreatedBy.HUMAN;
 
@@ -170,8 +234,9 @@ export class QuotesService {
       quote.status = payload.status as QuoteStatus;
     }
     if (payload.items !== undefined) {
-      quote.items = payload.items;
-      const totals = calculateQuoteTotals(payload.items);
+      const { items } = await this.recost(tenantId, payload.items);
+      quote.items = items;
+      const totals = calculateQuoteTotals(items);
       quote.subtotalAmount = totals.subtotalAmount;
       quote.discountAmount = totals.discountAmount;
       quote.taxAmount = totals.taxAmount;
@@ -186,12 +251,29 @@ export class QuotesService {
     quoteId: string,
     action: 'APPROVE' | 'REJECT' | 'OVERRIDE',
     payload?: any,
+    actorUserId?: string,
   ): Promise<Quote> {
     const quote = await this.findQuoteById(tenantId, quoteId);
     const workflowId = quote.workflowId || `quote-${quote.id}`;
 
     if (action !== 'APPROVE' && action !== 'REJECT' && action !== 'OVERRIDE') {
       throw new BadRequestException(`Invalid signal action: ${action}`);
+    }
+
+    // Approval is the commitment, so it is where the floors bite. Saving a
+    // thin draft stays possible — the rep needs to see the number before they
+    // can fix it. Re-cost from the catalog first so the check runs on what
+    // the job actually costs today, not on what was stored when it was drafted.
+    if (action === 'APPROVE') {
+      const { items, violations } = await this.recost(tenantId, quote.items || []);
+      quote.items = items;
+      const totals = calculateQuoteTotals(items);
+      quote.subtotalAmount = totals.subtotalAmount;
+      quote.discountAmount = totals.discountAmount;
+      quote.taxAmount = totals.taxAmount;
+      quote.totalAmount = totals.totalAmount;
+
+      await this.assertActorMayApprove(tenantId, actorUserId, violations);
     }
 
     try {
@@ -271,6 +353,19 @@ export class QuotesService {
     }
 
     return savedQuote;
+  }
+
+  /**
+   * What the approve button should say before it is pressed: the quote's
+   * margin as the catalog prices it today, and anything blocking approval.
+   */
+  async evaluateQuote(
+    tenantId: string,
+    quoteId: string,
+  ): Promise<{ violations: GuardrailViolation[]; totals: ReturnType<typeof calculateQuoteTotals> }> {
+    const quote = await this.findQuoteById(tenantId, quoteId);
+    const { items, violations } = await this.recost(tenantId, quote.items || []);
+    return { violations, totals: calculateQuoteTotals(items) };
   }
 
   async findAllQuotes(tenantId: string): Promise<Quote[]> {

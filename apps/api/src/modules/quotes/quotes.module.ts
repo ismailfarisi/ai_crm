@@ -12,6 +12,8 @@ import { QuotesController } from './quotes.controller';
 import { FinanceModule } from '../finance/finance.module';
 import { MailModule } from '../mail/mail.module';
 import { AutomationsModule } from '../automations/automations.module';
+import { CatalogModule } from '../catalog/catalog.module';
+import { RbacModule } from '../rbac/rbac.module';
 
 @Module({
   imports: [
@@ -19,6 +21,10 @@ import { AutomationsModule } from '../automations/automations.module';
     FinanceModule,
     MailModule,
     AutomationsModule,
+    // Quote lines are re-priced from the catalog on save, and the margin
+    // override is checked against the actor's own effective permissions.
+    CatalogModule,
+    RbacModule,
   ],
   controllers: [QuotesController],
   providers: [
