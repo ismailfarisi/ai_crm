@@ -15,6 +15,7 @@ import {
   Loader2,
   FileCheck,
   AlertCircle,
+  PackagePlus,
 } from 'lucide-react';
 import type {
   QuoteDto,
@@ -23,8 +24,10 @@ import type {
   QuoteCreatedBy,
   CreateQuotePayload,
   UpdateQuotePayload,
+  GuardrailViolation,
 } from '@saas/shared';
-import { calculateQuoteTotals } from '@saas/shared';
+import { calculateQuoteTotals, evaluateGuardrails } from '@saas/shared';
+import { useCostingPolicy } from '@/hooks/use-catalog';
 import { api } from '@/lib/api/endpoints';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -36,6 +39,8 @@ import { QuoteTotalsCard } from './quote-totals-card';
 import { QuoteTabsSection } from './quote-tabs-section';
 import { QuoteAiDrawer, type GeneratedQuoteDraft } from './quote-ai-drawer';
 import { QuotePrintModal } from './quote-print-modal';
+import { AddLineFlow } from './add-line-flow';
+import { QuoteMarginCard } from './quote-margin-card';
 
 interface QuoteEditorPageProps {
   quoteId?: string;
@@ -59,6 +64,7 @@ export function QuoteEditorPage({
   // Modals & Drawers
   const [isAiDrawerOpen, setIsAiDrawerOpen] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [isAddLineOpen, setIsAddLineOpen] = useState(false);
 
   // Quote State
   const [id, setId] = useState<string | undefined>(initialQuote?.id || quoteId);
@@ -156,7 +162,44 @@ export function QuoteEditorPage({
   // Live Totals Calculation
   const totals = useMemo(() => calculateQuoteTotals(items), [items]);
 
+  /**
+   * Live guardrail check, using the same pure function the API enforces with.
+   * This is a courtesy so the rep sees the problem while they can still fix
+   * it — the server re-costs from the catalog and re-checks on approval, and
+   * that copy is the one that decides.
+   */
+  const { policy } = useCostingPolicy();
+  const violations = useMemo<GuardrailViolation[]>(
+    () => (policy ? evaluateGuardrails(items, totals, policy) : []),
+    [items, totals, policy],
+  );
+
   const isReadOnly = status === 'APPROVED';
+
+  // ⌘K / Ctrl-K opens the catalog picker, the way every other palette works.
+  useEffect(() => {
+    if (isReadOnly) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setIsAddLineOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isReadOnly]);
+
+  const handleAddLines = useCallback((lines: QuoteLineItem[]) => {
+    setItems((prev) => {
+      // Drop the empty starter row the editor seeds a new quote with.
+      const meaningful = prev.filter(
+        (item) => item.type !== 'product' || item.description.trim() || (item.unitPrice ?? 0) > 0,
+      );
+      return [...meaningful, ...lines];
+    });
+  }, []);
 
   // Handle header data updates
   const handleHeaderChange = useCallback((patch: Partial<QuoteHeaderFormData>) => {
@@ -386,6 +429,23 @@ export function QuoteEditorPage({
 
           {/* Right: Actions */}
           <div className="flex flex-wrap items-center gap-2">
+            {/* Catalog picker — the primary way to add a priced line */}
+            {!isReadOnly && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsAddLineOpen(true)}
+                className="rounded-full px-4 text-xs gap-1.5 shadow-2xs border-border/40 hover:border-border font-semibold"
+              >
+                <PackagePlus className="size-4 text-ink-subtle" />
+                <span>Add from catalog</span>
+                <kbd className="ml-1 hidden rounded border border-border/40 px-1 py-0.5 text-[10px] font-medium text-ink-subtle sm:inline">
+                  ⌘K
+                </kbd>
+              </Button>
+            )}
+
             {/* AI Copilot Button */}
             {!isReadOnly && (
               <Button
@@ -477,6 +537,32 @@ export function QuoteEditorPage({
         </div>
       </div>
 
+      {/* Anything that will block approval, stated before the button is pressed */}
+      {violations.length > 0 && !isReadOnly && (
+        <div className="flex items-start gap-3 rounded-2xl border border-danger/25 bg-danger-soft/40 px-4 py-3 shadow-2xs">
+          <AlertCircle className="mt-0.5 size-5 shrink-0 text-danger" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-ink">
+              This quote breaks {violations.length === 1 ? 'a commercial rule' : `${violations.length} commercial rules`}
+            </p>
+            <ul className="mt-1 space-y-0.5">
+              {violations.map((violation) => (
+                <li
+                  key={`${violation.code}-${violation.lineId ?? 'quote'}`}
+                  className="text-xs text-ink-muted"
+                >
+                  {violation.message}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1.5 text-xs text-ink-subtle">
+              It can still be saved and sent for review — approval needs someone who can sign off
+              below the floor.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Read-Only Banner if Approved */}
       {isReadOnly && (
         <div className="flex items-center gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300 shadow-2xs">
@@ -517,8 +603,15 @@ export function QuoteEditorPage({
         />
       </div>
 
-      {/* Section 3: Totals Summary Card */}
-      <QuoteTotalsCard totals={totals} currency={headerData.currency} />
+      {/* Section 3: Totals, with margin and policy checks alongside */}
+      <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+        <QuoteTotalsCard totals={totals} currency={headerData.currency} />
+        <QuoteMarginCard
+          totals={totals}
+          violations={violations}
+          currency={headerData.currency}
+        />
+      </div>
 
       {/* Section 4: Terms & Internal Notes Tabs */}
       <QuoteTabsSection
@@ -527,6 +620,14 @@ export function QuoteEditorPage({
         onChangeTerms={setTermsAndConditions}
         onChangeNotes={setNotes}
         readOnly={isReadOnly}
+      />
+
+      {/* Catalog picker → template configurator → resolved line */}
+      <AddLineFlow
+        open={isAddLineOpen}
+        onClose={() => setIsAddLineOpen(false)}
+        onAddLines={handleAddLines}
+        currency={headerData.currency}
       />
 
       {/* Side-Over AI Copilot Drawer */}

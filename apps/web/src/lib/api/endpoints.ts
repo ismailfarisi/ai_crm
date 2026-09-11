@@ -29,6 +29,15 @@ import type {
   QuoteDto,
   CreateQuotePayload,
   UpdateQuotePayload,
+  CatalogItemDto,
+  ProductTemplateDto,
+  CostingPolicy,
+  UpdateCostingPolicyPayload,
+  ResolveLinesPayload,
+  ResolvedLinesDto,
+  PriceBreaksPayload,
+  TemplatePriceBreaksDto,
+  QuoteGuardrailsDto,
   InvoiceDto,
   InvoicePaymentDto,
   RecordInvoicePaymentPayload,
@@ -179,6 +188,29 @@ export const api = {
       apiFetch<QuoteDto>(`/quotes/${id}`, { method: 'PATCH', body: payload }),
     signal: (id: string, payload: { action: 'APPROVE' | 'REJECT' | 'OVERRIDE'; payload?: unknown }) =>
       apiFetch<QuoteDto>(`/quotes/${id}/signal`, { method: 'POST', body: payload }),
+    guardrails: (id: string) => apiFetch<QuoteGuardrailsDto>(`/quotes/${id}/guardrails`),
+  },
+
+  catalog: {
+    searchItems: (q?: string, limit = 25) =>
+      apiFetch<CatalogItemDto[]>('/catalog/items', { query: { q, limit } }),
+    listTemplates: () => apiFetch<ProductTemplateDto[]>('/catalog/templates'),
+    getTemplate: (id: string) => apiFetch<ProductTemplateDto>(`/catalog/templates/${id}`),
+    /**
+     * Prices are decided server-side. The browser sends ids, quantities and
+     * template parameters and gets finished lines back — it never computes a
+     * price itself.
+     */
+    resolveLines: (payload: ResolveLinesPayload) =>
+      apiFetch<ResolvedLinesDto>('/catalog/resolve-lines', { method: 'POST', body: payload }),
+    priceBreaks: (templateId: string, payload: PriceBreaksPayload) =>
+      apiFetch<TemplatePriceBreaksDto>(`/catalog/templates/${templateId}/price-breaks`, {
+        method: 'POST',
+        body: payload,
+      }),
+    getPolicy: () => apiFetch<CostingPolicy>('/catalog/policy'),
+    updatePolicy: (payload: UpdateCostingPolicyPayload) =>
+      apiFetch<CostingPolicy>('/catalog/policy', { method: 'PATCH', body: payload }),
   },
 
   invoices: {
@@ -413,6 +445,11 @@ export const queryKeys = {
   invoices: ['invoices'] as const,
   invoice: (id: string) => ['invoices', id] as const,
   invoicePayments: (id: string) => ['invoices', id, 'payments'] as const,
+  catalogItems: (q?: string) => ['catalog', 'items', q ?? ''] as const,
+  catalogTemplates: ['catalog', 'templates'] as const,
+  catalogTemplate: (id: string) => ['catalog', 'templates', id] as const,
+  costingPolicy: ['catalog', 'policy'] as const,
+  quoteGuardrails: (id: string) => ['quotes', id, 'guardrails'] as const,
   channels: ['channels', 'configs'] as const,
   aiConfigs: ['ai', 'configs'] as const,
   channelIdentities: ['channels', 'identities'] as const,

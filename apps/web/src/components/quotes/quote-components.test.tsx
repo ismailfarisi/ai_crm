@@ -91,6 +91,10 @@ describe('QuoteTotalsCard', () => {
           discountAmount: 100,
           taxAmount: 50,
           totalAmount: 1050,
+          costAmount: 600,
+          marginAmount: 400,
+          marginPct: 0.4,
+          hasCompleteCost: true,
         }}
         currency="USD"
       />,
