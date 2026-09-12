@@ -1,9 +1,9 @@
 import Link from 'next/link';
-import { CircleDot, Lock, ShieldCheck, Users } from 'lucide-react';
+import { CircleDot, Lock, Ruler, ShieldCheck } from 'lucide-react';
+import { LiveQuoteDemo } from '@/components/marketing/live-quote-demo';
 
-const FEATURES = [
+const TRUST_SIGNALS = [
   { icon: ShieldCheck, label: 'Permission-level RBAC on every request' },
-  { icon: Users, label: 'Contacts scoped to owner, team, or organization' },
   { icon: Lock, label: 'Sessions in httpOnly cookies with rotation' },
 ];
 
@@ -22,30 +22,43 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </div>
       </div>
 
-      {/* Decorative panel — hidden on small screens rather than squeezed. */}
+      {/*
+        Decorative panel — hidden on small screens rather than squeezed. It
+        carries the product story and a working cost model rather than a
+        stock illustration: the demo below runs the real pricing engine in the
+        browser, so a visitor can move a dimension and watch the price step
+        before they have an account.
+      */}
       <aside className="relative hidden overflow-hidden bg-brand lg:block">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.22),transparent_55%)]" />
         <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px)] bg-[size:3rem_3rem] [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_75%)]" />
-        <div className="relative flex h-full flex-col justify-end gap-10 p-12 text-white">
-          <ul className="space-y-3">
-            {FEATURES.map((feature) => (
-              <li key={feature.label} className="flex items-center gap-3 text-sm text-white/80">
-                <span className="grid size-7 shrink-0 place-items-center rounded-md bg-white/10 ring-1 ring-white/15">
-                  <feature.icon className="size-3.5" />
-                </span>
-                {feature.label}
+
+        <div className="relative flex h-full flex-col justify-center gap-7 p-10 xl:p-12">
+          <div>
+            <p className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-medium text-white ring-1 ring-white/20">
+              <Ruler className="size-3.5" />
+              Built for made-to-order work
+            </p>
+            <h2 className="max-w-md text-2xl font-bold leading-tight tracking-tight text-white xl:text-3xl">
+              Quote custom work from what it actually costs to make.
+            </h2>
+            <p className="mt-3 max-w-md text-sm leading-relaxed text-white/80">
+              If you manufacture to order, a unit price doesn&rsquo;t exist until you know the
+              dimensions, the material yield and the machine time. Relay works it out from your own
+              cost model.
+            </p>
+          </div>
+
+          <LiveQuoteDemo />
+
+          <ul className="flex flex-wrap gap-x-6 gap-y-2">
+            {TRUST_SIGNALS.map((signal) => (
+              <li key={signal.label} className="flex items-center gap-2 text-xs text-white/75">
+                <signal.icon className="size-3.5 shrink-0" />
+                {signal.label}
               </li>
             ))}
           </ul>
-          <div>
-            <blockquote className="max-w-md text-xl leading-relaxed font-medium">
-              &ldquo;Every rep sees their own book. Managers see the whole pipeline. Nobody sees the
-              billing page by accident.&rdquo;
-            </blockquote>
-            <p className="mt-4 text-sm text-white/70">
-              Role-based access control, enforced on every request.
-            </p>
-          </div>
         </div>
       </aside>
     </div>
