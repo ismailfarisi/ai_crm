@@ -144,12 +144,18 @@ export class CreateLedgerAccounts1786300000000 implements MigrationInterface {
 
     for (const [code, name, type, role, description] of SYSTEM_ACCOUNTS) {
       await queryRunner.query(
+        // Every parameter is cast explicitly. `$1` appears both in the SELECT
+        // list, where Postgres infers it from the target column
+        // (character varying), and in the NOT EXISTS comparison, where it
+        // infers text — which fails as 42P08, "inconsistent types deduced for
+        // parameter". The casts settle it in one place rather than leaving it
+        // to inference.
         `INSERT INTO "ledger_accounts" ("tenant_id", "code", "name", "type", "role", "is_system", "description")
-         SELECT o."id", $1, $2, $3::"ledger_accounts_type_enum", $4, true, $5
+         SELECT o."id", $1::varchar, $2::varchar, $3::"ledger_accounts_type_enum", $4::varchar, true, $5::text
          FROM "organizations" o
          WHERE NOT EXISTS (
            SELECT 1 FROM "ledger_accounts" la
-           WHERE la."tenant_id" = o."id" AND la."code" = $1
+           WHERE la."tenant_id" = o."id" AND la."code" = $1::varchar
          )`,
         [code, name, type, role, description],
       );
