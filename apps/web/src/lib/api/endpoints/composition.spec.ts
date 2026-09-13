@@ -39,6 +39,7 @@ const API_SECTIONS = [
   'auth', 'contacts', 'customers', 'roles', 'users', 'invitations', 'teams',
   'quotes', 'catalog', 'invoices', 'channels', 'aiAgents', 'intentAgentConfig',
   'automations', 'finance', 'expenses', 'ai', 'suppliers',
+  'purchaseOrders', 'purchasePolicy',
 ];
 
 const QUERY_KEYS = [
@@ -52,6 +53,7 @@ const QUERY_KEYS = [
   'financeJournalEntries', 'expenses', 'expense', 'aiBudget', 'aiUsage',
   'aiAgents', 'intentAgentConfig',
   'suppliers', 'supplier', 'supplierMaterials',
+  'purchaseOrders', 'purchaseOrder', 'purchaseOrderGuardrails', 'purchasePolicy',
 ];
 
 describe('api surface composition', () => {

@@ -12,6 +12,7 @@ import type {
   OriginMetadata,
   PaginatedResult,
   ReplaceSupplierMaterialsPayload,
+  PurchaseOrderQueryPayload,
   SupplierQueryPayload,
   UpdateSupplierPayload,
 } from '@saas/shared';
@@ -24,6 +25,55 @@ import { PurchaseOrder } from './entities/purchase-order.entity';
 import { PurchaseOrderLine } from './entities/purchase-order-line.entity';
 import { Supplier } from './entities/supplier.entity';
 import { SupplierMaterial } from './entities/supplier-material.entity';
+import type { MaterialDemand } from '../catalog/costing.service';
+import { Organization } from '../organizations/entities/organization.entity';
+import { MailService } from '../mail/mail.service';
+import { PurchaseOrderPdfService } from './purchase-order-pdf.service';
+import { PurchaseOrderLifecycleService } from './purchase-order-lifecycle.service';
+
+/** Minimal escaping for the values interpolated into the supplier email. */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** One line of a proposed order, before anybody has agreed to it. */
+export interface SuggestedPurchaseOrderLine {
+  materialId: string;
+  description: string;
+  qtyOrdered: number;
+  uom: string;
+  unitCost: number;
+  lineTotal: number;
+  /** Set when the quantity was changed for the user, e.g. a minimum order. */
+  note?: string;
+}
+
+export interface SuggestedPurchaseOrder {
+  supplierId: string;
+  supplierName: string;
+  currency: string;
+  leadTimeDays: number | null;
+  lines: SuggestedPurchaseOrderLine[];
+  totalAmount: number;
+}
+
+export interface UnsourcedDemand {
+  materialId: string;
+  materialName: string;
+  uom: string;
+  purchaseUnits: number;
+  reason: string;
+}
+
+export interface PurchaseSuggestion {
+  orders: SuggestedPurchaseOrder[];
+  /** Demand nobody can be asked to fulfil yet. Never silently dropped. */
+  unsourced: UnsourcedDemand[];
+}
 
 /** Money rounded to the cent; unit costs stay at 4dp until they are multiplied out. */
 const money = (n: number): number => Math.round(n * 100) / 100;
@@ -39,6 +89,11 @@ export class PurchasingService {
     private readonly purchaseOrders: Repository<PurchaseOrder>,
     @InjectRepository(Material)
     private readonly materials: Repository<Material>,
+    @InjectRepository(Organization)
+    private readonly organizations: Repository<Organization>,
+    private readonly mail: MailService,
+    private readonly pdf: PurchaseOrderPdfService,
+    private readonly lifecycle: PurchaseOrderLifecycleService,
   ) {}
 
   /* ------------------------------------------------------------------ *
@@ -334,6 +389,198 @@ export class PurchasingService {
       }
       return saved;
     });
+  }
+
+
+
+  /* ------------------------------------------------------------------ *
+   * Purchase order queries and sending
+   * ------------------------------------------------------------------ */
+
+  async listPurchaseOrders(
+    tenantId: string,
+    query: PurchaseOrderQueryPayload,
+  ): Promise<PaginatedResult<PurchaseOrder>> {
+    const qb = this.purchaseOrders
+      .createQueryBuilder('po')
+      .leftJoinAndSelect('po.lines', 'line')
+      .where('po.tenant_id = :tenantId', { tenantId })
+      .andWhere('po.deletedAt IS NULL');
+
+    if (query.status) qb.andWhere('po.status = :status', { status: query.status });
+    if (query.supplierId) {
+      qb.andWhere('po.supplier_id = :supplierId', { supplierId: query.supplierId });
+    }
+    if (query.search) {
+      qb.andWhere(
+        new Brackets((w) => {
+          w.where('po.po_number ILIKE :q', { q: `%${query.search}%` }).orWhere(
+            'po.supplier_name ILIKE :q',
+            { q: `%${query.search}%` },
+          );
+        }),
+      );
+    }
+
+    const sortColumn = {
+      createdAt: 'po.createdAt',
+      orderDate: 'po.order_date',
+      expectedDate: 'po.expected_date',
+      totalAmount: 'po.total_amount',
+    }[query.sortBy];
+
+    const [items, total] = await qb
+      .orderBy(sortColumn, query.sortOrder)
+      .skip((query.page - 1) * query.limit)
+      .take(query.limit)
+      .getManyAndCount();
+
+    const totalPages = Math.ceil(total / query.limit) || 1;
+    return {
+      items,
+      meta: {
+        total,
+        page: query.page,
+        limit: query.limit,
+        totalPages,
+        hasNextPage: query.page < totalPages,
+        hasPreviousPage: query.page > 1,
+      },
+    };
+  }
+
+  async renderPdf(tenantId: string, orderId: string): Promise<{ order: PurchaseOrder; pdf: Buffer }> {
+    const order = await this.findById(tenantId, orderId);
+    const supplier = await this.suppliers.findOne({
+      where: { id: order.supplierId, tenantId },
+    });
+    const organization = await this.organizations.findOne({ where: { id: tenantId } });
+    const pdf = await this.pdf.generate(order, supplier, organization?.name ?? 'Your company');
+    return { order, pdf };
+  }
+
+  /**
+   * Emails the order to the supplier and marks it sent.
+   *
+   * The status moves only after the mail provider has accepted it. Marking
+   * first and mailing second would leave an order recorded as sent that the
+   * supplier never received, which is the failure that actually costs money.
+   */
+  async sendToSupplier(tenantId: string, orderId: string): Promise<PurchaseOrder> {
+    const { order, pdf } = await this.renderPdf(tenantId, orderId);
+
+    if (order.status !== 'APPROVED') {
+      throw new BadRequestException(
+        `${order.poNumber} is ${order.status.toLowerCase().replace(/_/g, ' ')} and has not been approved for sending.`,
+      );
+    }
+
+    const supplier = await this.findSupplierById(tenantId, order.supplierId);
+    if (!supplier.email) {
+      throw new BadRequestException(
+        `${supplier.companyName} has no email address on file to send the order to.`,
+      );
+    }
+
+    const organization = await this.organizations.findOne({ where: { id: tenantId } });
+    const from = organization?.name ?? 'our team';
+
+    await this.mail.sendMail({
+      to: supplier.email,
+      subject: `Purchase order ${order.poNumber}`,
+      html: `<p>Hi ${escapeHtml(supplier.contactName ?? supplier.companyName)},</p><p>Please find attached purchase order <strong>${escapeHtml(order.poNumber)}</strong> for ${escapeHtml(order.totalAmount.toFixed(2))} ${escapeHtml(order.currency)}.</p><p>Thanks,<br>${escapeHtml(from)}</p>`,
+      text: `Hi ${supplier.contactName ?? supplier.companyName},
+
+Please find attached purchase order ${order.poNumber} for ${order.totalAmount.toFixed(2)} ${order.currency}.
+
+Thanks,
+${from}`,
+      attachments: [
+        {
+          filename: `${order.poNumber}.pdf`,
+          content: pdf,
+          contentType: 'application/pdf',
+        },
+      ],
+    });
+
+    return this.lifecycle.markSent(tenantId, orderId);
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Suggestion
+   * ------------------------------------------------------------------ */
+
+  /**
+   * Draft purchase order lines for the stock a quote will consume.
+   *
+   * This is what `MaterialCostLine.purchaseUnits` was always for. The costing
+   * engine has computed it on every quote since the catalog shipped — 129
+   * sheets, 1000 magnets at two per box — and nothing has ever read it.
+   *
+   * Grouped by supplier, because one quote usually needs board from one
+   * merchant and fixings from another, and those are two orders. A material
+   * with no preferred supplier is returned separately rather than guessed at:
+   * picking a supplier on someone's behalf is how the wrong company gets an
+   * order.
+   */
+  async suggestFromQuote(
+    tenantId: string,
+    demand: MaterialDemand[],
+  ): Promise<PurchaseSuggestion> {
+    const groups = new Map<string, SuggestedPurchaseOrder>();
+    const unsourced: UnsourcedDemand[] = [];
+
+    for (const item of demand) {
+      const preferred = await this.findPreferredSupplierFor(tenantId, item.materialId);
+      if (!preferred) {
+        unsourced.push({
+          materialId: item.materialId,
+          materialName: item.materialName,
+          uom: item.uom,
+          purchaseUnits: item.purchaseUnits,
+          reason: 'No preferred supplier is set for this material.',
+        });
+        continue;
+      }
+
+      const { supplier, price } = preferred;
+      const group =
+        groups.get(supplier.id) ??
+        ({
+          supplierId: supplier.id,
+          supplierName: supplier.companyName,
+          currency: supplier.currency ?? 'USD',
+          leadTimeDays: supplier.leadTimeDays,
+          lines: [],
+          totalAmount: 0,
+        } satisfies SuggestedPurchaseOrder);
+
+      // Round up to the supplier's minimum, and say so — a silent bump would
+      // make the total disagree with the quantity the user asked for.
+      let qty = item.purchaseUnits;
+      let note: string | undefined;
+      if (price.minOrderQty != null && qty < price.minOrderQty) {
+        note = `Raised to ${supplier.companyName}'s minimum order of ${price.minOrderQty}`;
+        qty = price.minOrderQty;
+      }
+
+      group.lines.push({
+        materialId: item.materialId,
+        description: item.materialName,
+        qtyOrdered: qty,
+        uom: item.uom,
+        unitCost: price.unitCost,
+        lineTotal: money(qty * price.unitCost),
+        note,
+      });
+      group.totalAmount = money(
+        group.lines.reduce((sum, l) => sum + l.lineTotal, 0),
+      );
+      groups.set(supplier.id, group);
+    }
+
+    return { orders: [...groups.values()], unsourced };
   }
 
   /* ------------------------------------------------------------------ *

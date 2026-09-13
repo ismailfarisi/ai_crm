@@ -14,6 +14,7 @@ import {
   type CostingCatalog,
   type ExprValue,
   type Material as MaterialSpec,
+  type MaterialUom,
   type PriceBreak,
   type PriceBreaksPayload,
   type ProductTemplate as TemplateSpec,
@@ -32,6 +33,17 @@ import { Material } from './entities/material.entity';
 import { ProductTemplate } from './entities/product-template.entity';
 import { Tooling } from './entities/tooling.entity';
 import { WorkCenter } from './entities/work-center.entity';
+
+/** Raw stock a quote will consume, ready to become purchase order lines. */
+export interface MaterialDemand {
+  materialId: string;
+  materialName: string;
+  uom: MaterialUom;
+  /** Whole purchase units, as the engine computed them. */
+  purchaseUnits: number;
+  /** The engine's standing cost, shown only when no supplier price exists. */
+  estimatedUnitCost: number;
+}
 
 export interface ResolvedLines {
   lines: QuoteLineItem[];
@@ -161,6 +173,68 @@ export class CostingService {
       leadTimeDays,
       violations: evaluateGuardrails(lines, totals, await this.getPolicy(tenantId)),
     };
+  }
+
+
+  /**
+   * How much raw stock a set of quote lines actually consumes.
+   *
+   * The costing engine already works this out — `MaterialCostLine.purchaseUnits`
+   * is the whole sheets, boxes and kilos that have to be bought, rounded up
+   * where a unit is indivisible — but nothing persists it: a quote line stores
+   * aggregate cost, not the material breakdown behind it. So the demand is
+   * recomputed from the stored `templateId`, `templateVersion` and parameters,
+   * which is also what keeps it honest if the catalog has moved on.
+   *
+   * Quantities are summed per material across every line, because two lines
+   * on one quote using the same board should become one order line.
+   */
+  async materialDemandForItems(
+    tenantId: string,
+    items: QuoteLineItem[],
+  ): Promise<MaterialDemand[]> {
+    const catalog = await this.loadCostingCatalog(tenantId);
+    const byMaterial = new Map<string, MaterialDemand>();
+
+    for (const item of items ?? []) {
+      if (item.type !== 'product' || !item.templateId) continue;
+
+      const entity = await this.templates.findOne({
+        where: { id: item.templateId, tenantId },
+      });
+      if (!entity) continue;
+
+      const breakdown = this.runCosting(
+        entity,
+        catalog,
+        (item.parameters ?? {}) as Record<string, unknown>,
+        item.quantity ?? 1,
+        {},
+      );
+
+      for (const line of breakdown.materials) {
+        const existing = byMaterial.get(line.materialId);
+        if (existing) {
+          existing.purchaseUnits += line.purchaseUnits;
+          existing.estimatedUnitCost = line.unitCost;
+        } else {
+          byMaterial.set(line.materialId, {
+            materialId: line.materialId,
+            materialName: line.materialName,
+            uom: line.uom,
+            purchaseUnits: line.purchaseUnits,
+            estimatedUnitCost: line.unitCost,
+          });
+        }
+      }
+    }
+
+    return [...byMaterial.values()].map((demand) => ({
+      ...demand,
+      // Re-round after summing: two lines each needing 1.5 sheets need three,
+      // not three point zero after a float add.
+      purchaseUnits: Math.round(demand.purchaseUnits * 1000) / 1000,
+    }));
   }
 
   /**

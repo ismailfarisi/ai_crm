@@ -130,6 +130,39 @@ export class PurchaseOrder extends SoftDeletableEntity {
   @Column({ name: 'created_by_id', type: 'uuid', nullable: true })
   createdById: string | null;
 
+  /* ---- lifecycle ----
+   * Stamped on the order itself so "who approved this, and when" is
+   * answerable without joining the audit log.
+   */
+
+  @Column({ name: 'submitted_at', type: 'timestamptz', nullable: true })
+  submittedAt: Date | null;
+
+  @Column({ name: 'submitted_by_id', type: 'uuid', nullable: true })
+  submittedById: string | null;
+
+  @Column({ name: 'approved_at', type: 'timestamptz', nullable: true })
+  approvedAt: Date | null;
+
+  @Column({ name: 'approved_by_id', type: 'uuid', nullable: true })
+  approvedById: string | null;
+
+  @Column({ name: 'sent_at', type: 'timestamptz', nullable: true })
+  sentAt: Date | null;
+
+  @Column({ name: 'cancelled_at', type: 'timestamptz', nullable: true })
+  cancelledAt: Date | null;
+
+  @Column({ name: 'cancelled_by_id', type: 'uuid', nullable: true })
+  cancelledById: string | null;
+
+  @Column({ name: 'cancel_reason', type: 'text', nullable: true })
+  cancelReason: string | null;
+
+  /** The quote whose demand caused this order, when it was raised from one. */
+  @Column({ name: 'source_quote_id', type: 'uuid', nullable: true })
+  sourceQuoteId: string | null;
+
   @OneToMany(() => PurchaseOrderLine, (line) => line.purchaseOrder, {
     cascade: ['insert'],
     eager: true,

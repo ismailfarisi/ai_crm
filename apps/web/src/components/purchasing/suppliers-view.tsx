@@ -24,7 +24,7 @@ export function SuppliersView() {
 
   const suppliers = data?.items ?? [];
 
-  const columns = useMemo<ColumnDef<SupplierDto, any>[]>(
+  const columns = useMemo<ColumnDef<SupplierDto, unknown>[]>(
     () => [
       {
         accessorKey: 'companyName',
