@@ -6,12 +6,17 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { calculateRunwayMonths, TreasuryOverviewDto } from '@saas/shared';
+import {
+  calculateRunwayMonths,
+  LEDGER_ROLES,
+  TreasuryOverviewDto,
+} from '@saas/shared';
 import { FinanceAccount } from './entities/finance-account.entity';
 import { CategoryBudget } from './entities/category-budget.entity';
 import { RecurringExpense } from './entities/recurring-expense.entity';
 import { JournalEntry } from './entities/journal-entry.entity';
 import { ExpenseClaim } from './entities/expense-claim.entity';
+import { LedgerService } from './ledger.service';
 import {
   CreateFinanceAccountDto,
   CreateCategoryBudgetDto,
@@ -34,6 +39,7 @@ export class FinanceService {
     private readonly journalRepository: Repository<JournalEntry>,
     @InjectRepository(ExpenseClaim)
     private readonly expenseRepository: Repository<ExpenseClaim>,
+    private readonly ledger: LedgerService,
   ) {}
 
   async getOverview(tenantId: string): Promise<TreasuryOverviewDto> {
@@ -225,22 +231,22 @@ export class FinanceService {
       referenceId: `${fromAccount.id}->${toAccount.id}`,
       entryDate: new Date(),
       totalAmount: dto.amount,
-      lines: [
+      lines: await this.ledger.resolveLines(tenantId, [
         {
-          accountId: fromAccount.id,
+          financeAccountId: fromAccount.id,
           accountName: fromAccount.name,
           debit: 0,
           credit: dto.amount,
           description: dto.description || `Transfer to ${toAccount.name}`,
         },
         {
-          accountId: toAccount.id,
+          financeAccountId: toAccount.id,
           accountName: toAccount.name,
           debit: dto.amount,
           credit: 0,
           description: dto.description || `Transfer from ${fromAccount.name}`,
         },
-      ],
+      ]),
     });
 
     const savedJournal = await this.journalRepository.save(journalEntry);
@@ -288,21 +294,22 @@ export class FinanceService {
       referenceId: params.invoiceId,
       entryDate: new Date(),
       totalAmount: params.amount,
-      lines: [
+      lines: await this.ledger.resolveLines(tenantId, [
         {
-          accountId: account.id,
+          financeAccountId: account.id,
           accountName: account.name,
           debit: params.amount,
           credit: 0,
           description,
         },
         {
+          role: LEDGER_ROLES.ACCOUNTS_RECEIVABLE,
           accountName: 'Accounts Receivable',
           debit: 0,
           credit: params.amount,
           description,
         },
-      ],
+      ]),
     });
 
     const savedJournal = await this.journalRepository.save(journalEntry);
@@ -356,21 +363,22 @@ export class FinanceService {
       referenceId: params.paymentId,
       entryDate: new Date(),
       totalAmount: params.amount,
-      lines: [
+      lines: await this.ledger.resolveLines(tenantId, [
         {
+          role: LEDGER_ROLES.ACCOUNTS_RECEIVABLE,
           accountName: 'Accounts Receivable',
           debit: params.amount,
           credit: 0,
           description,
         },
         {
-          accountId: account.id,
+          financeAccountId: account.id,
           accountName: account.name,
           debit: 0,
           credit: params.amount,
           description,
         },
-      ],
+      ]),
     });
 
     const savedJournal = await this.journalRepository.save(journalEntry);

@@ -148,8 +148,36 @@ const mockJournalEntry: JournalEntryDto = {
   referenceId: 'acc-1->acc-2',
   entryDate: '2026-08-17T00:00:00Z',
   lines: [
-    { accountName: 'Operating', debit: 0, credit: 5000, description: 'Transfer' },
-    { accountName: 'Payroll', debit: 5000, credit: 0, description: 'Transfer' },
+    {
+
+      ledgerAccountId: 'ledger-1',
+
+      ledgerAccountCode: '1100',
+
+      accountName: 'Operating',
+
+      debit: 0,
+
+      credit: 5000,
+
+      description: 'Transfer',
+
+    },
+    {
+
+      ledgerAccountId: 'ledger-1',
+
+      ledgerAccountCode: '1100',
+
+      accountName: 'Payroll',
+
+      debit: 5000,
+
+      credit: 0,
+
+      description: 'Transfer',
+
+    },
   ],
   totalAmount: 5000,
   createdAt: '2026-08-17T00:00:00Z',

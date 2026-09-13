@@ -6,6 +6,7 @@ import { PurchaseOrderLine } from './entities/purchase-order-line.entity';
 import { Supplier } from './entities/supplier.entity';
 import { SupplierMaterial } from './entities/supplier-material.entity';
 import { PurchasingService } from './purchasing.service';
+import { PurchasingController } from './purchasing.controller';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { PurchasingService } from './purchasing.service';
       Material,
     ]),
   ],
+  controllers: [PurchasingController],
   providers: [PurchasingService],
   exports: [PurchasingService],
 })

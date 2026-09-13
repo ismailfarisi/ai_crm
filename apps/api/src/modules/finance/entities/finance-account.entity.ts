@@ -55,6 +55,15 @@ export class FinanceAccount {
   @Column({ type: 'boolean', default: false })
   isDefault: boolean;
 
+  /**
+   * The chart-of-accounts row this cash account posts through.
+   *
+   * Nullable only so the backfill can run; `LedgerService.ensureCashLedgerAccount`
+   * creates one on first use for any account that somehow lacks it.
+   */
+  @Column({ name: 'ledger_account_id', type: 'uuid', nullable: true })
+  ledgerAccountId: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 

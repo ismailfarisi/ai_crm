@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { FinanceModule } from '@/modules/finance/finance.module';
 import { InvitationsModule } from '@/modules/invitations/invitations.module';
 import { Organization } from '@/modules/organizations/entities/organization.entity';
 import { UsersModule } from '@/modules/users/users.module';
@@ -22,6 +23,7 @@ import { TokensService } from './tokens.service';
     // tokens are signed with different keys.
     JwtModule.register({}),
     TypeOrmModule.forFeature([RefreshToken, Organization]),
+    FinanceModule,
     UsersModule,
     InvitationsModule,
   ],

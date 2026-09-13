@@ -1,11 +1,20 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, IsNull, Repository } from 'typeorm';
-import type { CreatePurchaseOrderInput, OriginMetadata } from '@saas/shared';
+import type {
+  CreatePurchaseOrderInput,
+  CreateSupplierPayload,
+  OriginMetadata,
+  PaginatedResult,
+  ReplaceSupplierMaterialsPayload,
+  SupplierQueryPayload,
+  UpdateSupplierPayload,
+} from '@saas/shared';
 import {
   allocateNextSequenceValue,
   formatSequenceNumber,
@@ -146,6 +155,185 @@ export class PurchasingService {
     });
     if (!po) throw new NotFoundException(`Purchase order ${id} not found`);
     return po;
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Supplier CRUD
+   * ------------------------------------------------------------------ */
+
+  /**
+   * Every query here filters on `tenantId` in the WHERE clause rather than
+   * after the fetch — the same rule contacts follow. A raw find would leak
+   * across tenants.
+   */
+  async listSuppliers(
+    tenantId: string,
+    query: SupplierQueryPayload,
+  ): Promise<PaginatedResult<Supplier>> {
+    const qb = this.suppliers
+      .createQueryBuilder('s')
+      .where('s.tenant_id = :tenantId', { tenantId })
+      .andWhere('s.deletedAt IS NULL');
+
+    if (!query.includeInactive) {
+      qb.andWhere('s.is_active = true');
+    }
+    if (query.search) {
+      qb.andWhere(
+        new Brackets((w) => {
+          w.where('s.company_name ILIKE :q', { q: `%${query.search}%` })
+            .orWhere('s.contact_name ILIKE :q', { q: `%${query.search}%` })
+            .orWhere('s.email ILIKE :q', { q: `%${query.search}%` });
+        }),
+      );
+    }
+
+    const sortColumn = {
+      createdAt: 's.createdAt',
+      updatedAt: 's.updatedAt',
+      companyName: 's.company_name',
+      country: 's.country',
+    }[query.sortBy];
+
+    const [data, total] = await qb
+      .orderBy(sortColumn, query.sortOrder)
+      .skip((query.page - 1) * query.limit)
+      .take(query.limit)
+      .getManyAndCount();
+
+    const totalPages = Math.ceil(total / query.limit) || 1;
+    return {
+      items: data,
+      meta: {
+        total,
+        page: query.page,
+        limit: query.limit,
+        totalPages,
+        hasNextPage: query.page < totalPages,
+        hasPreviousPage: query.page > 1,
+      },
+    };
+  }
+
+  async createSupplier(
+    tenantId: string,
+    input: CreateSupplierPayload,
+  ): Promise<Supplier> {
+    const clash = await this.suppliers.findOne({
+      where: { tenantId, companyName: input.companyName, deletedAt: IsNull() },
+    });
+    if (clash) {
+      throw new ConflictException(
+        `A supplier named "${input.companyName}" already exists`,
+      );
+    }
+    return this.suppliers.save(this.suppliers.create({ ...input, tenantId }));
+  }
+
+  async updateSupplier(
+    tenantId: string,
+    id: string,
+    input: UpdateSupplierPayload,
+  ): Promise<Supplier> {
+    const supplier = await this.findSupplierById(tenantId, id);
+    if (input.companyName && input.companyName !== supplier.companyName) {
+      const clash = await this.suppliers.findOne({
+        where: {
+          tenantId,
+          companyName: input.companyName,
+          deletedAt: IsNull(),
+        },
+      });
+      if (clash) {
+        throw new ConflictException(
+          `A supplier named "${input.companyName}" already exists`,
+        );
+      }
+    }
+    Object.assign(supplier, input);
+    return this.suppliers.save(supplier);
+  }
+
+  /**
+   * Soft delete, and refused while the supplier has orders that are not
+   * finished — a purchase order whose supplier has vanished is worse than a
+   * supplier row nobody uses.
+   */
+  async deleteSupplier(tenantId: string, id: string): Promise<void> {
+    const supplier = await this.findSupplierById(tenantId, id);
+    const open = await this.purchaseOrders.count({
+      where: [
+        { tenantId, supplierId: id, status: 'DRAFT', deletedAt: IsNull() },
+        {
+          tenantId,
+          supplierId: id,
+          status: 'AWAITING_APPROVAL',
+          deletedAt: IsNull(),
+        },
+        { tenantId, supplierId: id, status: 'APPROVED', deletedAt: IsNull() },
+        { tenantId, supplierId: id, status: 'SENT', deletedAt: IsNull() },
+        {
+          tenantId,
+          supplierId: id,
+          status: 'PARTIALLY_RECEIVED',
+          deletedAt: IsNull(),
+        },
+      ],
+    });
+    if (open > 0) {
+      throw new ConflictException(
+        `${supplier.companyName} has ${open} open purchase order(s). Cancel or complete them first, or mark the supplier inactive.`,
+      );
+    }
+    await this.suppliers.softDelete({ id, tenantId });
+  }
+
+  /* ---- price list ---- */
+
+  async listSupplierMaterials(
+    tenantId: string,
+    supplierId: string,
+  ): Promise<SupplierMaterial[]> {
+    await this.findSupplierById(tenantId, supplierId);
+    return this.supplierMaterials.find({
+      where: { tenantId, supplierId },
+      order: { createdAt: 'ASC' },
+    });
+  }
+
+  /**
+   * Replaces a supplier's price list wholesale.
+   *
+   * `isPreferred` is unique per material across all suppliers — two preferred
+   * suppliers for one material would make "order more board" ambiguous in a
+   * way the chat layer cannot resolve — so setting it here clears it
+   * elsewhere, in the same transaction.
+   */
+  async replaceSupplierMaterials(
+    tenantId: string,
+    supplierId: string,
+    input: ReplaceSupplierMaterialsPayload,
+  ): Promise<SupplierMaterial[]> {
+    await this.findSupplierById(tenantId, supplierId);
+
+    return this.supplierMaterials.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(SupplierMaterial);
+      await repo.delete({ tenantId, supplierId });
+
+      const saved: SupplierMaterial[] = [];
+      for (const item of input.items) {
+        if (item.isPreferred) {
+          await repo.update(
+            { tenantId, materialId: item.materialId },
+            { isPreferred: false },
+          );
+        }
+        saved.push(
+          await repo.save(repo.create({ ...item, tenantId, supplierId })),
+        );
+      }
+      return saved;
+    });
   }
 
   /* ------------------------------------------------------------------ *

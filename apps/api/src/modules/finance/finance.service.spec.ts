@@ -1,6 +1,8 @@
+import type { JournalLineInput } from '@saas/shared';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { FinanceService } from './finance.service';
+import { LedgerService } from './ledger.service';
 import { FinanceAccount } from './entities/finance-account.entity';
 import { CategoryBudget } from './entities/category-budget.entity';
 import { RecurringExpense } from './entities/recurring-expense.entity';
@@ -15,6 +17,7 @@ import {
 
 describe('FinanceService', () => {
   let service: FinanceService;
+  let ledger: { resolveLines: jest.Mock };
   let accountRepo: jest.Mocked<Partial<Repository<FinanceAccount>>>;
   let budgetRepo: jest.Mocked<Partial<Repository<CategoryBudget>>>;
   let recurringRepo: jest.Mocked<Partial<Repository<RecurringExpense>>>;
@@ -62,12 +65,30 @@ describe('FinanceService', () => {
       find: jest.fn().mockResolvedValue([]),
     };
 
+    // Resolution is LedgerService's job and has its own spec; here it just has
+    // to stamp each line with an account so the assertions below can read the
+    // debits and credits the service actually produced.
+    ledger = {
+      resolveLines: jest.fn(async (_tenantId: string, lines: JournalLineInput[]) =>
+        lines.map((line) => ({
+          ledgerAccountId: `ledger-${line.role ?? line.financeAccountId ?? 'unknown'}`,
+          ledgerAccountCode: line.role === 'ACCOUNTS_RECEIVABLE' ? '1100' : '1001',
+          financeAccountId: line.financeAccountId ?? null,
+          accountName: line.accountName,
+          debit: line.debit,
+          credit: line.credit,
+          description: line.description,
+        })),
+      ),
+    };
+
     service = new FinanceService(
       accountRepo as unknown as Repository<FinanceAccount>,
       budgetRepo as unknown as Repository<CategoryBudget>,
       recurringRepo as unknown as Repository<RecurringExpense>,
       journalRepo as unknown as Repository<JournalEntry>,
       expenseRepo as unknown as Repository<ExpenseClaim>,
+      ledger as unknown as LedgerService,
     );
   });
 
@@ -242,12 +263,14 @@ describe('FinanceService', () => {
           totalAmount: 2000,
           lines: expect.arrayContaining([
             expect.objectContaining({
-              accountId: 'acc-1',
+              financeAccountId: 'acc-1',
+              ledgerAccountId: 'ledger-acc-1',
               credit: 2000,
               debit: 0,
             }),
             expect.objectContaining({
-              accountId: 'acc-2',
+              financeAccountId: 'acc-2',
+              ledgerAccountId: 'ledger-acc-2',
               debit: 2000,
               credit: 0,
             }),
@@ -357,12 +380,14 @@ describe('FinanceService', () => {
           totalAmount: 400,
           lines: expect.arrayContaining([
             expect.objectContaining({
-              accountId: 'acc-1',
+              financeAccountId: 'acc-1',
+              ledgerAccountId: 'ledger-acc-1',
               debit: 400,
               credit: 0,
             }),
             expect.objectContaining({
               accountName: 'Accounts Receivable',
+              ledgerAccountCode: '1100',
               debit: 0,
               credit: 400,
             }),
@@ -421,11 +446,13 @@ describe('FinanceService', () => {
           lines: expect.arrayContaining([
             expect.objectContaining({
               accountName: 'Accounts Receivable',
+              ledgerAccountCode: '1100',
               debit: 400,
               credit: 0,
             }),
             expect.objectContaining({
-              accountId: 'acc-1',
+              financeAccountId: 'acc-1',
+              ledgerAccountId: 'ledger-acc-1',
               debit: 0,
               credit: 400,
             }),

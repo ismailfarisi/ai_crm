@@ -1,5 +1,6 @@
 import {
   Bot,
+  Factory,
   Building2,
   FileText,
   Landmark,
@@ -68,6 +69,12 @@ export const CORE_ACTION_ITEMS: NavItem[] = [
     label: 'Invoices',
     icon: Receipt,
     rule: { permission: PERMISSIONS.INVOICE_READ },
+  },
+  {
+    href: '/purchasing/suppliers',
+    label: 'Suppliers',
+    icon: Factory,
+    rule: { permission: PERMISSIONS.SUPPLIER_READ },
   },
   {
     href: '/finance',

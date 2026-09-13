@@ -110,6 +110,9 @@ describe('Finance Types & Helpers', () => {
     };
 
     const line: JournalLineDto = {
+      ledgerAccountId: 'ledger-1',
+      ledgerAccountCode: '1000',
+      financeAccountId: 'acc-1',
       accountName: 'Operating Account',
       debit: 0,
       credit: 75.5,

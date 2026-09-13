@@ -1,11 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { FinanceController } from './finance.controller';
 import { FinanceService } from './finance.service';
+import { LedgerService } from './ledger.service';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 
 describe('FinanceController', () => {
   let controller: FinanceController;
   let financeService: jest.Mocked<Partial<FinanceService>>;
+  let ledgerService: jest.Mocked<Partial<LedgerService>>;
 
   const mockUser: AuthenticatedUser = {
     id: 'user-123',
@@ -45,12 +47,23 @@ describe('FinanceController', () => {
       findAllJournalEntries: jest.fn().mockResolvedValue([]),
     };
 
+    ledgerService = {
+      list: jest.fn().mockResolvedValue([]),
+      trialBalance: jest
+        .fn()
+        .mockResolvedValue({ rows: [], totalDebit: 0, totalCredit: 0, difference: 0 }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [FinanceController],
       providers: [
         {
           provide: FinanceService,
           useValue: financeService,
+        },
+        {
+          provide: LedgerService,
+          useValue: ledgerService,
         },
       ],
     }).compile();

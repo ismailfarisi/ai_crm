@@ -55,12 +55,19 @@ export interface SupplierDto {
   contactName: string | null;
   email: string | null;
   phone: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  postalCode: string | null;
+  country: string | null;
   taxId: string | null;
   currency: string | null;
   paymentTermsDays: number | null;
   leadTimeDays: number | null;
   isActive: boolean;
   notes: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface SupplierMaterialDto {

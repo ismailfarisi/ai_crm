@@ -1,4 +1,5 @@
 import { condition, proxyActivities, setHandler } from '@temporalio/workflow';
+import { LEDGER_ROLES } from '@saas/shared';
 import type * as activities from './activities/expense.activities';
 import {
   approveExpenseSignal,
@@ -176,12 +177,17 @@ export async function expenseApprovalWorkflow(
     referenceId: input.expenseId,
     lines: [
       {
+        // A category ("Travel", "Software") is a label, not an account — every
+        // claim lands in operating expense until a tenant maps categories to
+        // their own accounts.
+        role: LEDGER_ROLES.OPERATING_EXPENSE,
         accountName: input.category || 'Operating Expense',
         debit: input.amount,
         credit: 0,
         description: `Expense claim ${input.expenseId} - ${input.category}`,
       },
       {
+        role: LEDGER_ROLES.ACCOUNTS_PAYABLE,
         accountName: 'Accounts Payable',
         debit: 0,
         credit: input.amount,
@@ -234,12 +240,16 @@ export async function expenseApprovalWorkflow(
       referenceId: input.expenseId,
       lines: [
         {
+          role: LEDGER_ROLES.ACCOUNTS_PAYABLE,
           accountName: 'Accounts Payable',
           debit: input.amount,
           credit: 0,
           description: `Settlement of payable for expense ${input.expenseId}`,
         },
         {
+          // The reimbursement leaves a real account; the activity resolves
+          // which one from `reimbursementAccountId`.
+          financeAccountId: reimbursementAccountId,
           accountName: 'Bank Account',
           debit: 0,
           credit: input.amount,

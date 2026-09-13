@@ -14,6 +14,7 @@ import {
   type SessionDto,
 } from '@saas/shared';
 import { Organization } from '@/modules/organizations/entities/organization.entity';
+import { LedgerService } from '@/modules/finance/ledger.service';
 import { InvitationsService } from '@/modules/invitations/invitations.service';
 import { RbacService } from '@/modules/rbac/rbac.service';
 import { UsersService } from '@/modules/users/users.service';
@@ -36,6 +37,7 @@ export class AuthService {
     private readonly tokens: TokensService,
     private readonly dataSource: DataSource,
     private readonly invitations: InvitationsService,
+    private readonly ledger: LedgerService,
   ) {}
 
   /**
@@ -69,6 +71,11 @@ export class AuthService {
         organization.id,
         manager,
       );
+
+      // Same transaction as the roles: a tenant that exists without a chart
+      // of accounts has nowhere to post, and every later journal write would
+      // fail on a lookup instead of at signup.
+      await this.ledger.provisionChartOfAccounts(organization.id, manager);
       const ownerRole = roles.find((role) => role.slug === SYSTEM_ROLES.OWNER);
       if (!ownerRole) {
         throw new Error('Owner role was not provisioned — aborting signup');

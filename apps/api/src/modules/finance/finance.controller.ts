@@ -1,17 +1,17 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Post,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { PERMISSIONS, TreasuryOverviewDto } from '@saas/shared';
+import {
+  PERMISSIONS,
+  TreasuryOverviewDto,
+  type TrialBalanceDto,
+} from '@saas/shared';
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '@/modules/rbac/guards/permissions.guard';
 import { FinanceService } from './finance.service';
+import { LedgerService } from './ledger.service';
+import { LedgerAccount } from './entities/ledger-account.entity';
 import {
   CreateFinanceAccountDto,
   CreateCategoryBudgetDto,
@@ -27,13 +27,42 @@ import { JournalEntry } from './entities/journal-entry.entity';
 @Controller('finance')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class FinanceController {
-  constructor(private readonly financeService: FinanceService) {}
+  constructor(
+    private readonly financeService: FinanceService,
+    private readonly ledgerService: LedgerService,
+  ) {}
+
+  @Get('ledger-accounts')
+  @RequirePermissions(PERMISSIONS.FINANCE_READ)
+  @ApiOperation({
+    summary: 'List the chart of accounts',
+    description: 'Every ledger account this tenant posts to, in code order',
+  })
+  async listLedgerAccounts(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<LedgerAccount[]> {
+    return this.ledgerService.list(user.organizationId);
+  }
+
+  @Get('trial-balance')
+  @RequirePermissions(PERMISSIONS.FINANCE_READ)
+  @ApiOperation({
+    summary: 'Trial balance',
+    description:
+      'Debits and credits per account. `difference` is the number that matters: anything other than zero means an unbalanced entry was written.',
+  })
+  async trialBalance(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<TrialBalanceDto> {
+    return this.ledgerService.trialBalance(user.organizationId);
+  }
 
   @Get('overview')
   @RequirePermissions(PERMISSIONS.FINANCE_READ)
   @ApiOperation({
     summary: 'Treasury overview',
-    description: 'Returns total cash, burn rate, runway, and cashflow series for tenant',
+    description:
+      'Returns total cash, burn rate, runway, and cashflow series for tenant',
   })
   async getOverview(
     @CurrentUser() user: AuthenticatedUser,
@@ -70,7 +99,8 @@ export class FinanceController {
   @RequirePermissions(PERMISSIONS.FINANCE_MANAGE)
   @ApiOperation({
     summary: 'Inter-account transfer',
-    description: 'Transfers funds between accounts with double-entry auto-journaling',
+    description:
+      'Transfers funds between accounts with double-entry auto-journaling',
   })
   async transferFunds(
     @CurrentUser() user: AuthenticatedUser,
@@ -87,7 +117,8 @@ export class FinanceController {
   @RequirePermissions(PERMISSIONS.FINANCE_READ)
   @ApiOperation({
     summary: 'List category budgets',
-    description: 'Lists departmental and category budgets with alert thresholds',
+    description:
+      'Lists departmental and category budgets with alert thresholds',
   })
   async findAllBudgets(
     @CurrentUser() user: AuthenticatedUser,
@@ -145,4 +176,3 @@ export class FinanceController {
     return this.financeService.findAllJournalEntries(user.organizationId);
   }
 }
-

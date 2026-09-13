@@ -14,6 +14,7 @@ import { channelsEndpoints, channelsKeys } from './channels';
 import { automationsEndpoints, automationsKeys } from './automations';
 import { financeEndpoints, financeKeys } from './finance';
 import { aiEndpoints, aiKeys } from './ai';
+import { purchasingEndpoints, purchasingKeys } from './purchasing';
 
 export * from './auth';
 export * from './contacts';
@@ -24,6 +25,7 @@ export * from './channels';
 export * from './automations';
 export * from './finance';
 export * from './ai';
+export * from './purchasing';
 
 export const api = {
   ...authEndpoints,
@@ -35,6 +37,7 @@ export const api = {
   ...automationsEndpoints,
   ...financeEndpoints,
   ...aiEndpoints,
+  ...purchasingEndpoints,
 };
 
 export const queryKeys = {
@@ -47,4 +50,5 @@ export const queryKeys = {
   ...automationsKeys,
   ...financeKeys,
   ...aiKeys,
+  ...purchasingKeys,
 };

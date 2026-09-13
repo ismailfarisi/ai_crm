@@ -9,6 +9,7 @@ import { channelsEndpoints, channelsKeys } from './channels';
 import { automationsEndpoints, automationsKeys } from './automations';
 import { financeEndpoints, financeKeys } from './finance';
 import { aiEndpoints, aiKeys } from './ai';
+import { purchasingEndpoints, purchasingKeys } from './purchasing';
 
 /**
  * Guards for the composed API surface.
@@ -31,12 +32,13 @@ const SLICES = [
   ['automations', automationsEndpoints, automationsKeys],
   ['finance', financeEndpoints, financeKeys],
   ['ai', aiEndpoints, aiKeys],
+  ['purchasing', purchasingEndpoints, purchasingKeys],
 ] as const;
 
 const API_SECTIONS = [
   'auth', 'contacts', 'customers', 'roles', 'users', 'invitations', 'teams',
   'quotes', 'catalog', 'invoices', 'channels', 'aiAgents', 'intentAgentConfig',
-  'automations', 'finance', 'expenses', 'ai',
+  'automations', 'finance', 'expenses', 'ai', 'suppliers',
 ];
 
 const QUERY_KEYS = [
@@ -49,6 +51,7 @@ const QUERY_KEYS = [
   'financeOverview', 'financeAccounts', 'financeBudgets', 'financeSubscriptions',
   'financeJournalEntries', 'expenses', 'expense', 'aiBudget', 'aiUsage',
   'aiAgents', 'intentAgentConfig',
+  'suppliers', 'supplier', 'supplierMaterials',
 ];
 
 describe('api surface composition', () => {

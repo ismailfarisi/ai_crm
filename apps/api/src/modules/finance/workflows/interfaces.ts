@@ -1,5 +1,5 @@
 import { defineQuery, defineSignal } from '@temporalio/workflow';
-import type { ExpenseStatus, ExpenseItemDto, JournalLineDto } from '@saas/shared';
+import type { ExpenseStatus, ExpenseItemDto, JournalLineInput } from '@saas/shared';
 
 export interface ExpenseWorkflowInput {
   expenseId: string;
@@ -61,7 +61,12 @@ export interface PostJournalEntryParams {
   referenceType: 'EXPENSE' | 'INVOICE' | 'TRANSFER' | 'MANUAL';
   referenceId: string;
   entryDate?: string | Date;
-  lines: JournalLineDto[];
+  /**
+   * Stated, not resolved. The workflow is deterministic and cannot read the
+   * database, so it names a `role` and the activity turns that into a ledger
+   * account.
+   */
+  lines: JournalLineInput[];
   totalAmount: number;
 }
 

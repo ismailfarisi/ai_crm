@@ -1,3 +1,6 @@
+export type { JournalLineDto } from './ledger';
+import type { JournalLineDto } from './ledger';
+
 export const FINANCE_PERMISSIONS = {
   FINANCE_READ: 'finance:read',
   FINANCE_MANAGE: 'finance:manage',
@@ -80,14 +83,6 @@ export interface RecurringExpenseDto {
   status: 'ACTIVE' | 'PAUSED' | 'CANCELLED';
   createdAt: string;
   updatedAt: string;
-}
-
-export interface JournalLineDto {
-  accountId?: string;
-  accountName: string;
-  debit: number;
-  credit: number;
-  description: string;
 }
 
 export interface JournalEntryDto {
