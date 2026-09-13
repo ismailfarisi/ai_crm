@@ -5,134 +5,20 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Bell,
-  Bot,
-  Building2,
   ChevronDown,
   ChevronRight,
   CircleDot,
-  FileText,
-  Landmark,
-  LayoutDashboard,
   LogOut,
   Menu,
-  MessageSquare,
   Moon,
-  Radio,
-  Receipt,
   Search,
-  ShieldCheck,
   Sun,
-  UserRoundCog,
-  Users,
   X,
-  Zap,
 } from 'lucide-react';
-import { PERMISSIONS } from '@saas/shared';
-import type { AccessRule } from '@/lib/access';
 import { useSession } from '@/lib/session-context';
 import { cn, initials } from '@/lib/utils';
+import { CORE_ACTION_ITEMS, SECONDARY_SECTIONS } from '@/lib/nav';
 import { Button } from '@/components/ui/button';
-
-interface NavItem {
-  href: string;
-  label: string;
-  icon: typeof LayoutDashboard;
-  /**
-   * Hidden entirely when the rule fails. Keep this identical to the `PageGuard`
-   * rule on the destination page — same rule shape, same evaluator, so a link
-   * can never lead somewhere the user is then refused.
-   */
-  rule?: AccessRule;
-}
-
-interface NavSection {
-  title?: string;
-  items: NavItem[];
-}
-
-const CORE_ACTION_ITEMS: NavItem[] = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  {
-    href: '/inbox',
-    label: 'Inbox',
-    icon: MessageSquare,
-    rule: { permission: PERMISSIONS.CHANNEL_READ },
-  },
-  {
-    href: '/contacts',
-    label: 'Contacts',
-    icon: Users,
-    rule: { permission: PERMISSIONS.CONTACT_READ },
-  },
-  {
-    href: '/customers',
-    label: 'Customers',
-    icon: Building2,
-    rule: { permission: PERMISSIONS.CUSTOMER_READ },
-  },
-  {
-    href: '/quotes',
-    label: 'Quotes',
-    icon: FileText,
-    rule: { permission: PERMISSIONS.QUOTE_READ },
-  },
-  {
-    href: '/invoices',
-    label: 'Invoices',
-    icon: Receipt,
-    rule: { permission: PERMISSIONS.INVOICE_READ },
-  },
-  {
-    href: '/finance',
-    label: 'Finance',
-    icon: Landmark,
-    rule: { permission: PERMISSIONS.FINANCE_READ },
-  },
-  {
-    href: '/automations',
-    label: 'Automations',
-    icon: Zap,
-    rule: { permission: PERMISSIONS.AUTOMATION_READ },
-  },
-];
-
-const SECONDARY_SECTIONS: NavSection[] = [
-  {
-    title: 'Settings',
-    items: [
-      {
-        href: '/settings/team',
-        label: 'Team',
-        icon: Users,
-        rule: { permission: PERMISSIONS.USER_READ },
-      },
-      {
-        href: '/settings/teams',
-        label: 'Teams',
-        icon: UserRoundCog,
-        rule: { permission: PERMISSIONS.USER_READ },
-      },
-      {
-        href: '/settings/roles',
-        label: 'Roles & permissions',
-        icon: ShieldCheck,
-        rule: { permission: PERMISSIONS.ROLE_READ },
-      },
-      {
-        href: '/settings/channels',
-        label: 'Channels',
-        icon: Radio,
-        rule: { permission: PERMISSIONS.CHANNEL_MANAGE },
-      },
-      {
-        href: '/settings/ai',
-        label: 'AI Cost Guard',
-        icon: Bot,
-        rule: { permission: PERMISSIONS.AI_MANAGE },
-      },
-    ],
-  },
-];
 
 function pageTitleFor(pathname: string): string {
   const allItems = [...CORE_ACTION_ITEMS, ...SECONDARY_SECTIONS.flatMap((s) => s.items)];

@@ -1,20 +1,19 @@
-import { PERMISSIONS, type Permission } from './permissions';
+import { permissionsForSystemRole, type Permission } from './permissions';
+import { SYSTEM_ROLES, type SystemRoleSlug } from './role-slugs';
+
+export { SYSTEM_ROLES, type SystemRoleSlug };
 
 /**
  * System roles are created for every organization at signup and cannot be
  * deleted or renamed. Their permission sets can only be edited on `admin` and
  * below — `owner` is always all-permissions and is not editable.
+ *
+ * The permission lists are not written here. Each feature area declares which
+ * system roles get its permissions, next to the permissions themselves (see
+ * `permissions/domain.ts`), and `permissionsForSystemRole` collects them. That
+ * keeps a new feature from having to edit five arrays in this file — which is
+ * where concurrent branches used to collide.
  */
-export const SYSTEM_ROLES = {
-  OWNER: 'owner',
-  ADMIN: 'admin',
-  MANAGER: 'manager',
-  MEMBER: 'member',
-  VIEWER: 'viewer',
-} as const;
-
-export type SystemRoleSlug = (typeof SYSTEM_ROLES)[keyof typeof SYSTEM_ROLES];
-
 export interface SystemRoleDefinition {
   slug: SystemRoleSlug;
   name: string;
@@ -37,131 +36,28 @@ export const SYSTEM_ROLE_DEFINITIONS: SystemRoleDefinition[] = [
     slug: SYSTEM_ROLES.ADMIN,
     name: 'Admin',
     description: 'Manages the team, roles and all CRM data. No billing access.',
-    permissions: [
-      PERMISSIONS.ORG_READ,
-      PERMISSIONS.ORG_UPDATE,
-      PERMISSIONS.USER_READ,
-      PERMISSIONS.USER_CREATE,
-      PERMISSIONS.USER_UPDATE,
-      PERMISSIONS.USER_DELETE,
-      PERMISSIONS.USER_ASSIGN_ROLE,
-      PERMISSIONS.ROLE_READ,
-      PERMISSIONS.ROLE_CREATE,
-      PERMISSIONS.ROLE_UPDATE,
-      PERMISSIONS.ROLE_DELETE,
-      PERMISSIONS.CONTACT_READ,
-      PERMISSIONS.CONTACT_READ_ALL,
-      PERMISSIONS.CONTACT_CREATE,
-      PERMISSIONS.CONTACT_UPDATE,
-      PERMISSIONS.CONTACT_DELETE,
-      PERMISSIONS.CONTACT_EXPORT,
-      PERMISSIONS.CUSTOMER_READ,
-      PERMISSIONS.CUSTOMER_CREATE,
-      PERMISSIONS.CUSTOMER_UPDATE,
-      PERMISSIONS.CUSTOMER_DELETE,
-      PERMISSIONS.INVOICE_READ,
-      PERMISSIONS.INVOICE_MANAGE,
-      PERMISSIONS.QUOTE_READ,
-      PERMISSIONS.QUOTE_CREATE,
-      PERMISSIONS.QUOTE_UPDATE,
-      PERMISSIONS.QUOTE_APPROVE,
-      PERMISSIONS.QUOTE_VIEW_COST,
-      PERMISSIONS.QUOTE_APPROVE_BELOW_MARGIN,
-      PERMISSIONS.CATALOG_READ,
-      PERMISSIONS.CATALOG_MANAGE,
-      PERMISSIONS.CHANNEL_MANAGE,
-      PERMISSIONS.CHANNEL_READ,
-      PERMISSIONS.CHANNEL_SEND,
-      PERMISSIONS.AUTOMATION_READ,
-      PERMISSIONS.AUTOMATION_CREATE,
-      PERMISSIONS.AUTOMATION_UPDATE,
-      PERMISSIONS.AUTOMATION_DELETE,
-      PERMISSIONS.AUTOMATION_EXECUTE,
-      PERMISSIONS.AUTOMATION_APPROVE,
-      PERMISSIONS.FINANCE_READ,
-      PERMISSIONS.FINANCE_MANAGE,
-      PERMISSIONS.EXPENSE_SUBMIT,
-      PERMISSIONS.EXPENSE_APPROVE,
-      PERMISSIONS.AI_USE,
-      PERMISSIONS.AI_MANAGE,
-    ],
+    permissions: permissionsForSystemRole(SYSTEM_ROLES.ADMIN),
     level: 10,
   },
   {
     slug: SYSTEM_ROLES.MANAGER,
     name: 'Manager',
-    description: 'Leads a team. Sees their team\'s contacts and pipeline, but not the whole organization.',
-    permissions: [
-      PERMISSIONS.ORG_READ,
-      PERMISSIONS.USER_READ,
-      PERMISSIONS.ROLE_READ,
-      PERMISSIONS.CONTACT_READ,
-      PERMISSIONS.CONTACT_READ_TEAM,
-      PERMISSIONS.CONTACT_CREATE,
-      PERMISSIONS.CONTACT_UPDATE,
-      PERMISSIONS.CONTACT_DELETE,
-      PERMISSIONS.CONTACT_EXPORT,
-      PERMISSIONS.CUSTOMER_READ,
-      PERMISSIONS.CUSTOMER_CREATE,
-      PERMISSIONS.CUSTOMER_UPDATE,
-      PERMISSIONS.CUSTOMER_DELETE,
-      PERMISSIONS.INVOICE_READ,
-      PERMISSIONS.QUOTE_READ,
-      PERMISSIONS.QUOTE_CREATE,
-      PERMISSIONS.QUOTE_UPDATE,
-      PERMISSIONS.QUOTE_APPROVE,
-      PERMISSIONS.QUOTE_VIEW_COST,
-      PERMISSIONS.CATALOG_READ,
-      PERMISSIONS.CHANNEL_READ,
-      PERMISSIONS.CHANNEL_SEND,
-      PERMISSIONS.AUTOMATION_READ,
-      PERMISSIONS.AUTOMATION_EXECUTE,
-      PERMISSIONS.AUTOMATION_APPROVE,
-      PERMISSIONS.FINANCE_READ,
-      PERMISSIONS.EXPENSE_SUBMIT,
-      PERMISSIONS.EXPENSE_APPROVE,
-      PERMISSIONS.AI_USE,
-    ],
+    description: "Leads a team. Sees their team's contacts and pipeline, but not the whole organization.",
+    permissions: permissionsForSystemRole(SYSTEM_ROLES.MANAGER),
     level: 20,
   },
   {
     slug: SYSTEM_ROLES.MEMBER,
     name: 'Member',
     description: 'Works their own book of business — only contacts assigned to them.',
-    permissions: [
-      PERMISSIONS.ORG_READ,
-      PERMISSIONS.USER_READ,
-      PERMISSIONS.CONTACT_READ,
-      PERMISSIONS.CONTACT_CREATE,
-      PERMISSIONS.CONTACT_UPDATE,
-      PERMISSIONS.CUSTOMER_READ,
-      PERMISSIONS.CUSTOMER_CREATE,
-      PERMISSIONS.CUSTOMER_UPDATE,
-      PERMISSIONS.QUOTE_READ,
-      PERMISSIONS.QUOTE_CREATE,
-      PERMISSIONS.QUOTE_UPDATE,
-      PERMISSIONS.CATALOG_READ,
-      PERMISSIONS.CHANNEL_READ,
-      PERMISSIONS.CHANNEL_SEND,
-      PERMISSIONS.AUTOMATION_READ,
-      PERMISSIONS.EXPENSE_SUBMIT,
-      PERMISSIONS.AI_USE,
-    ],
+    permissions: permissionsForSystemRole(SYSTEM_ROLES.MEMBER),
     level: 30,
   },
   {
     slug: SYSTEM_ROLES.VIEWER,
     name: 'Viewer',
     description: 'Read-only access to the contacts assigned to them.',
-    permissions: [
-      PERMISSIONS.ORG_READ,
-      PERMISSIONS.CONTACT_READ,
-      PERMISSIONS.CUSTOMER_READ,
-      PERMISSIONS.QUOTE_READ,
-      PERMISSIONS.CHANNEL_READ,
-      PERMISSIONS.AUTOMATION_READ,
-      PERMISSIONS.FINANCE_READ,
-    ],
+    permissions: permissionsForSystemRole(SYSTEM_ROLES.VIEWER),
     level: 40,
   },
 ];

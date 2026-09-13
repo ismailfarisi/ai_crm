@@ -5,24 +5,9 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AllExceptionsFilter } from '@/common/filters/all-exceptions.filter';
 import type { AppConfig } from '@/config/configuration';
 import { buildConfigModule, buildTypeOrmModule } from '@/config/root-imports';
-import { AiModule } from '@/modules/ai/ai.module';
-import { AuthModule } from '@/modules/auth/auth.module';
+import { FEATURE_MODULES } from '@/feature-modules';
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
-import { AutomationsModule } from '@/modules/automations/automations.module';
-import { CatalogModule } from '@/modules/catalog/catalog.module';
-import { ChannelsModule } from '@/modules/channels/channels.module';
-import { ContactsModule } from '@/modules/contacts/contacts.module';
-import { CustomersModule } from '@/modules/customers/customers.module';
-import { FinanceModule } from '@/modules/finance/finance.module';
-import { HealthModule } from '@/modules/health/health.module';
-import { InvitationsModule } from '@/modules/invitations/invitations.module';
-import { MailModule } from '@/modules/mail/mail.module';
 import { PermissionsGuard } from '@/modules/rbac/guards/permissions.guard';
-import { QuotesModule } from '@/modules/quotes/quotes.module';
-import { RbacModule } from '@/modules/rbac/rbac.module';
-import { TeamsModule } from '@/modules/teams/teams.module';
-import { TemporalModule } from '@/modules/temporal/temporal.module';
-import { UsersModule } from '@/modules/users/users.module';
 
 @Module({
   imports: [
@@ -44,22 +29,7 @@ import { UsersModule } from '@/modules/users/users.module';
       },
     }),
 
-    AiModule,
-    RbacModule,
-    UsersModule,
-    AuthModule,
-    ContactsModule,
-    CustomersModule,
-    TeamsModule,
-    InvitationsModule,
-    MailModule,
-    HealthModule,
-    TemporalModule,
-    QuotesModule,
-    CatalogModule,
-    ChannelsModule,
-    AutomationsModule,
-    FinanceModule,
+    ...FEATURE_MODULES,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

@@ -1,16 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { buildConfigModule, buildTypeOrmModule } from '@/config/root-imports';
+import { WORKER_FEATURE_MODULES } from '@/feature-modules';
 import { RefreshToken } from '@/modules/auth/entities/refresh-token.entity';
-import { AiModule } from '@/modules/ai/ai.module';
-import { ChannelsModule } from '@/modules/channels/channels.module';
-import { ContactsModule } from '@/modules/contacts/contacts.module';
-import { CustomersModule } from '@/modules/customers/customers.module';
-import { InvitationsModule } from '@/modules/invitations/invitations.module';
-import { QuotesModule } from '@/modules/quotes/quotes.module';
-import { RbacModule } from '@/modules/rbac/rbac.module';
-import { TemporalModule } from '@/modules/temporal/temporal.module';
-import { UsersModule } from '@/modules/users/users.module';
 
 /**
  * Slim DI context for the standalone Temporal worker process
@@ -34,15 +26,7 @@ import { UsersModule } from '@/modules/users/users.module';
     buildConfigModule(),
     buildTypeOrmModule(),
     TypeOrmModule.forFeature([RefreshToken]),
-    TemporalModule,
-    RbacModule,
-    UsersModule,
-    ContactsModule,
-    CustomersModule,
-    InvitationsModule,
-    AiModule,
-    ChannelsModule,
-    QuotesModule,
+    ...WORKER_FEATURE_MODULES,
   ],
 })
 export class WorkerModule {}
