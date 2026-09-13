@@ -9,6 +9,7 @@ import { FinanceModule } from '@/modules/finance/finance.module';
 import { HealthModule } from '@/modules/health/health.module';
 import { InvitationsModule } from '@/modules/invitations/invitations.module';
 import { MailModule } from '@/modules/mail/mail.module';
+import { PurchasingModule } from '@/modules/purchasing/purchasing.module';
 import { QuotesModule } from '@/modules/quotes/quotes.module';
 import { RbacModule } from '@/modules/rbac/rbac.module';
 import { TeamsModule } from '@/modules/teams/teams.module';
@@ -41,6 +42,7 @@ export const FEATURE_MODULES = [
   ChannelsModule,
   AutomationsModule,
   FinanceModule,
+  PurchasingModule,
 ];
 
 /**
@@ -63,4 +65,5 @@ export const WORKER_FEATURE_MODULES = [
   AiModule,
   ChannelsModule,
   QuotesModule,
+  PurchasingModule,
 ];

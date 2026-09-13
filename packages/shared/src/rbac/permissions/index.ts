@@ -23,6 +23,12 @@ import { channelsDomain, emailDomain, CHANNEL_PERMISSIONS, EMAIL_PERMISSIONS } f
 import { automationsDomain, AUTOMATION_PERMISSIONS } from './automations';
 import { financeDomain, FINANCE_PERMISSIONS } from './finance';
 import { aiDomain, AI_PERMISSIONS } from './ai';
+import {
+  suppliersDomain,
+  purchaseOrdersDomain,
+  SUPPLIER_PERMISSIONS,
+  PURCHASE_ORDER_PERMISSIONS,
+} from './purchasing';
 
 export type { PermissionDomain, PermissionValues } from './domain';
 
@@ -48,6 +54,8 @@ export {
   automationsDomain,
   financeDomain,
   aiDomain,
+  suppliersDomain,
+  purchaseOrdersDomain,
 };
 
 export const PERMISSION_ACTIONS = ['create', 'read', 'update', 'delete', 'manage'] as const;
@@ -74,6 +82,8 @@ export const PERMISSION_DOMAINS: PermissionDomain[] = [
   automationsDomain,
   financeDomain,
   aiDomain,
+  suppliersDomain,
+  purchaseOrdersDomain,
 ];
 
 /**
@@ -95,6 +105,8 @@ export const PERMISSIONS = {
   ...AUTOMATION_PERMISSIONS,
   ...FINANCE_PERMISSIONS,
   ...AI_PERMISSIONS,
+  ...SUPPLIER_PERMISSIONS,
+  ...PURCHASE_ORDER_PERMISSIONS,
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

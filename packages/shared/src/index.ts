@@ -17,3 +17,5 @@ export * from './automations/types';
 export * from './finance/types';
 export * from './ai/types';
 export * from './costing';
+export * from './purchasing/types';
+export * from './channels/skills';

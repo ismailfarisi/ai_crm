@@ -7,7 +7,20 @@ import type { EntityManager } from 'typeorm';
  * and can't propose "fixing" it.
  */
 export type TenantSequenceName =
-  'quote_number' | 'invoice_number' | 'claim_number';
+  | 'quote_number'
+  | 'invoice_number'
+  | 'claim_number'
+  // Pre-allocated for the rest of the roadmap. Adding a name costs nothing —
+  // rows are created on demand by the upsert below, so an unused name never
+  // writes one — and declaring them together avoids six branches each editing
+  // this same line.
+  | 'purchase_order_number'
+  | 'goods_receipt_number'
+  | 'bill_number'
+  | 'sales_order_number'
+  | 'work_order_number'
+  | 'credit_note_number'
+  | 'delivery_note_number';
 
 /**
  * Atomically allocates and returns the next integer for (tenantId, sequenceName).
