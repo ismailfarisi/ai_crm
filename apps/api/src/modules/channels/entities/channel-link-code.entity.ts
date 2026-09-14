@@ -32,6 +32,6 @@ export class ChannelLinkCode {
   @Column({ type: 'timestamp with time zone', nullable: true })
   consumedAt: Date | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 }

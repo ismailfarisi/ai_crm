@@ -53,9 +53,9 @@ export class AiConfig {
   @Column({ type: 'timestamp with time zone', nullable: true })
   lastTestedAt: Date | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
 }

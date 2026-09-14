@@ -56,9 +56,9 @@ export class AiAgent {
   @Column({ type: 'boolean', default: true })
   isEnabled: boolean;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
 }

@@ -92,7 +92,7 @@ export class ChannelMessage {
   })
   status: MessageStatus;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   @Index()
   createdAt: Date;
 

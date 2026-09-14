@@ -36,6 +36,6 @@ export class StaffChannelIdentity {
   @Column('uuid')
   userId: string;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 }
