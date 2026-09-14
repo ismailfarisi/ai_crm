@@ -10,6 +10,7 @@ import { automationsEndpoints, automationsKeys } from './automations';
 import { financeEndpoints, financeKeys } from './finance';
 import { aiEndpoints, aiKeys } from './ai';
 import { purchasingEndpoints, purchasingKeys } from './purchasing';
+import { inventoryEndpoints, inventoryKeys } from './inventory';
 
 /**
  * Guards for the composed API surface.
@@ -33,13 +34,14 @@ const SLICES = [
   ['finance', financeEndpoints, financeKeys],
   ['ai', aiEndpoints, aiKeys],
   ['purchasing', purchasingEndpoints, purchasingKeys],
+  ['inventory', inventoryEndpoints, inventoryKeys],
 ] as const;
 
 const API_SECTIONS = [
   'auth', 'contacts', 'customers', 'roles', 'users', 'invitations', 'teams',
   'quotes', 'catalog', 'invoices', 'channels', 'aiAgents', 'intentAgentConfig',
   'automations', 'finance', 'expenses', 'ai', 'suppliers',
-  'purchaseOrders', 'purchasePolicy',
+  'purchaseOrders', 'purchasePolicy', 'inventory', 'goodsReceipts',
 ];
 
 const QUERY_KEYS = [
@@ -54,6 +56,7 @@ const QUERY_KEYS = [
   'aiAgents', 'intentAgentConfig',
   'suppliers', 'supplier', 'supplierMaterials',
   'purchaseOrders', 'purchaseOrder', 'purchaseOrderGuardrails', 'purchasePolicy',
+  'stock', 'stockLocations', 'reorderSuggestions', 'stockReconcile', 'goodsReceipts',
 ];
 
 describe('api surface composition', () => {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { AlertTriangle, Send, ShieldCheck, Undo2, X } from 'lucide-react';
+import { AlertTriangle, PackageCheck, Send, ShieldCheck, Undo2, X } from 'lucide-react';
 import { PERMISSIONS, canTransition, type PurchaseOrderStatus } from '@saas/shared';
 import {
   usePurchaseOrder,
@@ -14,6 +14,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { EmptyState, PageHeader } from '@/components/ui/primitives';
 import { Textarea } from '@/components/ui/field';
 import { StatusPill } from './purchase-orders-view';
+import { ReceiveDialog } from '@/components/inventory/receive-dialog';
 
 const money = (amount: number, currency: string) =>
   new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount);
@@ -23,6 +24,7 @@ export function PurchaseOrderDetail({ id }: { id: string }) {
   const { data: violations = [] } = usePurchaseOrderGuardrails(id);
   const act = usePurchaseOrderAction();
   const [cancelling, setCancelling] = useState(false);
+  const [receiving, setReceiving] = useState(false);
   const [reason, setReason] = useState('');
 
   if (isPending) return <p className="text-ink-muted">Loading…</p>;
@@ -91,6 +93,15 @@ export function PurchaseOrderDetail({ id }: { id: string }) {
               </Can>
             )}
 
+            {(status === 'SENT' || status === 'PARTIALLY_RECEIVED') && (
+              <Can permission={PERMISSIONS.GOODS_RECEIPT_CREATE}>
+                <Button onClick={() => setReceiving(true)}>
+                  <PackageCheck className="size-4" />
+                  Book in delivery
+                </Button>
+              </Can>
+            )}
+
             {can('CANCELLED') && (
               <Can permission={PERMISSIONS.PURCHASE_ORDER_DELETE}>
                 <Button variant="secondary" onClick={() => setCancelling(true)}>
@@ -153,6 +164,8 @@ export function PurchaseOrderDetail({ id }: { id: string }) {
           </tbody>
         </table>
       </div>
+
+      <ReceiveDialog open={receiving} order={order} onClose={() => setReceiving(false)} />
 
       <Dialog
         open={cancelling}

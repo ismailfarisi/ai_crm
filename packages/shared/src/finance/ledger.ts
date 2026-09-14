@@ -198,6 +198,23 @@ export interface JournalLineDto {
   description: string;
 }
 
+/**
+ * What a journal entry was caused by.
+ *
+ * Declared in full ahead of use: 'BILL', 'WORK_ORDER' and 'CREDIT_NOTE' have
+ * nothing posting to them until later sprints, but the database enum carries
+ * them already so those sprints need not alter the type again.
+ */
+export type JournalReferenceType =
+  | 'EXPENSE'
+  | 'INVOICE'
+  | 'TRANSFER'
+  | 'MANUAL'
+  | 'STOCK'
+  | 'BILL'
+  | 'WORK_ORDER'
+  | 'CREDIT_NOTE';
+
 export interface TrialBalanceRowDto {
   ledgerAccountId: string;
   code: string;

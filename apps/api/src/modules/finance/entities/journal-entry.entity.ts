@@ -5,7 +5,7 @@ import {
   CreateDateColumn,
   Index,
 } from 'typeorm';
-import type { JournalLineDto } from '@saas/shared';
+import type { JournalLineDto, JournalReferenceType } from '@saas/shared';
 import { numericTransformer } from './finance-account.entity';
 
 @Entity('journal_entries')
@@ -22,11 +22,20 @@ export class JournalEntry {
 
   @Column({
     type: 'enum',
-    enum: ['EXPENSE', 'INVOICE', 'TRANSFER', 'MANUAL'],
+    enum: [
+      'EXPENSE',
+      'INVOICE',
+      'TRANSFER',
+      'MANUAL',
+      'STOCK',
+      'BILL',
+      'WORK_ORDER',
+      'CREDIT_NOTE',
+    ],
     enumName: 'journal_entries_reference_type_enum',
     default: 'MANUAL',
   })
-  referenceType: 'EXPENSE' | 'INVOICE' | 'TRANSFER' | 'MANUAL';
+  referenceType: JournalReferenceType;
 
   @Column({ type: 'varchar', length: 255 })
   referenceId: string;

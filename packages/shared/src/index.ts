@@ -20,6 +20,8 @@ export * from './finance/ledger';
 export * from './finance/types';
 export * from './ai/types';
 export * from './costing';
+export * from './inventory/valuation';
+export * from './schemas/inventory';
 export * from './purchasing/types';
 export * from './purchasing/guardrails';
 export * from './channels/skills';

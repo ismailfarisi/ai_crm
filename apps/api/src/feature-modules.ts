@@ -7,6 +7,7 @@ import { ContactsModule } from '@/modules/contacts/contacts.module';
 import { CustomersModule } from '@/modules/customers/customers.module';
 import { FinanceModule } from '@/modules/finance/finance.module';
 import { HealthModule } from '@/modules/health/health.module';
+import { InventoryModule } from '@/modules/inventory/inventory.module';
 import { InvitationsModule } from '@/modules/invitations/invitations.module';
 import { MailModule } from '@/modules/mail/mail.module';
 import { PurchasingModule } from '@/modules/purchasing/purchasing.module';
@@ -43,6 +44,7 @@ export const FEATURE_MODULES = [
   AutomationsModule,
   FinanceModule,
   PurchasingModule,
+  InventoryModule,
 ];
 
 /**
@@ -66,4 +68,5 @@ export const WORKER_FEATURE_MODULES = [
   ChannelsModule,
   QuotesModule,
   PurchasingModule,
+  InventoryModule,
 ];

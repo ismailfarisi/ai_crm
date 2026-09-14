@@ -29,6 +29,7 @@ import {
   SUPPLIER_PERMISSIONS,
   PURCHASE_ORDER_PERMISSIONS,
 } from './purchasing';
+import { inventoryDomain, INVENTORY_PERMISSIONS } from './inventory';
 
 export type { PermissionDomain, PermissionValues } from './domain';
 
@@ -56,6 +57,7 @@ export {
   aiDomain,
   suppliersDomain,
   purchaseOrdersDomain,
+  inventoryDomain,
 };
 
 export const PERMISSION_ACTIONS = ['create', 'read', 'update', 'delete', 'manage'] as const;
@@ -84,6 +86,7 @@ export const PERMISSION_DOMAINS: PermissionDomain[] = [
   aiDomain,
   suppliersDomain,
   purchaseOrdersDomain,
+  inventoryDomain,
 ];
 
 /**
@@ -107,6 +110,7 @@ export const PERMISSIONS = {
   ...AI_PERMISSIONS,
   ...SUPPLIER_PERMISSIONS,
   ...PURCHASE_ORDER_PERMISSIONS,
+  ...INVENTORY_PERMISSIONS,
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
