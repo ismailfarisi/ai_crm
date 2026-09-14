@@ -246,6 +246,80 @@ export class InventoryService {
     return divergences;
   }
 
+
+  /**
+   * Moves quantity between "on order" and "on hand" as a purchase order
+   * progresses.
+   *
+   * Counted from approval rather than from sending: approval is the point at
+   * which the organisation has committed to buying, and therefore the point
+   * from which a shortage has already been dealt with. Without this the
+   * reorder check double-counts — it would suggest ordering board that is
+   * already on its way.
+   *
+   * Quantities land on the default location because a purchase order does not
+   * name one; the receipt that follows may well put it somewhere else, at
+   * which point the on-order figure is released regardless of destination.
+   */
+  async adjustOnOrder(
+    tenantId: string,
+    lines: { materialId: string | null; qty: number }[],
+    manager: EntityManager = this.dataSource.manager,
+  ): Promise<void> {
+    const relevant = lines.filter((l) => l.materialId && l.qty !== 0);
+    if (relevant.length === 0) return;
+
+    const location = await this.ensureDefaultLocation(tenantId, manager);
+
+    for (const line of relevant) {
+      await manager.query(
+        `INSERT INTO "stock_items" ("tenant_id", "material_id", "location_id", "qty_on_order")
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT ("tenant_id", "material_id", "location_id")
+         DO UPDATE SET "qty_on_order" = GREATEST(
+           0,
+           "stock_items"."qty_on_order" + $4
+         )`,
+        [tenantId, line.materialId, location.id, line.qty],
+      );
+    }
+  }
+
+  /**
+   * Sets the reorder point and quantity for a material.
+   *
+   * Without these the reorder check can never fire, so the suggestion endpoint
+   * would always come back empty however low stock ran.
+   */
+  async setReorderLevels(
+    tenantId: string,
+    materialId: string,
+    input: { reorderPoint: number | null; reorderQty: number | null; locationId?: string },
+  ): Promise<StockItem> {
+    const location = input.locationId
+      ? await this.locations.findOne({
+          where: { id: input.locationId, tenantId, deletedAt: IsNull() },
+        })
+      : await this.ensureDefaultLocation(tenantId);
+    if (!location) throw new NotFoundException('Stock location not found');
+
+    await this.stockItems.query(
+      `INSERT INTO "stock_items" ("tenant_id", "material_id", "location_id")
+       VALUES ($1, $2, $3)
+       ON CONFLICT ("tenant_id", "material_id", "location_id") DO NOTHING`,
+      [tenantId, materialId, location.id],
+    );
+
+    const item = await this.stockItems.findOne({
+      where: { tenantId, materialId, locationId: location.id },
+    });
+    if (!item) throw new NotFoundException('Stock position not found');
+
+    item.reorderPoint = input.reorderPoint;
+    item.reorderQty = input.reorderQty;
+    return this.stockItems.save(item);
+  }
+
   /* ------------------------------------------------------------------ *
    * The one place stock changes
    * ------------------------------------------------------------------ */
@@ -538,6 +612,16 @@ export class InventoryService {
         receipt.journalEntryId = entry.id;
         await manager.getRepository(GoodsReceipt).save(receipt);
       }
+
+      // Whatever arrived is no longer on order.
+      await this.adjustOnOrder(
+        tenantId,
+        input.lines.map((l) => {
+          const orderLine = byId.get(l.purchaseOrderLineId);
+          return { materialId: orderLine?.materialId ?? null, qty: -l.qtyReceived };
+        }),
+        manager,
+      );
 
       // Status follows the lines, not the other way round.
       const refreshed = await manager

@@ -55,13 +55,27 @@ function makeService(seed: {
     save: jest.fn(async (p: any) => p),
   };
   const supplierMaterials = { find: jest.fn(async () => seed.preferred ?? []) };
+  const orderLines = {
+    find: jest.fn(async () =>
+      (order.lines ?? []).map((l: any) => ({
+        ...l,
+        qtyOrdered: l.qtyOrdered ?? 0,
+        qtyReceived: l.qtyReceived ?? 0,
+      })),
+    ),
+  };
+  // Stock is another module's concern; here we only care that the lifecycle
+  // tells it the right thing at the right moment.
+  const inventory = { adjustOnOrder: jest.fn(async () => undefined) };
 
   const service = new PurchaseOrderLifecycleService(
     orders as any,
     policies as any,
     supplierMaterials as any,
+    orderLines as any,
+    inventory as any,
   );
-  return { service, order, orders, policies };
+  return { service, order, orders, policies, inventory };
 }
 
 const enforcedPolicy = {
@@ -280,6 +294,56 @@ describe('PurchaseOrderLifecycleService', () => {
 
       expect(saved.status).toBe('SENT');
       expect(saved.sentAt).toBeInstanceOf(Date);
+    });
+  });
+
+  describe('stock on order', () => {
+    const awaiting = {
+      status: 'AWAITING_APPROVAL' as PurchaseOrderStatus,
+      submittedById: raiser,
+    };
+
+    it('commits the outstanding quantity when the order is approved', async () => {
+      // From approval the shortage has been dealt with, so the reorder check
+      // must stop suggesting it.
+      const { service, inventory } = makeService({ order: awaiting });
+
+      await service.approve(tenantId, 'po-1', { userId: approver, permissions: ALL });
+
+      expect(inventory.adjustOnOrder).toHaveBeenCalledWith(tenantId, [
+        { materialId: 'mat-1', qty: 500 },
+      ]);
+    });
+
+    it('only counts what has not already arrived', async () => {
+      const { service, inventory, order } = makeService({ order: awaiting });
+      order.lines[0].qtyReceived = 200;
+
+      await service.approve(tenantId, 'po-1', { userId: approver, permissions: ALL });
+
+      expect(inventory.adjustOnOrder).toHaveBeenCalledWith(tenantId, [
+        { materialId: 'mat-1', qty: 300 },
+      ]);
+    });
+
+    it('releases the outstanding quantity when a committed order is cancelled', async () => {
+      const { service, inventory } = makeService({ order: { status: 'SENT' } });
+
+      await service.cancel(tenantId, 'po-1', { userId: approver, permissions: ALL }, null);
+
+      expect(inventory.adjustOnOrder).toHaveBeenCalledWith(tenantId, [
+        { materialId: 'mat-1', qty: -500 },
+      ]);
+    });
+
+    it('releases nothing when a draft is cancelled', async () => {
+      // A draft never counted as on order; subtracting would push the figure
+      // negative.
+      const { service, inventory } = makeService({ order: { status: 'DRAFT' } });
+
+      await service.cancel(tenantId, 'po-1', { userId: approver, permissions: ALL }, null);
+
+      expect(inventory.adjustOnOrder).not.toHaveBeenCalled();
     });
   });
 });

@@ -33,5 +33,26 @@ export const adjustStockSchema = z.object({
   note: z.string().trim().min(1, 'Give a reason for the adjustment').max(500),
 });
 
+/**
+ * Reorder levels. Both nullable: clearing them switches the check off for
+ * that material rather than setting it to zero, which would fire constantly.
+ */
+export const setReorderLevelsSchema = z.object({
+  materialId: z.string().uuid(),
+  locationId: z.string().uuid().optional(),
+  reorderPoint: z.coerce
+    .number()
+    .min(0)
+    .nullish()
+    .transform((v) => (v == null || Number.isNaN(v) ? null : v)),
+  reorderQty: z.coerce
+    .number()
+    .min(0)
+    .nullish()
+    .transform((v) => (v == null || Number.isNaN(v) ? null : v)),
+});
+
+export type SetReorderLevelsPayload = z.output<typeof setReorderLevelsSchema>;
+
 export type ReceiveGoodsPayload = z.output<typeof receiveGoodsSchema>;
 export type AdjustStockPayload = z.output<typeof adjustStockSchema>;

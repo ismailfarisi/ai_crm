@@ -1,5 +1,9 @@
 /* One slice of the browser's API surface. Composed in ./index.ts. */
-import type { AdjustStockPayload, ReceiveGoodsPayload } from '@saas/shared';
+import type {
+  AdjustStockPayload,
+  ReceiveGoodsPayload,
+  SetReorderLevelsPayload,
+} from '@saas/shared';
 import { apiFetch } from '../client';
 
 export interface StockItemDto {
@@ -67,6 +71,8 @@ export const inventoryEndpoints = {
     reconcile: () => apiFetch<StockDivergenceDto[]>('/inventory/reconcile'),
     adjust: (input: AdjustStockPayload) =>
       apiFetch<unknown>('/inventory/adjustments', { method: 'POST', body: input }),
+    setReorderLevels: (input: SetReorderLevelsPayload) =>
+      apiFetch<StockItemDto>('/inventory/reorder-levels', { method: 'POST', body: input }),
   },
 
   goodsReceipts: {

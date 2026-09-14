@@ -18,6 +18,8 @@ import {
   type PurchasePolicy,
 } from '@saas/shared';
 import { PurchaseOrder } from './entities/purchase-order.entity';
+import { PurchaseOrderLine } from './entities/purchase-order-line.entity';
+import { InventoryService } from '../inventory/inventory.service';
 import { PurchasePolicyEntity } from './entities/purchase-policy.entity';
 import { SupplierMaterial } from './entities/supplier-material.entity';
 
@@ -50,6 +52,9 @@ export class PurchaseOrderLifecycleService {
     private readonly policies: Repository<PurchasePolicyEntity>,
     @InjectRepository(SupplierMaterial)
     private readonly supplierMaterials: Repository<SupplierMaterial>,
+    @InjectRepository(PurchaseOrderLine)
+    private readonly orderLines: Repository<PurchaseOrderLine>,
+    private readonly inventory: InventoryService,
   ) {}
 
   /** Absence of a row means "not configured", which means not enforced. */
@@ -198,7 +203,20 @@ export class PurchaseOrderLifecycleService {
     order.status = 'APPROVED';
     order.approvedAt = new Date();
     order.approvedById = actor.userId;
-    return this.orders.save(order);
+    const saved = await this.orders.save(order);
+
+    // From here the shortage has been dealt with, so the reorder check must
+    // stop suggesting it. Counted at approval rather than at sending: that is
+    // when the organisation committed to the purchase.
+    await this.inventory.adjustOnOrder(
+      tenantId,
+      (await this.linesFor(tenantId, order.id)).map((line) => ({
+        materialId: line.materialId,
+        qty: Math.max(0, line.qtyOrdered - line.qtyReceived),
+      })),
+    );
+
+    return saved;
   }
 
   /** Marks an approved order as sent. Emailing it is the caller's job. */
@@ -220,14 +238,36 @@ export class PurchaseOrderLifecycleService {
     const order = await this.load(tenantId, orderId);
     this.assertTransition(order.status, 'CANCELLED', order.poNumber);
 
+    // Only release what was actually committed: a draft never counted as on
+    // order, so subtracting here would push the figure negative.
+    const wasCommitted = ['APPROVED', 'SENT', 'PARTIALLY_RECEIVED'].includes(
+      order.status,
+    );
+
     order.status = 'CANCELLED';
     order.cancelledAt = new Date();
     order.cancelledById = actor.userId;
     order.cancelReason = reason;
-    return this.orders.save(order);
+    const saved = await this.orders.save(order);
+
+    if (wasCommitted) {
+      await this.inventory.adjustOnOrder(
+        tenantId,
+        (await this.linesFor(tenantId, order.id)).map((line) => ({
+          materialId: line.materialId,
+          qty: -Math.max(0, line.qtyOrdered - line.qtyReceived),
+        })),
+      );
+    }
+
+    return saved;
   }
 
   /* ------------------------------------------------------------------ */
+
+  private linesFor(tenantId: string, orderId: string): Promise<PurchaseOrderLine[]> {
+    return this.orderLines.find({ where: { tenantId, purchaseOrderId: orderId } });
+  }
 
   private async load(tenantId: string, orderId: string): Promise<PurchaseOrder> {
     const order = await this.orders.findOne({

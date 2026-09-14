@@ -2,7 +2,11 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import type { AdjustStockPayload, ReceiveGoodsPayload } from '@saas/shared';
+import type {
+  AdjustStockPayload,
+  ReceiveGoodsPayload,
+  SetReorderLevelsPayload,
+} from '@saas/shared';
 import { api, queryKeys } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/client';
 
@@ -73,6 +77,19 @@ export function useAdjustStock() {
       toast.success('Stock adjusted');
     },
     onError: (error) => toast.error(describe(error, 'Could not adjust the stock')),
+  });
+}
+
+export function useSetReorderLevels() {
+  const invalidate = useInvalidateAfterStockChange();
+
+  return useMutation({
+    mutationFn: (input: SetReorderLevelsPayload) => api.inventory.setReorderLevels(input),
+    onSuccess: async () => {
+      await invalidate();
+      toast.success('Reorder levels saved');
+    },
+    onError: (error) => toast.error(describe(error, 'Could not save the reorder levels')),
   });
 }
 

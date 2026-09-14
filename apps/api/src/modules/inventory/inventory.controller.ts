@@ -12,7 +12,9 @@ import {
   adjustStockSchema,
   PERMISSIONS,
   receiveGoodsSchema,
+  setReorderLevelsSchema,
   type AdjustStockPayload,
+  type SetReorderLevelsPayload,
   type ReceiveGoodsPayload,
 } from '@saas/shared';
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
@@ -22,6 +24,7 @@ import { InventoryService, type StockItemView } from './inventory.service';
 import { GoodsReceipt } from './entities/goods-receipt.entity';
 import { StockLocation } from './entities/stock-location.entity';
 import { StockMovement } from './entities/stock-movement.entity';
+import { StockItem } from './entities/stock-item.entity';
 
 @ApiTags('inventory')
 @Controller()
@@ -79,6 +82,20 @@ export class InventoryController {
     @Body(zodBody(adjustStockSchema)) body: AdjustStockPayload,
   ): Promise<StockMovement> {
     return this.inventory.adjust(user.organizationId, user.id, body);
+  }
+
+  @Post('inventory/reorder-levels')
+  @RequirePermissions(PERMISSIONS.INVENTORY_ADJUST)
+  @ApiOperation({
+    summary: 'Set the reorder point and quantity for a material',
+    description:
+      'Without a reorder point the low-stock check can never fire, so the suggestion list stays empty however low stock runs.',
+  })
+  async setReorderLevels(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(zodBody(setReorderLevelsSchema)) body: SetReorderLevelsPayload,
+  ): Promise<StockItem> {
+    return this.inventory.setReorderLevels(user.organizationId, body.materialId, body);
   }
 
   @Get('goods-receipts')

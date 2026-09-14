@@ -1,14 +1,17 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
-import { AlertTriangle, Boxes } from 'lucide-react';
-import { needsReorder } from '@saas/shared';
+import { AlertTriangle, BellRing, Boxes, Scale } from 'lucide-react';
+import { PERMISSIONS, needsReorder } from '@saas/shared';
 import { useReorderSuggestions, useStock } from '@/hooks/use-inventory';
 import type { StockItemDto } from '@/lib/api/endpoints';
+import { Can } from '@/components/auth/can';
+import { Button } from '@/components/ui/button';
 import { EmptyState, PageHeader } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/data-table';
 import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
+import { StockActionsDialog } from './stock-actions-dialog';
 
 /**
  * Stock on hand.
@@ -20,6 +23,9 @@ import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-col
 export function StockView() {
   const { data: stock = [], isPending, isError, error } = useStock();
   const { data: suggestions = [] } = useReorderSuggestions();
+  const [acting, setActing] = useState<{ item: StockItemDto; mode: 'adjust' | 'reorder' } | null>(
+    null,
+  );
   const columns = useMemo<ColumnDef<StockItemDto, unknown>[]>(
     () => [
       {
@@ -92,6 +98,33 @@ export function StockView() {
           </span>
         ),
       },
+      {
+        id: 'actions',
+        cell: ({ row }) => (
+          <div className="flex justify-end gap-1">
+            <Can permission={PERMISSIONS.INVENTORY_ADJUST}>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={`Set reorder levels for ${row.original.materialName}`}
+                title="Reorder levels"
+                onClick={() => setActing({ item: row.original, mode: 'reorder' })}
+              >
+                <BellRing className="size-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={`Adjust stock for ${row.original.materialName}`}
+                title="Adjust after a count"
+                onClick={() => setActing({ item: row.original, mode: 'adjust' })}
+              >
+                <Scale className="size-4" />
+              </Button>
+            </Can>
+          </div>
+        ),
+      },
     ],
     [],
   );
@@ -146,6 +179,13 @@ export function StockView() {
           emptyIcon={<Boxes className="size-8 text-ink-muted" />}
         />
       )}
+
+      <StockActionsDialog
+        open={acting !== null}
+        item={acting?.item ?? null}
+        mode={acting?.mode ?? 'adjust'}
+        onClose={() => setActing(null)}
+      />
     </>
   );
 }
