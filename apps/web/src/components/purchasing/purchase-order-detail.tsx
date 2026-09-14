@@ -1,7 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { AlertTriangle, PackageCheck, Send, ShieldCheck, Undo2, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  CircleSlash,
+  PackageCheck,
+  Send,
+  ShieldCheck,
+  Undo2,
+  X,
+} from 'lucide-react';
 import { PERMISSIONS, canTransition, type PurchaseOrderStatus } from '@saas/shared';
 import {
   usePurchaseOrder,
@@ -98,6 +106,20 @@ export function PurchaseOrderDetail({ id }: { id: string }) {
                 <Button onClick={() => setReceiving(true)}>
                   <PackageCheck className="size-4" />
                   Book in delivery
+                </Button>
+              </Can>
+            )}
+
+            {status === 'PARTIALLY_RECEIVED' && (
+              <Can permission={PERMISSIONS.PURCHASE_ORDER_UPDATE}>
+                <Button
+                  variant="secondary"
+                  loading={act.isPending}
+                  title="The balance is not coming — close the order and release it from stock on order"
+                  onClick={() => act.mutate({ id, action: 'closeShort' })}
+                >
+                  <CircleSlash className="size-4" />
+                  Close short
                 </Button>
               </Can>
             )}

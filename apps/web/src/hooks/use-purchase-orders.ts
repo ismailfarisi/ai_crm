@@ -82,10 +82,13 @@ export function usePurchaseOrderAction() {
       reason,
     }: {
       id: string;
-      action: 'submit' | 'reopen' | 'approve' | 'send' | 'cancel';
+      action: 'submit' | 'reopen' | 'approve' | 'send' | 'cancel' | 'closeShort';
       reason?: CancelPurchaseOrderPayload['reason'];
     }) => {
       if (action === 'cancel') return api.purchaseOrders.cancel(id, { reason: reason ?? null });
+      if (action === 'closeShort') {
+        return api.purchaseOrders.closeShort(id, { reason: reason ?? null });
+      }
       return api.purchaseOrders[action](id);
     },
     onSuccess: async (order, variables) => {
@@ -97,6 +100,7 @@ export function usePurchaseOrderAction() {
           approve: `${order.poNumber} approved`,
           send: `${order.poNumber} emailed to ${order.supplierName}`,
           cancel: `${order.poNumber} cancelled`,
+          closeShort: `${order.poNumber} closed short — the balance is no longer on order`,
         }[variables.action],
       );
     },

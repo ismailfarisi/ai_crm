@@ -219,6 +219,47 @@ export class PurchaseOrderLifecycleService {
     return saved;
   }
 
+
+  /**
+   * Accepts that the rest of a delivery is not coming, and closes the order.
+   *
+   * Without this a partially-received order has no exit: it cannot be
+   * cancelled (goods have already arrived and cancelling would strand them)
+   * and it cannot complete (the balance will never turn up). It would sit at
+   * `PARTIALLY_RECEIVED` forever with its outstanding quantity still counted
+   * as on order — permanently inflating that figure and suppressing the very
+   * reorder suggestions it exists to inform.
+   *
+   * Called "closing short" in purchasing, and it is a decision rather than a
+   * state change, so it records who made it and why.
+   */
+  async closeShort(
+    tenantId: string,
+    orderId: string,
+    actor: Actor,
+    reason: string | null,
+  ): Promise<PurchaseOrder> {
+    const order = await this.load(tenantId, orderId);
+    this.assertTransition(order.status, 'RECEIVED', order.poNumber);
+
+    const lines = await this.linesFor(tenantId, order.id);
+    const outstanding = lines.map((line) => ({
+      materialId: line.materialId,
+      qty: -Math.max(0, line.qtyOrdered - line.qtyReceived),
+    }));
+
+    order.status = 'RECEIVED';
+    order.notes = [order.notes, reason ? `Closed short: ${reason}` : 'Closed short']
+      .filter(Boolean)
+      .join('\n');
+    const saved = await this.orders.save(order);
+
+    // The balance is never arriving, so it must stop counting as on order.
+    await this.inventory.adjustOnOrder(tenantId, outstanding);
+
+    return saved;
+  }
+
   /** Marks an approved order as sent. Emailing it is the caller's job. */
   async markSent(tenantId: string, orderId: string): Promise<PurchaseOrder> {
     const order = await this.load(tenantId, orderId);

@@ -336,6 +336,36 @@ describe('PurchaseOrderLifecycleService', () => {
       ]);
     });
 
+
+    it('closes a partially-received order short and releases the balance', async () => {
+      // Without this the order has no exit: it cannot be cancelled (goods have
+      // arrived) and cannot complete (the rest is not coming), so its
+      // outstanding quantity would count as on order forever.
+      const { service, inventory, order } = makeService({ order: { status: 'PARTIALLY_RECEIVED' } });
+      order.lines[0].qtyReceived = 150;
+
+      const saved = await service.closeShort(
+        tenantId,
+        'po-1',
+        { userId: approver, permissions: ALL },
+        'Supplier discontinued the line',
+      );
+
+      expect(saved.status).toBe('RECEIVED');
+      expect(saved.notes).toContain('Closed short: Supplier discontinued the line');
+      expect(inventory.adjustOnOrder).toHaveBeenCalledWith(tenantId, [
+        { materialId: 'mat-1', qty: -350 },
+      ]);
+    });
+
+    it('will not close a draft short', async () => {
+      const { service } = makeService({ order: { status: 'DRAFT' } });
+
+      await expect(
+        service.closeShort(tenantId, 'po-1', { userId: approver, permissions: ALL }, null),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
     it('releases nothing when a draft is cancelled', async () => {
       // A draft never counted as on order; subtracting would push the figure
       // negative.

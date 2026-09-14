@@ -102,6 +102,11 @@ export const purchasingEndpoints = {
       apiFetch<PurchaseOrderDto>(`/purchase-orders/${id}/approve`, { method: 'POST' }),
     send: (id: string) =>
       apiFetch<PurchaseOrderDto>(`/purchase-orders/${id}/send`, { method: 'POST' }),
+    closeShort: (id: string, input: CancelPurchaseOrderPayload) =>
+      apiFetch<PurchaseOrderDto>(`/purchase-orders/${id}/close-short`, {
+        method: 'POST',
+        body: input,
+      }),
     cancel: (id: string, input: CancelPurchaseOrderPayload) =>
       apiFetch<PurchaseOrderDto>(`/purchase-orders/${id}/cancel`, {
         method: 'POST',

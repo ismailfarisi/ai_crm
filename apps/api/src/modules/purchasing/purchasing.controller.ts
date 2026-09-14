@@ -279,6 +279,26 @@ export class PurchasingController {
     return this.purchasing.sendToSupplier(user.organizationId, id);
   }
 
+  @Post('purchase-orders/:id/close-short')
+  @RequirePermissions(PERMISSIONS.PURCHASE_ORDER_UPDATE)
+  @ApiOperation({
+    summary: 'Close a partially-received order short',
+    description:
+      'Accepts that the balance is not coming. Releases the outstanding quantity from stock on order, which would otherwise be counted forever.',
+  })
+  async closeShort(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(zodBody(cancelPurchaseOrderSchema)) body: CancelPurchaseOrderPayload,
+  ): Promise<PurchaseOrder> {
+    return this.lifecycle.closeShort(
+      user.organizationId,
+      id,
+      { userId: user.id, permissions: user.permissions },
+      body.reason ?? null,
+    );
+  }
+
   @Post('purchase-orders/:id/cancel')
   @RequirePermissions(PERMISSIONS.PURCHASE_ORDER_DELETE)
   @ApiOperation({ summary: 'Cancel an order' })
