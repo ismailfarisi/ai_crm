@@ -108,8 +108,8 @@ describe('taxBreakdown', () => {
   it('groups legacy lines with no code by their rate', () => {
     const rows = taxBreakdown([{ net: 10, rate: 5 }, { net: 10, rate: 5 }, { net: 10, rate: 20 }]);
     expect(rows.map((r) => [r.code, r.net, r.tax])).toEqual([
-      ['5%', 20, 1],
-      ['20%', 10, 2],
+      ['No code', 20, 1],
+      ['No code', 10, 2],
     ]);
   });
 });

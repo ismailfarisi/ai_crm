@@ -170,7 +170,7 @@ export function taxBreakdown(
     const key = `${line.taxCodeId ?? `rate:${rate}`}|${reverseCharge}`;
     const group = groups.get(key) ?? {
       taxCodeId: line.taxCodeId ?? null,
-      code: line.code ?? `${rate}%`,
+      code: line.code ?? 'No code',
       rate,
       reverseCharge,
       net: 0,
