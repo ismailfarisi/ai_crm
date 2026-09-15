@@ -98,3 +98,18 @@ describe('acceptanceRefusalMessage', () => {
     expect(acceptanceRefusalMessage('NOT_FOUND')).not.toMatch(/quote/i);
   });
 });
+
+describe('invoicing per delivery', () => {
+  it('is valid on its own', () => {
+    expect(validateBillingSchedule(BILLING_PRESETS.find((p) => p.key === 'per-delivery')!.stages)).toEqual([]);
+  });
+
+  it('cannot be combined with percentage stages', () => {
+    expect(
+      validateBillingSchedule([
+        stage(30, { kind: 'DEPOSIT', trigger: 'ON_APPROVAL' }),
+        stage(70, { kind: 'FINAL', trigger: 'ON_DELIVERY' }),
+      ]).join(' '),
+    ).toMatch(/only stage/);
+  });
+});

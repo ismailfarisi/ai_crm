@@ -13,6 +13,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/field';
 import { EmptyState, PageHeader } from '@/components/ui/primitives';
 import { money, OrderStatusPill } from './orders-view';
+import { OrderDeliveries } from './order-deliveries';
 
 const NEXT: Partial<Record<SalesOrderStatus, { to: SalesOrderStatus; label: string; icon: typeof Factory }[]>> = {
   OPEN: [
@@ -153,7 +154,11 @@ export function OrderDetail({ id }: { id: string }) {
                         }`
                       : stage.trigger === 'ON_APPROVAL'
                         ? 'Invoiced on approval'
-                        : 'Invoice when this stage is reached'}
+                        : stage.trigger === 'ON_DELIVERY'
+                          ? stage.invoicedAt
+                            ? 'Invoiced in full across its deliveries'
+                            : 'Each dispatched delivery is invoiced for what it carried'
+                          : 'Invoice when this stage is reached'}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -169,7 +174,8 @@ export function OrderDetail({ id }: { id: string }) {
                       View
                     </Link>
                   ) : (
-                    order.status !== 'CANCELLED' && (
+                    order.status !== 'CANCELLED' &&
+                    stage.trigger !== 'ON_DELIVERY' && (
                       <Can permission={PERMISSIONS.SALES_ORDER_INVOICE}>
                         <Button
                           size="sm"
@@ -190,6 +196,8 @@ export function OrderDetail({ id }: { id: string }) {
           })}
         </ol>
       </section>
+
+      <OrderDeliveries order={order} />
 
       {canReadWork && workOrders.length > 0 && (
         <section className="mb-6 rounded border border-line bg-surface" aria-labelledby="wo-heading">

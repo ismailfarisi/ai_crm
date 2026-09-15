@@ -119,6 +119,7 @@ describe('QuotesService', () => {
       automationEventBridgeService as unknown as AutomationEventBridgeService,
       costingService as unknown as CostingService,
       rbacService as unknown as RbacService,
+      { applyToLines: jest.fn(async (_t: string, items: unknown) => items) } as any,
     );
   });
 

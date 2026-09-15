@@ -1,11 +1,15 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import type { DataSource, EntityManager } from 'typeorm';
+import { In, type DataSource, type EntityManager } from 'typeorm';
 import {
   allocateStageAmounts,
   calculateInvoiceDueDate,
   DEFAULT_BILLING_SCHEDULE,
   LEDGER_ROLES,
+  REVERSE_CHARGE_NOTICE,
+  scaleBreakdown,
   stripLineCosts,
+  taxBreakdown,
+  type TaxBreakdownLine,
   validateBillingSchedule,
   type JournalLineInput,
   type QuoteLineItem,
@@ -16,6 +20,7 @@ import {
 } from '../../database/tenant-sequence.util';
 import type { LedgerService } from '../finance/ledger.service';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
+import { TaxCode } from '../tax/entities/tax.entity';
 import { Quote } from '../quotes/entities/quote.entity';
 import { Invoice, InvoiceStatus } from '../quotes/entities/invoice.entity';
 import {
@@ -232,6 +237,11 @@ async function raiseStageInvoiceInTransaction(
     const already = await invoices.findOne({ where: { id: stage.invoiceId } });
     if (already) return { invoice: already, isNew: false };
   }
+  if (stage.trigger === 'ON_DELIVERY') {
+    throw new BadRequestException(
+      'This order is invoiced per delivery. Invoice each dispatched delivery note instead.',
+    );
+  }
 
   const order = await manager
     .getRepository(SalesOrder)
@@ -254,48 +264,115 @@ async function raiseStageInvoiceInTransaction(
     .getRepository(BillingScheduleLine)
     .count({ where: { salesOrderId: order.id } });
 
+  const invoice = await issueInvoice(manager, ledger, tenantId, {
+    order,
+    items:
+      stageCount > 1
+        ? stageInvoiceItems(stage, order.quoteNumber)
+        : stripLineCosts(quote.items ?? []),
+    subtotalAmount: stage.subtotalAmount,
+    discountAmount: stage.discountAmount,
+    taxAmount: stage.taxAmount,
+    totalAmount: stage.totalAmount,
+    taxBreakdown: scaleBreakdown(breakdownForItems(quote.items ?? []), {
+      net: stage.subtotalAmount,
+      tax: stage.taxAmount,
+    }),
+    billingScheduleLineId: stage.id,
+    deliveryNoteId: null,
+    stageLabel: stageCount > 1 ? stage.label : null,
+    notes: quote.notes,
+  });
+
+  stage.invoiceId = invoice.id;
+  stage.invoicedAt = invoice.issuedAt ?? new Date();
+  await manager.getRepository(BillingScheduleLine).save(stage);
+
+  return { invoice, isNew: true };
+}
+
+/** Net and tax per code across a quote's priced lines. */
+export function breakdownForItems(items: QuoteLineItem[]): TaxBreakdownLine[] {
+  return taxBreakdown(
+    items
+      .filter((item) => (item.type ?? 'product') === 'product')
+      .map((item) => ({
+        net: Number(item.subtotal) || 0,
+        rate: Number(item.taxRate) || 0,
+        taxCodeId: item.taxCodeId ?? null,
+        code: item.taxCode ?? null,
+        reverseCharge: item.taxReverseCharge,
+      })),
+  );
+}
+
+/**
+ * Numbers, stores and posts one invoice. Every invoice goes through here,
+ * whether it bills a stage of an order or what one delivery carried.
+ */
+export async function issueInvoice(
+  manager: EntityManager,
+  ledger: LedgerLines,
+  tenantId: string,
+  p: {
+    order: SalesOrder;
+    items: QuoteLineItem[];
+    subtotalAmount: number;
+    discountAmount: number;
+    taxAmount: number;
+    totalAmount: number;
+    taxBreakdown: TaxBreakdownLine[];
+    billingScheduleLineId: string | null;
+    deliveryNoteId: string | null;
+    stageLabel: string | null;
+    notes: string | null;
+  },
+): Promise<Invoice> {
+  const invoices = manager.getRepository(Invoice);
   const value = await allocateNextSequenceValue(
     manager,
     tenantId,
     'invoice_number',
   );
-  const invoiceNumber = formatSequenceNumber('INV', value);
   const issuedAt = new Date();
+
+  // A reverse-charge supply has to say so on the invoice, or the customer
+  // has no basis for accounting for the tax themselves.
+  const reverseCharged = p.taxBreakdown.some(
+    (line) => line.reverseCharge && line.net > 0,
+  );
+  const notes = reverseCharged
+    ? [p.notes, REVERSE_CHARGE_NOTICE].filter(Boolean).join('\n\n')
+    : p.notes;
 
   const invoice = await invoices.save(
     invoices.create({
       tenantId,
-      quoteId: order.quoteId,
-      salesOrderId: order.id,
-      billingScheduleLineId: stage.id,
-      stageLabel: stageCount > 1 ? stage.label : null,
-      invoiceNumber,
-      customerId: order.customerId,
-      customerName: order.customerName,
-      customerEmail: order.customerEmail,
-      currency: order.currency,
-      items:
-        stageCount > 1
-          ? stageInvoiceItems(stage, order.quoteNumber)
-          : stripLineCosts(quote.items ?? []),
-      subtotalAmount: stage.subtotalAmount,
-      discountAmount: stage.discountAmount,
-      taxAmount: stage.taxAmount,
-      amount: stage.totalAmount,
+      quoteId: p.order.quoteId,
+      salesOrderId: p.order.id,
+      billingScheduleLineId: p.billingScheduleLineId,
+      deliveryNoteId: p.deliveryNoteId,
+      stageLabel: p.stageLabel,
+      invoiceNumber: formatSequenceNumber('INV', value),
+      customerId: p.order.customerId,
+      customerName: p.order.customerName,
+      customerEmail: p.order.customerEmail,
+      currency: p.order.currency,
+      items: p.items,
+      subtotalAmount: p.subtotalAmount,
+      discountAmount: p.discountAmount,
+      taxAmount: p.taxAmount,
+      amount: p.totalAmount,
+      taxBreakdown: p.taxBreakdown,
       status: InvoiceStatus.ISSUED,
-      paymentTerms: order.paymentTerms,
-      dueDate: calculateInvoiceDueDate(issuedAt, order.paymentTerms),
-      notes: quote.notes,
+      paymentTerms: p.order.paymentTerms,
+      dueDate: calculateInvoiceDueDate(issuedAt, p.order.paymentTerms),
+      notes,
     }),
   );
 
-  stage.invoiceId = invoice.id;
-  stage.invoicedAt = issuedAt;
-  await manager.getRepository(BillingScheduleLine).save(stage);
-
   await postInvoiceIssued(manager, ledger, tenantId, invoice);
-
-  return { invoice, isNew: true };
+  return invoice;
 }
 
 /**
@@ -305,6 +382,9 @@ async function raiseStageInvoiceInTransaction(
  * receivables that had never been debited — so receivables ran negative by
  * everything ever collected. With deposits that stops being cosmetic: an
  * unpaid deposit invoice is money the customer owes, and it has to show.
+ *
+ * Tax is credited per code, to the account the code names, or to the chart's
+ * tax payable account when it names none.
  */
 export async function postInvoiceIssued(
   manager: EntityManager,
@@ -314,9 +394,18 @@ export async function postInvoiceIssued(
 ): Promise<JournalEntry | null> {
   const total = round2(Number(invoice.amount));
   if (!(total > 0)) return null;
-  const tax = round2(Number(invoice.taxAmount) || 0);
-  const sales = round2(total - tax);
   const description = `Invoice ${invoice.invoiceNumber}`;
+
+  const taxLines = await taxPostingLines(
+    manager,
+    tenantId,
+    invoice.taxBreakdown,
+    round2(Number(invoice.taxAmount) || 0),
+    description,
+    'credit',
+  );
+  const tax = round2(taxLines.reduce((s, l) => s + l.credit, 0));
+  const sales = round2(total - tax);
 
   const lines: JournalLineInput[] = [
     {
@@ -336,15 +425,7 @@ export async function postInvoiceIssued(
       description,
     });
   }
-  if (tax > 0) {
-    lines.push({
-      role: LEDGER_ROLES.TAX_PAYABLE,
-      accountName: 'Tax payable',
-      debit: 0,
-      credit: tax,
-      description,
-    });
-  }
+  lines.push(...taxLines);
 
   const repo = manager.getRepository(JournalEntry);
   return repo.save(
@@ -357,6 +438,59 @@ export async function postInvoiceIssued(
       totalAmount: total,
       lines: await ledger.resolveLines(tenantId, lines, manager),
     }),
+  );
+}
+
+/**
+ * Tax journal lines for a breakdown, one per account.
+ *
+ * Falls back to a single line for the document's tax when there is no
+ * breakdown — documents from before tax codes — so their postings are
+ * exactly what they were.
+ */
+export async function taxPostingLines(
+  manager: EntityManager,
+  tenantId: string,
+  breakdown: TaxBreakdownLine[] | null,
+  documentTax: number,
+  description: string,
+  side: 'debit' | 'credit',
+): Promise<JournalLineInput[]> {
+  const line = (
+    amount: number,
+    ledgerAccountId: string | null,
+  ): JournalLineInput => ({
+    ...(ledgerAccountId
+      ? { ledgerAccountId }
+      : { role: LEDGER_ROLES.TAX_PAYABLE }),
+    accountName: 'Tax payable',
+    debit: side === 'debit' ? amount : 0,
+    credit: side === 'credit' ? amount : 0,
+    description,
+  });
+
+  const taxed = (breakdown ?? []).filter((b) => b.tax > 0);
+  if (!taxed.length) {
+    return documentTax > 0 ? [line(documentTax, null)] : [];
+  }
+
+  const ids = taxed
+    .map((b) => b.taxCodeId)
+    .filter((v): v is string => Boolean(v));
+  const codes = ids.length
+    ? await manager
+        .getRepository(TaxCode)
+        .find({ where: { tenantId, id: In(ids) } })
+    : [];
+  const accountFor = new Map(codes.map((c) => [c.id, c.ledgerAccountId]));
+
+  const byAccount = new Map<string, number>();
+  for (const b of taxed) {
+    const account = (b.taxCodeId && accountFor.get(b.taxCodeId)) || '';
+    byAccount.set(account, round2((byAccount.get(account) ?? 0) + b.tax));
+  }
+  return [...byAccount.entries()].map(([account, amount]) =>
+    line(amount, account || null),
   );
 }
 

@@ -201,7 +201,17 @@ export class LedgerService {
     for (const line of lines) {
       let ledger: LedgerAccount;
 
-      if (line.financeAccountId) {
+      if (line.ledgerAccountId) {
+        const chosen = await manager.getRepository(LedgerAccount).findOne({
+          where: { id: line.ledgerAccountId, tenantId, deletedAt: IsNull() },
+        });
+        if (!chosen) {
+          throw new NotFoundException(
+            `Ledger account ${line.ledgerAccountId} not found`,
+          );
+        }
+        ledger = chosen;
+      } else if (line.financeAccountId) {
         const cash = await manager.getRepository(FinanceAccount).findOne({
           where: { id: line.financeAccountId, tenantId },
         });

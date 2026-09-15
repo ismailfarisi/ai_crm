@@ -25,6 +25,8 @@ export const createBillSchema = z.object({
   /** Defaults from the supplier's payment terms when omitted. */
   dueDate: z.coerce.date().nullish().transform((v) => v ?? null),
   taxAmount: z.coerce.number().min(0).default(0),
+  /** How the tax is reported. Defaults from the supplier's country via the purchase tax rules. */
+  taxCodeId: z.string().uuid().nullish().transform((v) => v ?? null),
   notes: optionalText(2000),
   lines: z.array(billLineSchema).min(1, 'A bill needs at least one line'),
 });

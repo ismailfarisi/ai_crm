@@ -3,7 +3,7 @@
 import React, { useMemo } from 'react';
 import Link from 'next/link';
 import { ColumnDef } from '@tanstack/react-table';
-import { AlertTriangle, Ban, CheckCircle, Clock, Download, History, Mail, Wallet } from 'lucide-react';
+import { AlertTriangle, Ban, CheckCircle, Clock, Download, History, Mail, Wallet, Undo2 } from 'lucide-react';
 import type { InvoiceDto, InvoiceStatus } from '@saas/shared';
 import { PERMISSIONS, isInvoiceOverdue } from '@saas/shared';
 import { Badge } from '@/components/ui/primitives';
@@ -20,6 +20,7 @@ interface InvoicesTableProps {
   onDownload?: (invoice: InvoiceDto) => void;
   onViewHistory?: (invoice: InvoiceDto) => void;
   onVoid?: (invoice: InvoiceDto) => void;
+  onCredit?: (invoice: InvoiceDto) => void;
   sendingId?: string | null;
 }
 
@@ -64,9 +65,11 @@ export function InvoicesTable({
   onDownload,
   onViewHistory,
   onVoid,
+  onCredit,
   sendingId = null,
 }: InvoicesTableProps) {
   const canManage = useCan({ permission: PERMISSIONS.INVOICE_MANAGE });
+  const canCredit = useCan({ permission: PERMISSIONS.CREDIT_NOTE_READ });
 
   const columns = useMemo<ColumnDef<InvoiceDto>[]>(
     () => [
@@ -177,7 +180,13 @@ export function InvoicesTable({
                   Record Payment
                 </Button>
               )}
-              {canManage && onVoid && invoice.status !== 'CANCELLED' && (
+              {canCredit && onCredit && invoice.status !== 'CANCELLED' && (
+                <Button size="sm" variant="ghost" onClick={() => onCredit(invoice)} title="Credits and refunds">
+                  <Undo2 className="size-3.5" />
+                  {(invoice.creditedAmount ?? 0) > 0 ? 'Credits' : 'Credit'}
+                </Button>
+              )}
+              {canManage && onVoid && invoice.status !== 'CANCELLED' && !(invoice.creditedAmount ?? 0) && (
                 <Button size="sm" variant="danger" onClick={() => onVoid(invoice)}>
                   <Ban className="size-3.5" />
                 </Button>
@@ -187,7 +196,7 @@ export function InvoicesTable({
         },
       },
     ],
-    [canManage, onRecordPayment, onSend, onDownload, onViewHistory, onVoid, sendingId]
+    [canManage, canCredit, onRecordPayment, onSend, onDownload, onViewHistory, onVoid, onCredit, sendingId]
   );
 
   return (

@@ -40,6 +40,14 @@ export interface QuoteLineItem {
   unitPrice?: number;
   discount?: number; // 0 - 100 percentage
   taxRate?: number; // 0, 5, 10, 20 etc. percentage
+  /**
+   * Set by the server from the tax rules when any exist. `taxRate` still holds
+   * the percentage, so totals are computed exactly as before.
+   */
+  taxCodeId?: string | null;
+  taxCode?: string | null;
+  /** Charged at 0%; the invoice has to say the customer accounts for the tax. */
+  taxReverseCharge?: boolean;
   subtotal?: number; // line untaxed total after discount
 
   /**
@@ -184,6 +192,10 @@ export interface InvoiceDto {
   billingScheduleLineId?: string | null;
   /** "30% deposit" on a part invoice; null when the invoice bills the whole quote. */
   stageLabel?: string | null;
+  deliveryNoteId?: string | null;
+  creditedAmount?: number;
+  refundedAmount?: number;
+  taxBreakdown?: import('../tax/tax').TaxBreakdownLine[] | null;
   invoiceNumber: string;
   customerId?: string | null;
   customerName: string;

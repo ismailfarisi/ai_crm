@@ -19,6 +19,7 @@ import { inventoryEndpoints, inventoryKeys } from './inventory';
 import { payablesEndpoints, payablesKeys } from './payables';
 import { ordersEndpoints, ordersKeys } from './orders';
 import { productionEndpoints, productionKeys } from './production';
+import { creditsEndpoints, creditsKeys } from './credits';
 
 export * from './auth';
 export * from './contacts';
@@ -34,6 +35,7 @@ export * from './inventory';
 export * from './payables';
 export * from './orders';
 export * from './production';
+export * from './credits';
 
 export const api = {
   ...authEndpoints,
@@ -50,6 +52,7 @@ export const api = {
   ...payablesEndpoints,
   ...ordersEndpoints,
   ...productionEndpoints,
+  ...creditsEndpoints,
 };
 
 export const queryKeys = {
@@ -67,4 +70,5 @@ export const queryKeys = {
   ...payablesKeys,
   ...ordersKeys,
   ...productionKeys,
+  ...creditsKeys,
 };

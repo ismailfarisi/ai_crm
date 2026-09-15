@@ -180,6 +180,8 @@ export interface LedgerAccountDto {
 export interface JournalLineInput {
   role?: LedgerRole;
   financeAccountId?: string;
+  /** A specific account from the chart, e.g. the one a tax code posts to. */
+  ledgerAccountId?: string | null;
   /** Human label, kept verbatim — an expense category, a bank's name. */
   accountName: string;
   debit: number;

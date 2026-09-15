@@ -6,7 +6,11 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
-import { RecordInvoicePaymentPayload, VoidInvoicePayload } from '@saas/shared';
+import {
+  invoicePosition,
+  RecordInvoicePaymentPayload,
+  VoidInvoicePayload,
+} from '@saas/shared';
 import { Invoice, InvoiceStatus } from './entities/invoice.entity';
 import { InvoicePayment } from './entities/invoice-payment.entity';
 import { Quote } from './entities/quote.entity';
@@ -135,9 +139,8 @@ export class InvoicesService {
         throw new BadRequestException('Invoice is already fully paid');
       }
 
-      const remaining = round2(
-        Number(invoice.amount) - Number(invoice.paidAmount || 0),
-      );
+      // Credits reduce what is owed; refunds of overpayment put it back.
+      const remaining = Math.max(0, invoicePosition(invoice).balance);
       const amount = payload.amount ?? remaining;
       if (!amount || amount <= 0) {
         throw new BadRequestException(
@@ -187,7 +190,7 @@ export class InvoicesService {
       invoice.paidAmount = totalPaid;
       invoice.paidViaAccountId = payload.accountId;
       invoice.status =
-        totalPaid >= Number(invoice.amount)
+        invoicePosition(invoice).balance <= 0
           ? InvoiceStatus.PAID
           : InvoiceStatus.PARTIALLY_PAID;
       if (invoice.status === InvoiceStatus.PAID) {
@@ -242,6 +245,13 @@ export class InvoicesService {
       const invoice = await this.lockInvoice(manager, tenantId, id);
       if (invoice.status === InvoiceStatus.CANCELLED) {
         throw new BadRequestException('Invoice is already voided');
+      }
+      // A credit note has been posted against it. Voiding underneath would
+      // reverse the invoice and leave the credit standing.
+      if (Number(invoice.creditedAmount) > 0) {
+        throw new BadRequestException(
+          `${invoice.invoiceNumber} has credit notes against it and cannot be voided. Credit the rest instead.`,
+        );
       }
 
       const payments = await manager.getRepository(InvoicePayment).find({

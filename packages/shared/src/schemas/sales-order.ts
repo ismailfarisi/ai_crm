@@ -23,7 +23,7 @@ export const billingStageSchema = z.object({
   kind: z.enum(['DEPOSIT', 'MILESTONE', 'FINAL']),
   label: z.string().trim().min(1, 'Name each stage').max(120),
   percent: z.coerce.number().gt(0, 'Each stage must bill more than 0%').max(100),
-  trigger: z.enum(['ON_APPROVAL', 'MANUAL']),
+  trigger: z.enum(['ON_APPROVAL', 'MANUAL', 'ON_DELIVERY']),
 });
 
 export const acceptQuoteSchema = z.object({

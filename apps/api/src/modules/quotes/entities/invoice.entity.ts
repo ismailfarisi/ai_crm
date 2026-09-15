@@ -5,7 +5,7 @@ import {
   Index,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import type { QuoteLineItem } from '@saas/shared';
+import type { QuoteLineItem, TaxBreakdownLine } from '@saas/shared';
 import { numericTransformer } from '../../finance/entities/finance-account.entity';
 
 export enum InvoiceStatus {
@@ -21,6 +21,10 @@ export enum InvoiceStatus {
 @Index('idx_invoices_sales_order', ['salesOrderId'])
 // One invoice per billing stage. This took over from the old one-invoice-per-
 // quote index as the thing that stops a raced approval billing twice.
+@Index('uq_invoices_delivery_note', ['deliveryNoteId'], {
+  unique: true,
+  where: '"delivery_note_id" IS NOT NULL',
+})
 @Index('uq_invoices_billing_line', ['billingScheduleLineId'], {
   unique: true,
   where: '"billing_schedule_line_id" IS NOT NULL',
@@ -44,6 +48,36 @@ export class Invoice {
   /** "30% deposit" — printed on the invoice so a customer knows which stage it is. */
   @Column({ name: 'stage_label', type: 'varchar', length: 120, nullable: true })
   stageLabel: string | null;
+
+  /** Set when the invoice bills what one delivery carried. */
+  @Column({ name: 'delivery_note_id', type: 'uuid', nullable: true })
+  deliveryNoteId: string | null;
+
+  /** Net and tax per code, as posted. Null on invoices from before tax codes. */
+  @Column({ name: 'tax_breakdown', type: 'jsonb', nullable: true })
+  taxBreakdown: TaxBreakdownLine[] | null;
+
+  /** Sum of issued credit notes. */
+  @Column({
+    name: 'credited_amount',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+    transformer: numericTransformer,
+  })
+  creditedAmount: number;
+
+  /** Money paid back to the customer against credit notes on this invoice. */
+  @Column({
+    name: 'refunded_amount',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+    transformer: numericTransformer,
+  })
+  refundedAmount: number;
 
   @Column({ name: 'invoice_number', type: 'varchar' })
   invoiceNumber: string;

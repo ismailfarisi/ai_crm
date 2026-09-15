@@ -9,6 +9,7 @@ import {
   DollarSign,
   Landmark,
   Layers,
+  Percent,
   LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -45,6 +46,11 @@ export const FINANCE_NAV_ITEMS: FinanceTabItem[] = [
     href: '/finance/subscriptions',
     label: 'Subscriptions & SaaS',
     icon: Layers,
+  },
+  {
+    href: '/finance/tax',
+    label: 'Tax',
+    icon: Percent,
   },
 ];
 

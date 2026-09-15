@@ -13,6 +13,8 @@ import { MailModule } from '@/modules/mail/mail.module';
 import { OrdersModule } from '@/modules/orders/orders.module';
 import { PayablesModule } from '@/modules/payables/payables.module';
 import { ProductionModule } from '@/modules/production/production.module';
+import { TaxModule } from '@/modules/tax/tax.module';
+import { CreditsModule } from '@/modules/credits/credits.module';
 import { PurchasingModule } from '@/modules/purchasing/purchasing.module';
 import { QuotesModule } from '@/modules/quotes/quotes.module';
 import { RbacModule } from '@/modules/rbac/rbac.module';
@@ -51,6 +53,8 @@ export const FEATURE_MODULES = [
   PayablesModule,
   OrdersModule,
   ProductionModule,
+  TaxModule,
+  CreditsModule,
 ];
 
 /**

@@ -68,4 +68,16 @@ export class CatalogItem extends SoftDeletableEntity {
 
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
+
+  /** The item's own tax treatment. A customer rule can still override it, e.g. reverse charge. */
+  @Column({ name: 'tax_code_id', type: 'uuid', nullable: true })
+  taxCodeId: string | null;
+
+  /**
+   * Set when this item is sold from stock: dispatching it on a delivery note
+   * takes this material off the shelf. Null for services and made-to-order
+   * goods, which are costed through work orders instead.
+   */
+  @Column({ name: 'stock_material_id', type: 'uuid', nullable: true })
+  stockMaterialId: string | null;
 }

@@ -16,8 +16,10 @@ export type BillingKind = 'DEPOSIT' | 'MILESTONE' | 'FINAL';
  * `ON_APPROVAL` is raised the moment the order exists — the deposit case, and
  * the whole-amount case that every quote without a schedule falls into.
  * `MANUAL` waits for someone to say the milestone has been reached.
+ * `ON_DELIVERY` is never raised as a stage: each dispatched delivery note is
+ * invoiced for what it carried, until the order is billed in full.
  */
-export type BillingTrigger = 'ON_APPROVAL' | 'MANUAL';
+export type BillingTrigger = 'ON_APPROVAL' | 'MANUAL' | 'ON_DELIVERY';
 
 export interface BillingStage {
   kind: BillingKind;
@@ -41,6 +43,11 @@ export const BILLING_PRESETS: { key: string; label: string; stages: BillingStage
       { kind: 'DEPOSIT', label: '30% deposit', percent: 30, trigger: 'ON_APPROVAL' },
       { kind: 'FINAL', label: 'Balance on completion', percent: 70, trigger: 'MANUAL' },
     ],
+  },
+  {
+    key: 'per-delivery',
+    label: 'Invoice each delivery',
+    stages: [{ kind: 'FINAL', label: 'Invoiced per delivery', percent: 100, trigger: 'ON_DELIVERY' }],
   },
   {
     key: 'deposit-50',
@@ -72,6 +79,13 @@ export function validateBillingSchedule(stages: BillingStage[]): string[] {
   const total = Math.round(stages.reduce((sum, s) => sum + (s.percent || 0), 0) * 1000) / 1000;
   if (total !== 100) {
     problems.push(`Stages add up to ${total}%, not 100%.`);
+  }
+
+  // Delivery billing invoices by quantity shipped, which cannot be mixed with
+  // billing by percentage: a 30% deposit and then a delivery of the whole
+  // order would bill 130%.
+  if (stages.some((s) => s.trigger === 'ON_DELIVERY') && stages.length > 1) {
+    problems.push('Invoicing per delivery has to be the only stage.');
   }
 
   const finals = stages.filter((s) => s.kind === 'FINAL').length;

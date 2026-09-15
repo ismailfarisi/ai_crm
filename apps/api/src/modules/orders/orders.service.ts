@@ -196,7 +196,11 @@ export class OrdersService {
       const stages = await this.stages.find({
         where: { salesOrderId: order.id },
       });
-      const unbilled = stages.filter((s) => !s.invoiceId);
+      // A per-delivery order has no stage invoice; it is billed once the
+      // delivery that completed it has been invoiced.
+      const unbilled = stages.filter(
+        (s) => !s.invoiceId && !(s.trigger === 'ON_DELIVERY' && s.invoicedAt),
+      );
       if (unbilled.length) {
         throw new BadRequestException(
           `${order.orderNumber} still has ${unbilled.length === 1 ? `"${unbilled[0].label}"` : `${unbilled.length} stages`} to invoice`,
@@ -204,6 +208,12 @@ export class OrdersService {
       }
     }
     if (status === 'FULFILLED') {
+      const deliveries = await this.countDeliveries(order.id);
+      if (deliveries > 0) {
+        throw new BadRequestException(
+          `${order.orderNumber} ships on delivery notes. Dispatch what is left instead of marking it fulfilled.`,
+        );
+      }
       await this.lines
         .createQueryBuilder()
         .update(SalesOrderLine)
@@ -261,6 +271,15 @@ export class OrdersService {
             ]),
           },
         });
+        const shipped: unknown[] = await manager.query(
+          `SELECT 1 FROM "delivery_notes" WHERE "sales_order_id" = $1 AND "status" = 'DISPATCHED' LIMIT 1`,
+          [order.id],
+        );
+        if (shipped.length) {
+          throw new BadRequestException(
+            `${order.orderNumber} has shipped goods and cannot be cancelled.`,
+          );
+        }
         if (live > 0) {
           throw new BadRequestException(
             `${order.orderNumber} has been invoiced. Void its invoices first.`,
@@ -273,6 +292,14 @@ export class OrdersService {
         return order;
       })
       .then((order) => this.get(tenantId, order.id));
+  }
+
+  private async countDeliveries(salesOrderId: string): Promise<number> {
+    const rows: { n: string }[] = await this.dataSource.query(
+      `SELECT COUNT(*) AS n FROM "delivery_notes" WHERE "sales_order_id" = $1 AND "status" <> 'CANCELLED'`,
+      [salesOrderId],
+    );
+    return Number(rows[0]?.n ?? 0);
   }
 
   private async findOrder(tenantId: string, id: string): Promise<SalesOrder> {

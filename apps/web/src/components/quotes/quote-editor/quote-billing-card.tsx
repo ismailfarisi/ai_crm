@@ -129,7 +129,12 @@ export function QuoteBillingCard({ schedule, onChange, totals, currency, readOnl
               <span className="flex-1 text-ink">
                 {stage.label}{' '}
                 <span className="text-ink-subtle">
-                  · {stage.percent}% · {stage.trigger === 'ON_APPROVAL' ? 'on approval' : 'when reached'}
+                  · {stage.percent}% ·{' '}
+                  {stage.trigger === 'ON_APPROVAL'
+                    ? 'on approval'
+                    : stage.trigger === 'ON_DELIVERY'
+                      ? 'invoiced as each delivery ships'
+                      : 'when reached'}
                 </span>
               </span>
             )}

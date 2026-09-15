@@ -116,6 +116,10 @@ export class SupplierBill extends SoftDeletableEntity {
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 
+  /** How the tax on this bill is reported. Null on bills from before tax codes. */
+  @Column({ name: 'tax_code_id', type: 'uuid', nullable: true })
+  taxCodeId: string | null;
+
   @Column({ name: 'created_by_id', type: 'uuid', nullable: true })
   createdById: string | null;
 

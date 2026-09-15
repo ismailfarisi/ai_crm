@@ -283,6 +283,9 @@ export function QuoteEditorPage({
 
         const updated = await api.quotes.update(id, payload);
         setId(updated.id);
+        // The server re-prices and re-taxes lines from the customer's address;
+        // show what was stored, not what was typed.
+        if (updated.items) setItems(updated.items);
         setStatus(updated.status);
         toast.success('Quotation draft updated');
       } else {
@@ -311,6 +314,7 @@ export function QuoteEditorPage({
         const created = await api.quotes.create(payload);
         setId(created.id);
         setStatus(created.status);
+        if (created.items) setItems(created.items);
         toast.success('New quotation created');
       }
     } catch (err) {
@@ -655,6 +659,13 @@ export function QuoteEditorPage({
         currency={headerData.currency}
         readOnly={isReadOnly}
       />
+
+      {items.some((item) => item.taxReverseCharge) && (
+        <p className="rounded-2xl border border-border/40 bg-surface-muted px-4 py-3 text-sm text-ink-muted">
+          <strong className="text-ink">Reverse charge.</strong> This customer&apos;s address and tax number put
+          these lines at 0%; the invoice will say the customer accounts for the tax.
+        </p>
+      )}
 
       {/* Section 4: Terms & Internal Notes Tabs */}
       <QuoteTabsSection

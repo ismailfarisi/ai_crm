@@ -31,3 +31,6 @@ export * from './orders/billing';
 export * from './schemas/sales-order';
 export * from './production/work-orders';
 export * from './schemas/work-order';
+export * from './tax/tax';
+export * from './credits/credit-notes';
+export * from './schemas/credits';

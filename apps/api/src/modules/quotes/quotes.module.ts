@@ -21,6 +21,7 @@ import { MailModule } from '../mail/mail.module';
 import { AutomationsModule } from '../automations/automations.module';
 import { CatalogModule } from '../catalog/catalog.module';
 import { RbacModule } from '../rbac/rbac.module';
+import { TaxModule } from '../tax/tax.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { RbacModule } from '../rbac/rbac.module';
     // override is checked against the actor's own effective permissions.
     CatalogModule,
     RbacModule,
+    TaxModule,
   ],
   controllers: [QuotesController, PublicQuotesController],
   providers: [

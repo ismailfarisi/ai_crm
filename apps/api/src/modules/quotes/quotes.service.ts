@@ -31,6 +31,7 @@ import {
 import { AutomationEventBridgeService } from '../automations/services/automation-event-bridge.service';
 import { CostingService } from '../catalog/costing.service';
 import { RbacService } from '../rbac/rbac.service';
+import { TaxService } from '../tax/tax.service';
 import {
   allocateNextSequenceValue,
   formatSequenceNumber,
@@ -51,6 +52,7 @@ export class QuotesService {
     private readonly automationEventBridgeService: AutomationEventBridgeService,
     private readonly costingService: CostingService,
     private readonly rbacService: RbacService,
+    private readonly taxService: TaxService,
   ) {}
 
   /**
@@ -63,12 +65,21 @@ export class QuotesService {
   private async recost(
     tenantId: string,
     items: QuoteLineItem[],
+    customerId: string | null,
   ): Promise<{ items: QuoteLineItem[]; violations: GuardrailViolation[] }> {
     const {
-      items: recosted,
+      items: costed,
       violations,
       staleLineIds,
     } = await this.costingService.recostLines(tenantId, items);
+    // Tax after cost: the customer's address picks the code, and the rate on
+    // each line follows it. Margin is on the untaxed subtotal, so the
+    // violations computed above do not change.
+    const recosted = await this.taxService.applyToLines(
+      tenantId,
+      costed,
+      customerId,
+    );
 
     if (staleLineIds.length) {
       this.logger.warn(
@@ -138,7 +149,11 @@ export class QuotesService {
   ): Promise<Quote> {
     const quoteNumber =
       payload.quoteNumber || (await this.generateNextQuoteNumber(tenantId));
-    const { items } = await this.recost(tenantId, payload.items || []);
+    const { items } = await this.recost(
+      tenantId,
+      payload.items || [],
+      payload.customerId || null,
+    );
     const totals = calculateQuoteTotals(items);
     const mode = payload.createdBy || QuoteCreatedBy.HUMAN;
 
@@ -268,8 +283,14 @@ export class QuotesService {
     if (payload.status !== undefined) {
       quote.status = payload.status as QuoteStatus;
     }
-    if (payload.items !== undefined) {
-      const { items } = await this.recost(tenantId, payload.items);
+    // A new customer can mean a new tax treatment, so the lines are re-taxed
+    // even when the items themselves were not sent.
+    if (payload.items !== undefined || payload.customerId !== undefined) {
+      const { items } = await this.recost(
+        tenantId,
+        payload.items ?? quote.items ?? [],
+        quote.customerId,
+      );
       quote.items = items;
       const totals = calculateQuoteTotals(items);
       quote.subtotalAmount = totals.subtotalAmount;
@@ -303,6 +324,7 @@ export class QuotesService {
       const { items, violations } = await this.recost(
         tenantId,
         quote.items || [],
+        quote.customerId,
       );
       quote.items = items;
       const totals = calculateQuoteTotals(items);
@@ -429,6 +451,7 @@ export class QuotesService {
     const { items, violations } = await this.recost(
       tenantId,
       quote.items || [],
+      quote.customerId,
     );
     return { violations, totals: calculateQuoteTotals(items) };
   }
@@ -646,7 +669,11 @@ function normaliseSchedule(
         .trim()
         .slice(0, 120) || 'Stage',
     percent: Math.round(Number(stage.percent) * 1000) / 1000,
-    trigger: stage.trigger === 'ON_APPROVAL' ? 'ON_APPROVAL' : 'MANUAL',
+    trigger: (['ON_APPROVAL', 'MANUAL', 'ON_DELIVERY'] as const).includes(
+      stage.trigger,
+    )
+      ? stage.trigger
+      : 'MANUAL',
   })) as BillingStage[];
 
   const problems = validateBillingSchedule(cleaned);

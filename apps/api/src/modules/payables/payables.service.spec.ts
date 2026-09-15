@@ -155,6 +155,10 @@ function makeService(seed: Seed = {}) {
     repo('BillPayment') as any,
     ledger as any,
     { manager, transaction: jest.fn(async (cb: any) => cb(manager)) } as any,
+    {
+      findCode: jest.fn(async (_t: string, id: string) => ({ id })),
+      purchaseCodeForSupplier: jest.fn(async () => null),
+    } as any,
   );
 
   return { service, bill, saved, ledger };

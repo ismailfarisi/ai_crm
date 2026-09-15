@@ -39,6 +39,7 @@ import {
 import { LedgerService } from '../finance/ledger.service';
 import { FinanceAccount } from '../finance/entities/finance-account.entity';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
+import { TaxService } from '../tax/tax.service';
 import { PurchaseOrder } from '../purchasing/entities/purchase-order.entity';
 import { PurchaseOrderLine } from '../purchasing/entities/purchase-order-line.entity';
 import { PurchasePolicyEntity } from '../purchasing/entities/purchase-policy.entity';
@@ -119,6 +120,7 @@ export class PayablesService {
     private readonly payments: Repository<BillPayment>,
     private readonly ledger: LedgerService,
     private readonly dataSource: DataSource,
+    private readonly tax: TaxService,
   ) {}
 
   /* ------------------------------------------------------------------ *
@@ -407,6 +409,12 @@ export class PayablesService {
       const orderCost = new Map(orderLines.map((l) => [l.id, l.unitCost]));
 
       const totals = billTotals(input.lines, input.taxAmount);
+      // Reported as whatever the purchase rules say for this supplier's
+      // country, unless the person entering the bill chose a code.
+      const taxCodeId = input.taxCodeId
+        ? (await this.tax.findCode(tenantId, input.taxCodeId, 'PURCHASE')).id
+        : ((await this.tax.purchaseCodeForSupplier(tenantId, supplier.id))
+            ?.id ?? null);
       const dueDate =
         input.dueDate ??
         (supplier.paymentTermsDays != null
@@ -436,6 +444,7 @@ export class PayablesService {
           dueDate,
           subtotalAmount: totals.subtotal,
           taxAmount: totals.tax,
+          taxCodeId,
           totalAmount: totals.total,
           paidAmount: 0,
           notes: input.notes,

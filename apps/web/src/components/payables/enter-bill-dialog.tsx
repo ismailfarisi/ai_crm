@@ -92,6 +92,8 @@ export function EnterBillDialog({ open, onClose, order }: EnterBillDialogProps) 
                 billDate: new Date(`${billDate}T00:00:00Z`),
                 dueDate: null,
                 taxAmount: Number(tax) || 0,
+                // Left to the purchase tax rules for this supplier.
+                taxCodeId: null,
                 notes: null,
                 lines: included.map((r) => ({
                   purchaseOrderLineId: r.line.purchaseOrderLineId,

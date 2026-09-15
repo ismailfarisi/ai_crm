@@ -701,6 +701,48 @@ export class InventoryService {
       returnUnitCost?: number;
     },
   ): Promise<{ movement: StockMovement; value: number }> {
+    return this.moveForReference(manager, {
+      ...params,
+      referenceType: 'WORK_ORDER',
+      referenceId: params.workOrderId,
+      referenceNumber: params.workOrderNumber,
+    });
+  }
+
+  /** Goods leaving on a delivery. Same rules as an issue to a job. */
+  async issueForDelivery(
+    manager: EntityManager,
+    params: {
+      tenantId: string;
+      materialId: string;
+      qty: number;
+      deliveryNoteId: string;
+      deliveryNoteNumber: string;
+      actorId: string | null;
+    },
+  ): Promise<{ movement: StockMovement; value: number }> {
+    return this.moveForReference(manager, {
+      ...params,
+      referenceType: 'DELIVERY_NOTE',
+      referenceId: params.deliveryNoteId,
+      referenceNumber: params.deliveryNoteNumber,
+    });
+  }
+
+  private async moveForReference(
+    manager: EntityManager,
+    params: {
+      tenantId: string;
+      materialId: string;
+      locationId?: string;
+      qty: number;
+      referenceType: 'WORK_ORDER' | 'DELIVERY_NOTE';
+      referenceId: string;
+      referenceNumber: string;
+      actorId: string | null;
+      returnUnitCost?: number;
+    },
+  ): Promise<{ movement: StockMovement; value: number }> {
     if (!params.qty) {
       throw new BadRequestException('Enter a quantity');
     }
@@ -740,10 +782,10 @@ export class InventoryService {
       // `params.qty` is signed from the job's side, so it flips here.
       qtyDelta: -params.qty,
       unitCost: params.qty > 0 ? 0 : roundCost(params.returnUnitCost ?? 0),
-      referenceType: 'WORK_ORDER',
-      referenceId: params.workOrderId,
+      referenceType: params.referenceType,
+      referenceId: params.referenceId,
       actorId: params.actorId,
-      note: `${params.qty > 0 ? 'Issued to' : 'Returned from'} ${params.workOrderNumber}`,
+      note: `${params.qty > 0 ? (params.referenceType === 'DELIVERY_NOTE' ? 'Dispatched on' : 'Issued to') : 'Returned from'} ${params.referenceNumber}`,
     });
 
     // An issue is valued at the average it left at; a return at the price the

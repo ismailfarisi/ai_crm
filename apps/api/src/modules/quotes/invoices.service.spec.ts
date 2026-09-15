@@ -58,6 +58,10 @@ describe('InvoicesService', () => {
     salesOrderId: null,
     billingScheduleLineId: null,
     stageLabel: null,
+    deliveryNoteId: null,
+    taxBreakdown: null,
+    creditedAmount: 0,
+    refundedAmount: 0,
   });
 
   beforeEach(() => {

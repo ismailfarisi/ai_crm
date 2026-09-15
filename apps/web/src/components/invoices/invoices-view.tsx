@@ -16,6 +16,7 @@ import { InvoicesTable } from '@/components/invoices/invoices-table';
 import { RecordPaymentModal } from '@/components/invoices/record-payment-modal';
 import { InvoicePaymentsModal } from '@/components/invoices/invoice-payments-modal';
 import { VoidInvoiceModal } from '@/components/invoices/void-invoice-modal';
+import { InvoiceCreditsDialog } from '@/components/credits/invoice-credits-dialog';
 
 const STAT_TONES = {
   brand: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
@@ -59,6 +60,9 @@ export function InvoicesView() {
   const [payingInvoice, setPayingInvoice] = useState<InvoiceDto | null>(null);
   const [historyInvoice, setHistoryInvoice] = useState<InvoiceDto | null>(null);
   const [voidingInvoice, setVoidingInvoice] = useState<InvoiceDto | null>(null);
+  const [creditingId, setCreditingId] = useState<string | null>(null);
+  // Looked up from the list so the dialog shows figures refreshed after each action.
+  const creditingInvoice = invoices.find((i) => i.id === creditingId) ?? null;
   const [sendingId, setSendingId] = useState<string | null>(null);
 
   const issuedInvoicesCount = invoices.length;
@@ -105,6 +109,7 @@ export function InvoicesView() {
         onDownload={downloadPdf}
         onViewHistory={setHistoryInvoice}
         onVoid={setVoidingInvoice}
+        onCredit={(invoice) => setCreditingId(invoice.id)}
         sendingId={sendingId}
       />
 
@@ -125,6 +130,8 @@ export function InvoicesView() {
         onClose={() => setHistoryInvoice(null)}
         invoice={historyInvoice}
       />
+
+      <InvoiceCreditsDialog invoice={creditingInvoice} onClose={() => setCreditingId(null)} />
 
       <VoidInvoiceModal
         open={voidingInvoice !== null}
