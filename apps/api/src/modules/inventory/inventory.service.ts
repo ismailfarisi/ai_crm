@@ -736,7 +736,9 @@ export class InventoryService {
       materialId: params.materialId,
       locationId: location.id,
       type: params.qty > 0 ? 'ISSUE' : 'RETURN',
-      qtyDelta: params.qty,
+      // The ledger's sign is the shelf's: issuing to a job takes stock out.
+      // `params.qty` is signed from the job's side, so it flips here.
+      qtyDelta: -params.qty,
       unitCost: params.qty > 0 ? 0 : roundCost(params.returnUnitCost ?? 0),
       referenceType: 'WORK_ORDER',
       referenceId: params.workOrderId,

@@ -479,3 +479,82 @@ describe('InventoryService.adjust', () => {
     expect(movements[0].actorId).toBe(actorId);
   });
 });
+
+describe('InventoryService.moveForWorkOrder', () => {
+  const stocked = () =>
+    makeService({
+      stock: [
+        {
+          id: 'stock-1',
+          tenantId,
+          materialId: 'mat-1',
+          locationId,
+          qtyOnHand: 100,
+          qtyReserved: 0,
+          qtyOnOrder: 0,
+          avgUnitCost: 0.5,
+          reorderPoint: null,
+          reorderQty: null,
+        },
+      ],
+    });
+
+  it('takes an issue OUT of stock at the moving average, leaving the average alone', async () => {
+    // The case staging caught: an issue was booked as a zero-cost receipt,
+    // which raised stock and dragged the average down.
+    const { service, stock, movements } = stocked();
+    const manager = (service as any).dataSource.manager;
+
+    const { value } = await service.moveForWorkOrder(manager, {
+      tenantId,
+      materialId: 'mat-1',
+      qty: 30,
+      workOrderId: 'wo-1',
+      workOrderNumber: 'WO-2026-0001',
+      actorId,
+    });
+
+    expect(stock[0].qtyOnHand).toBe(70);
+    expect(stock[0].avgUnitCost).toBe(0.5);
+    expect(movements[0]).toEqual(
+      expect.objectContaining({ type: 'ISSUE', qtyDelta: -30, referenceType: 'WORK_ORDER' }),
+    );
+    expect(value).toBe(15);
+  });
+
+  it('puts a return back INTO stock at the price the job was charged', async () => {
+    const { service, stock, movements } = stocked();
+    const manager = (service as any).dataSource.manager;
+
+    const { value } = await service.moveForWorkOrder(manager, {
+      tenantId,
+      materialId: 'mat-1',
+      qty: -10,
+      workOrderId: 'wo-1',
+      workOrderNumber: 'WO-2026-0001',
+      actorId,
+      returnUnitCost: 0.5,
+    });
+
+    expect(stock[0].qtyOnHand).toBe(110);
+    expect(stock[0].avgUnitCost).toBe(0.5);
+    expect(movements[0]).toEqual(expect.objectContaining({ type: 'RETURN', qtyDelta: 10 }));
+    expect(value).toBe(5);
+  });
+
+  it('refuses to issue more than is on hand', async () => {
+    const { service, stock } = stocked();
+    const manager = (service as any).dataSource.manager;
+    await expect(
+      service.moveForWorkOrder(manager, {
+        tenantId,
+        materialId: 'mat-1',
+        qty: 101,
+        workOrderId: 'wo-1',
+        workOrderNumber: 'WO-2026-0001',
+        actorId,
+      }),
+    ).rejects.toThrow(/Only 100 on hand/);
+    expect(stock[0].qtyOnHand).toBe(100);
+  });
+});
