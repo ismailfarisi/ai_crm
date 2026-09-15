@@ -6,7 +6,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import type { QuoteLineItem } from '@saas/shared';
+import type { BillingStage, QuoteLineItem } from '@saas/shared';
 
 export enum QuoteCreatedBy {
   AI = 'AI',
@@ -23,6 +23,11 @@ export enum QuoteStatus {
 @Entity('quotes')
 @Index('idx_quotes_tenant_id', ['tenantId'])
 @Index('idx_quotes_tenant_number', ['tenantId', 'quoteNumber'])
+@Index('idx_quotes_parent', ['parentQuoteId'])
+@Index('uq_quotes_acceptance_token', ['acceptanceTokenHash'], {
+  unique: true,
+  where: '"acceptance_token_hash" IS NOT NULL',
+})
 export class Quote {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -129,6 +134,55 @@ export class Quote {
 
   @Column({ name: 'workflow_id', type: 'varchar', nullable: true })
   workflowId: string | null;
+
+  /** Null means the default: everything, invoiced on approval. */
+  @Column({ name: 'billing_schedule', type: 'jsonb', nullable: true })
+  billingSchedule: BillingStage[] | null;
+
+  /**
+   * SHA-256 of the customer's acceptance link token. The token itself is
+   * never stored: anyone who can read this table must not be able to accept
+   * a quote on a customer's behalf.
+   */
+  @Column({
+    name: 'acceptance_token_hash',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+    select: false,
+  })
+  acceptanceTokenHash: string | null;
+
+  @Column({
+    name: 'acceptance_expires_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  acceptanceExpiresAt: Date | null;
+
+  @Column({ name: 'accepted_at', type: 'timestamptz', nullable: true })
+  acceptedAt: Date | null;
+
+  @Column({
+    name: 'accepted_by_name',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  acceptedByName: string | null;
+
+  @Column({ name: 'accepted_ip', type: 'varchar', length: 64, nullable: true })
+  acceptedIp: string | null;
+
+  @Column({ type: 'int', default: 1 })
+  version: number;
+
+  @Column({ name: 'parent_quote_id', type: 'uuid', nullable: true })
+  parentQuoteId: string | null;
+
+  /** Set when a revision replaced this quote. A superseded quote cannot be accepted or approved. */
+  @Column({ name: 'superseded_at', type: 'timestamptz', nullable: true })
+  supersededAt: Date | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

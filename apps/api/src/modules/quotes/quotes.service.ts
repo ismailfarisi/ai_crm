@@ -11,6 +11,8 @@ import {
   calculateQuoteTotals,
   CreateQuotePayload,
   PERMISSIONS,
+  validateBillingSchedule,
+  type BillingStage,
   UpdateQuotePayload,
   type GuardrailViolation,
   type Permission,
@@ -62,8 +64,11 @@ export class QuotesService {
     tenantId: string,
     items: QuoteLineItem[],
   ): Promise<{ items: QuoteLineItem[]; violations: GuardrailViolation[] }> {
-    const { items: recosted, violations, staleLineIds } =
-      await this.costingService.recostLines(tenantId, items);
+    const {
+      items: recosted,
+      violations,
+      staleLineIds,
+    } = await this.costingService.recostLines(tenantId, items);
 
     if (staleLineIds.length) {
       this.logger.warn(
@@ -88,7 +93,8 @@ export class QuotesService {
     if (!violations.length) return;
 
     const permissions: Permission[] = actorUserId
-      ? (await this.rbacService.resolveAccess(actorUserId, tenantId)).permissions
+      ? (await this.rbacService.resolveAccess(actorUserId, tenantId))
+          .permissions
       : // No actor means an automated path. A bot must never be the thing
         // that waives a margin floor.
         [];
@@ -155,6 +161,7 @@ export class QuotesService {
       totalAmount: totals.totalAmount,
       termsAndConditions: payload.termsAndConditions || null,
       notes: payload.notes || null,
+      billingSchedule: normaliseSchedule(payload.billingSchedule),
       status: QuoteStatus.DRAFT,
     });
 
@@ -194,6 +201,34 @@ export class QuotesService {
     payload: UpdateQuotePayload,
   ): Promise<Quote> {
     const quote = await this.findQuoteById(tenantId, id);
+
+    if (quote.supersededAt) {
+      throw new BadRequestException(
+        `${quote.quoteNumber ?? 'This quote'} has been replaced by version ${quote.version + 1}. Edit the latest version instead.`,
+      );
+    }
+    // What the customer agrees to. Once they have accepted, changing it would
+    // leave an acceptance on record for terms they never saw; before that, a
+    // change kills the outstanding link so they cannot accept the old terms.
+    const commercialChange = changesCommercialTerms(quote, payload);
+    if (commercialChange && quote.acceptedAt) {
+      throw new BadRequestException(
+        `The customer accepted ${quote.quoteNumber ?? 'this quote'} as it stands. Create a revision to change it.`,
+      );
+    }
+    if (commercialChange) {
+      quote.acceptanceTokenHash = null;
+      quote.acceptanceExpiresAt = null;
+    }
+
+    if (payload.billingSchedule !== undefined) {
+      if (await this.orderExists(quote.id)) {
+        throw new BadRequestException(
+          'This quote already has a sales order; change billing on the order instead',
+        );
+      }
+      quote.billingSchedule = normaliseSchedule(payload.billingSchedule);
+    }
 
     if (payload.title !== undefined) {
       quote.title = payload.title;
@@ -265,7 +300,10 @@ export class QuotesService {
     // can fix it. Re-cost from the catalog first so the check runs on what
     // the job actually costs today, not on what was stored when it was drafted.
     if (action === 'APPROVE') {
-      const { items, violations } = await this.recost(tenantId, quote.items || []);
+      const { items, violations } = await this.recost(
+        tenantId,
+        quote.items || [],
+      );
       quote.items = items;
       const totals = calculateQuoteTotals(items);
       quote.subtotalAmount = totals.subtotalAmount;
@@ -274,6 +312,27 @@ export class QuotesService {
       quote.totalAmount = totals.totalAmount;
 
       await this.assertActorMayApprove(tenantId, actorUserId, violations);
+
+      if (quote.supersededAt) {
+        throw new BadRequestException(
+          `${quote.quoteNumber ?? 'This quote'} has been replaced by a newer revision and cannot be approved`,
+        );
+      }
+      // Checked here, before anything is committed, so a bad schedule is a
+      // clear refusal rather than an approved quote with no order behind it.
+      const problems = quote.billingSchedule?.length
+        ? validateBillingSchedule(quote.billingSchedule)
+        : [];
+      if (problems.length) {
+        throw new BadRequestException(
+          `Fix the billing schedule before approving: ${problems.join(' ')}`,
+        );
+      }
+
+      // Persist the re-costed lines before signalling. The Temporal activity
+      // builds the order from the stored quote, and can run before this
+      // request finishes; it must not see the pre-recost totals.
+      await this.quoteRepository.save(quote);
     }
 
     try {
@@ -311,17 +370,17 @@ export class QuotesService {
 
     const savedQuote = await this.quoteRepository.save(quote);
 
-    // Guarantees an invoice exists even if Temporal never picks up the
-    // signal, or hasn't finished `generateInvoiceActivity` by the time this
-    // request returns. `createFromQuote` is idempotent so whichever path
-    // gets there first wins.
+    // Guarantees the order (and whatever its schedule invoices on approval)
+    // exists even if Temporal never picks up the signal, or hasn't finished
+    // `generateInvoiceActivity` by the time this request returns. Both run
+    // the same idempotent provisioning, so whichever gets there first wins.
     if (savedQuote.status === QuoteStatus.APPROVED) {
       try {
-        const { invoice, isNew } = await this.invoicesService.createFromQuote(
+        const { invoicesRaised } = await this.invoicesService.createFromQuote(
           tenantId,
           savedQuote,
         );
-        if (isNew) {
+        for (const invoice of invoicesRaised) {
           try {
             await this.automationEventBridgeService.handleCrmEvent({
               tenantId,
@@ -362,10 +421,124 @@ export class QuotesService {
   async evaluateQuote(
     tenantId: string,
     quoteId: string,
-  ): Promise<{ violations: GuardrailViolation[]; totals: ReturnType<typeof calculateQuoteTotals> }> {
+  ): Promise<{
+    violations: GuardrailViolation[];
+    totals: ReturnType<typeof calculateQuoteTotals>;
+  }> {
     const quote = await this.findQuoteById(tenantId, quoteId);
-    const { items, violations } = await this.recost(tenantId, quote.items || []);
+    const { items, violations } = await this.recost(
+      tenantId,
+      quote.items || [],
+    );
     return { violations, totals: calculateQuoteTotals(items) };
+  }
+
+  /**
+   * Creates the next version of a quote for a customer who wants changes.
+   *
+   * The original is kept, marked superseded, and its acceptance link stops
+   * working — a customer must never be able to accept terms that have since
+   * been replaced. Refused once an order exists: at that point the deal is
+   * done and a change is a change to the order, not a new quote.
+   */
+  async reviseQuote(tenantId: string, id: string): Promise<Quote> {
+    return this.quoteRepository.manager
+      .transaction(async (manager) => {
+        const repo = manager.getRepository(Quote);
+        const original = await repo
+          .createQueryBuilder('q')
+          .setLock('pessimistic_write')
+          .where('q.id = :id', { id })
+          .andWhere('q.tenant_id = :tenantId', { tenantId })
+          .getOne();
+        if (!original)
+          throw new NotFoundException(`Quote with ID ${id} not found`);
+        if (original.supersededAt) {
+          throw new BadRequestException(
+            `${original.quoteNumber ?? 'This quote'} has already been revised`,
+          );
+        }
+        if (await this.orderExists(original.id, manager)) {
+          throw new BadRequestException(
+            `${original.quoteNumber ?? 'This quote'} already has a sales order and cannot be revised`,
+          );
+        }
+
+        original.supersededAt = new Date();
+        original.acceptanceTokenHash = null;
+        original.acceptanceExpiresAt = null;
+        await repo.save(original);
+
+        const baseNumber = (original.quoteNumber ?? '').replace(/-R\d+$/, '');
+        const revision = repo.create({
+          tenantId,
+          quoteNumber: baseNumber ? `${baseNumber}-R${original.version}` : null,
+          customerId: original.customerId,
+          customerName: original.customerName,
+          customerEmail: original.customerEmail,
+          createdBy: QuoteCreatedBy.HUMAN,
+          title: original.title,
+          validUntil: original.validUntil,
+          paymentTerms: original.paymentTerms,
+          currency: original.currency,
+          prompt: original.prompt,
+          items: original.items,
+          subtotalAmount: original.subtotalAmount,
+          discountAmount: original.discountAmount,
+          taxAmount: original.taxAmount,
+          totalAmount: original.totalAmount,
+          termsAndConditions: original.termsAndConditions,
+          notes: original.notes,
+          billingSchedule: original.billingSchedule,
+          version: original.version + 1,
+          parentQuoteId: original.id,
+          status: QuoteStatus.DRAFT,
+          workflowId: null,
+        });
+        const saved = await repo.save(revision);
+        saved.workflowId = `quote-${saved.id}`;
+        await repo.save(saved);
+        return saved;
+      })
+      .then(async (saved) => {
+        // Outside the transaction: a workflow that starts for a revision that
+        // then rolls back would wait for a signal forever.
+        await this.startWorkflow(saved);
+        return saved;
+      });
+  }
+
+  private async startWorkflow(quote: Quote): Promise<void> {
+    try {
+      await this.temporalService.getClient().workflow.start(quoteWorkflow, {
+        taskQueue: 'quotes-queue',
+        workflowId: quote.workflowId ?? `quote-${quote.id}`,
+        args: [
+          {
+            quoteId: quote.id,
+            tenantId: quote.tenantId,
+            mode: 'HUMAN',
+            title: quote.title,
+            items: quote.items,
+            totalAmount: Number(quote.totalAmount),
+          },
+        ],
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Temporal workflow start deferred/failed: ${msg}`);
+    }
+  }
+
+  private async orderExists(
+    quoteId: string,
+    manager = this.quoteRepository.manager,
+  ): Promise<boolean> {
+    const rows: unknown[] = await manager.query(
+      `SELECT 1 FROM "sales_orders" WHERE "quote_id" = $1 LIMIT 1`,
+      [quoteId],
+    );
+    return rows.length > 0;
   }
 
   async findAllQuotes(tenantId: string): Promise<Quote[]> {
@@ -393,4 +566,102 @@ export class QuotesService {
       order: { issuedAt: 'DESC' },
     });
   }
+}
+
+/**
+ * Whether an update alters what the customer would be agreeing to.
+ *
+ * Compared by value, not by presence: the editor sends every field on every
+ * save, and a save that changes nothing must not lock an accepted quote or
+ * kill a link the customer is about to use. Cost is ignored — it is re-derived
+ * from the catalog on every save and is never shown to the customer.
+ */
+export function changesCommercialTerms(
+  quote: Quote,
+  payload: UpdateQuotePayload,
+): boolean {
+  const differs = (next: unknown, current: unknown) =>
+    next !== undefined &&
+    JSON.stringify(next ?? null) !== JSON.stringify(current ?? null);
+  const customerView = (items: QuoteLineItem[] | null | undefined) =>
+    (items ?? []).map((item) => [
+      item.type ?? 'product',
+      item.description ?? '',
+      Number(item.quantity) || 0,
+      item.uom ?? null,
+      Number(item.unitPrice) || 0,
+      Number(item.discount) || 0,
+      Number(item.taxRate) || 0,
+    ]);
+  const day = (value: string | Date | null | undefined) =>
+    value ? new Date(value).toISOString().slice(0, 10) : null;
+
+  return (
+    (payload.items !== undefined &&
+      differs(customerView(payload.items), customerView(quote.items))) ||
+    (payload.billingSchedule !== undefined &&
+      differs(
+        normaliseScheduleForCompare(payload.billingSchedule),
+        quote.billingSchedule,
+      )) ||
+    differs(payload.currency, quote.currency) ||
+    differs(payload.paymentTerms, quote.paymentTerms) ||
+    (payload.validUntil !== undefined &&
+      day(payload.validUntil) !== day(quote.validUntil)) ||
+    differs(payload.termsAndConditions, quote.termsAndConditions) ||
+    differs(payload.customerId, quote.customerId) ||
+    differs(payload.customerName, quote.customerName)
+  );
+}
+
+function normaliseScheduleForCompare(
+  stages: BillingStage[] | null | undefined,
+): BillingStage[] | null {
+  try {
+    return normaliseSchedule(stages);
+  } catch {
+    // Invalid input is a change; the save itself will then refuse it.
+    return [] as BillingStage[];
+  }
+}
+
+/**
+ * A schedule of exactly the default is stored as null, so "no schedule" has
+ * one representation and old quotes and new ones read the same. Anything else
+ * must be valid on the way in; approval checks again, since the request that
+ * saved it may have come from an older client.
+ */
+function normaliseSchedule(
+  stages: BillingStage[] | null | undefined,
+): BillingStage[] | null {
+  if (!stages || stages.length === 0) return null;
+  const cleaned = stages.map((stage) => ({
+    kind: stage.kind,
+    label:
+      String(stage.label ?? '')
+        .trim()
+        .slice(0, 120) || 'Stage',
+    percent: Math.round(Number(stage.percent) * 1000) / 1000,
+    trigger: stage.trigger === 'ON_APPROVAL' ? 'ON_APPROVAL' : 'MANUAL',
+  })) as BillingStage[];
+
+  const problems = validateBillingSchedule(cleaned);
+  if (
+    cleaned.some((s) => !['DEPOSIT', 'MILESTONE', 'FINAL'].includes(s.kind))
+  ) {
+    problems.push(
+      'Each stage must be a deposit, a milestone or the final stage.',
+    );
+  }
+  if (problems.length) {
+    throw new BadRequestException(problems.join(' '));
+  }
+  if (
+    cleaned.length === 1 &&
+    cleaned[0].percent === 100 &&
+    cleaned[0].trigger === 'ON_APPROVAL'
+  ) {
+    return null;
+  }
+  return cleaned;
 }

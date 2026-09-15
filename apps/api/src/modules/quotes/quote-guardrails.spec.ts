@@ -41,7 +41,11 @@ const SPOOFED_LINE: QuoteLineItem = {
 };
 
 /** What the catalog actually says the job costs. */
-const TRUE_COST = { unitCost: 2.4, totalCost: 1200, source: 'COMPUTED' as const };
+const TRUE_COST = {
+  unitCost: 2.4,
+  totalCost: 1200,
+  source: 'COMPUTED' as const,
+};
 
 describe('QuotesService — margin guardrails', () => {
   let service: QuotesService;
@@ -60,18 +64,22 @@ describe('QuotesService — margin guardrails', () => {
   };
 
   const withViolations = (violations: GuardrailViolation[]) => {
-    costingService.recostLines = jest.fn().mockImplementation(async (_t, items: QuoteLineItem[]) => {
-      // The service always replaces the client's cost with the catalog's.
-      const recosted = items.map((item) =>
-        item.type === 'product' && item.templateId ? { ...item, cost: TRUE_COST } : item,
-      );
-      return {
-        items: recosted,
-        totals: calculateQuoteTotals(recosted),
-        violations,
-        staleLineIds: [],
-      };
-    });
+    costingService.recostLines = jest
+      .fn()
+      .mockImplementation(async (_t, items: QuoteLineItem[]) => {
+        // The service always replaces the client's cost with the catalog's.
+        const recosted = items.map((item) =>
+          item.type === 'product' && item.templateId
+            ? { ...item, cost: TRUE_COST }
+            : item,
+        );
+        return {
+          items: recosted,
+          totals: calculateQuoteTotals(recosted),
+          violations,
+          staleLineIds: [],
+        };
+      });
   };
 
   beforeEach(() => {
@@ -100,16 +108,20 @@ describe('QuotesService — margin guardrails', () => {
 
     service = new QuotesService(
       quoteRepo as unknown as Repository<Quote>,
-      { findOne: jest.fn().mockResolvedValue(null) } as unknown as Repository<Invoice>,
+      {
+        findOne: jest.fn().mockResolvedValue(null),
+      } as unknown as Repository<Invoice>,
       {
         getClient: () => {
           throw new Error('Temporal unavailable');
         },
       } as unknown as TemporalService,
       {
-        createFromQuote: jest
-          .fn()
-          .mockResolvedValue({ invoice: { id: 'inv-1' }, isNew: false }),
+        createFromQuote: jest.fn().mockResolvedValue({
+          invoice: { id: 'inv-1' },
+          invoicesRaised: [],
+          isNew: false,
+        }),
       } as unknown as InvoicesService,
       { handleCrmEvent: jest.fn() } as unknown as AutomationEventBridgeService,
       costingService as unknown as CostingService,
@@ -153,7 +165,13 @@ describe('QuotesService — margin guardrails', () => {
 
   describe('approval', () => {
     it('goes through when nothing breaches policy', async () => {
-      const result = await service.sendSignal(tenantId, quoteId, 'APPROVE', undefined, approverId);
+      const result = await service.sendSignal(
+        tenantId,
+        quoteId,
+        'APPROVE',
+        undefined,
+        approverId,
+      );
       expect(result.status).toBe(QuoteStatus.APPROVED);
     });
 
@@ -169,7 +187,13 @@ describe('QuotesService — margin guardrails', () => {
       withViolations([BELOW_FLOOR]);
 
       try {
-        await service.sendSignal(tenantId, quoteId, 'APPROVE', undefined, approverId);
+        await service.sendSignal(
+          tenantId,
+          quoteId,
+          'APPROVE',
+          undefined,
+          approverId,
+        );
         throw new Error('should have been refused');
       } catch (error) {
         const body = (error as ForbiddenException).getResponse() as {
@@ -183,9 +207,18 @@ describe('QuotesService — margin guardrails', () => {
 
     it('lets an actor holding the override through', async () => {
       withViolations([BELOW_FLOOR]);
-      withPermissions([PERMISSIONS.QUOTE_APPROVE, PERMISSIONS.QUOTE_APPROVE_BELOW_MARGIN]);
+      withPermissions([
+        PERMISSIONS.QUOTE_APPROVE,
+        PERMISSIONS.QUOTE_APPROVE_BELOW_MARGIN,
+      ]);
 
-      const result = await service.sendSignal(tenantId, quoteId, 'APPROVE', undefined, approverId);
+      const result = await service.sendSignal(
+        tenantId,
+        quoteId,
+        'APPROVE',
+        undefined,
+        approverId,
+      );
       expect(result.status).toBe(QuoteStatus.APPROVED);
     });
 
@@ -206,17 +239,26 @@ describe('QuotesService — margin guardrails', () => {
       withViolations([BELOW_FLOOR]);
       withPermissions([PERMISSIONS.QUOTE_APPROVE_BELOW_MARGIN]);
 
-      await service.sendSignal(tenantId, quoteId, 'APPROVE', undefined, approverId);
-      expect(rbacService.resolveAccess).toHaveBeenCalledWith(approverId, tenantId);
+      await service.sendSignal(
+        tenantId,
+        quoteId,
+        'APPROVE',
+        undefined,
+        approverId,
+      );
+      expect(rbacService.resolveAccess).toHaveBeenCalledWith(
+        approverId,
+        tenantId,
+      );
     });
 
     // An automation must never be the thing that waives a commercial floor.
     it('refuses an unattributed approval when policy is breached', async () => {
       withViolations([BELOW_FLOOR]);
 
-      await expect(service.sendSignal(tenantId, quoteId, 'APPROVE')).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(
+        service.sendSignal(tenantId, quoteId, 'APPROVE'),
+      ).rejects.toThrow(ForbiddenException);
       expect(rbacService.resolveAccess).not.toHaveBeenCalled();
     });
 
@@ -226,9 +268,17 @@ describe('QuotesService — margin guardrails', () => {
     });
 
     it('re-costs at approval, so a stale stored cost cannot be approved', async () => {
-      await service.sendSignal(tenantId, quoteId, 'APPROVE', undefined, approverId);
+      await service.sendSignal(
+        tenantId,
+        quoteId,
+        'APPROVE',
+        undefined,
+        approverId,
+      );
 
-      expect(costingService.recostLines).toHaveBeenCalledWith(tenantId, [SPOOFED_LINE]);
+      expect(costingService.recostLines).toHaveBeenCalledWith(tenantId, [
+        SPOOFED_LINE,
+      ]);
       expect(quoteRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({ totalAmount: 1250 }),
       );
@@ -238,7 +288,13 @@ describe('QuotesService — margin guardrails', () => {
       withViolations([BELOW_FLOOR]);
       withPermissions([]);
 
-      const result = await service.sendSignal(tenantId, quoteId, 'REJECT', 'Too thin', approverId);
+      const result = await service.sendSignal(
+        tenantId,
+        quoteId,
+        'REJECT',
+        'Too thin',
+        approverId,
+      );
       expect(result.status).toBe(QuoteStatus.REJECTED);
     });
   });

@@ -5,12 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
-import {
-  calculateInvoiceDueDate,
-  RecordInvoicePaymentPayload,
-  VoidInvoicePayload,
-} from '@saas/shared';
+import { DataSource, EntityManager, Repository } from 'typeorm';
+import { RecordInvoicePaymentPayload, VoidInvoicePayload } from '@saas/shared';
 import { Invoice, InvoiceStatus } from './entities/invoice.entity';
 import { InvoicePayment } from './entities/invoice-payment.entity';
 import { Quote } from './entities/quote.entity';
@@ -19,12 +15,18 @@ import { FinanceService } from '../finance/finance.service';
 import { MailService } from '../mail/mail.service';
 import { InvoicePdfService } from './invoice-pdf.service';
 import { AutomationEventBridgeService } from '../automations/services/automation-event-bridge.service';
+import { LedgerService } from '../finance/ledger.service';
+import { JournalEntry } from '../finance/entities/journal-entry.entity';
 import {
-  allocateNextSequenceValue,
-  formatSequenceNumber,
-} from '../../database/tenant-sequence.util';
+  BillingScheduleLine,
+  SalesOrder,
+} from '../orders/entities/sales-order.entity';
+import {
+  issueEntryNumber,
+  provisionOrderForQuote,
+} from '../orders/order-provisioning';
 
-const POSTGRES_UNIQUE_VIOLATION = '23505';
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 @Injectable()
 export class InvoicesService {
@@ -41,71 +43,41 @@ export class InvoicesService {
     private readonly mailService: MailService,
     private readonly invoicePdfService: InvoicePdfService,
     private readonly automationEventBridgeService: AutomationEventBridgeService,
+    private readonly ledger: LedgerService,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
    * Synchronous fallback for the Temporal `generateInvoiceActivity`: makes
-   * sure an invoice exists for an approved quote even if the workflow never
-   * runs (Temporal down) or hasn't finished by the time this call returns.
-   * Idempotent — a `UQ_invoices_quote_id` constraint backs this up against
-   * the race with the Temporal activity, which can also try to create it.
+   * sure an approved quote has its order, and the invoices its billing
+   * schedule raises on approval, even if the workflow never runs.
+   *
+   * Both paths call the same `provisionOrderForQuote`, which locks the quote
+   * row, so whichever gets there first creates everything and the other finds
+   * it. `invoice` is the first invoice on the order — null when every stage
+   * waits for a milestone.
    */
   async createFromQuote(
     tenantId: string,
     quote: Quote,
-  ): Promise<{ invoice: Invoice; isNew: boolean }> {
-    const existing = await this.invoiceRepository.findOne({
-      where: { quoteId: quote.id },
-    });
-    if (existing) {
-      return { invoice: existing, isNew: false };
-    }
-
-    const sequenceValue = await allocateNextSequenceValue(
-      this.invoiceRepository.manager,
+  ): Promise<{
+    order: SalesOrder;
+    invoice: Invoice | null;
+    invoicesRaised: Invoice[];
+    isNew: boolean;
+  }> {
+    const result = await provisionOrderForQuote(
+      this.dataSource,
+      this.ledger,
       tenantId,
-      'invoice_number',
+      quote.id,
     );
-    const invoiceNumber = formatSequenceNumber('INV', sequenceValue);
-    const issuedAt = new Date();
-
-    const invoice = this.invoiceRepository.create({
-      quoteId: quote.id,
-      tenantId,
-      invoiceNumber,
-      customerId: quote.customerId,
-      customerName: quote.customerName,
-      customerEmail: quote.customerEmail,
-      currency: quote.currency,
-      items: quote.items,
-      subtotalAmount: quote.subtotalAmount,
-      discountAmount: quote.discountAmount,
-      taxAmount: quote.taxAmount,
-      amount: quote.totalAmount,
-      status: InvoiceStatus.ISSUED,
-      paymentTerms: quote.paymentTerms,
-      dueDate: calculateInvoiceDueDate(issuedAt, quote.paymentTerms),
-      notes: quote.notes,
-    });
-
-    try {
-      const saved = await this.invoiceRepository.save(invoice);
-      return { invoice: saved, isNew: true };
-    } catch (err: unknown) {
-      const isUniqueViolation =
-        err instanceof QueryFailedError &&
-        (err as unknown as { code?: string }).code ===
-          POSTGRES_UNIQUE_VIOLATION;
-      if (!isUniqueViolation) throw err;
-
-      // Lost the race against the Temporal activity, which also tries to
-      // create the invoice for this quote — use the row that won instead.
-      const winner = await this.invoiceRepository.findOne({
-        where: { quoteId: quote.id },
-      });
-      if (!winner) throw err;
-      return { invoice: winner, isNew: false };
-    }
+    return {
+      order: result.order,
+      invoice: result.invoices[0] ?? null,
+      invoicesRaised: result.invoicesRaised,
+      isNew: result.isNew,
+    };
   }
 
   async findAll(tenantId: string): Promise<Invoice[]> {
@@ -119,7 +91,11 @@ export class InvoicesService {
     tenantId: string,
     quoteId: string,
   ): Promise<Invoice | null> {
-    return this.invoiceRepository.findOne({ where: { tenantId, quoteId } });
+    // A quote billed in stages has several; the first is the one approval raised.
+    return this.invoiceRepository.findOne({
+      where: { tenantId, quoteId },
+      order: { issuedAt: 'ASC' },
+    });
   }
 
   async findById(tenantId: string, id: string): Promise<Invoice> {
@@ -146,67 +122,81 @@ export class InvoicesService {
     payload: RecordInvoicePaymentPayload,
     actorId: string,
   ): Promise<Invoice> {
-    const invoice = await this.findById(tenantId, id);
-    if (invoice.status === InvoiceStatus.CANCELLED) {
-      throw new BadRequestException(
-        'Cannot record a payment on a voided invoice',
-      );
-    }
-    if (invoice.status === InvoiceStatus.PAID) {
-      throw new BadRequestException('Invoice is already fully paid');
-    }
+    const saved = await this.dataSource.transaction(async (manager) => {
+      // Locked so two payments recorded at once cannot both pass the
+      // remaining-balance check and overpay the invoice between them.
+      const invoice = await this.lockInvoice(manager, tenantId, id);
+      if (invoice.status === InvoiceStatus.CANCELLED) {
+        throw new BadRequestException(
+          'Cannot record a payment on a voided invoice',
+        );
+      }
+      if (invoice.status === InvoiceStatus.PAID) {
+        throw new BadRequestException('Invoice is already fully paid');
+      }
 
-    const remaining = Number(invoice.amount) - Number(invoice.paidAmount || 0);
-    const amount = payload.amount ?? remaining;
-    if (!amount || amount <= 0) {
-      throw new BadRequestException('Payment amount must be greater than zero');
-    }
-    if (amount > remaining + 0.01) {
-      throw new BadRequestException(
-        `Payment of ${amount} exceeds remaining balance of ${remaining}`,
+      const remaining = round2(
+        Number(invoice.amount) - Number(invoice.paidAmount || 0),
       );
-    }
+      const amount = payload.amount ?? remaining;
+      if (!amount || amount <= 0) {
+        throw new BadRequestException(
+          'Payment amount must be greater than zero',
+        );
+      }
+      if (amount > remaining + 0.001) {
+        throw new BadRequestException(
+          `Payment of ${amount} exceeds remaining balance of ${remaining}`,
+        );
+      }
 
-    await this.financeService.recordInvoicePayment(tenantId, {
-      invoiceId: invoice.id,
-      accountId: payload.accountId,
-      amount,
-      description: `Invoice ${invoice.invoiceNumber} payment`,
+      await this.financeService.recordInvoicePayment(
+        tenantId,
+        {
+          invoiceId: invoice.id,
+          accountId: payload.accountId,
+          amount,
+          description: `Invoice ${invoice.invoiceNumber} payment`,
+        },
+        manager,
+      );
+
+      const payments = manager.getRepository(InvoicePayment);
+      const paidAt = payload.paidAt ? new Date(payload.paidAt) : new Date();
+      const payment = await payments.save(
+        payments.create({
+          tenantId,
+          invoiceId: invoice.id,
+          amount,
+          paidAt,
+          accountId: payload.accountId,
+          recordedById: actorId,
+          notes: payload.notes ?? null,
+        }),
+      );
+
+      // The payments table is the source of truth for the running total —
+      // recompute it from a SUM rather than incrementing a counter.
+      const sumResult = await payments
+        .createQueryBuilder('p')
+        .select('COALESCE(SUM(p.amount), 0)', 'sum')
+        .where('p.invoiceId = :invoiceId', { invoiceId: invoice.id })
+        .getRawOne<{ sum: string }>();
+      const totalPaid = round2(Number(sumResult?.sum ?? 0));
+
+      invoice.paidAmount = totalPaid;
+      invoice.paidViaAccountId = payload.accountId;
+      invoice.status =
+        totalPaid >= Number(invoice.amount)
+          ? InvoiceStatus.PAID
+          : InvoiceStatus.PARTIALLY_PAID;
+      if (invoice.status === InvoiceStatus.PAID) {
+        invoice.paidAt = payment.paidAt;
+      }
+
+      return manager.getRepository(Invoice).save(invoice);
     });
 
-    const paidAt = payload.paidAt ? new Date(payload.paidAt) : new Date();
-    const payment = await this.invoicePaymentRepository.save(
-      this.invoicePaymentRepository.create({
-        tenantId,
-        invoiceId: invoice.id,
-        amount,
-        paidAt,
-        accountId: payload.accountId,
-        recordedById: actorId,
-        notes: payload.notes ?? null,
-      }),
-    );
-
-    // The payments table is the source of truth for the running total —
-    // recompute it from a SUM rather than incrementing a counter.
-    const sumResult = await this.invoicePaymentRepository
-      .createQueryBuilder('p')
-      .select('COALESCE(SUM(p.amount), 0)', 'sum')
-      .where('p.invoiceId = :invoiceId', { invoiceId: invoice.id })
-      .getRawOne<{ sum: string }>();
-    const totalPaid = Number(sumResult?.sum ?? 0);
-
-    invoice.paidAmount = totalPaid;
-    invoice.paidViaAccountId = payload.accountId;
-    invoice.status =
-      totalPaid >= Number(invoice.amount)
-        ? InvoiceStatus.PAID
-        : InvoiceStatus.PARTIALLY_PAID;
-    if (invoice.status === InvoiceStatus.PAID) {
-      invoice.paidAt = payment.paidAt;
-    }
-
-    const saved = await this.invoiceRepository.save(invoice);
     await this.emitInvoiceEvent(
       tenantId,
       saved,
@@ -248,38 +238,115 @@ export class InvoicesService {
     payload: VoidInvoicePayload,
     actorId: string,
   ): Promise<Invoice> {
-    const invoice = await this.findById(tenantId, id);
-    if (invoice.status === InvoiceStatus.CANCELLED) {
-      throw new BadRequestException('Invoice is already voided');
-    }
-
-    const payments = await this.invoicePaymentRepository.find({
-      where: { invoiceId: id },
-    });
-    for (const payment of payments) {
-      if (!payment.accountId) {
-        this.logger.warn(
-          `Skipping reversal for payment ${payment.id}: no account on record`,
-        );
-        continue;
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const invoice = await this.lockInvoice(manager, tenantId, id);
+      if (invoice.status === InvoiceStatus.CANCELLED) {
+        throw new BadRequestException('Invoice is already voided');
       }
-      await this.financeService.reverseInvoicePayment(tenantId, {
-        invoiceId: invoice.id,
-        paymentId: payment.id,
-        accountId: payment.accountId,
-        amount: payment.amount,
-        description: `Void of invoice ${invoice.invoiceNumber}: reversing payment ${payment.id}`,
+
+      const payments = await manager.getRepository(InvoicePayment).find({
+        where: { invoiceId: id },
       });
-    }
+      for (const payment of payments) {
+        if (!payment.accountId) {
+          this.logger.warn(
+            `Skipping reversal for payment ${payment.id}: no account on record`,
+          );
+          continue;
+        }
+        await this.financeService.reverseInvoicePayment(
+          tenantId,
+          {
+            invoiceId: invoice.id,
+            paymentId: payment.id,
+            accountId: payment.accountId,
+            amount: payment.amount,
+            description: `Void of invoice ${invoice.invoiceNumber}: reversing payment ${payment.id}`,
+          },
+          manager,
+        );
+      }
 
-    invoice.status = InvoiceStatus.CANCELLED;
-    invoice.voidedAt = new Date();
-    invoice.voidedById = actorId;
-    invoice.voidReason = payload.reason ?? null;
+      await this.reverseIssuePosting(manager, tenantId, invoice);
 
-    const saved = await this.invoiceRepository.save(invoice);
+      // Free the billing stage so a corrected invoice can be raised for it.
+      // The voided invoice keeps its order link, for the history.
+      if (invoice.billingScheduleLineId) {
+        await manager
+          .getRepository(BillingScheduleLine)
+          .update(
+            { id: invoice.billingScheduleLineId, invoiceId: invoice.id },
+            { invoiceId: null, invoicedAt: null },
+          );
+        invoice.billingScheduleLineId = null;
+      }
+
+      invoice.status = InvoiceStatus.CANCELLED;
+      invoice.voidedAt = new Date();
+      invoice.voidedById = actorId;
+      invoice.voidReason = payload.reason ?? null;
+
+      return manager.getRepository(Invoice).save(invoice);
+    });
+
     await this.emitInvoiceEvent(tenantId, saved, 'invoice.voided');
     return saved;
+  }
+
+  private async lockInvoice(
+    manager: EntityManager,
+    tenantId: string,
+    id: string,
+  ): Promise<Invoice> {
+    const invoice = await manager
+      .getRepository(Invoice)
+      .createQueryBuilder('i')
+      .setLock('pessimistic_write')
+      .where('i.id = :id', { id })
+      .andWhere('i.tenant_id = :tenantId', { tenantId })
+      .getOne();
+    if (!invoice) {
+      throw new NotFoundException(`Invoice with ID ${id} not found`);
+    }
+    return invoice;
+  }
+
+  /**
+   * Undoes the receivable an invoice posted when it was issued. Invoices from
+   * before sales orders never posted one, so there may be nothing to undo.
+   */
+  private async reverseIssuePosting(
+    manager: EntityManager,
+    tenantId: string,
+    invoice: Invoice,
+  ): Promise<void> {
+    const journal = manager.getRepository(JournalEntry);
+    const issued = await journal.findOne({
+      where: {
+        tenantId,
+        referenceType: 'INVOICE',
+        referenceId: invoice.id,
+        entryNumber: issueEntryNumber(invoice.invoiceNumber),
+      },
+    });
+    if (!issued) return;
+
+    await journal.save(
+      journal.create({
+        tenantId,
+        entryNumber: `${issued.entryNumber}-VOID`,
+        referenceType: 'INVOICE',
+        referenceId: invoice.id,
+        entryDate: new Date(),
+        totalAmount: issued.totalAmount,
+        lines: issued.lines.map((line) => ({
+          ...line,
+          debit: line.credit,
+          credit: line.debit,
+          description: `Void of ${invoice.invoiceNumber}`,
+        })),
+      }),
+    );
   }
 
   async sendToCustomer(tenantId: string, id: string): Promise<Invoice> {

@@ -27,3 +27,5 @@ export * from './schemas/inventory';
 export * from './purchasing/types';
 export * from './purchasing/guardrails';
 export * from './channels/skills';
+export * from './orders/billing';
+export * from './schemas/sales-order';

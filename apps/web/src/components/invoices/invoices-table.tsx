@@ -74,7 +74,12 @@ export function InvoicesTable({
         accessorKey: 'invoiceNumber',
         header: ({ column }) => <DataTableColumnHeader column={column} title="Invoice Number" />,
         cell: ({ row }) => (
-          <span className="font-mono font-medium text-ink">{row.original.invoiceNumber}</span>
+          <div>
+            <span className="font-mono font-medium text-ink">{row.original.invoiceNumber}</span>
+            {row.original.stageLabel && (
+              <p className="text-xs text-ink-subtle">{row.original.stageLabel}</p>
+            )}
+          </div>
         ),
       },
       {

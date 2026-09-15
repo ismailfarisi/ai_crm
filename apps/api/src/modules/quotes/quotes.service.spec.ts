@@ -83,6 +83,7 @@ describe('QuotesService', () => {
     invoicesService = {
       createFromQuote: jest.fn().mockResolvedValue({
         invoice: { id: 'invoice-1', invoiceNumber: 'INV-2026-0001' } as Invoice,
+        invoicesRaised: [],
         isNew: false,
       }),
     };
@@ -395,7 +396,7 @@ describe('QuotesService', () => {
       ).not.toHaveBeenCalled();
     });
 
-    it('emits invoice.issued only when createFromQuote reports a newly created invoice', async () => {
+    it('emits invoice.issued for each invoice approval actually raised', async () => {
       const existing = {
         id: quoteId,
         tenantId,
@@ -405,6 +406,9 @@ describe('QuotesService', () => {
       quoteRepo.findOne = jest.fn().mockResolvedValue({ ...existing });
       invoicesService.createFromQuote = jest.fn().mockResolvedValue({
         invoice: { id: 'invoice-2', invoiceNumber: 'INV-2026-0002' } as Invoice,
+        invoicesRaised: [
+          { id: 'invoice-2', invoiceNumber: 'INV-2026-0002' } as Invoice,
+        ],
         isNew: true,
       });
 

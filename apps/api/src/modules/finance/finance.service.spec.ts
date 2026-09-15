@@ -36,6 +36,22 @@ describe('FinanceService', () => {
         .mockImplementation(async (acc) => ({ id: 'acc-1', ...acc })),
       update: jest.fn().mockResolvedValue({} as any),
     };
+    // Invoice payments move the balance with a relative UPDATE through the
+    // manager. The fake applies it to whatever `findOne` currently returns,
+    // so the balance assertions still read the effect.
+    (accountRepo as any).manager = {
+      getRepository: (entity: { name: string }) =>
+        entity.name === 'JournalEntry' ? journalRepo : accountRepo,
+      query: jest.fn(async (sql: string, params: unknown[]) => {
+        const account = await accountRepo.findOne!({});
+        if (account && sql.includes('"balance" = "balance" +')) {
+          account.balance = Number(account.balance) + Number(params[0]);
+        } else if (account && sql.includes('"balance" = "balance" -')) {
+          account.balance = Number(account.balance) - Number(params[0]);
+        }
+        return [];
+      }),
+    };
 
     budgetRepo = {
       find: jest.fn().mockResolvedValue([]),
@@ -69,16 +85,18 @@ describe('FinanceService', () => {
     // to stamp each line with an account so the assertions below can read the
     // debits and credits the service actually produced.
     ledger = {
-      resolveLines: jest.fn(async (_tenantId: string, lines: JournalLineInput[]) =>
-        lines.map((line) => ({
-          ledgerAccountId: `ledger-${line.role ?? line.financeAccountId ?? 'unknown'}`,
-          ledgerAccountCode: line.role === 'ACCOUNTS_RECEIVABLE' ? '1100' : '1001',
-          financeAccountId: line.financeAccountId ?? null,
-          accountName: line.accountName,
-          debit: line.debit,
-          credit: line.credit,
-          description: line.description,
-        })),
+      resolveLines: jest.fn(
+        async (_tenantId: string, lines: JournalLineInput[]) =>
+          lines.map((line) => ({
+            ledgerAccountId: `ledger-${line.role ?? line.financeAccountId ?? 'unknown'}`,
+            ledgerAccountCode:
+              line.role === 'ACCOUNTS_RECEIVABLE' ? '1100' : '1001',
+            financeAccountId: line.financeAccountId ?? null,
+            accountName: line.accountName,
+            debit: line.debit,
+            credit: line.credit,
+            description: line.description,
+          })),
       ),
     };
 
@@ -371,7 +389,11 @@ describe('FinanceService', () => {
       });
 
       expect(account.balance).toBe(1400);
-      expect(accountRepo.save).toHaveBeenCalledWith(account);
+      expect(accountRepo.save).not.toHaveBeenCalled();
+      expect((accountRepo as any).manager.query).toHaveBeenCalledWith(
+        expect.stringContaining('"balance" = "balance" + $1'),
+        [400, 'acc-1', tenantId],
+      );
       expect(journalRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({
           tenantId,
@@ -436,7 +458,7 @@ describe('FinanceService', () => {
       });
 
       expect(account.balance).toBe(1000);
-      expect(accountRepo.save).toHaveBeenCalledWith(account);
+      expect(accountRepo.save).not.toHaveBeenCalled();
       expect(journalRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({
           tenantId,

@@ -1,3 +1,5 @@
+import type { BillingStage } from '../orders/billing';
+
 export type QuoteLineItemType = 'product' | 'section' | 'note';
 
 export type QuoteStatus = 'DRAFT' | 'AWAITING_APPROVAL' | 'APPROVED' | 'REJECTED';
@@ -164,6 +166,8 @@ export interface CreateQuotePayload {
   notes?: string | null;
   prompt?: string | null;
   createdBy?: QuoteCreatedBy;
+  /** Null or absent: invoice everything on approval. See `orders/billing.ts`. */
+  billingSchedule?: BillingStage[] | null;
 }
 
 export interface UpdateQuotePayload extends Partial<CreateQuotePayload> {
@@ -176,6 +180,10 @@ export interface InvoiceDto {
   id: string;
   tenantId: string;
   quoteId: string;
+  salesOrderId?: string | null;
+  billingScheduleLineId?: string | null;
+  /** "30% deposit" on a part invoice; null when the invoice bills the whole quote. */
+  stageLabel?: string | null;
   invoiceNumber: string;
   customerId?: string | null;
   customerName: string;
@@ -289,6 +297,13 @@ export interface QuoteDto {
   notes?: string | null;
   prompt?: string | null;
   workflowId?: string | null;
+  billingSchedule?: BillingStage[] | null;
+  acceptanceExpiresAt?: string | null;
+  acceptedAt?: string | null;
+  acceptedByName?: string | null;
+  version?: number;
+  parentQuoteId?: string | null;
+  supersededAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

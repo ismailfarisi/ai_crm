@@ -8,6 +8,7 @@ import {
   Landmark,
   LayoutDashboard,
   MessageSquare,
+  PackageCheck,
   Radio,
   Receipt,
   ReceiptText,
@@ -66,6 +67,12 @@ export const CORE_ACTION_ITEMS: NavItem[] = [
     label: 'Quotes',
     icon: FileText,
     rule: { permission: PERMISSIONS.QUOTE_READ },
+  },
+  {
+    href: '/orders',
+    label: 'Sales orders',
+    icon: PackageCheck,
+    rule: { permission: PERMISSIONS.SALES_ORDER_READ },
   },
   {
     href: '/invoices',

@@ -1,5 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { QueryFailedError, Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
+import { LedgerService } from '../finance/ledger.service';
 import { InvoicesService } from './invoices.service';
 import { Invoice, InvoiceStatus } from './entities/invoice.entity';
 import { InvoicePayment } from './entities/invoice-payment.entity';
@@ -8,7 +9,6 @@ import { FinanceService } from '../finance/finance.service';
 import { MailService } from '../mail/mail.service';
 import { InvoicePdfService } from './invoice-pdf.service';
 import { AutomationEventBridgeService } from '../automations/services/automation-event-bridge.service';
-import { Quote } from './entities/quote.entity';
 
 describe('InvoicesService', () => {
   let service: InvoicesService;
@@ -55,6 +55,9 @@ describe('InvoicesService', () => {
     voidReason: null,
     overdueNotifiedAt: null,
     issuedAt: new Date(),
+    salesOrderId: null,
+    billingScheduleLineId: null,
+    stageLabel: null,
   });
 
   beforeEach(() => {
@@ -110,6 +113,35 @@ describe('InvoicesService', () => {
       handleCrmEvent: jest.fn().mockResolvedValue([]),
     };
 
+    // The service works inside a transaction; route its repositories back to
+    // the fakes above, looked up lazily because tests replace them per case.
+    const manager = {
+      getRepository: (entity: { name: string }) => {
+        if (entity.name === 'Invoice') {
+          return {
+            createQueryBuilder: () => {
+              const qb: any = {
+                setLock: () => qb,
+                where: () => qb,
+                andWhere: () => qb,
+                getOne: () => invoiceRepo.findOne!({}),
+              };
+              return qb;
+            },
+            save: (row: Invoice) => invoiceRepo.save!(row),
+          };
+        }
+        if (entity.name === 'InvoicePayment') return paymentRepo;
+        if (entity.name === 'JournalEntry') {
+          return { findOne: jest.fn().mockResolvedValue(null) };
+        }
+        return { update: jest.fn() };
+      },
+    };
+    const dataSource = {
+      transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)),
+    };
+
     service = new InvoicesService(
       invoiceRepo as unknown as Repository<Invoice>,
       paymentRepo as unknown as Repository<InvoicePayment>,
@@ -118,54 +150,9 @@ describe('InvoicesService', () => {
       mailService as unknown as MailService,
       pdfService as unknown as InvoicePdfService,
       automationEventBridgeService as unknown as AutomationEventBridgeService,
+      {} as LedgerService,
+      dataSource as unknown as DataSource,
     );
-  });
-
-  describe('createFromQuote', () => {
-    const quote = {
-      id: quoteId,
-      tenantId,
-      customerName: 'Acme Inc',
-      items: [],
-      paymentTerms: 'immediate',
-      totalAmount: 500,
-    } as unknown as Quote;
-
-    it('returns the existing invoice with isNew: false when one already exists for the quote', async () => {
-      const existing = baseInvoice();
-      invoiceRepo.findOne = jest.fn().mockResolvedValue(existing);
-
-      const result = await service.createFromQuote(tenantId, quote);
-
-      expect(result).toEqual({ invoice: existing, isNew: false });
-      expect(invoiceRepo.manager!.query).not.toHaveBeenCalled();
-    });
-
-    it('creates a new invoice and reports isNew: true', async () => {
-      const result = await service.createFromQuote(tenantId, quote);
-
-      expect(result.isNew).toBe(true);
-      expect(result.invoice.invoiceNumber).toBe(
-        `INV-${new Date().getFullYear()}-0001`,
-      );
-    });
-
-    it('re-fetches and returns the winner on a unique-violation race with the Temporal activity', async () => {
-      const winner = baseInvoice();
-      invoiceRepo.findOne = jest
-        .fn()
-        .mockResolvedValueOnce(null) // idempotency check finds nothing
-        .mockResolvedValueOnce(winner); // re-fetch after losing the race
-      invoiceRepo.save = jest
-        .fn()
-        .mockRejectedValue(
-          new QueryFailedError('INSERT', [], { code: '23505' } as any),
-        );
-
-      const result = await service.createFromQuote(tenantId, quote);
-
-      expect(result).toEqual({ invoice: winner, isNew: false });
-    });
   });
 
   describe('recordPayment', () => {
@@ -183,6 +170,7 @@ describe('InvoicesService', () => {
       expect(financeService.recordInvoicePayment).toHaveBeenCalledWith(
         tenantId,
         expect.objectContaining({ invoiceId, accountId: 'acc-1', amount: 400 }),
+        expect.anything(),
       );
       expect(result.status).toBe(InvoiceStatus.PARTIALLY_PAID);
       expect(result.paidAmount).toBe(400);
@@ -225,6 +213,7 @@ describe('InvoicesService', () => {
       expect(financeService.recordInvoicePayment).toHaveBeenCalledWith(
         tenantId,
         expect.objectContaining({ amount: 700 }),
+        expect.anything(),
       );
     });
 
@@ -323,6 +312,7 @@ describe('InvoicesService', () => {
           accountId: 'acc-1',
           amount: 300,
         }),
+        expect.anything(),
       );
       expect(financeService.reverseInvoicePayment).toHaveBeenCalledWith(
         tenantId,
@@ -331,6 +321,7 @@ describe('InvoicesService', () => {
           accountId: 'acc-2',
           amount: 100,
         }),
+        expect.anything(),
       );
       expect(result.status).toBe(InvoiceStatus.CANCELLED);
       expect(result.voidedById).toBe('user-1');

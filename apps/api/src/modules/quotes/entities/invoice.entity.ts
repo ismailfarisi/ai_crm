@@ -17,7 +17,14 @@ export enum InvoiceStatus {
 
 @Entity('invoices')
 @Index('idx_invoices_tenant_id', ['tenantId'])
-@Index('UQ_invoices_quote_id', ['quoteId'], { unique: true })
+@Index('idx_invoices_quote', ['quoteId'])
+@Index('idx_invoices_sales_order', ['salesOrderId'])
+// One invoice per billing stage. This took over from the old one-invoice-per-
+// quote index as the thing that stops a raced approval billing twice.
+@Index('uq_invoices_billing_line', ['billingScheduleLineId'], {
+  unique: true,
+  where: '"billing_schedule_line_id" IS NOT NULL',
+})
 export class Invoice {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -27,6 +34,16 @@ export class Invoice {
 
   @Column({ name: 'tenant_id', type: 'uuid' })
   tenantId: string;
+
+  @Column({ name: 'sales_order_id', type: 'uuid', nullable: true })
+  salesOrderId: string | null;
+
+  @Column({ name: 'billing_schedule_line_id', type: 'uuid', nullable: true })
+  billingScheduleLineId: string | null;
+
+  /** "30% deposit" — printed on the invoice so a customer knows which stage it is. */
+  @Column({ name: 'stage_label', type: 'varchar', length: 120, nullable: true })
+  stageLabel: string | null;
 
   @Column({ name: 'invoice_number', type: 'varchar' })
   invoiceNumber: string;

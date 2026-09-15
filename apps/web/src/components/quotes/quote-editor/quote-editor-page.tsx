@@ -18,6 +18,7 @@ import {
   PackagePlus,
 } from 'lucide-react';
 import type {
+  BillingStage,
   QuoteDto,
   QuoteLineItem,
   QuoteStatus,
@@ -41,6 +42,8 @@ import { QuoteAiDrawer, type GeneratedQuoteDraft } from './quote-ai-drawer';
 import { QuotePrintModal } from './quote-print-modal';
 import { AddLineFlow } from './add-line-flow';
 import { QuoteMarginCard } from './quote-margin-card';
+import { QuoteBillingCard } from './quote-billing-card';
+import { QuoteCustomerPanel } from './quote-customer-panel';
 
 interface QuoteEditorPageProps {
   quoteId?: string;
@@ -102,6 +105,15 @@ export function QuoteEditorPage({
       '1. Payment due according to agreed payment terms.\n2. All deliverables are subject to acceptance testing within 14 days of delivery.\n3. Quote is valid for 30 days from issue date.',
   );
   const [notes, setNotes] = useState<string | null>(initialQuote?.notes || null);
+  const [billingSchedule, setBillingSchedule] = useState<BillingStage[] | null>(
+    initialQuote?.billingSchedule ?? null,
+  );
+  const [acceptance, setAcceptance] = useState({
+    acceptedAt: initialQuote?.acceptedAt ?? null,
+    acceptedByName: initialQuote?.acceptedByName ?? null,
+    supersededAt: initialQuote?.supersededAt ?? null,
+    version: initialQuote?.version ?? 1,
+  });
 
   // Fetch initial quote or next quote number on mount
   useEffect(() => {
@@ -130,6 +142,13 @@ export function QuoteEditorPage({
             setItems(q.items?.length ? q.items : []);
             setTermsAndConditions(q.termsAndConditions || null);
             setNotes(q.notes || null);
+            setBillingSchedule(q.billingSchedule ?? null);
+            setAcceptance({
+              acceptedAt: q.acceptedAt ?? null,
+              acceptedByName: q.acceptedByName ?? null,
+              supersededAt: q.supersededAt ?? null,
+              version: q.version ?? 1,
+            });
           }
         })
         .catch((err) => {
@@ -174,7 +193,8 @@ export function QuoteEditorPage({
     [items, totals, policy],
   );
 
-  const isReadOnly = status === 'APPROVED';
+  // A superseded version is history; edit the revision instead.
+  const isReadOnly = status === 'APPROVED' || Boolean(acceptance.supersededAt);
 
   // ⌘K / Ctrl-K opens the catalog picker, the way every other palette works.
   useEffect(() => {
@@ -255,6 +275,7 @@ export function QuoteEditorPage({
           taxAmount: totals.taxAmount,
           totalAmount: totals.totalAmount,
           termsAndConditions,
+          billingSchedule,
           notes,
           prompt,
           createdBy,
@@ -281,6 +302,7 @@ export function QuoteEditorPage({
           taxAmount: totals.taxAmount,
           totalAmount: totals.totalAmount,
           termsAndConditions,
+          billingSchedule,
           notes,
           prompt,
           createdBy,
@@ -326,6 +348,7 @@ export function QuoteEditorPage({
           taxAmount: totals.taxAmount,
           totalAmount: totals.totalAmount,
           termsAndConditions,
+          billingSchedule,
           notes,
           prompt,
           createdBy,
@@ -349,6 +372,7 @@ export function QuoteEditorPage({
           taxAmount: totals.taxAmount,
           totalAmount: totals.totalAmount,
           termsAndConditions,
+          billingSchedule,
           notes,
           prompt,
           status: 'AWAITING_APPROVAL',
@@ -570,10 +594,21 @@ export function QuoteEditorPage({
           <div>
             <p className="font-semibold">Quotation Confirmed & Approved</p>
             <p className="text-xs text-emerald-800 dark:text-emerald-400">
-              This quotation is locked and ready for billing / invoicing.
+              This quotation is locked. Its sales order holds the billing from here.
             </p>
           </div>
         </div>
+      )}
+
+      {id && (
+        <QuoteCustomerPanel
+          quoteId={id}
+          status={status}
+          acceptedAt={acceptance.acceptedAt}
+          acceptedByName={acceptance.acceptedByName}
+          supersededAt={acceptance.supersededAt}
+          version={acceptance.version}
+        />
       )}
 
       {/* Section 1: Customer Header & Meta Form */}
@@ -612,6 +647,14 @@ export function QuoteEditorPage({
           currency={headerData.currency}
         />
       </div>
+
+      <QuoteBillingCard
+        schedule={billingSchedule}
+        onChange={setBillingSchedule}
+        totals={totals}
+        currency={headerData.currency}
+        readOnly={isReadOnly}
+      />
 
       {/* Section 4: Terms & Internal Notes Tabs */}
       <QuoteTabsSection

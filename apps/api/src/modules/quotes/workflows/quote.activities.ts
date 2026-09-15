@@ -1,15 +1,12 @@
-import { QueryFailedError, type DataSource } from 'typeorm';
-import { calculateInvoiceDueDate, type QuoteLineItem } from '@saas/shared';
+import type { DataSource } from 'typeorm';
+import type { QuoteLineItem } from '@saas/shared';
 import { AppDataSource } from '../../../database/data-source';
-import {
-  allocateNextSequenceValue,
-  formatSequenceNumber,
-} from '../../../database/tenant-sequence.util';
 import { Quote } from '../entities/quote.entity';
-import { Invoice, InvoiceStatus } from '../entities/invoice.entity';
+import { LedgerService } from '../../finance/ledger.service';
+import { LedgerAccount } from '../../finance/entities/ledger-account.entity';
+import { JournalEntry } from '../../finance/entities/journal-entry.entity';
+import { provisionOrderForQuote } from '../../orders/order-provisioning';
 import { QuoteWorkflowInput } from './interfaces';
-
-const POSTGRES_UNIQUE_VIOLATION = '23505';
 
 /**
  * Temporal activities run outside Nest's DI container, so they can't inject
@@ -82,79 +79,52 @@ export async function updateQuoteStatusActivity(params: {
   );
 }
 
+/**
+ * Creates the sales order for an approved quote and raises whatever its
+ * billing schedule invoices on approval.
+ *
+ * Shares `provisionOrderForQuote` with the synchronous approval path in
+ * `QuotesService`, which usually runs at the same moment; the quote row lock
+ * inside it decides which of the two does the work.
+ *
+ * Returns the first invoice id for the workflow result, or an empty string
+ * when every billing stage waits for a milestone and nothing was invoiced yet.
+ */
 export async function generateInvoiceActivity(
   input: string | { quoteId: string; tenantId?: string; totalAmount?: number },
 ): Promise<string> {
   const quoteId = typeof input === 'string' ? input : input.quoteId;
   const dataSource = await getDataSource();
-  const invoiceRepository = dataSource.getRepository(Invoice);
 
-  const existing = await invoiceRepository.findOne({ where: { quoteId } });
-  if (existing) {
-    console.log(
-      `[QuoteActivity] generateInvoice: invoice already exists for quoteId=${quoteId}, invoiceId=${existing.id}`,
-    );
-    return existing.id;
+  let tenantId = typeof input === 'string' ? undefined : input.tenantId;
+  if (!tenantId) {
+    const quote = await dataSource
+      .getRepository(Quote)
+      .findOne({ where: { id: quoteId } });
+    if (!quote) {
+      throw new Error(
+        `[QuoteActivity] generateInvoice: quote ${quoteId} not found`,
+      );
+    }
+    tenantId = quote.tenantId;
   }
 
-  const quote = await dataSource.getRepository(Quote).findOne({
-    where: { id: quoteId },
-  });
-  if (!quote) {
-    throw new Error(
-      `[QuoteActivity] generateInvoice: quote ${quoteId} not found`,
-    );
-  }
-
-  const sequenceValue = await allocateNextSequenceValue(
-    dataSource.manager,
-    quote.tenantId,
-    'invoice_number',
+  const ledger = new LedgerService(
+    dataSource.getRepository(LedgerAccount),
+    dataSource.getRepository(JournalEntry),
+    dataSource,
   );
-  const invoiceNumber = formatSequenceNumber('INV', sequenceValue);
-  const issuedAt = new Date();
-
-  const invoice = invoiceRepository.create({
-    quoteId: quote.id,
-    tenantId: quote.tenantId,
-    invoiceNumber,
-    customerId: quote.customerId,
-    customerName: quote.customerName,
-    customerEmail: quote.customerEmail,
-    currency: quote.currency,
-    items: quote.items,
-    subtotalAmount: quote.subtotalAmount,
-    discountAmount: quote.discountAmount,
-    taxAmount: quote.taxAmount,
-    amount: quote.totalAmount,
-    status: InvoiceStatus.ISSUED,
-    paymentTerms: quote.paymentTerms,
-    dueDate: calculateInvoiceDueDate(issuedAt, quote.paymentTerms),
-    notes: quote.notes,
-  });
-
-  try {
-    const saved = await invoiceRepository.save(invoice);
-    console.log(
-      `[QuoteActivity] generateInvoice: quoteId=${quoteId}, invoiceId=${saved.id}, invoiceNumber=${invoiceNumber}`,
-    );
-    return saved.id;
-  } catch (err: unknown) {
-    // Lost the race against the Nest-side synchronous fallback (both can try
-    // to create the invoice for this quote) — the unique constraint on
-    // quote_id caught it, so fetch and return the row that won instead.
-    const isUniqueViolation =
-      err instanceof QueryFailedError &&
-      (err as unknown as { code?: string }).code === POSTGRES_UNIQUE_VIOLATION;
-    if (!isUniqueViolation) throw err;
-
-    const winner = await invoiceRepository.findOne({ where: { quoteId } });
-    if (!winner) throw err;
-    console.log(
-      `[QuoteActivity] generateInvoice: lost race for quoteId=${quoteId}, using invoiceId=${winner.id}`,
-    );
-    return winner.id;
-  }
+  const result = await provisionOrderForQuote(
+    dataSource,
+    ledger,
+    tenantId,
+    quoteId,
+  );
+  console.log(
+    `[QuoteActivity] generateInvoice: quoteId=${quoteId}, order=${result.order.orderNumber}, ` +
+      `raised=${result.invoicesRaised.map((i) => i.invoiceNumber).join(',') || 'none'}, isNew=${result.isNew}`,
+  );
+  return result.invoices[0]?.id ?? '';
 }
 
 export async function sendNotificationActivity(

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import {
   calculateRunwayMonths,
   LEDGER_ROLES,
@@ -266,20 +266,30 @@ export class FinanceService {
       amount: number;
       description?: string;
     },
+    manager: EntityManager = this.accountRepository.manager,
   ): Promise<{ account: FinanceAccount; journalEntry: JournalEntry }> {
     if (!params.amount || params.amount <= 0) {
       throw new BadRequestException('Payment amount must be greater than zero');
     }
 
-    const account = await this.accountRepository.findOne({
+    const accounts = manager.getRepository(FinanceAccount);
+    const exists = await accounts.findOne({
       where: { id: params.accountId, tenantId },
     });
-    if (!account) {
+    if (!exists) {
       throw new NotFoundException(`Account ${params.accountId} not found`);
     }
 
-    account.balance = Number(account.balance) + params.amount;
-    await this.accountRepository.save(account);
+    // Relative, never read-modify-write: two payments landing in the same
+    // account at once would otherwise lose one of them from the balance.
+    await manager.query(
+      `UPDATE "finance_accounts" SET "balance" = "balance" + $1, "updatedAt" = now()
+       WHERE "id" = $2 AND "tenantId" = $3`,
+      [params.amount, params.accountId, tenantId],
+    );
+    const account = (await accounts.findOne({
+      where: { id: params.accountId, tenantId },
+    })) as FinanceAccount;
 
     const randomSuffix = Math.floor(Math.random() * 1000)
       .toString()
@@ -287,32 +297,37 @@ export class FinanceService {
     const entryNumber = `JE-INV-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}${randomSuffix}`;
     const description = params.description || `Invoice payment received`;
 
-    const journalEntry = this.journalRepository.create({
+    const journal = manager.getRepository(JournalEntry);
+    const journalEntry = journal.create({
       tenantId,
       entryNumber,
       referenceType: 'INVOICE',
       referenceId: params.invoiceId,
       entryDate: new Date(),
       totalAmount: params.amount,
-      lines: await this.ledger.resolveLines(tenantId, [
-        {
-          financeAccountId: account.id,
-          accountName: account.name,
-          debit: params.amount,
-          credit: 0,
-          description,
-        },
-        {
-          role: LEDGER_ROLES.ACCOUNTS_RECEIVABLE,
-          accountName: 'Accounts Receivable',
-          debit: 0,
-          credit: params.amount,
-          description,
-        },
-      ]),
+      lines: await this.ledger.resolveLines(
+        tenantId,
+        [
+          {
+            financeAccountId: account.id,
+            accountName: account.name,
+            debit: params.amount,
+            credit: 0,
+            description,
+          },
+          {
+            role: LEDGER_ROLES.ACCOUNTS_RECEIVABLE,
+            accountName: 'Accounts Receivable',
+            debit: 0,
+            credit: params.amount,
+            description,
+          },
+        ],
+        manager,
+      ),
     });
 
-    const savedJournal = await this.journalRepository.save(journalEntry);
+    const savedJournal = await journal.save(journalEntry);
 
     return { account, journalEntry: savedJournal };
   }
@@ -333,6 +348,7 @@ export class FinanceService {
       amount: number;
       description?: string;
     },
+    manager: EntityManager = this.accountRepository.manager,
   ): Promise<{ account: FinanceAccount; journalEntry: JournalEntry }> {
     if (!params.amount || params.amount <= 0) {
       throw new BadRequestException(
@@ -340,15 +356,22 @@ export class FinanceService {
       );
     }
 
-    const account = await this.accountRepository.findOne({
+    const accounts = manager.getRepository(FinanceAccount);
+    const exists = await accounts.findOne({
       where: { id: params.accountId, tenantId },
     });
-    if (!account) {
+    if (!exists) {
       throw new NotFoundException(`Account ${params.accountId} not found`);
     }
 
-    account.balance = Number(account.balance) - params.amount;
-    await this.accountRepository.save(account);
+    await manager.query(
+      `UPDATE "finance_accounts" SET "balance" = "balance" - $1, "updatedAt" = now()
+       WHERE "id" = $2 AND "tenantId" = $3`,
+      [params.amount, params.accountId, tenantId],
+    );
+    const account = (await accounts.findOne({
+      where: { id: params.accountId, tenantId },
+    })) as FinanceAccount;
 
     const randomSuffix = Math.floor(Math.random() * 1000)
       .toString()
@@ -356,32 +379,37 @@ export class FinanceService {
     const entryNumber = `JE-VOID-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}${randomSuffix}`;
     const description = params.description || 'Invoice payment reversal';
 
-    const journalEntry = this.journalRepository.create({
+    const journal = manager.getRepository(JournalEntry);
+    const journalEntry = journal.create({
       tenantId,
       entryNumber,
       referenceType: 'INVOICE',
       referenceId: params.paymentId,
       entryDate: new Date(),
       totalAmount: params.amount,
-      lines: await this.ledger.resolveLines(tenantId, [
-        {
-          role: LEDGER_ROLES.ACCOUNTS_RECEIVABLE,
-          accountName: 'Accounts Receivable',
-          debit: params.amount,
-          credit: 0,
-          description,
-        },
-        {
-          financeAccountId: account.id,
-          accountName: account.name,
-          debit: 0,
-          credit: params.amount,
-          description,
-        },
-      ]),
+      lines: await this.ledger.resolveLines(
+        tenantId,
+        [
+          {
+            role: LEDGER_ROLES.ACCOUNTS_RECEIVABLE,
+            accountName: 'Accounts Receivable',
+            debit: params.amount,
+            credit: 0,
+            description,
+          },
+          {
+            financeAccountId: account.id,
+            accountName: account.name,
+            debit: 0,
+            credit: params.amount,
+            description,
+          },
+        ],
+        manager,
+      ),
     });
 
-    const savedJournal = await this.journalRepository.save(journalEntry);
+    const savedJournal = await journal.save(journalEntry);
 
     return { account, journalEntry: savedJournal };
   }

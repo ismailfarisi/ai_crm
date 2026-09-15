@@ -9,6 +9,13 @@ import { InvoicesService } from './invoices.service';
 import { InvoicePdfService } from './invoice-pdf.service';
 import { InvoiceOverdueService } from './invoice-overdue.service';
 import { QuotesController } from './quotes.controller';
+import { PublicQuotesController } from './public-quotes.controller';
+import { QuoteAcceptanceService } from './quote-acceptance.service';
+import {
+  BillingScheduleLine,
+  SalesOrder,
+  SalesOrderLine,
+} from '../orders/entities/sales-order.entity';
 import { FinanceModule } from '../finance/finance.module';
 import { MailModule } from '../mail/mail.module';
 import { AutomationsModule } from '../automations/automations.module';
@@ -17,7 +24,15 @@ import { RbacModule } from '../rbac/rbac.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Quote, Invoice, InvoicePayment, Organization]),
+    TypeOrmModule.forFeature([
+      Quote,
+      Invoice,
+      InvoicePayment,
+      Organization,
+      SalesOrder,
+      SalesOrderLine,
+      BillingScheduleLine,
+    ]),
     FinanceModule,
     MailModule,
     AutomationsModule,
@@ -26,12 +41,13 @@ import { RbacModule } from '../rbac/rbac.module';
     CatalogModule,
     RbacModule,
   ],
-  controllers: [QuotesController],
+  controllers: [QuotesController, PublicQuotesController],
   providers: [
     QuotesService,
     InvoicesService,
     InvoicePdfService,
     InvoiceOverdueService,
+    QuoteAcceptanceService,
   ],
   exports: [QuotesService, InvoicesService],
 })

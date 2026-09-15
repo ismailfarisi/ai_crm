@@ -12,6 +12,7 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import {
+  type BillingStage,
   CreateQuotePayload,
   MarkInvoicePaidPayload,
   PERMISSIONS,
@@ -25,6 +26,7 @@ import {
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { QuotesService } from './quotes.service';
+import { QuoteAcceptanceService } from './quote-acceptance.service';
 import { InvoicesService } from './invoices.service';
 import { Quote } from './entities/quote.entity';
 import { Invoice } from './entities/invoice.entity';
@@ -48,6 +50,7 @@ export class CreateQuoteDto implements CreateQuotePayload {
   notes?: string | null;
   prompt?: string | null;
   createdBy?: SharedQuoteCreatedBy;
+  billingSchedule?: BillingStage[] | null;
 }
 
 export class UpdateQuoteDto implements UpdateQuotePayload {
@@ -69,6 +72,7 @@ export class UpdateQuoteDto implements UpdateQuotePayload {
   prompt?: string | null;
   createdBy?: SharedQuoteCreatedBy;
   status?: SharedQuoteStatus;
+  billingSchedule?: BillingStage[] | null;
 }
 
 export class SignalQuoteDto {
@@ -100,6 +104,7 @@ export class QuotesController {
   constructor(
     private readonly quotesService: QuotesService,
     private readonly invoicesService: InvoicesService,
+    private readonly acceptance: QuoteAcceptanceService,
   ) {}
 
   @Get('quotes/next-number')
@@ -188,6 +193,34 @@ export class QuotesController {
       dto.payload,
       user.id,
     );
+  }
+
+  @Post('quotes/:id/acceptance-link')
+  @RequirePermissions(PERMISSIONS.QUOTE_UPDATE)
+  @ApiOperation({
+    summary: 'Create a customer acceptance link',
+    description:
+      'Issues a single link the customer can open without an account to review and accept the quote. Any earlier link stops working.',
+  })
+  async createAcceptanceLink(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<{ url: string; expiresAt: string }> {
+    return this.acceptance.createLink(user.organizationId, id);
+  }
+
+  @Post('quotes/:id/revise')
+  @RequirePermissions(PERMISSIONS.QUOTE_CREATE)
+  @ApiOperation({
+    summary: 'Revise a quote',
+    description:
+      'Creates the next version as a draft and marks this one superseded. Refused once the quote has a sales order.',
+  })
+  async reviseQuote(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<Quote> {
+    return this.quotesService.reviseQuote(user.organizationId, id);
   }
 
   @Get('quotes/:id/guardrails')
