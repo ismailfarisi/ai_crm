@@ -21,7 +21,7 @@ export const billsDomain: PermissionDomain<BillPermission> = {
     [BILL_PERMISSIONS.BILL_UPDATE]: 'Edit, dispute and cancel bills that have not been approved',
     [BILL_PERMISSIONS.BILL_APPROVE]: 'Approve bills that match their order and receipt',
     [BILL_PERMISSIONS.BILL_APPROVE_VARIANCE]:
-      'Approve a bill that bills more than was received, or at a price outside tolerance',
+      'Approve a bill priced outside tolerance. Quantities beyond what was received can never be approved.',
     [BILL_PERMISSIONS.BILL_PAY]: 'Record payments against approved bills',
   },
   groupPermissions: [

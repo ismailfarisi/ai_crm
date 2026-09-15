@@ -214,6 +214,18 @@ describe('PayablesService.approve', () => {
     ).toBe(16.8);
   });
 
+  it('refuses goods already billed elsewhere even for someone allowed to accept variances', async () => {
+    // The case staging caught: the variance permission must not turn a second
+    // bill for the same goods into an approved liability.
+    const { service, bill, saved } = makeService({ billedElsewhere: 500 });
+
+    await expect(
+      service.approve(tenantId, 'bill-1', { userId: 'u', permissions: ALL }),
+    ).rejects.toThrow(/nothing left to bill/);
+    expect(bill.status).toBe('DRAFT');
+    expect(saved.journal).toHaveLength(0);
+  });
+
   it('refuses a bill for goods already billed and approved elsewhere', async () => {
     const { service } = makeService({ billedElsewhere: 500 });
 

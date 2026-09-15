@@ -526,8 +526,18 @@ export class PayablesService {
       );
       const variance = matched.status === 'VARIANCE';
 
-      // Compared against what this actor holds, not a role — the same rule
-      // the purchase order threshold follows.
+      // Quantity beyond what arrived and is unbilled is refused outright, for
+      // everyone. Letting the variance permission override it is how the same
+      // goods get billed — and paid — twice.
+      const hard = matched.variances.filter((v) => !v.overridable);
+      if (hard.length > 0) {
+        throw new BadRequestException(
+          `${bill.billNumber} cannot be approved: ${hard.map((v) => v.message).join('; ')}. Book in the delivery, or ask the supplier for a corrected bill.`,
+        );
+      }
+
+      // Price is a judgement someone senior can make. Compared against what
+      // this actor holds, not a role — the rule the order threshold follows.
       if (
         variance &&
         !actor.permissions.includes(PERMISSIONS.BILL_APPROVE_VARIANCE)

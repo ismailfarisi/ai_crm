@@ -34,6 +34,9 @@ import { StockLocation } from './entities/stock-location.entity';
 import { StockMovement } from './entities/stock-movement.entity';
 
 /** A stock row with everything needed to display it. */
+/** Money to the cent, matching how bills clear GRNI line by line. */
+const money = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
+
 export interface StockItemView {
   id: string;
   materialId: string;
@@ -502,7 +505,7 @@ export class InventoryService {
         // Rejected goods are recorded but never enter stock: they are going
         // back, and the supplier's bill will still mention them.
         if (orderLine.materialId) {
-          const { movement, valueDelta } = await this.applyMovement(manager, {
+          const { movement } = await this.applyMovement(manager, {
             tenantId,
             materialId: orderLine.materialId,
             locationId: location.id,
@@ -513,7 +516,14 @@ export class InventoryService {
             referenceId: order.id,
             actorId,
           });
-          totalValue = roundCost(totalValue + valueDelta);
+          // What was received, at the price ordered, to the cent — exactly the
+          // figure a supplier's bill will later clear from GRNI. Not the change
+          // in stock value: that is qty × a moving average held at four
+          // places, and the rounding in it would strand a few pence in GRNI
+          // permanently, however correctly every bill matched.
+          totalValue = money(
+            totalValue + money(input_line.qtyReceived * orderLine.unitCost),
+          );
 
           receiptLines.push(
             manager.getRepository(GoodsReceiptLine).create({
@@ -530,8 +540,8 @@ export class InventoryService {
         } else {
           // A free-text line (a delivery charge, a one-off part) has no stock
           // to move, but it is still received and still owed for.
-          totalValue = roundCost(
-            totalValue + input_line.qtyReceived * orderLine.unitCost,
+          totalValue = money(
+            totalValue + money(input_line.qtyReceived * orderLine.unitCost),
           );
           receiptLines.push(
             manager.getRepository(GoodsReceiptLine).create({

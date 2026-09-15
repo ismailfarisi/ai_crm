@@ -40,6 +40,16 @@ export interface LineVariance {
   message: string;
   actual: number;
   limit: number;
+  /**
+   * Whether `bill:approve_variance` may accept it.
+   *
+   * A price difference is a commercial judgement someone senior can make. A
+   * quantity beyond what arrived and has not already been billed is not: it is
+   * either goods that are not in the building or goods already paid for, and no
+   * permission turns that into a correct bill. The fix is a receipt or a credit
+   * note, never an override.
+   */
+  overridable: boolean;
 }
 
 const round = (value: number, dp: number): number => {
@@ -93,6 +103,7 @@ export function evaluateLineMatch(
           : `"${line.description}" bills ${line.qty}, but only ${billable} has been received and not yet billed`,
       actual: line.qty,
       limit: billable,
+      overridable: false,
     });
   }
 
@@ -105,6 +116,7 @@ export function evaluateLineMatch(
       message: `"${line.description}" is billed at ${line.unitCost.toFixed(4)}, ${pct.toFixed(1)}% above the ordered ${order.unitCost.toFixed(4)} (tolerance ${(tolerance * 100).toFixed(1)}%)`,
       actual: cost(line.unitCost),
       limit: ceiling,
+      overridable: true,
     });
   }
 

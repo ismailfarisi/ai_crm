@@ -33,6 +33,7 @@ describe('evaluateLineMatch', () => {
     );
     expect(v.map((x) => x.code)).toEqual(['QTY_EXCEEDS_RECEIVED']);
     expect(v[0].limit).toBe(500);
+    expect(v[0].overridable).toBe(false);
   });
 
   it('counts quantity already billed on another bill', () => {
@@ -68,6 +69,7 @@ describe('evaluateLineMatch', () => {
     expect(v.map((x) => x.code)).toEqual(['PRICE_OUTSIDE_TOLERANCE']);
     expect(v[0].message).toContain('8.0% above');
     expect(v[0].message).toContain('0.4200');
+    expect(v[0].overridable).toBe(true);
   });
 
   it('does not flag a bill below the ordered price', () => {

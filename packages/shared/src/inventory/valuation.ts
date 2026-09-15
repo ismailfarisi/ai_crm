@@ -58,7 +58,15 @@ export interface StockPosition {
 export interface ReceiptValuation extends StockPosition {
   /** What the received goods were worth, at the price actually paid. */
   receiptValue: number;
-  /** Change in the total value of stock on hand — what posts to the ledger. */
+  /**
+   * Change in the value of stock on hand, as qty × the rounded average.
+   *
+   * Not what a receipt posts: that is `receiptValue`, the price actually paid.
+   * The two differ by the rounding in a four-place average, and posting this
+   * one would leave that rounding stranded in goods-received-not-invoiced
+   * when the supplier's bill clears the exact figure. It is what an *issue*
+   * posts, where no bill will ever come to clear it.
+   */
   valueDelta: number;
 }
 

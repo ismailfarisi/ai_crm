@@ -263,6 +263,49 @@ describe('InventoryService.receive', () => {
     expect(stock2[0].avgUnitCost).toBe(1.75);
   });
 
+  it('credits GRNI with exactly qty × ordered price, not the rounded stock-value change', async () => {
+    // Reproduces staging: 1000 @ 0.30 onto 1050 already on hand at 0.5057.
+    // The change in qty × a four-place average came to 299.91, stranding 0.09
+    // in GRNI that no bill could ever clear.
+    const { service, journals } = makeService({
+      stock: [
+        {
+          id: 'stock-1',
+          tenantId,
+          materialId: 'mat-1',
+          locationId,
+          qtyOnHand: 1050,
+          qtyReserved: 0,
+          qtyOnOrder: 0,
+          avgUnitCost: 0.5057,
+          reorderPoint: null,
+          reorderQty: null,
+        },
+      ],
+      orderLines: [
+        {
+          id: 'pol-1',
+          tenantId,
+          purchaseOrderId: 'po-1',
+          materialId: 'mat-1',
+          description: 'Board',
+          qtyOrdered: 1000,
+          qtyReceived: 0,
+          uom: 'SHEET',
+          unitCost: 0.3,
+        },
+      ],
+    });
+
+    await service.receive(tenantId, 'po-1', actorId, {
+      lines: [{ purchaseOrderLineId: 'pol-1', qtyReceived: 1000 }],
+    });
+
+    const grni = journals[0].lines.find((l: any) => l.role === 'GRNI');
+    expect(grni.credit).toBe(300);
+    expect(journals[0].totalAmount).toBe(300);
+  });
+
   it('moves the order to PARTIALLY_RECEIVED on a short delivery', async () => {
     const { service, order } = makeService();
 
