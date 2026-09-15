@@ -135,7 +135,11 @@ export class CreateSalesOrdersAndStagedBilling1786700000000 implements Migration
     );
 
     /* ---------------- invoices ---------------- */
-    await queryRunner.query(`DROP INDEX IF EXISTS "UQ_invoices_quote_id"`);
+    // Added as a table constraint (1786110000000), so it has to be dropped as
+    // one: Postgres refuses to drop the index a constraint owns.
+    await queryRunner.query(
+      `ALTER TABLE "invoices" DROP CONSTRAINT "UQ_invoices_quote_id"`,
+    );
     await queryRunner.query(
       `CREATE INDEX "idx_invoices_quote" ON "invoices" ("quote_id")`,
     );
@@ -266,7 +270,7 @@ export class CreateSalesOrdersAndStagedBilling1786700000000 implements Migration
     );
     await queryRunner.query(`DROP INDEX "idx_invoices_quote"`);
     await queryRunner.query(
-      `CREATE UNIQUE INDEX "UQ_invoices_quote_id" ON "invoices" ("quote_id")`,
+      `ALTER TABLE "invoices" ADD CONSTRAINT "UQ_invoices_quote_id" UNIQUE ("quote_id")`,
     );
     await queryRunner.query(`DROP TABLE "billing_schedule_lines"`);
     await queryRunner.query(`DROP TABLE "sales_order_lines"`);
