@@ -242,8 +242,7 @@ export class CreateSalesOrdersAndStagedBilling1786700000000 implements Migration
     await queryRunner.query(`
       UPDATE "invoices" i
       SET "sales_order_id" = b."sales_order_id",
-          "billing_schedule_line_id" = b."id",
-          "stage_label" = b."label"
+          "billing_schedule_line_id" = b."id"
       FROM "billing_schedule_lines" b
       WHERE b."invoice_id" = i."id" AND i."billing_schedule_line_id" IS NULL`);
   }

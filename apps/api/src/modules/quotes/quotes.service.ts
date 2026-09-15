@@ -464,10 +464,14 @@ export class QuotesService {
           );
         }
 
+        // The link keeps its hash so that opening it tells the customer this
+        // version was replaced, rather than that the link is invalid. Acceptance
+        // itself is refused on `superseded_at`, not on the token.
         original.supersededAt = new Date();
-        original.acceptanceTokenHash = null;
-        original.acceptanceExpiresAt = null;
-        await repo.save(original);
+        await repo.update(
+          { id: original.id },
+          { supersededAt: original.supersededAt },
+        );
 
         const baseNumber = (original.quoteNumber ?? '').replace(/-R\d+$/, '');
         const revision = repo.create({
