@@ -6,6 +6,8 @@ import { PurchasingService } from '../../purchasing/purchasing.service';
 import type { ChannelSkill } from './skill.types';
 import { QuoteApproveSkill } from './quote-approve.skill';
 import { PurchaseOrderCreateSkill } from './purchase-order-create.skill';
+import { WorkOrderLogTimeSkill } from './work-order-log-time.skill';
+import { ProductionService } from '../../production/production.service';
 
 /**
  * The one file to touch when adding a staff chat capability.
@@ -23,12 +25,14 @@ export class SkillRegistry {
     quotes: QuotesService,
     invoices: InvoicesService,
     purchasing: PurchasingService,
+    production: ProductionService,
   ) {
     this.skills = [
       new QuoteApproveSkill(quotes, invoices) as unknown as ChannelSkill<never>,
       new PurchaseOrderCreateSkill(
         purchasing,
       ) as unknown as ChannelSkill<never>,
+      new WorkOrderLogTimeSkill(production) as unknown as ChannelSkill<never>,
     ];
   }
 

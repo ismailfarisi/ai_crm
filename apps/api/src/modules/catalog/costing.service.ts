@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import {
@@ -129,7 +133,10 @@ export class CostingService {
     };
   }
 
-  async resolveLines(tenantId: string, payload: ResolveLinesPayload): Promise<ResolvedLines> {
+  async resolveLines(
+    tenantId: string,
+    payload: ResolveLinesPayload,
+  ): Promise<ResolvedLines> {
     const catalog = await this.loadCostingCatalog(tenantId);
     const lines: QuoteLineItem[] = [];
     const warnings: string[] = [];
@@ -141,7 +148,9 @@ export class CostingService {
           where: { id: input.catalogItemId, tenantId },
         });
         if (!item) {
-          throw new NotFoundException(`Catalog item ${input.catalogItemId} not found`);
+          throw new NotFoundException(
+            `Catalog item ${input.catalogItemId} not found`,
+          );
         }
         lines.push(this.lineFromCatalogItem(item, input, index));
         leadTimeDays = Math.max(leadTimeDays, item.leadTimeDays);
@@ -152,15 +161,28 @@ export class CostingService {
         where: { id: input.templateId, tenantId },
       });
       if (!entity) {
-        throw new NotFoundException(`Product template ${input.templateId} not found`);
+        throw new NotFoundException(
+          `Product template ${input.templateId} not found`,
+        );
       }
 
-      const breakdown = this.runCosting(entity, catalog, input.parameters, input.quantity, {
-        toolingAlreadyOwned: input.toolingAlreadyOwned,
-      });
+      const breakdown = this.runCosting(
+        entity,
+        catalog,
+        input.parameters,
+        input.quantity,
+        {
+          toolingAlreadyOwned: input.toolingAlreadyOwned,
+        },
+      );
 
-      warnings.push(...breakdown.warnings.map((warning) => `${entity.name}: ${warning}`));
-      leadTimeDays = Math.max(leadTimeDays, estimateWorkingDays(breakdown, catalog));
+      warnings.push(
+        ...breakdown.warnings.map((warning) => `${entity.name}: ${warning}`),
+      );
+      leadTimeDays = Math.max(
+        leadTimeDays,
+        estimateWorkingDays(breakdown, catalog),
+      );
       lines.push(this.lineFromBreakdown(entity, breakdown, input, index));
     }
 
@@ -171,10 +193,13 @@ export class CostingService {
       totals,
       warnings,
       leadTimeDays,
-      violations: evaluateGuardrails(lines, totals, await this.getPolicy(tenantId)),
+      violations: evaluateGuardrails(
+        lines,
+        totals,
+        await this.getPolicy(tenantId),
+      ),
     };
   }
-
 
   /**
    * How much raw stock a set of quote lines actually consumes.
@@ -207,7 +232,7 @@ export class CostingService {
       const breakdown = this.runCosting(
         entity,
         catalog,
-        (item.parameters ?? {}) as Record<string, unknown>,
+        item.parameters ?? {},
         item.quantity ?? 1,
         {},
       );
@@ -238,6 +263,42 @@ export class CostingService {
   }
 
   /**
+   * The full breakdown for one template version at one quantity: routing,
+   * bill of materials and cost, plus the template row it came from.
+   *
+   * What a work order is planned from. It runs against the version the quote
+   * line points at — immutable, so the routing is the one the customer was
+   * priced on — and against today's catalog rates, which are the rates the
+   * shop will actually be paying while the job runs.
+   */
+  async breakdownForTemplate(
+    tenantId: string,
+    templateId: string,
+    parameters: Record<string, unknown>,
+    quantity: number,
+  ): Promise<{
+    template: ProductTemplate;
+    breakdown: CostBreakdown;
+    catalog: CostingCatalog;
+  }> {
+    const template = await this.templates.findOne({
+      where: { id: templateId, tenantId },
+    });
+    if (!template) {
+      throw new NotFoundException(`Product template ${templateId} not found`);
+    }
+    const catalog = await this.loadCostingCatalog(tenantId);
+    const breakdown = this.runCosting(
+      template,
+      catalog,
+      parameters,
+      quantity,
+      {},
+    );
+    return { template, breakdown, catalog };
+  }
+
+  /**
    * Recomputes every line's cost from the catalog, ignoring whatever the
    * client sent.
    *
@@ -246,7 +307,10 @@ export class CostingService {
    * and clearing the floor on the way through. Nothing the browser says about
    * cost survives this method.
    */
-  async recostLines(tenantId: string, items: QuoteLineItem[]): Promise<RecostedLines> {
+  async recostLines(
+    tenantId: string,
+    items: QuoteLineItem[],
+  ): Promise<RecostedLines> {
     const catalog = await this.loadCostingCatalog(tenantId);
     const staleLineIds: string[] = [];
     const recosted: QuoteLineItem[] = [];
@@ -274,7 +338,7 @@ export class CostingService {
           const breakdown = this.runCosting(
             entity,
             catalog,
-            (item.parameters ?? {}) as Record<string, ExprValue>,
+            item.parameters ?? {},
             Math.max(1, Math.round(Number(item.quantity) || 1)),
             {},
           );
@@ -331,7 +395,11 @@ export class CostingService {
     return {
       items: recosted,
       totals,
-      violations: evaluateGuardrails(recosted, totals, await this.getPolicy(tenantId)),
+      violations: evaluateGuardrails(
+        recosted,
+        totals,
+        await this.getPolicy(tenantId),
+      ),
       staleLineIds,
     };
   }
@@ -351,8 +419,11 @@ export class CostingService {
     templateId: string,
     payload: PriceBreaksPayload,
   ): Promise<TemplatePriceBreaks> {
-    const entity = await this.templates.findOne({ where: { id: templateId, tenantId } });
-    if (!entity) throw new NotFoundException(`Product template ${templateId} not found`);
+    const entity = await this.templates.findOne({
+      where: { id: templateId, tenantId },
+    });
+    if (!entity)
+      throw new NotFoundException(`Product template ${templateId} not found`);
 
     const catalog = await this.loadCostingCatalog(tenantId);
     const spec = this.toSpec(entity);
@@ -367,9 +438,15 @@ export class CostingService {
     // Re-cost the largest run for the warnings and the lead time, since those
     // are the ones a customer actually waits on.
     const largest = Math.max(...payload.quantities);
-    const breakdown = this.runCosting(entity, catalog, payload.parameters, largest, {
-      toolingAlreadyOwned: payload.toolingAlreadyOwned,
-    });
+    const breakdown = this.runCosting(
+      entity,
+      catalog,
+      payload.parameters,
+      largest,
+      {
+        toolingAlreadyOwned: payload.toolingAlreadyOwned,
+      },
+    );
 
     return {
       templateId: entity.id,
@@ -469,7 +546,7 @@ export class CostingService {
       templateVersion: entity.version,
       sku: entity.templateKey,
       // Retained so the line can be reopened, re-costed and explained later.
-      parameters: breakdown.parameters as Record<string, string | number | boolean>,
+      parameters: breakdown.parameters,
       effortMinutes: breakdown.totalMinutes,
       cost: {
         unitCost: breakdown.unitCost,
@@ -495,8 +572,13 @@ export class CostingService {
         : null;
 
     const extras = Object.entries(p)
-      .filter(([key, value]) => !key.endsWith('_mm') && value !== false && value !== 'none')
-      .map(([key, value]) => (value === true ? key.replace(/_/g, ' ') : String(value)));
+      .filter(
+        ([key, value]) =>
+          !key.endsWith('_mm') && value !== false && value !== 'none',
+      )
+      .map(([key, value]) =>
+        value === true ? key.replace(/_/g, ' ') : String(value),
+      );
 
     const detail = [dimensions, ...extras].filter(Boolean).join(', ');
     return detail ? `${entity.name} (${detail})` : entity.name;
@@ -582,7 +664,10 @@ export class CostingService {
   }
 
   /** Bulk lookup used when re-costing the lines already on a quote. */
-  async findTemplatesByIds(tenantId: string, ids: string[]): Promise<ProductTemplate[]> {
+  async findTemplatesByIds(
+    tenantId: string,
+    ids: string[],
+  ): Promise<ProductTemplate[]> {
     if (!ids.length) return [];
     return this.templates.find({ where: { tenantId, id: In(ids) } });
   }

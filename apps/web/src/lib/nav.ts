@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   UserRoundCog,
   Users,
+  Wrench,
   Zap,
 } from 'lucide-react';
 import { PERMISSIONS } from '@saas/shared';
@@ -73,6 +74,12 @@ export const CORE_ACTION_ITEMS: NavItem[] = [
     label: 'Sales orders',
     icon: PackageCheck,
     rule: { permission: PERMISSIONS.SALES_ORDER_READ },
+  },
+  {
+    href: '/production',
+    label: 'Production',
+    icon: Wrench,
+    rule: { permission: PERMISSIONS.WORK_ORDER_READ },
   },
   {
     href: '/invoices',

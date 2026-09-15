@@ -13,6 +13,7 @@ import { purchasingEndpoints, purchasingKeys } from './purchasing';
 import { inventoryEndpoints, inventoryKeys } from './inventory';
 import { payablesEndpoints, payablesKeys } from './payables';
 import { ordersEndpoints, ordersKeys } from './orders';
+import { productionEndpoints, productionKeys } from './production';
 
 /**
  * Guards for the composed API surface.
@@ -39,6 +40,7 @@ const SLICES = [
   ['inventory', inventoryEndpoints, inventoryKeys],
   ['payables', payablesEndpoints, payablesKeys],
   ['orders', ordersEndpoints, ordersKeys],
+  ['production', productionEndpoints, productionKeys],
 ] as const;
 
 const API_SECTIONS = [
@@ -46,7 +48,7 @@ const API_SECTIONS = [
   'quotes', 'catalog', 'invoices', 'channels', 'aiAgents', 'intentAgentConfig',
   'automations', 'finance', 'expenses', 'ai', 'suppliers',
   'purchaseOrders', 'purchasePolicy', 'inventory', 'goodsReceipts', 'bills',
-  'salesOrders', 'quoteAcceptance',
+  'salesOrders', 'quoteAcceptance', 'workOrders',
 ];
 
 const QUERY_KEYS = [
@@ -64,6 +66,7 @@ const QUERY_KEYS = [
   'stock', 'stockLocations', 'reorderSuggestions', 'stockReconcile', 'goodsReceipts',
   'bills', 'bill', 'billMatch', 'billPayments', 'billAging', 'billableLines',
   'salesOrders', 'salesOrder', 'quoteSalesOrder',
+  'workOrders', 'workOrder', 'workOrderVariance',
 ];
 
 describe('api surface composition', () => {

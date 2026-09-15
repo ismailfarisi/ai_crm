@@ -240,6 +240,7 @@ function makeService(o: Options = {}) {
     quotesService as any,
     invoicesService as any,
     purchasingService as any,
+    {} as any,
   );
   const router = new SkillRouterService(aiService as any);
 

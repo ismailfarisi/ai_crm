@@ -2,9 +2,11 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Ban, CheckCircle2, Factory, FileText, Lock, ReceiptText } from 'lucide-react';
+import { Ban, CheckCircle2, Factory, FileText, Lock, ReceiptText, Wrench } from 'lucide-react';
 import { PERMISSIONS, type SalesOrderStatus } from '@saas/shared';
 import { useInvoiceStage, useSalesOrder, useSalesOrderAction } from '@/hooks/use-sales-orders';
+import { usePlanWorkOrders, useWorkOrders } from '@/hooks/use-work-orders';
+import { useCan } from '@/lib/session-context';
 import { Can } from '@/components/auth/can';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -32,6 +34,9 @@ export function OrderDetail({ id }: { id: string }) {
   const { data: order, isPending, isError, error } = useSalesOrder(id);
   const invoiceStage = useInvoiceStage();
   const act = useSalesOrderAction();
+  const plan = usePlanWorkOrders();
+  const canReadWork = useCan({ permission: PERMISSIONS.WORK_ORDER_READ });
+  const { data: workOrders = [] } = useWorkOrders({ salesOrderId: id }, { enabled: canReadWork });
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState('');
 
@@ -73,6 +78,18 @@ export function OrderDetail({ id }: { id: string }) {
                 </Button>
               ))}
             </Can>
+            {order.status !== 'CANCELLED' && order.status !== 'CLOSED' && (
+              <Can permission={PERMISSIONS.WORK_ORDER_CREATE}>
+                <Button
+                  variant="secondary"
+                  loading={plan.isPending}
+                  onClick={() => plan.mutate({ salesOrderId: id })}
+                >
+                  <Wrench className="size-4" />
+                  Plan production
+                </Button>
+              </Can>
+            )}
             {order.status !== 'CANCELLED' && order.status !== 'CLOSED' && !hasLiveInvoice && (
               <Can permission={PERMISSIONS.SALES_ORDER_CANCEL}>
                 <Button variant="secondary" onClick={() => setCancelling(true)}>
@@ -173,6 +190,31 @@ export function OrderDetail({ id }: { id: string }) {
           })}
         </ol>
       </section>
+
+      {canReadWork && workOrders.length > 0 && (
+        <section className="mb-6 rounded border border-line bg-surface" aria-labelledby="wo-heading">
+          <h2 id="wo-heading" className="border-b border-line px-4 py-3 text-sm font-medium text-ink">
+            Production
+          </h2>
+          <ul className="divide-y divide-line">
+            {workOrders.map((wo) => {
+              const ops = wo.operations.filter((op) => op.status !== 'SKIPPED');
+              const done = ops.filter((op) => op.status === 'DONE').length;
+              return (
+                <li key={wo.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
+                  <Link href={`/production/${wo.id}`} className="font-mono text-accent hover:underline">
+                    {wo.woNumber}
+                  </Link>
+                  <span className="min-w-0 flex-1 truncate text-ink">{wo.description}</span>
+                  <span className="text-ink-muted">
+                    {done}/{ops.length} operations · {wo.status.toLowerCase().replace('_', ' ')}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       {order.lines.length > 0 && (
         <section className="overflow-x-auto rounded border border-line bg-surface" aria-labelledby="lines-heading">

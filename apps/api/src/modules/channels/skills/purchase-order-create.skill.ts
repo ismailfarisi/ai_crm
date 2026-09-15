@@ -75,7 +75,10 @@ const jsonSchema = {
 } as const;
 
 /** Matches a user's reply against options we offered. Deterministic — never a model call. */
-function matchChoice(reply: string, choice: PendingChoice): string | null {
+export function matchChoice(
+  reply: string,
+  choice: PendingChoice,
+): string | null {
   const normalized = reply.trim().toLowerCase();
   if (!normalized) return null;
 

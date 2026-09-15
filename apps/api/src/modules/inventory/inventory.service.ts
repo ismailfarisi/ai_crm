@@ -35,7 +35,8 @@ import { StockMovement } from './entities/stock-movement.entity';
 
 /** A stock row with everything needed to display it. */
 /** Money to the cent, matching how bills clear GRNI line by line. */
-const money = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
+const money = (n: number): number =>
+  Math.round((n + Number.EPSILON) * 100) / 100;
 
 export interface StockItemView {
   id: string;
@@ -138,28 +139,29 @@ export class InventoryService {
    * have. A stock row reading "mat-1: 500" helps nobody on a stock take.
    */
   async listStockView(tenantId: string): Promise<StockItemView[]> {
-    const rows: Array<Record<string, string | number | null>> = await this.stockItems
-      .createQueryBuilder('item')
-      .leftJoin('catalog_materials', 'm', 'm.id = item.material_id')
-      .leftJoin('stock_locations', 'l', 'l.id = item.location_id')
-      .select([
-        'item.id AS id',
-        'item.material_id AS "materialId"',
-        'item.location_id AS "locationId"',
-        'item.qty_on_hand AS "qtyOnHand"',
-        'item.qty_reserved AS "qtyReserved"',
-        'item.qty_on_order AS "qtyOnOrder"',
-        'item.avg_unit_cost AS "avgUnitCost"',
-        'item.reorder_point AS "reorderPoint"',
-        'item.reorder_qty AS "reorderQty"',
-        'm.name AS "materialName"',
-        'm.sku AS "materialSku"',
-        'm.uom AS "uom"',
-        'l.name AS "locationName"',
-      ])
-      .where('item.tenant_id = :tenantId', { tenantId })
-      .orderBy('m.name', 'ASC')
-      .getRawMany();
+    const rows: Array<Record<string, string | number | null>> =
+      await this.stockItems
+        .createQueryBuilder('item')
+        .leftJoin('catalog_materials', 'm', 'm.id = item.material_id')
+        .leftJoin('stock_locations', 'l', 'l.id = item.location_id')
+        .select([
+          'item.id AS id',
+          'item.material_id AS "materialId"',
+          'item.location_id AS "locationId"',
+          'item.qty_on_hand AS "qtyOnHand"',
+          'item.qty_reserved AS "qtyReserved"',
+          'item.qty_on_order AS "qtyOnOrder"',
+          'item.avg_unit_cost AS "avgUnitCost"',
+          'item.reorder_point AS "reorderPoint"',
+          'item.reorder_qty AS "reorderQty"',
+          'm.name AS "materialName"',
+          'm.sku AS "materialSku"',
+          'm.uom AS "uom"',
+          'l.name AS "locationName"',
+        ])
+        .where('item.tenant_id = :tenantId', { tenantId })
+        .orderBy('m.name', 'ASC')
+        .getRawMany();
 
     // `getRawMany` hands back numerics as strings; the transformers that
     // normally do this only run on mapped entities.
@@ -188,7 +190,9 @@ export class InventoryService {
    */
   async reorderSuggestions(
     tenantId: string,
-  ): Promise<{ item: StockItemView; shortfall: number; suggestedQty: number }[]> {
+  ): Promise<
+    { item: StockItemView; shortfall: number; suggestedQty: number }[]
+  > {
     // The view, not the raw row: a suggestion that cannot name the material is
     // not actionable.
     const items = await this.listStockView(tenantId);
@@ -249,7 +253,6 @@ export class InventoryService {
     return divergences;
   }
 
-
   /**
    * Moves quantity between "on order" and "on hand" as a purchase order
    * progresses.
@@ -297,7 +300,11 @@ export class InventoryService {
   async setReorderLevels(
     tenantId: string,
     materialId: string,
-    input: { reorderPoint: number | null; reorderQty: number | null; locationId?: string },
+    input: {
+      reorderPoint: number | null;
+      reorderQty: number | null;
+      locationId?: string;
+    },
   ): Promise<StockItem> {
     const location = input.locationId
       ? await this.locations.findOne({
@@ -628,7 +635,10 @@ export class InventoryService {
         tenantId,
         input.lines.map((l) => {
           const orderLine = byId.get(l.purchaseOrderLineId);
-          return { materialId: orderLine?.materialId ?? null, qty: -l.qtyReceived };
+          return {
+            materialId: orderLine?.materialId ?? null,
+            qty: -l.qtyReceived,
+          };
         }),
         manager,
       );
@@ -657,6 +667,90 @@ export class InventoryService {
         : { tenantId, deletedAt: IsNull() },
       order: { receivedAt: 'DESC' },
     });
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Work orders
+   * ------------------------------------------------------------------ */
+
+  /**
+   * Moves material between the shelf and a job, inside the caller's transaction.
+   *
+   * A positive `qty` issues to the job at the moving average; a negative one
+   * returns unused material at `returnUnitCost` — the average the job was
+   * charged, so a return takes back exactly what it cost rather than today's
+   * average, and the job's WIP can come back to zero.
+   *
+   * Issuing more than is on hand is refused here even though a manual
+   * adjustment may go negative. A job charged from a negative balance is
+   * charged at whatever stale average is left, and the actual cost the
+   * work order exists to measure would be wrong without anything saying so.
+   *
+   * Posting the value is the caller's job: this knows about stock, not WIP.
+   */
+  async moveForWorkOrder(
+    manager: EntityManager,
+    params: {
+      tenantId: string;
+      materialId: string;
+      locationId?: string;
+      qty: number;
+      workOrderId: string;
+      workOrderNumber: string;
+      actorId: string | null;
+      returnUnitCost?: number;
+    },
+  ): Promise<{ movement: StockMovement; value: number }> {
+    if (!params.qty) {
+      throw new BadRequestException('Enter a quantity');
+    }
+    const location = params.locationId
+      ? await manager.getRepository(StockLocation).findOne({
+          where: {
+            id: params.locationId,
+            tenantId: params.tenantId,
+            deletedAt: IsNull(),
+          },
+        })
+      : await this.ensureDefaultLocation(params.tenantId, manager);
+    if (!location) throw new NotFoundException('Stock location not found');
+
+    if (params.qty > 0) {
+      const onHand = await manager.getRepository(StockItem).findOne({
+        where: {
+          tenantId: params.tenantId,
+          materialId: params.materialId,
+          locationId: location.id,
+        },
+      });
+      const available = onHand?.qtyOnHand ?? 0;
+      if (available < params.qty) {
+        throw new BadRequestException(
+          `Only ${available} on hand at ${location.name}. Book in the delivery or correct the count before issuing ${params.qty}.`,
+        );
+      }
+    }
+
+    const { movement, valueDelta } = await this.applyMovement(manager, {
+      tenantId: params.tenantId,
+      materialId: params.materialId,
+      locationId: location.id,
+      type: params.qty > 0 ? 'ISSUE' : 'RETURN',
+      qtyDelta: params.qty,
+      unitCost: params.qty > 0 ? 0 : roundCost(params.returnUnitCost ?? 0),
+      referenceType: 'WORK_ORDER',
+      referenceId: params.workOrderId,
+      actorId: params.actorId,
+      note: `${params.qty > 0 ? 'Issued to' : 'Returned from'} ${params.workOrderNumber}`,
+    });
+
+    // An issue is valued at the average it left at; a return at the price the
+    // job was charged, which is what `applyReceipt` folds back in.
+    const value =
+      params.qty > 0
+        ? money(Math.abs(valueDelta))
+        : money(Math.abs(params.qty) * roundCost(params.returnUnitCost ?? 0));
+    return { movement, value };
   }
 
   /* ------------------------------------------------------------------ *

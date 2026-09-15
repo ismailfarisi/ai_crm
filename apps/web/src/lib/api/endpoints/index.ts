@@ -18,6 +18,7 @@ import { purchasingEndpoints, purchasingKeys } from './purchasing';
 import { inventoryEndpoints, inventoryKeys } from './inventory';
 import { payablesEndpoints, payablesKeys } from './payables';
 import { ordersEndpoints, ordersKeys } from './orders';
+import { productionEndpoints, productionKeys } from './production';
 
 export * from './auth';
 export * from './contacts';
@@ -32,6 +33,7 @@ export * from './purchasing';
 export * from './inventory';
 export * from './payables';
 export * from './orders';
+export * from './production';
 
 export const api = {
   ...authEndpoints,
@@ -47,6 +49,7 @@ export const api = {
   ...inventoryEndpoints,
   ...payablesEndpoints,
   ...ordersEndpoints,
+  ...productionEndpoints,
 };
 
 export const queryKeys = {
@@ -63,4 +66,5 @@ export const queryKeys = {
   ...inventoryKeys,
   ...payablesKeys,
   ...ordersKeys,
+  ...productionKeys,
 };
