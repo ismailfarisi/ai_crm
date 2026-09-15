@@ -4,6 +4,7 @@ import { useState } from 'react';
 import {
   AlertTriangle,
   CircleSlash,
+  FilePlus2,
   PackageCheck,
   Send,
   ShieldCheck,
@@ -23,6 +24,7 @@ import { EmptyState, PageHeader } from '@/components/ui/primitives';
 import { Textarea } from '@/components/ui/field';
 import { StatusPill } from './purchase-orders-view';
 import { ReceiveDialog } from '@/components/inventory/receive-dialog';
+import { EnterBillDialog } from '@/components/payables/enter-bill-dialog';
 
 const money = (amount: number, currency: string) =>
   new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount);
@@ -33,6 +35,7 @@ export function PurchaseOrderDetail({ id }: { id: string }) {
   const act = usePurchaseOrderAction();
   const [cancelling, setCancelling] = useState(false);
   const [receiving, setReceiving] = useState(false);
+  const [billing, setBilling] = useState(false);
   const [reason, setReason] = useState('');
 
   if (isPending) return <p className="text-ink-muted">Loading…</p>;
@@ -106,6 +109,15 @@ export function PurchaseOrderDetail({ id }: { id: string }) {
                 <Button onClick={() => setReceiving(true)}>
                   <PackageCheck className="size-4" />
                   Book in delivery
+                </Button>
+              </Can>
+            )}
+
+            {(status === 'PARTIALLY_RECEIVED' || status === 'RECEIVED') && (
+              <Can permission={PERMISSIONS.BILL_CREATE}>
+                <Button variant="secondary" onClick={() => setBilling(true)}>
+                  <FilePlus2 className="size-4" />
+                  Enter bill
                 </Button>
               </Can>
             )}
@@ -188,6 +200,7 @@ export function PurchaseOrderDetail({ id }: { id: string }) {
       </div>
 
       <ReceiveDialog open={receiving} order={order} onClose={() => setReceiving(false)} />
+      <EnterBillDialog open={billing} order={order} onClose={() => setBilling(false)} />
 
       <Dialog
         open={cancelling}

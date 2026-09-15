@@ -10,6 +10,7 @@ import { HealthModule } from '@/modules/health/health.module';
 import { InventoryModule } from '@/modules/inventory/inventory.module';
 import { InvitationsModule } from '@/modules/invitations/invitations.module';
 import { MailModule } from '@/modules/mail/mail.module';
+import { PayablesModule } from '@/modules/payables/payables.module';
 import { PurchasingModule } from '@/modules/purchasing/purchasing.module';
 import { QuotesModule } from '@/modules/quotes/quotes.module';
 import { RbacModule } from '@/modules/rbac/rbac.module';
@@ -45,6 +46,7 @@ export const FEATURE_MODULES = [
   FinanceModule,
   PurchasingModule,
   InventoryModule,
+  PayablesModule,
 ];
 
 /**

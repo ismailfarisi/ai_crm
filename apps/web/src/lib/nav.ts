@@ -10,6 +10,7 @@ import {
   MessageSquare,
   Radio,
   Receipt,
+  ReceiptText,
   ShieldCheck,
   UserRoundCog,
   Users,
@@ -77,6 +78,12 @@ export const CORE_ACTION_ITEMS: NavItem[] = [
     label: 'Purchase orders',
     icon: ClipboardList,
     rule: { permission: PERMISSIONS.PURCHASE_ORDER_READ },
+  },
+  {
+    href: '/purchasing/bills',
+    label: 'Supplier bills',
+    icon: ReceiptText,
+    rule: { permission: PERMISSIONS.BILL_READ },
   },
   {
     href: '/inventory',
