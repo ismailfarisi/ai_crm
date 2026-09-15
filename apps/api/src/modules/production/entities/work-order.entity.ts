@@ -76,7 +76,13 @@ export class WorkOrder extends BaseEntity {
   @Column({ type: 'jsonb', default: {} })
   parameters: Record<string, unknown>;
 
-  @Column(numeric('qty', 14, 4))
+  // No default: a job for zero pieces is not a job, and the check constraint says so.
+  @Column({
+    type: 'numeric',
+    precision: 14,
+    scale: 4,
+    transformer: numericTransformer,
+  })
   qty: number;
 
   @Column({
