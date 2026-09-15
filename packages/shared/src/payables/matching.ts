@@ -338,7 +338,11 @@ export interface AgingReportDto {
     billNumber: string;
     supplierName: string;
     dueDate: string | null;
+    /** In the bill's own currency. */
     outstanding: number;
+    currency?: string;
+    /** At the rate the bill was booked at; buckets and total are sums of this. */
+    outstandingBase?: number;
     bucket: AgingBucket;
   }[];
 }

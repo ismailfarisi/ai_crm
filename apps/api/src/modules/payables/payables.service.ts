@@ -31,6 +31,7 @@ import {
   type PaginatedResult,
   type Permission,
   type RecordBillPaymentPayload,
+  toBase,
 } from '@saas/shared';
 import {
   allocateNextSequenceValue,
@@ -40,6 +41,8 @@ import { LedgerService } from '../finance/ledger.service';
 import { FinanceAccount } from '../finance/entities/finance-account.entity';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
 import { TaxService } from '../tax/tax.service';
+import { cashAccountAmount, fxRateFor } from '../finance/fx';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PurchaseOrder } from '../purchasing/entities/purchase-order.entity';
 import { PurchaseOrderLine } from '../purchasing/entities/purchase-order-line.entity';
 import { PurchasePolicyEntity } from '../purchasing/entities/purchase-policy.entity';
@@ -82,6 +85,8 @@ export interface AgingReport {
     supplierName: string;
     dueDate: string | null;
     outstanding: number;
+    currency: string;
+    outstandingBase: number;
     bucket: AgingBucket;
   }[];
 }
@@ -121,6 +126,7 @@ export class PayablesService {
     private readonly ledger: LedgerService,
     private readonly dataSource: DataSource,
     private readonly tax: TaxService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /* ------------------------------------------------------------------ *
@@ -429,7 +435,7 @@ export class PayablesService {
         'bill_number',
       );
 
-      return manager.getRepository(SupplierBill).save(
+      const created = await manager.getRepository(SupplierBill).save(
         manager.getRepository(SupplierBill).create({
           tenantId,
           billNumber: formatSequenceNumber('BILL', sequence),
@@ -464,6 +470,22 @@ export class PayablesService {
           ),
         }),
       );
+      if (matched.status === 'VARIANCE') {
+        await this.notifications.notifyHolders(
+          tenantId,
+          PERMISSIONS.BILL_APPROVE_VARIANCE,
+          {
+            type: 'BILL_VARIANCE',
+            title: `${created.billNumber} from ${created.supplierName} does not match its order`,
+            body: matched.variances.map((v) => v.message).join('; ').slice(0, 1000),
+            link: `/purchasing/bills/${created.id}`,
+            entityType: 'BILL',
+            entityId: created.id,
+          },
+          { manager, excludeUserId: actorId },
+        );
+      }
+      return created;
     });
   }
 
@@ -556,19 +578,61 @@ export class PayablesService {
         );
       }
 
+      const billRate = await fxRateFor(
+        manager,
+        tenantId,
+        bill.currency,
+        bill.billDate,
+      );
+      const postingLines = billPostingLines(
+        (bill.lines ?? []).map((l) => ({
+          description: l.description,
+          qty: l.qty,
+          unitCost: l.unitCost,
+          orderUnitCost: l.purchaseOrderLineId ? l.orderUnitCost : null,
+        })),
+        bill.taxAmount,
+        { billNumber: bill.billNumber, supplierName: bill.supplierName },
+      );
+
+      // GRNI was credited in base currency at the rate each delivery arrived
+      // at. Clearing it at the bill's rate instead would leave the difference
+      // stranded in GRNI for ever; clearing it at the receipt rates lets it
+      // reach zero, and the gap between the two rates lands in exchange
+      // gains and losses where it belongs.
+      const grniLine = postingLines.find(
+        (l) => l.role === LEDGER_ROLES.GRNI && l.debit > 0,
+      );
+      if (grniLine && linkedIds.length) {
+        const orderLines = await manager
+          .getRepository(PurchaseOrderLine)
+          .find({ where: { id: In(linkedIds), tenantId } });
+        const byId = new Map(orderLines.map((l) => [l.id, l]));
+        let grniBase = 0;
+        for (const line of bill.lines ?? []) {
+          const orderLine = line.purchaseOrderLineId
+            ? byId.get(line.purchaseOrderLineId)
+            : undefined;
+          if (!orderLine || line.orderUnitCost == null) continue;
+          const doc = money(line.qty * line.orderUnitCost);
+          grniBase = money(
+            grniBase +
+              (orderLine.qtyReceived > 0
+                ? money(
+                    (line.qty * Number(orderLine.receivedValueBase)) /
+                      orderLine.qtyReceived,
+                  )
+                : toBase(doc, billRate)),
+          );
+        }
+        grniLine.fxRate = grniLine.debit > 0 ? grniBase / grniLine.debit : null;
+      }
+
       const lines = await this.ledger.resolveLines(
         tenantId,
-        billPostingLines(
-          (bill.lines ?? []).map((l) => ({
-            description: l.description,
-            qty: l.qty,
-            unitCost: l.unitCost,
-            orderUnitCost: l.purchaseOrderLineId ? l.orderUnitCost : null,
-          })),
-          bill.taxAmount,
-          { billNumber: bill.billNumber, supplierName: bill.supplierName },
-        ),
+        postingLines,
         manager,
+        billRate,
       );
 
       const entry = await manager.getRepository(JournalEntry).save(
@@ -579,11 +643,15 @@ export class PayablesService {
           referenceId: bill.id,
           entryDate: bill.billDate,
           totalAmount: bill.totalAmount,
+          currency: bill.currency,
+          fxRate: billRate,
           lines,
         }),
       );
 
+      await this.notifications.resolve(tenantId, bill.id, manager);
       bill.status = 'APPROVED';
+      bill.fxRate = billRate;
       bill.matchStatus = matched.status;
       bill.varianceApproved = variance;
       bill.approvedAt = new Date();
@@ -617,6 +685,7 @@ export class PayablesService {
     const bill = await this.findById(tenantId, id);
     this.assertTransition(bill, 'CANCELLED');
     bill.status = 'CANCELLED';
+    await this.notifications.resolve(tenantId, bill.id);
     return this.bills.save(bill);
   }
 
@@ -662,12 +731,27 @@ export class PayablesService {
         .findOne({ where: { id: input.financeAccountId, tenantId } });
       if (!account) throw new NotFoundException('Account not found');
 
+      const paidAt = input.paidAt ?? new Date();
+      const paymentRate = await fxRateFor(
+        manager,
+        tenantId,
+        bill.currency,
+        paidAt,
+      );
+      const leaving = await cashAccountAmount(manager, tenantId, account, {
+        amount,
+        currency: bill.currency,
+        rate: paymentRate,
+      });
+
       await manager.query(
         `UPDATE "finance_accounts" SET "balance" = "balance" - $1, "updatedAt" = now()
          WHERE "id" = $2 AND "tenantId" = $3`,
-        [amount, account.id, tenantId],
+        [leaving, account.id, tenantId],
       );
 
+      // The payable clears at the rate the bill was booked at; the cash
+      // leaves at today's. The difference is an exchange gain or loss.
       const lines = await this.ledger.resolveLines(
         tenantId,
         [
@@ -676,6 +760,7 @@ export class PayablesService {
             accountName: 'Accounts payable',
             debit: amount,
             credit: 0,
+            fxRate: bill.fxRate,
             description: `Payment of ${bill.billNumber} to ${bill.supplierName}`,
           },
           {
@@ -683,10 +768,12 @@ export class PayablesService {
             accountName: account.name,
             debit: 0,
             credit: amount,
+            fxRate: paymentRate,
             description: `Payment of ${bill.billNumber} to ${bill.supplierName}`,
           },
         ],
         manager,
+        paymentRate,
       );
 
       const payment = manager.getRepository(BillPayment).create({
@@ -694,9 +781,10 @@ export class PayablesService {
         billId: bill.id,
         financeAccountId: account.id,
         amount,
-        paidAt: input.paidAt ?? new Date(),
+        paidAt,
         reference: input.reference,
         recordedById: actorId,
+        fxRate: paymentRate,
       });
       await manager.getRepository(BillPayment).save(payment);
 
@@ -708,6 +796,8 @@ export class PayablesService {
           referenceId: bill.id,
           entryDate: payment.paidAt,
           totalAmount: amount,
+          currency: bill.currency,
+          fxRate: paymentRate,
           lines,
         }),
       );
@@ -737,24 +827,31 @@ export class PayablesService {
       if (payment.reversedAt)
         throw new BadRequestException('That payment has already been reversed');
 
-      await manager.query(
-        `UPDATE "finance_accounts" SET "balance" = "balance" + $1, "updatedAt" = now()
-         WHERE "id" = $2 AND "tenantId" = $3`,
-        [payment.amount, payment.financeAccountId, tenantId],
-      );
-
       const account = await manager
         .getRepository(FinanceAccount)
         .findOne({ where: { id: payment.financeAccountId, tenantId } });
+      if (!account) throw new NotFoundException('Account not found');
+      const returning = await cashAccountAmount(manager, tenantId, account, {
+        amount: payment.amount,
+        currency: bill.currency,
+        rate: payment.fxRate,
+      });
+
+      await manager.query(
+        `UPDATE "finance_accounts" SET "balance" = "balance" + $1, "updatedAt" = now()
+         WHERE "id" = $2 AND "tenantId" = $3`,
+        [returning, payment.financeAccountId, tenantId],
+      );
 
       const lines = await this.ledger.resolveLines(
         tenantId,
         [
           {
             financeAccountId: payment.financeAccountId,
-            accountName: account?.name ?? 'Cash',
+            accountName: account.name,
             debit: payment.amount,
             credit: 0,
+            fxRate: payment.fxRate,
             description: `Reversal of payment on ${bill.billNumber}`,
           },
           {
@@ -762,10 +859,12 @@ export class PayablesService {
             accountName: 'Accounts payable',
             debit: 0,
             credit: payment.amount,
+            fxRate: bill.fxRate,
             description: `Reversal of payment on ${bill.billNumber}`,
           },
         ],
         manager,
+        payment.fxRate,
       );
 
       await manager.getRepository(JournalEntry).save(
@@ -812,26 +911,32 @@ export class PayablesService {
     const buckets = Object.fromEntries(
       AGING_BUCKETS.map((b) => [b, 0]),
     ) as Record<AgingBucket, number>;
+    // Totals are in base currency at each bill's booked rate, which is what
+    // the payables account holds, so the reconciliation below compares like
+    // with like across currencies.
     const rows = open.map((bill) => {
       const outstanding = money(bill.totalAmount - bill.paidAmount);
+      const outstandingBase = toBase(outstanding, bill.fxRate ?? 1);
       const bucket = agingBucket(bill.dueDate, asOf);
-      buckets[bucket] = money(buckets[bucket] + outstanding);
+      buckets[bucket] = money(buckets[bucket] + outstandingBase);
       return {
         id: bill.id,
         billNumber: bill.billNumber,
         supplierName: bill.supplierName,
         dueDate: bill.dueDate ? bill.dueDate.toISOString() : null,
         outstanding,
+        currency: bill.currency,
+        outstandingBase,
         bucket,
       };
     });
-    const total = money(rows.reduce((s, r) => s + r.outstanding, 0));
+    const total = money(rows.reduce((s, r) => s + r.outstandingBase, 0));
 
     const payablesAccount = await this.ledger.byRole(
       tenantId,
       LEDGER_ROLES.ACCOUNTS_PAYABLE,
     );
-    const trial = await this.ledger.trialBalance(tenantId);
+    const trial = await this.ledger.trialBalance(tenantId, asOf);
     const ledgerBalance =
       trial.rows.find((r) => r.ledgerAccountId === payablesAccount.id)
         ?.balance ?? 0;

@@ -21,6 +21,7 @@ import {
 import type { LedgerService } from '../finance/ledger.service';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
 import { TaxCode } from '../tax/entities/tax.entity';
+import { fxRateFor } from '../finance/fx';
 import { Quote } from '../quotes/entities/quote.entity';
 import { Invoice, InvoiceStatus } from '../quotes/entities/invoice.entity';
 import {
@@ -335,6 +336,9 @@ export async function issueInvoice(
     'invoice_number',
   );
   const issuedAt = new Date();
+  // The rate the receivable is booked at, for good: payments and credits
+  // clear it at this rate, and any difference is an exchange gain or loss.
+  const fxRate = await fxRateFor(manager, tenantId, p.order.currency, issuedAt);
 
   // A reverse-charge supply has to say so on the invoice, or the customer
   // has no basis for accounting for the tax themselves.
@@ -364,6 +368,7 @@ export async function issueInvoice(
       taxAmount: p.taxAmount,
       amount: p.totalAmount,
       taxBreakdown: p.taxBreakdown,
+      fxRate,
       status: InvoiceStatus.ISSUED,
       paymentTerms: p.order.paymentTerms,
       dueDate: calculateInvoiceDueDate(issuedAt, p.order.paymentTerms),
@@ -436,7 +441,14 @@ export async function postInvoiceIssued(
       referenceId: invoice.id,
       entryDate: new Date(),
       totalAmount: total,
-      lines: await ledger.resolveLines(tenantId, lines, manager),
+      currency: invoice.currency,
+      fxRate: invoice.fxRate ?? 1,
+      lines: await ledger.resolveLines(
+        tenantId,
+        lines,
+        manager,
+        invoice.fxRate ?? 1,
+      ),
     }),
   );
 }

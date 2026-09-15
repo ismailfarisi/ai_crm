@@ -8,6 +8,7 @@ import { buildConfigModule, buildTypeOrmModule } from '@/config/root-imports';
 import { FEATURE_MODULES } from '@/feature-modules';
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '@/modules/rbac/guards/permissions.guard';
+import { BillingGuard } from '@/modules/billing/billing.guard';
 
 @Module({
   imports: [
@@ -37,6 +38,8 @@ import { PermissionsGuard } from '@/modules/rbac/guards/permissions.guard';
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
+    // Last: a lapsed subscription stops writes only for people who could otherwise make them.
+    { provide: APP_GUARD, useExisting: BillingGuard },
   ],
 })
 export class AppModule {}

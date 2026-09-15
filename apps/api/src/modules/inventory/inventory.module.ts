@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { FinanceModule } from '../finance/finance.module';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
@@ -17,6 +18,7 @@ import { InventoryController } from './inventory.controller';
 
 @Module({
   imports: [
+    NotificationsModule,
     TypeOrmModule.forFeature([
       StockItem,
       StockMovement,

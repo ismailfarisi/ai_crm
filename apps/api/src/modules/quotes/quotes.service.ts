@@ -32,6 +32,8 @@ import { AutomationEventBridgeService } from '../automations/services/automation
 import { CostingService } from '../catalog/costing.service';
 import { RbacService } from '../rbac/rbac.service';
 import { TaxService } from '../tax/tax.service';
+import { fxRateFor } from '../finance/fx';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   allocateNextSequenceValue,
   formatSequenceNumber,
@@ -53,6 +55,7 @@ export class QuotesService {
     private readonly costingService: CostingService,
     private readonly rbacService: RbacService,
     private readonly taxService: TaxService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -280,6 +283,9 @@ export class QuotesService {
     if (payload.prompt !== undefined) {
       quote.prompt = payload.prompt;
     }
+    const submittedForApproval =
+      payload.status === QuoteStatus.AWAITING_APPROVAL &&
+      quote.status !== QuoteStatus.AWAITING_APPROVAL;
     if (payload.status !== undefined) {
       quote.status = payload.status as QuoteStatus;
     }
@@ -299,7 +305,18 @@ export class QuotesService {
       quote.totalAmount = totals.totalAmount;
     }
 
-    return await this.quoteRepository.save(quote);
+    const saved = await this.quoteRepository.save(quote);
+    if (submittedForApproval) {
+      await this.notifications.notifyHolders(tenantId, PERMISSIONS.QUOTE_APPROVE, {
+        type: 'QUOTE_AWAITING_APPROVAL',
+        title: `${saved.quoteNumber ?? 'A quote'} is waiting for approval`,
+        body: `${saved.customerName} · ${Number(saved.totalAmount).toFixed(2)} ${saved.currency}`,
+        link: `/quotes/${saved.id}`,
+        entityType: 'QUOTE',
+        entityId: saved.id,
+      });
+    }
+    return saved;
   }
 
   async sendSignal(
@@ -351,6 +368,11 @@ export class QuotesService {
         );
       }
 
+      // The invoice this approval raises is booked at today's rate. Checked
+      // now, so a missing rate refuses the approval instead of approving a
+      // quote whose invoice then silently fails to appear.
+      await fxRateFor(this.quoteRepository.manager, tenantId, quote.currency, new Date());
+
       // Persist the re-costed lines before signalling. The Temporal activity
       // builds the order from the stored quote, and can run before this
       // request finishes; it must not see the pre-recost totals.
@@ -391,6 +413,13 @@ export class QuotesService {
     }
 
     const savedQuote = await this.quoteRepository.save(quote);
+    if (
+      savedQuote.status === QuoteStatus.APPROVED ||
+      savedQuote.status === QuoteStatus.REJECTED
+    ) {
+      // Decided: nobody else needs to be asked.
+      await this.notifications.resolve(tenantId, savedQuote.id);
+    }
 
     // Guarantees the order (and whatever its schedule invoices on approval)
     // exists even if Temporal never picks up the signal, or hasn't finished

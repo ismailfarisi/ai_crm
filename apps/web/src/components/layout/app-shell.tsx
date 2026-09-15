@@ -19,6 +19,8 @@ import { useSession } from '@/lib/session-context';
 import { cn, initials } from '@/lib/utils';
 import { CORE_ACTION_ITEMS, SECONDARY_SECTIONS } from '@/lib/nav';
 import { Button } from '@/components/ui/button';
+import { NotificationBell } from './notification-bell';
+import { BillingBanner } from './billing-banner';
 
 function pageTitleFor(pathname: string): string {
   const allItems = [...CORE_ACTION_ITEMS, ...SECONDARY_SECTIONS.flatMap((s) => s.items)];
@@ -212,8 +214,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="truncate font-semibold text-ink">{pageTitleFor(pathname)}</span>
           </div>
 
+          <NotificationBell />
           <ThemeToggle />
         </header>
+        <BillingBanner />
 
         <main className="flex-1 px-4 py-6 lg:px-8 lg:py-8">
           <div className="mx-auto max-w-6xl space-y-6">{children}</div>

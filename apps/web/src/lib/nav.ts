@@ -2,6 +2,7 @@ import {
   Bot,
   Boxes,
   ClipboardList,
+  CreditCard,
   Factory,
   Building2,
   FileText,
@@ -152,6 +153,12 @@ export const SECONDARY_SECTIONS: NavSection[] = [
         label: 'Channels',
         icon: Radio,
         rule: { permission: PERMISSIONS.CHANNEL_MANAGE },
+      },
+      {
+        href: '/settings/billing',
+        label: 'Billing',
+        icon: CreditCard,
+        rule: { permission: PERMISSIONS.ORG_MANAGE_BILLING },
       },
       {
         href: '/settings/ai',

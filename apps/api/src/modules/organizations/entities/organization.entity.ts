@@ -34,4 +34,8 @@ export class Organization extends BaseEntity {
 
   @OneToMany(() => Invitation, (invitation) => invitation.organization)
   invitations: Invitation[];
+
+  /** The currency the ledger is kept in. Every posting is converted to it. */
+  @Column({ name: 'base_currency', type: 'char', length: 3, default: 'USD' })
+  baseCurrency: string;
 }

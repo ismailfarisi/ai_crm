@@ -46,6 +46,7 @@ export const LEDGER_ROLES = {
   SALES: 'SALES',
   COGS: 'COGS',
   OPERATING_EXPENSE: 'OPERATING_EXPENSE',
+  FX_GAIN_LOSS: 'FX_GAIN_LOSS',
 } as const;
 
 export type LedgerRole = (typeof LEDGER_ROLES)[keyof typeof LEDGER_ROLES];
@@ -146,6 +147,13 @@ export const SYSTEM_LEDGER_ACCOUNTS: SystemLedgerAccount[] = [
     role: LEDGER_ROLES.OPERATING_EXPENSE,
     description: 'Overheads and employee expense claims',
   },
+  {
+    code: '7000',
+    name: 'Exchange gains and losses',
+    type: 'EXPENSE',
+    role: LEDGER_ROLES.FX_GAIN_LOSS,
+    description: 'Differences between the rate a document was booked at and the rate it settled or was revalued at. A credit balance is a net gain.',
+  },
 ];
 
 /** The code a cash account's own ledger account is numbered from. */
@@ -182,6 +190,12 @@ export interface JournalLineInput {
   financeAccountId?: string;
   /** A specific account from the chart, e.g. the one a tax code posts to. */
   ledgerAccountId?: string | null;
+  /**
+   * Base currency per unit of the entry's currency, for this line only —
+   * when a receivable is cleared at the rate it was raised at while the cash
+   * arrives at today's. Defaults to the entry's rate.
+   */
+  fxRate?: number | null;
   /** Human label, kept verbatim — an expense category, a bank's name. */
   accountName: string;
   debit: number;

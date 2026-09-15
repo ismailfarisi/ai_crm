@@ -171,6 +171,7 @@ function makeService(seed: Seed = {}) {
     repoFor('PurchasePolicyEntity') as any,
     ledger as any,
     dataSource,
+    { notifyHolders: jest.fn(async () => 0), resolve: jest.fn(async () => undefined) } as any,
   );
 
   return { service, order, orderLines, stock, movements, journals, ledger };

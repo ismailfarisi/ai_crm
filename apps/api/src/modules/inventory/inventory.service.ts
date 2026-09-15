@@ -11,8 +11,10 @@ import {
   isReceiptWithinTolerance,
   LEDGER_ROLES,
   needsReorder,
+  PERMISSIONS,
   replayMovements,
   roundCost,
+  toBase,
   type StockMovementType,
   type StockReferenceType,
 } from '@saas/shared';
@@ -21,6 +23,8 @@ import {
   formatSequenceNumber,
 } from '@/database/tenant-sequence.util';
 import { LedgerService } from '../finance/ledger.service';
+import { fxRateFor } from '../finance/fx';
+import { NotificationsService } from '../notifications/notifications.service';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
 import { PurchaseOrder } from '../purchasing/entities/purchase-order.entity';
 import { PurchaseOrderLine } from '../purchasing/entities/purchase-order-line.entity';
@@ -84,6 +88,7 @@ export class InventoryService {
     private readonly policies: Repository<PurchasePolicyEntity>,
     private readonly ledger: LedgerService,
     private readonly dataSource: DataSource,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /* ------------------------------------------------------------------ *
@@ -396,9 +401,31 @@ export class InventoryService {
         ? applyReceipt(position, params.qtyDelta, params.unitCost)
         : applyIssue(position, -params.qtyDelta);
 
+    const wasLow = needsReorder(locked);
     locked.qtyOnHand = result.qtyOnHand;
     locked.avgUnitCost = result.avgUnitCost;
     await manager.getRepository(StockItem).save(locked);
+
+    // Told once, when stock crosses the reorder point — not on every issue
+    // while it stays below — and cleared when a delivery brings it back.
+    const isLow = needsReorder(locked);
+    if (isLow && !wasLow) {
+      await this.notifications.notifyHolders(
+        tenantId,
+        PERMISSIONS.PURCHASE_ORDER_CREATE,
+        {
+          type: 'LOW_STOCK',
+          title: `Stock is at or below its reorder point (${locked.qtyOnHand} on hand)`,
+          body: 'Raise a purchase order from the reorder suggestions.',
+          link: '/inventory',
+          entityType: 'STOCK_ITEM',
+          entityId: locked.id,
+        },
+        { manager },
+      );
+    } else if (wasLow && !isLow) {
+      await this.notifications.resolve(tenantId, locked.id, manager);
+    }
 
     const movement = await manager.getRepository(StockMovement).save(
       manager.getRepository(StockMovement).create({
@@ -476,7 +503,12 @@ export class InventoryService {
       const byId = new Map(orderLines.map((l) => [l.id, l]));
 
       const receiptLines: GoodsReceiptLine[] = [];
+      /** In base currency: stock and the ledger are kept in it. */
       let totalValue = 0;
+      // The rate the goods came in at. Stock is valued at it, GRNI is credited
+      // at it, and the supplier's bill later clears GRNI at it, whatever the
+      // rate has done by the time the bill arrives.
+      const rate = await fxRateFor(manager, tenantId, order.currency, new Date());
 
       for (const input_line of input.lines) {
         const orderLine = byId.get(input_line.purchaseOrderLineId);
@@ -518,7 +550,7 @@ export class InventoryService {
             locationId: location.id,
             type: 'RECEIPT',
             qtyDelta: input_line.qtyReceived,
-            unitCost: orderLine.unitCost,
+            unitCost: roundCost(orderLine.unitCost * rate),
             referenceType: 'GOODS_RECEIPT',
             referenceId: order.id,
             actorId,
@@ -528,8 +560,13 @@ export class InventoryService {
           // in stock value: that is qty × a moving average held at four
           // places, and the rounding in it would strand a few pence in GRNI
           // permanently, however correctly every bill matched.
-          totalValue = money(
-            totalValue + money(input_line.qtyReceived * orderLine.unitCost),
+          const lineBase = toBase(
+            money(input_line.qtyReceived * orderLine.unitCost),
+            rate,
+          );
+          totalValue = money(totalValue + lineBase);
+          orderLine.receivedValueBase = roundCost(
+            Number(orderLine.receivedValueBase) + lineBase,
           );
 
           receiptLines.push(
@@ -547,8 +584,13 @@ export class InventoryService {
         } else {
           // A free-text line (a delivery charge, a one-off part) has no stock
           // to move, but it is still received and still owed for.
-          totalValue = money(
-            totalValue + money(input_line.qtyReceived * orderLine.unitCost),
+          const lineBase = toBase(
+            money(input_line.qtyReceived * orderLine.unitCost),
+            rate,
+          );
+          totalValue = money(totalValue + lineBase);
+          orderLine.receivedValueBase = roundCost(
+            Number(orderLine.receivedValueBase) + lineBase,
           );
           receiptLines.push(
             manager.getRepository(GoodsReceiptLine).create({
@@ -587,6 +629,7 @@ export class InventoryService {
           supplierReference: input.supplierReference ?? null,
           notes: input.notes ?? null,
           totalValue,
+          fxRate: rate,
           lines: receiptLines,
         }),
       );
@@ -623,6 +666,10 @@ export class InventoryService {
             referenceId: receipt.id,
             entryDate: new Date(),
             totalAmount: totalValue,
+            // Lines are already base amounts, summed per line so GRNI clears
+            // to the cent; the rate is recorded for the audit trail.
+            currency: order.currency,
+            fxRate: rate,
             lines,
           }),
         );

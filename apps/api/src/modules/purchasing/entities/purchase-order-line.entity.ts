@@ -73,4 +73,18 @@ export class PurchaseOrderLine extends BaseEntity {
     transformer: numericTransformer,
   })
   lineTotal: number;
+
+  /**
+   * What the goods received so far cost in base currency, at the rates they
+   * arrived at. A foreign-currency bill clears GRNI at this, not at its own rate.
+   */
+  @Column({
+    name: 'received_value_base',
+    type: 'numeric',
+    precision: 14,
+    scale: 4,
+    default: 0,
+    transformer: numericTransformer,
+  })
+  receivedValueBase: number;
 }

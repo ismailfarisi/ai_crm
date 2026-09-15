@@ -204,4 +204,18 @@ export class Invoice {
 
   @CreateDateColumn({ name: 'issued_at', type: 'timestamptz' })
   issuedAt: Date;
+
+  /**
+   * Base currency per unit of this document's currency, as it was posted.
+   * Stays as it was: a report rerun next year must say what it said today.
+   */
+  @Column({
+    name: 'fx_rate',
+    type: 'numeric',
+    precision: 18,
+    scale: 8,
+    default: 1,
+    transformer: numericTransformer,
+  })
+  fxRate: number;
 }

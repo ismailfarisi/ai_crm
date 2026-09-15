@@ -34,3 +34,6 @@ export * from './schemas/work-order';
 export * from './tax/tax';
 export * from './credits/credit-notes';
 export * from './schemas/credits';
+export * from './finance/currency';
+export * from './billing/subscriptions';
+export * from './schemas/billing';

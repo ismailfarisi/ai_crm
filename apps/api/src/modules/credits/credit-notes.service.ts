@@ -9,6 +9,7 @@ import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import {
   invoicePosition,
   LEDGER_ROLES,
+  PERMISSIONS,
   scaleBreakdown,
   taxBreakdown,
   type CreateCreditNotePayload,
@@ -26,6 +27,8 @@ import { LedgerService } from '../finance/ledger.service';
 import { FinanceAccount } from '../finance/entities/finance-account.entity';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
 import { taxPostingLines } from '../orders/order-provisioning';
+import { cashAccountAmount, fxRateFor } from '../finance/fx';
+import { NotificationsService } from '../notifications/notifications.service';
 import { Invoice, InvoiceStatus } from '../quotes/entities/invoice.entity';
 import { TaxCode } from '../tax/entities/tax.entity';
 import { breakdownForInvoice } from '../tax/tax.service';
@@ -71,6 +74,7 @@ export class CreditNotesService {
     @InjectRepository(Invoice) private readonly invoices: Repository<Invoice>,
     private readonly ledger: LedgerService,
     private readonly dataSource: DataSource,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async list(tenantId: string, invoiceId?: string): Promise<CreditNoteDto[]> {
@@ -255,6 +259,19 @@ export class CreditNotesService {
           lineRepo.create({ ...l, tenantId, creditNoteId: note.id }),
         ),
       );
+      await this.notifications.notifyHolders(
+        tenantId,
+        PERMISSIONS.CREDIT_NOTE_APPROVE,
+        {
+          type: 'CREDIT_NOTE_AWAITING_APPROVAL',
+          title: `A ${total.toFixed(2)} ${invoice.currency} credit against ${invoice.invoiceNumber} needs issuing`,
+          body: input.reason.slice(0, 500),
+          link: '/invoices',
+          entityType: 'CREDIT_NOTE',
+          entityId: note.id,
+        },
+        { manager, excludeUserId: actorId },
+      );
       return note;
     });
     return this.get(tenantId, saved.id);
@@ -298,6 +315,7 @@ export class CreditNotesService {
         'credit_note_number',
       );
       note.creditNoteNumber = formatSequenceNumber('CN', number);
+      await this.notifications.resolve(tenantId, note.id, manager);
       note.status = 'ISSUED';
       note.issuedAt = new Date();
       note.issuedById = actorId;
@@ -341,6 +359,11 @@ export class CreditNotesService {
           description,
         },
       ];
+      // At the invoice's rate: a credit reverses part of what was booked, and
+      // reversing it at another rate would invent an exchange difference on
+      // money that never moved.
+      note.fxRate = invoice.fxRate;
+      await manager.getRepository(CreditNote).save(note);
       await this.post(
         manager,
         tenantId,
@@ -348,6 +371,7 @@ export class CreditNotesService {
         note.id,
         Number(note.totalAmount),
         lines,
+        { currency: invoice.currency, rate: invoice.fxRate },
       );
     });
     return this.get(tenantId, id);
@@ -363,6 +387,7 @@ export class CreditNotesService {
             : 'That credit note is already cancelled',
         );
       }
+      await this.notifications.resolve(tenantId, note.id, manager);
       note.status = 'CANCELLED';
       note.cancelledAt = new Date();
       await manager.getRepository(CreditNote).save(note);
@@ -416,10 +441,22 @@ export class CreditNotesService {
         .findOne({ where: { id: input.financeAccountId, tenantId } });
       if (!account) throw new NotFoundException('Finance account not found');
 
+      const refundRate = await fxRateFor(
+        manager,
+        tenantId,
+        invoice.currency,
+        new Date(),
+      );
+      const leaving = await cashAccountAmount(manager, tenantId, account, {
+        amount,
+        currency: invoice.currency,
+        rate: refundRate,
+      });
+
       await manager.query(
         `UPDATE "finance_accounts" SET "balance" = "balance" - $1, "updatedAt" = now()
          WHERE "id" = $2 AND "tenantId" = $3`,
-        [amount, account.id, tenantId],
+        [leaving, account.id, tenantId],
       );
 
       const refundRepo = manager.getRepository(CreditNoteRefund);
@@ -433,6 +470,7 @@ export class CreditNotesService {
           reference: input.reference,
           refundedAt: new Date(),
           recordedById: actorId,
+          fxRate: refundRate,
         }),
       );
 
@@ -454,6 +492,7 @@ export class CreditNotesService {
             accountName: 'Accounts Receivable',
             debit: amount,
             credit: 0,
+            fxRate: invoice.fxRate,
             description,
           },
           {
@@ -461,9 +500,11 @@ export class CreditNotesService {
             accountName: account.name,
             debit: 0,
             credit: amount,
+            fxRate: refundRate,
             description,
           },
         ],
+        { currency: invoice.currency, rate: refundRate },
       );
     });
     return this.get(tenantId, id);
@@ -520,6 +561,7 @@ export class CreditNotesService {
     creditNoteId: string,
     amount: number,
     lines: JournalLineInput[],
+    fx: { currency: string; rate: number },
   ): Promise<void> {
     const repo = manager.getRepository(JournalEntry);
     await repo.save(
@@ -530,7 +572,14 @@ export class CreditNotesService {
         referenceId: creditNoteId,
         entryDate: new Date(),
         totalAmount: amount,
-        lines: await this.ledger.resolveLines(tenantId, lines, manager),
+        currency: fx.currency,
+        fxRate: fx.rate,
+        lines: await this.ledger.resolveLines(
+          tenantId,
+          lines,
+          manager,
+          fx.rate,
+        ),
       }),
     );
   }

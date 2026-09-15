@@ -354,8 +354,14 @@ export class TaxService {
     ]);
 
     const output = new Accumulator();
-    for (const invoice of invoices) output.add(breakdownForInvoice(invoice), 1);
-    for (const credit of credits) output.add(credit.taxBreakdown ?? [], -1);
+    // Reported in base currency, at the rate each document was posted at —
+    // the figure that reached the tax account.
+    for (const invoice of invoices) {
+      output.add(breakdownForInvoice(invoice), 1, invoice.fxRate ?? 1);
+    }
+    for (const credit of credits) {
+      output.add(credit.taxBreakdown ?? [], -1, credit.fxRate ?? 1);
+    }
 
     const input = new Accumulator();
     const purchaseById = new Map(purchaseCodes.map((c) => [c.id, c]));
@@ -375,6 +381,7 @@ export class TaxService {
           },
         ],
         1,
+        bill.fxRate ?? 1,
       );
     }
 
@@ -421,7 +428,7 @@ class Accumulator {
     TaxReportRow & { netC: number; taxC: number }
   >();
 
-  add(lines: TaxBreakdownLine[], sign: 1 | -1): void {
+  add(lines: TaxBreakdownLine[], sign: 1 | -1, rate = 1): void {
     const seen = new Set<string>();
     for (const line of lines) {
       const key = `${line.taxCodeId ?? line.code}|${line.rate}|${line.reverseCharge}`;
@@ -436,8 +443,8 @@ class Accumulator {
         netC: 0,
         taxC: 0,
       };
-      g.netC += sign * cents(line.net);
-      g.taxC += sign * cents(line.tax);
+      g.netC += sign * cents(line.net * rate);
+      g.taxC += sign * cents(line.tax * rate);
       if (!seen.has(key)) g.documents += 1;
       seen.add(key);
       this.groups.set(key, g);

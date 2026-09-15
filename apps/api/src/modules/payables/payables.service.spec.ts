@@ -37,6 +37,8 @@ function makeService(seed: Seed = {}) {
     id: 'bill-1',
     tenantId,
     billNumber: 'BILL-2026-0001',
+    currency: 'GBP',
+    fxRate: 1,
     supplierName: 'Papertree Ltd',
     purchaseOrderId: 'po-1',
     status: 'DRAFT',
@@ -83,6 +85,7 @@ function makeService(seed: Seed = {}) {
 
   const repo = (name: string) => ({
     findOne: jest.fn(async ({ where }: any) => {
+      if (name === 'Organization') return { id: tenantId, baseCurrency: 'GBP' };
       if (name === 'Supplier')
         return {
           id: 'sup-1',
@@ -159,6 +162,7 @@ function makeService(seed: Seed = {}) {
       findCode: jest.fn(async (_t: string, id: string) => ({ id })),
       purchaseCodeForSupplier: jest.fn(async () => null),
     } as any,
+    { notifyHolders: jest.fn(async () => 0), resolve: jest.fn(async () => undefined) } as any,
   );
 
   return { service, bill, saved, ledger };

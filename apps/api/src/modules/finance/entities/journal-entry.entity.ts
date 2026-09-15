@@ -57,4 +57,19 @@ export class JournalEntry {
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
+
+  /** The currency the source document was in; null for entries from before multi-currency. */
+  @Column({ type: 'char', length: 3, nullable: true })
+  currency: string | null;
+
+  /** Rate the lines were converted at. Lines themselves are always base currency. */
+  @Column({
+    name: 'fx_rate',
+    type: 'numeric',
+    precision: 18,
+    scale: 8,
+    default: 1,
+    transformer: numericTransformer,
+  })
+  fxRate: number;
 }

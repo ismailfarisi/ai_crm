@@ -10,6 +10,8 @@ import {
   Landmark,
   Layers,
   Percent,
+  Coins,
+  FileBarChart,
   LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -51,6 +53,16 @@ export const FINANCE_NAV_ITEMS: FinanceTabItem[] = [
     href: '/finance/tax',
     label: 'Tax',
     icon: Percent,
+  },
+  {
+    href: '/finance/currencies',
+    label: 'Currencies',
+    icon: Coins,
+  },
+  {
+    href: '/finance/reports',
+    label: 'Reports',
+    icon: FileBarChart,
   },
 ];
 

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { FinanceModule } from '../finance/finance.module';
 import { TaxModule } from '../tax/tax.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { FinanceAccount } from '../finance/entities/finance-account.entity';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
 import { PurchaseOrder } from '../purchasing/entities/purchase-order.entity';
@@ -31,6 +32,7 @@ import { PayablesService } from './payables.service';
     ]),
     FinanceModule,
     TaxModule,
+    NotificationsModule,
   ],
   controllers: [PayablesController],
   providers: [PayablesService],

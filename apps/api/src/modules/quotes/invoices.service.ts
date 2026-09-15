@@ -20,6 +20,7 @@ import { MailService } from '../mail/mail.service';
 import { InvoicePdfService } from './invoice-pdf.service';
 import { AutomationEventBridgeService } from '../automations/services/automation-event-bridge.service';
 import { LedgerService } from '../finance/ledger.service';
+import { fxRateFor } from '../finance/fx';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
 import {
   BillingScheduleLine,
@@ -153,6 +154,13 @@ export class InvoicesService {
         );
       }
 
+      const paidAt = payload.paidAt ? new Date(payload.paidAt) : new Date();
+      const paymentRate = await fxRateFor(
+        manager,
+        tenantId,
+        invoice.currency,
+        paidAt,
+      );
       await this.financeService.recordInvoicePayment(
         tenantId,
         {
@@ -160,12 +168,16 @@ export class InvoicesService {
           accountId: payload.accountId,
           amount,
           description: `Invoice ${invoice.invoiceNumber} payment`,
+          fx: {
+            currency: invoice.currency,
+            invoiceRate: invoice.fxRate,
+            paymentRate,
+          },
         },
         manager,
       );
 
       const payments = manager.getRepository(InvoicePayment);
-      const paidAt = payload.paidAt ? new Date(payload.paidAt) : new Date();
       const payment = await payments.save(
         payments.create({
           tenantId,
@@ -175,6 +187,7 @@ export class InvoicesService {
           accountId: payload.accountId,
           recordedById: actorId,
           notes: payload.notes ?? null,
+          fxRate: paymentRate,
         }),
       );
 
@@ -272,6 +285,11 @@ export class InvoicesService {
             accountId: payment.accountId,
             amount: payment.amount,
             description: `Void of invoice ${invoice.invoiceNumber}: reversing payment ${payment.id}`,
+            fx: {
+              currency: invoice.currency,
+              invoiceRate: invoice.fxRate,
+              paymentRate: payment.fxRate,
+            },
           },
           manager,
         );

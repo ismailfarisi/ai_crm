@@ -53,6 +53,7 @@ function makeWorld(quoteOverrides: Record<string, unknown> = {}) {
         ...quoteOverrides,
       },
     ],
+    Organization: [{ id: tenantId, baseCurrency: 'GBP' }],
     SalesOrder: [],
     SalesOrderLine: [],
     BillingScheduleLine: [],

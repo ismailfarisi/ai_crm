@@ -362,4 +362,49 @@ describe('LedgerService', () => {
       expect(tb.difference).toBe(500);
     });
   });
+
+  describe('resolveLines in another currency', () => {
+    it('converts to base and posts the rate difference to exchange gains and losses', async () => {
+      // EUR 1,000 invoiced at 0.85, received when the euro is worth 0.87.
+      const { service } = makeService({ accounts: seededChart() });
+      const lines = await service.resolveLines(
+        tenantId,
+        [
+          { role: LEDGER_ROLES.CASH, accountName: 'Bank', debit: 1000, credit: 0, fxRate: 0.87, description: 'Receipt' },
+          { role: LEDGER_ROLES.ACCOUNTS_RECEIVABLE, accountName: 'AR', debit: 0, credit: 1000, fxRate: 0.85, description: 'Receipt' },
+        ],
+        undefined,
+        0.87,
+      );
+      expect(lines.map((l) => [l.ledgerAccountCode, l.debit, l.credit])).toEqual([
+        ['1000', 870, 0],
+        ['1100', 0, 850],
+        ['7000', 0, 20],
+      ]);
+    });
+
+    it('still refuses an entry that does not balance in its own currency', async () => {
+      const { service } = makeService({ accounts: seededChart() });
+      await expect(
+        service.resolveLines(
+          tenantId,
+          [
+            { role: LEDGER_ROLES.CASH, accountName: 'Bank', debit: 1000, credit: 0, fxRate: 0.87, description: 'x' },
+            { role: LEDGER_ROLES.ACCOUNTS_RECEIVABLE, accountName: 'AR', debit: 0, credit: 999, fxRate: 0.85, description: 'x' },
+          ],
+          undefined,
+          0.87,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('adds nothing when everything is already in base currency', async () => {
+      const { service } = makeService({ accounts: seededChart() });
+      const lines = await service.resolveLines(tenantId, [
+        { role: LEDGER_ROLES.CASH, accountName: 'Bank', debit: 10, credit: 0, description: 'x' },
+        { role: LEDGER_ROLES.SALES, accountName: 'Sales', debit: 0, credit: 10, description: 'x' },
+      ]);
+      expect(lines).toHaveLength(2);
+    });
+  });
 });

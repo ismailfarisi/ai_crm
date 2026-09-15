@@ -17,6 +17,7 @@ import { RecurringExpense } from './entities/recurring-expense.entity';
 import { JournalEntry } from './entities/journal-entry.entity';
 import { ExpenseClaim } from './entities/expense-claim.entity';
 import { LedgerService } from './ledger.service';
+import { cashAccountAmount } from './fx';
 import {
   CreateFinanceAccountDto,
   CreateCategoryBudgetDto,
@@ -265,6 +266,12 @@ export class FinanceService {
       accountId: string;
       amount: number;
       description?: string;
+      /**
+       * Currency and rates, when the invoice is not in base currency. The
+       * receivable clears at the invoice's rate; the cash arrives at the
+       * payment's. Omitted, everything is at 1, as before.
+       */
+      fx?: { currency: string; invoiceRate: number; paymentRate: number };
     },
     manager: EntityManager = this.accountRepository.manager,
   ): Promise<{ account: FinanceAccount; journalEntry: JournalEntry }> {
@@ -280,12 +287,20 @@ export class FinanceService {
       throw new NotFoundException(`Account ${params.accountId} not found`);
     }
 
+    const arriving = params.fx
+      ? await cashAccountAmount(manager, tenantId, exists, {
+          amount: params.amount,
+          currency: params.fx.currency,
+          rate: params.fx.paymentRate,
+        })
+      : params.amount;
+
     // Relative, never read-modify-write: two payments landing in the same
     // account at once would otherwise lose one of them from the balance.
     await manager.query(
       `UPDATE "finance_accounts" SET "balance" = "balance" + $1, "updatedAt" = now()
        WHERE "id" = $2 AND "tenantId" = $3`,
-      [params.amount, params.accountId, tenantId],
+      [arriving, params.accountId, tenantId],
     );
     const account = (await accounts.findOne({
       where: { id: params.accountId, tenantId },
@@ -305,6 +320,8 @@ export class FinanceService {
       referenceId: params.invoiceId,
       entryDate: new Date(),
       totalAmount: params.amount,
+      currency: params.fx?.currency ?? null,
+      fxRate: params.fx?.paymentRate ?? 1,
       lines: await this.ledger.resolveLines(
         tenantId,
         [
@@ -313,6 +330,7 @@ export class FinanceService {
             accountName: account.name,
             debit: params.amount,
             credit: 0,
+            fxRate: params.fx?.paymentRate,
             description,
           },
           {
@@ -320,10 +338,12 @@ export class FinanceService {
             accountName: 'Accounts Receivable',
             debit: 0,
             credit: params.amount,
+            fxRate: params.fx?.invoiceRate,
             description,
           },
         ],
         manager,
+        params.fx?.paymentRate ?? 1,
       ),
     });
 
@@ -347,6 +367,8 @@ export class FinanceService {
       accountId: string;
       amount: number;
       description?: string;
+      /** The rates the payment was recorded at, so the reversal mirrors it exactly. */
+      fx?: { currency: string; invoiceRate: number; paymentRate: number };
     },
     manager: EntityManager = this.accountRepository.manager,
   ): Promise<{ account: FinanceAccount; journalEntry: JournalEntry }> {
@@ -364,10 +386,18 @@ export class FinanceService {
       throw new NotFoundException(`Account ${params.accountId} not found`);
     }
 
+    const leaving = params.fx
+      ? await cashAccountAmount(manager, tenantId, exists, {
+          amount: params.amount,
+          currency: params.fx.currency,
+          rate: params.fx.paymentRate,
+        })
+      : params.amount;
+
     await manager.query(
       `UPDATE "finance_accounts" SET "balance" = "balance" - $1, "updatedAt" = now()
        WHERE "id" = $2 AND "tenantId" = $3`,
-      [params.amount, params.accountId, tenantId],
+      [leaving, params.accountId, tenantId],
     );
     const account = (await accounts.findOne({
       where: { id: params.accountId, tenantId },
@@ -387,6 +417,8 @@ export class FinanceService {
       referenceId: params.paymentId,
       entryDate: new Date(),
       totalAmount: params.amount,
+      currency: params.fx?.currency ?? null,
+      fxRate: params.fx?.paymentRate ?? 1,
       lines: await this.ledger.resolveLines(
         tenantId,
         [
@@ -395,6 +427,7 @@ export class FinanceService {
             accountName: 'Accounts Receivable',
             debit: params.amount,
             credit: 0,
+            fxRate: params.fx?.invoiceRate,
             description,
           },
           {
@@ -402,10 +435,12 @@ export class FinanceService {
             accountName: account.name,
             debit: 0,
             credit: params.amount,
+            fxRate: params.fx?.paymentRate,
             description,
           },
         ],
         manager,
+        params.fx?.paymentRate ?? 1,
       ),
     });
 

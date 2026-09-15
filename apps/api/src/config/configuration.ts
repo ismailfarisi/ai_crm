@@ -69,6 +69,21 @@ const envSchema = z.object({
   // chain (env vars, ~/.aws/credentials, IAM role, ...), never from .env.
   MAIL_REGION: z.string().optional(),
 
+  // Subscription billing (see modules/billing)
+  BILLING_PROVIDER: z.enum(['fake', 'stripe']).default('fake'),
+  // The fake provider lets anyone with org:manage_billing mark a checkout as
+  // paid. Off in production unless a staging deploy opts in explicitly.
+  BILLING_FAKE_CHECKOUT: z.string().optional(),
+  // Restrict writes for lapsed trials and unresolved failed payments.
+  BILLING_ENFORCE: z
+    .string()
+    .default('true')
+    .transform((v) => v === 'true'),
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  // plan code → Stripe price id, e.g. "starter:price_123,growth:price_456"
+  STRIPE_PRICE_IDS: z.string().optional(),
+
   // AI — DEAD as of the per-org AiConfig table (see modules/ai/entities/ai-config.entity.ts).
   // AiService now resolves provider credentials from the DB only, per organization;
   // these env vars are unread. Left here rather than removed to avoid touching
@@ -123,6 +138,15 @@ export function validateEnv(raw: Record<string, unknown>): Env {
           'Generate real secrets (e.g. `openssl rand -base64 48`) before deploying.',
       );
     }
+  }
+
+  if (
+    env.BILLING_PROVIDER === 'stripe' &&
+    (!env.STRIPE_SECRET_KEY || !env.STRIPE_WEBHOOK_SECRET)
+  ) {
+    throw new Error(
+      'Invalid environment configuration: BILLING_PROVIDER=stripe requires STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET.',
+    );
   }
 
   if (env.COOKIE_SAME_SITE === 'none' && !env.COOKIE_SECURE) {
@@ -186,6 +210,22 @@ export function configuration() {
       provider: env.MAIL_PROVIDER,
       from: env.MAIL_FROM,
       region: env.MAIL_REGION,
+    },
+    billing: {
+      provider: env.BILLING_PROVIDER,
+      fakeCheckout:
+        env.BILLING_FAKE_CHECKOUT === undefined
+          ? env.NODE_ENV !== 'production'
+          : env.BILLING_FAKE_CHECKOUT === 'true',
+      enforce: env.BILLING_ENFORCE,
+      stripeSecretKey: env.STRIPE_SECRET_KEY,
+      stripeWebhookSecret: env.STRIPE_WEBHOOK_SECRET,
+      stripePriceIds: Object.fromEntries(
+        (env.STRIPE_PRICE_IDS ?? '')
+          .split(',')
+          .map((pair) => pair.split(':').map((part) => part.trim()))
+          .filter((pair) => pair.length === 2 && pair[0] && pair[1]),
+      ) as Record<string, string>,
     },
     ai: {
       provider: env.AI_PROVIDER,

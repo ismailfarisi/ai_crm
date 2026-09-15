@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { FinanceModule } from '../finance/finance.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { FinanceAccount } from '../finance/entities/finance-account.entity';
 import { Invoice } from '../quotes/entities/invoice.entity';
 import { TaxCode } from '../tax/entities/tax.entity';
@@ -23,6 +24,7 @@ import {
       TaxCode,
     ]),
     FinanceModule,
+    NotificationsModule,
   ],
   controllers: [CreditNotesController],
   providers: [CreditNotesService],

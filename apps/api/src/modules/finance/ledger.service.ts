@@ -5,9 +5,17 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, IsNull, Repository } from 'typeorm';
+import {
+  DataSource,
+  EntityManager,
+  IsNull,
+  LessThanOrEqual,
+  Repository,
+} from 'typeorm';
 import {
   CASH_ACCOUNT_CODE_PREFIX,
+  convertLines,
+  fxBalancingLine,
   isBalanced,
   journalDifference,
   LEDGER_ROLES,
@@ -193,9 +201,47 @@ export class LedgerService {
    */
   async resolveLines(
     tenantId: string,
-    lines: JournalLineInput[],
+    input: JournalLineInput[],
     manager: EntityManager = this.dataSource.manager,
+    /**
+     * Base currency per unit of the document's currency. Lines are given in
+     * the document's currency and stored in base; a line may carry its own
+     * `fxRate`. Any difference that leaves posts to exchange gains and losses.
+     */
+    entryRate = 1,
   ): Promise<JournalLineDto[]> {
+    // Balanced in the document's own currency first: an exchange difference
+    // is legitimate, a caller's arithmetic mistake is not, and after
+    // conversion the two would be indistinguishable.
+    if (!isBalanced(input)) {
+      throw new BadRequestException(
+        `Journal entry does not balance: debits minus credits is ${journalDifference(input)}`,
+      );
+    }
+
+    let lines = input;
+    const converts =
+      entryRate !== 1 ||
+      input.some((line) => line.fxRate != null && line.fxRate !== 1);
+    if (converts) {
+      const converted = convertLines(input, entryRate);
+      const balancing = fxBalancingLine(converted.imbalance);
+      lines = balancing
+        ? [
+            ...converted.lines,
+            {
+              role: LEDGER_ROLES.FX_GAIN_LOSS,
+              accountName: 'Exchange gains and losses',
+              ...balancing,
+              description:
+                Math.abs(converted.imbalance) <= 0.02 * input.length
+                  ? 'Currency conversion rounding'
+                  : 'Exchange difference',
+            },
+          ]
+        : converted.lines;
+    }
+
     const resolved: JournalLineDto[] = [];
 
     for (const line of lines) {
@@ -270,10 +316,15 @@ export class LedgerService {
    * zero means something was written that should not have been, and it is
    * cheaper to find on the day it happens than at year end.
    */
-  async trialBalance(tenantId: string): Promise<TrialBalanceDto> {
+  async trialBalance(tenantId: string, asOf?: Date): Promise<TrialBalanceDto> {
     const [accounts, entries] = await Promise.all([
       this.list(tenantId),
-      this.journal.find({ where: { tenantId } }),
+      // An entry dated after `asOf` has not happened yet as far as this
+      // balance is concerned — a revaluation's reversal is dated the first of
+      // next month for exactly that reason.
+      this.journal.find({
+        where: asOf ? { tenantId, entryDate: LessThanOrEqual(asOf) } : { tenantId },
+      }),
     ]);
 
     const totals = new Map<string, { debit: number; credit: number }>();

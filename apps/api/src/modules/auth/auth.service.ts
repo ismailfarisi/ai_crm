@@ -11,8 +11,7 @@ import {
   type ChangePasswordInput,
   type LoginInput,
   type RegisterInput,
-  type SessionDto,
-} from '@saas/shared';
+  type SessionDto, TRIAL_DAYS } from '@saas/shared';
 import { Organization } from '@/modules/organizations/entities/organization.entity';
 import { LedgerService } from '@/modules/finance/ledger.service';
 import { InvitationsService } from '@/modules/invitations/invitations.service';
@@ -76,6 +75,14 @@ export class AuthService {
       // of accounts has nowhere to post, and every later journal write would
       // fail on a lookup instead of at signup.
       await this.ledger.provisionChartOfAccounts(organization.id, manager);
+      // A new organization starts on a trial. Inserted here rather than
+      // lazily so the trial clock starts at signup, not at first billing visit.
+      await manager.query(
+        `INSERT INTO "subscriptions" ("tenant_id", "status", "seats", "trial_ends_at")
+         VALUES ($1, 'TRIALING', 1, now() + ($2 || ' days')::interval)
+         ON CONFLICT ("tenant_id") DO NOTHING`,
+        [organization.id, String(TRIAL_DAYS)],
+      );
       const ownerRole = roles.find((role) => role.slug === SYSTEM_ROLES.OWNER);
       if (!ownerRole) {
         throw new Error('Owner role was not provisioned — aborting signup');

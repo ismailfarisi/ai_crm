@@ -35,6 +35,7 @@ function makeWorld(invoiceOverrides: Record<string, unknown> = {}) {
         ...invoiceOverrides,
       },
     ],
+    Organization: [{ id: tenantId, baseCurrency: 'GBP' }],
     CreditNote: [],
     CreditNoteLine: [],
     CreditNoteRefund: [],
@@ -128,6 +129,7 @@ function makeWorld(invoiceOverrides: Record<string, unknown> = {}) {
     repo('Invoice') as any,
     ledger as any,
     dataSource,
+    { notifyHolders: jest.fn(async () => 0), resolve: jest.fn(async () => undefined) } as any,
   );
   return { service, tables, queries, invoice: tables.Invoice[0] };
 }

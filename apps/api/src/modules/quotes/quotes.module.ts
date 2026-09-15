@@ -22,6 +22,7 @@ import { AutomationsModule } from '../automations/automations.module';
 import { CatalogModule } from '../catalog/catalog.module';
 import { RbacModule } from '../rbac/rbac.module';
 import { TaxModule } from '../tax/tax.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { TaxModule } from '../tax/tax.module';
     CatalogModule,
     RbacModule,
     TaxModule,
+    NotificationsModule,
   ],
   controllers: [QuotesController, PublicQuotesController],
   providers: [
