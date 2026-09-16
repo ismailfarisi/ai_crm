@@ -48,7 +48,7 @@ export class CreatePlatformSpine1786200000000 implements MigrationInterface {
       `CREATE INDEX "idx_audit_logs_subject" ON "audit_logs" ("tenant_id", "subject_type", "subject_id")`,
     );
     await queryRunner.query(
-      `CREATE INDEX "idx_audit_logs_tenant_created" ON "audit_logs" ("tenant_id", "created_at" DESC)`,
+      `CREATE INDEX "idx_audit_logs_tenant_created" ON "audit_logs" ("tenant_id", "created_at")`,
     );
     await queryRunner.query(
       `CREATE INDEX "idx_audit_logs_actor" ON "audit_logs" ("tenant_id", "actor_id")`,

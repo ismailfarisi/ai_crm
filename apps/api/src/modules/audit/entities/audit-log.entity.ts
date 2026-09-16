@@ -15,6 +15,7 @@ import type { AuditChannel, AuditOrigin } from '@saas/shared';
 @Entity('audit_logs')
 @Index('idx_audit_logs_subject', ['tenantId', 'subjectType', 'subjectId'])
 @Index('idx_audit_logs_actor', ['tenantId', 'actorId'])
+@Index('idx_audit_logs_tenant_created', ['tenantId', 'createdAt'])
 export class AuditLog {
   @PrimaryGeneratedColumn('uuid')
   id: string;
