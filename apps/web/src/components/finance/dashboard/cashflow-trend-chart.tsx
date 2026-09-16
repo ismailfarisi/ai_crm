@@ -47,6 +47,25 @@ const PERIOD_DAYS: Record<'7D' | '30D' | '90D', number> = {
   '90D': 90,
 };
 
+/**
+ * `2026-09-16` in full is far too wide to repeat across a 30-slot axis, and
+ * the series is always inside one window, so the year adds nothing.
+ * Anything that is not an ISO date (a "W1"-style bucket) is left alone.
+ */
+function formatAxisDate(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return value;
+
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleDateString('en-US', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC',
+  });
+}
+
 export function CashflowTrendChart({
   series,
   currency = 'USD',
@@ -137,6 +156,9 @@ export function CashflowTrendChart({
   const slotWidth = chartWidth / (dataCount || 1);
   const barWidth = Math.max(6, Math.min(18, slotWidth * 0.28));
   const barGap = Math.max(2, barWidth * 0.2);
+
+  // About eight labels fit across the axis without touching.
+  const labelEvery = Math.max(1, Math.ceil(activeSeries.length / 8));
 
   // Map points for spline net line and bars
   const chartPoints = activeSeries.map((d, idx) => {
@@ -454,6 +476,15 @@ export function CashflowTrendChart({
               {/* X-Axis Date Labels */}
               {chartPoints.map((pt, idx) => {
                 const isHovered = hoveredIndex === idx;
+
+                // A 30-day series has far more points than the axis has room
+                // for, so only every `labelEvery`th tick is drawn — plus the
+                // last one, which is the date people look for, and whichever
+                // is hovered. Printing all thirty overlapped into an
+                // unreadable smear.
+                const isLast = idx === chartPoints.length - 1;
+                if (!isHovered && !isLast && idx % labelEvery !== 0) return null;
+
                 return (
                   <text
                     key={`label-${idx}`}
@@ -467,7 +498,7 @@ export function CashflowTrendChart({
                         : 'fill-ink-subtle font-medium',
                     )}
                   >
-                    {pt.date}
+                    {formatAxisDate(pt.date)}
                   </text>
                 );
               })}
