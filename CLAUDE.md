@@ -2,6 +2,8 @@
 
 pnpm workspace: `apps/api` (NestJS 11 + TypeORM 1 + Postgres 18), `apps/web` (Next.js 16 App Router), `packages/shared`.
 
+Open trade-offs, deferred work and staging quirks are collected in [docs/FLAGS.md](docs/FLAGS.md). Read it before assuming something is a bug.
+
 ## Rules that matter
 
 **Permissions live in `packages/shared/src/rbac/permissions.ts` and nowhere else.** Add the constant there first; the API seeds the catalog from it on boot and the web app imports the same constants. Never hand-write a permission string at a call site.
