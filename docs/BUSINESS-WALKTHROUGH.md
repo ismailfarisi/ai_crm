@@ -18,7 +18,8 @@ records trade-offs the team took knowingly; nothing here repeats those.
 
 
 > **Status, 2026-09-16.** The findings marked **FIXED** below have been
-> addressed in the working tree; the rest are untouched. Each fixed section
+> addressed in the working tree; the rest are untouched. MOSTLY/PARTLY FIXED
+> means part of the finding stands — each note says which part. Each fixed section
 > keeps its original description so the problem stays on record, and ends with
 > a *Fix* note saying what changed. `pnpm build` passes; API 618 tests and web
 > 221 tests pass.
@@ -115,7 +116,7 @@ on the screen the owner sees most. It belongs in Settings → Roles.
 
 ## 2. The blocker: the core feature cannot be set up
 
-### 2.1 There is no way to create a product, material, work centre or tooling — blocker
+### 2.1 There is no way to create a product, material, work centre or tooling — blocker — MOSTLY FIXED
 
 The product is sold on cost-model quoting. The sign-in page advertises it with a
 worked example (a rigid gift box priced from length/width/height, lamination,
@@ -151,7 +152,31 @@ Everything that depends on the catalog is unreachable along with it: cost-based
 pricing, quantity price breaks, the margin figures on the quote, bills of
 material, and material-driven production and stock movement.
 
-### 2.2 Everything downstream of the catalog is unreachable too — blocker
+**Fix.** A Catalog screen now exists at `/catalog`, in the sidebar under
+Quotes, gated on `catalog:manage`. It has four tabs — Products, Materials, Work
+centres, Tooling — each a table with create, edit and remove, built on the CRUD
+the API already exposed. The web client's catalog slice gained the write half it
+never had (`apps/web/src/lib/api/endpoints/sales.ts`), with hooks in
+`apps/web/src/hooks/use-catalog-admin.ts`. Materials ask for sheet size and
+grain only when the unit of measure is SHEET, which is exactly when the schema
+requires them and when the nesting engine can use them.
+
+Verified against the live staging API on a fresh tenant: a material, a work
+centre, a tooling record and a product were created through the same payload
+shapes the new client sends, all accepted, and a duplicate SKU was correctly
+refused with a readable message. The product then appeared in the quote
+editor's catalog picker — the "Your catalog is empty" state is gone — and
+adding it to a quote produced **Cost $2.22, Gross margin $1.48, 40.0%** in place
+of the old 100% with its "typed by hand" warning.
+
+**Still missing: product templates.** The parametric cost model — the one the
+landing page advertises, where a price falls out of length, width, height,
+material yield and machine time — needs a template editor with formulas,
+parameters and routing, and that has no UI yet. So §2.2's *Plan production* and
+the price-break ladder remain blocked. What works now is the flat case: real
+products with real costs, and therefore real margin.
+
+### 2.2 Everything downstream of the catalog is unreachable too — blocker — PARTLY FIXED
 
 The quote itself can still be written by hand — type a description, quantity and
 price — and that path works well. But every feature that reads a cost model is
@@ -172,6 +197,11 @@ then closed:
   physical goods, because nothing carries a cost.
 - **Stock never moves**, since movements are driven by the material link on a
   catalog item.
+
+**Fix (partial).** Margin is real as soon as a line comes from the catalog,
+verified above. Cost of goods sold will follow for those lines. Production
+planning and the price-break ladder still need a product template, so they stay
+blocked until the template editor exists.
 
 ### 2.3 "Start production" is a label with nothing behind it — major
 

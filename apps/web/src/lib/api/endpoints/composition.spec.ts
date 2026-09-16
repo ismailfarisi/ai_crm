@@ -60,6 +60,7 @@ const QUERY_KEYS = [
   'session', 'contacts', 'contact', 'contactStats', 'customers', 'customer',
   'roles', 'role', 'permissionCatalog', 'users', 'teams', 'invitations',
   'quotes', 'quote', 'invoices', 'invoice', 'invoicePayments', 'catalogItems',
+  'catalogItemsAll', 'catalogMaterials', 'catalogWorkCenters', 'catalogTooling',
   'catalogTemplates', 'catalogTemplate', 'costingPolicy', 'quoteGuardrails',
   'channels', 'aiConfigs', 'channelIdentities', 'channelMessages',
   'automations', 'automation', 'automationExecutions', 'automationExecution',

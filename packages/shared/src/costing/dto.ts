@@ -1,7 +1,9 @@
 import type { GuardrailViolation } from '../quotes/guardrails';
 import type { QuoteLineItem, QuoteTotals } from '../quotes/types';
+import type { GrainDirection } from './nesting';
 import type {
   DerivedVariable,
+  MaterialUom,
   PriceBreak,
   TemplateMaterial,
   TemplateOperation,
@@ -11,6 +13,54 @@ import type {
 } from './types';
 
 /** Wire shapes for the catalog endpoints — what the web client actually receives. */
+
+/** A stock material a product is made from. */
+export interface MaterialDto {
+  id: string;
+  sku: string | null;
+  name: string;
+  uom: MaterialUom;
+  costPerUom: number;
+  /** Required when `uom` is SHEET; the sheet the nesting engine lays blanks on. */
+  sheetWidthMm: number | null;
+  sheetHeightMm: number | null;
+  grain: GrainDirection;
+  /** Fraction, 0–1, added to every calculated quantity. */
+  wastePct: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A machine or bench that operations are scheduled and costed against. */
+export interface WorkCenterDto {
+  id: string;
+  name: string;
+  setupMinutes: number;
+  machineCostPerHour: number;
+  laborCostPerHour: number;
+  /** Fraction, 0–1, of output lost at this operation. */
+  scrapPct: number;
+  minChargeMinutes: number;
+  dailyCapacityMinutes: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A one-off cost such as a cutting forme or a print plate. */
+export interface ToolingDto {
+  id: string;
+  name: string;
+  cost: number;
+  /** Spread across the run rather than charged whole to the first order. */
+  amortize: boolean;
+  /** Kept for the customer's next order instead of remade each time. */
+  reusable: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface CatalogItemDto {
   id: string;
