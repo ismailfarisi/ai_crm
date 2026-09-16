@@ -53,7 +53,16 @@ export const salesEndpoints = {
     /* The maintenance half of the catalog. The API has had full CRUD here
      * since the costing engine landed; only the read calls were ever wired up,
      * so a tenant could not put anything in the catalog the picker reads. */
-    listItems: () => apiFetch<CatalogItemDto[]>('/catalog/items', { query: { limit: 500 } }),
+    /**
+     * `limit` is capped at 100 by `catalogSearchSchema`, and this endpoint has
+     * no pagination — a catalog longer than that is silently truncated on the
+     * maintenance screen. Worth giving its own paged endpoint before anyone
+     * has that many products.
+     */
+    listItems: () =>
+      apiFetch<CatalogItemDto[]>('/catalog/items', {
+        query: { limit: 100, includeInactive: true },
+      }),
     createItem: (payload: CreateCatalogItemPayload) =>
       apiFetch<CatalogItemDto>('/catalog/items', { method: 'POST', body: payload }),
     updateItem: (id: string, payload: UpdateCatalogItemPayload) =>
