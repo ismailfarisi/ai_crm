@@ -100,7 +100,8 @@ jobs:
       - run: pnpm --filter api build
       - name: Migrate from zero
         run: pnpm migration:run
-      - name: No schema drift
+      # Blocking: new drift fails, the known backlog in scripts/drift-baseline.json does not.
+      - name: No new schema drift
         run: pnpm check:drift
       - name: Seed
         run: pnpm seed

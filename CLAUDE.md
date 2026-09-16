@@ -41,7 +41,7 @@ pnpm db:reset && pnpm migration:run && pnpm seed   # start over
 
 `next dev` falls back to port 3002 if 3000 is taken; `WEB_ORIGIN` in `apps/api/.env` lists both so CORS keeps working.
 
-CI (`.github/workflows/ci.yml`) runs build, tests, and a schema job that migrates an empty database, checks for drift and asserts every seeded tenant's trial balance sums to zero. `pnpm check:drift` is the drift check: it ignores the two kinds of drift that are deliberate here — foreign keys and CHECK constraints live in migrations, not on entities — and fails on everything else. Lint runs but does not block, because ~300 pre-existing errors would make it red on day one.
+CI (`.github/workflows/ci.yml`) runs build, tests, and a schema job that migrates an empty database, checks for drift and asserts every seeded tenant's trial balance sums to zero. `pnpm check:drift` is the drift check. It ignores the two kinds of drift that are deliberate here (foreign keys and CHECK constraints live in migrations, not on entities), treats the ~100 statements in `scripts/drift-baseline.json` as a known backlog, and fails on anything else — so new drift cannot arrive while the legacy backlog is paid down. Fixed some of it? `pnpm check:drift --update-baseline`. Lint runs but does not block, because ~300 pre-existing errors would make it red on day one.
 
 The schema is owned by migrations (`DB_SYNCHRONIZE=false` everywhere). After changing an entity, generate a migration: `pnpm migration:generate Name` and run `pnpm migration:run`. `pnpm migration:generate` against a migrated DB must report no drift.
 
