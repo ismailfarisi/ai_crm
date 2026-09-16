@@ -45,6 +45,37 @@ declared in migrations rather than on entities, deliberately, so entity relation
 metadata never drifts and FK names never churn. The drift check ignores those by
 pattern.
 
+### nginx does not pass the visitor's address — open, needs sudo
+
+The chain is Cloudflare → nginx → API. nginx replaces `X-Forwarded-For` with
+the address it sees, which is the Cloudflare edge, so the visitor's own address
+never reaches the API. Two consequences: rate limiting buckets people by
+Cloudflare edge rather than by person, and the audit trail records edge
+addresses (`172.69.224.98`) instead of visitors (`5.31.131.116`).
+
+The API side is already correct — `TRUST_PROXY_HOPS=2` on staging, verified:
+given `X-Forwarded-For: 1.2.3.4, 5.6.7.8` it attributes `1.2.3.4`. It just
+never receives a chain with the visitor in it.
+
+Fixing it needs a root-owned nginx change, either appending the chain:
+
+```nginx
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+```
+
+or, better behind Cloudflare, taking the address from the header Cloudflare
+signs its requests with and restricting the origin to Cloudflare's ranges:
+
+```nginx
+# https://www.cloudflare.com/ips/ — refresh these periodically
+set_real_ip_from 173.245.48.0/20;   # ... and the rest of the list
+real_ip_header CF-Connecting-IP;
+```
+
+Without the origin being Cloudflare-only, trusting `CF-Connecting-IP` lets
+anyone who can reach nginx directly claim any address, which is why this is not
+done in application code.
+
 ### The S3 storage driver has never talked to a bucket — open
 
 `STORAGE_PROVIDER=s3` is written and typechecked but untested; every environment
