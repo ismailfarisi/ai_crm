@@ -11,6 +11,7 @@ import type {
 } from '@/common/types/authenticated-user';
 
 export const IS_PUBLIC_KEY = 'auth:isPublic';
+export const CREDENTIAL_ROUTE_KEY = 'throttle:credentialRoute';
 export const PERMISSIONS_KEY = 'rbac:permissions';
 export const PERMISSIONS_MODE_KEY = 'rbac:permissionsMode';
 export const ROLES_KEY = 'rbac:roles';
@@ -19,6 +20,17 @@ export type PermissionsMode = 'all' | 'any';
 
 /** Opt a route out of the global JWT guard. */
 export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
+
+/**
+ * Marks a route that takes a credential, and so deserves the tight rate limit
+ * a password-guessing attempt would run into.
+ *
+ * It has to be opt-in. A named throttler applies to every route in the
+ * application unless it skips, so a second "auth" throttler configured
+ * alongside the default silently caps the whole API at the login limit —
+ * which is exactly what happened here: ten requests a minute, for everything.
+ */
+export const CredentialRoute = () => SetMetadata(CREDENTIAL_ROUTE_KEY, true);
 
 /** Route requires ALL of the listed permissions. */
 export const RequirePermissions = (...permissions: Permission[]) =>

@@ -10,7 +10,6 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Throttle } from '@nestjs/throttler';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { CookieOptions, Request, Response } from 'express';
 import {
@@ -24,7 +23,7 @@ import {
   type RegisterInput,
   type SessionDto,
 } from '@saas/shared';
-import { CurrentUser, Public } from '@/common/decorators';
+import { CredentialRoute, CurrentUser, Public } from '@/common/decorators';
 import { zodBody } from '@/common/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import type { AppConfig } from '@/config/configuration';
@@ -46,7 +45,7 @@ export class AuthController {
 
   @Public()
   @Post('register')
-  @Throttle({ auth: { limit: 1000, ttl: 60_000 } })
+  @CredentialRoute()
   @ApiOperation({
     summary: 'Create an organization and its first owner account',
   })
@@ -66,7 +65,7 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ auth: { limit: 1000, ttl: 60_000 } })
+  @CredentialRoute()
   @ApiOperation({ summary: 'Exchange credentials for session cookies' })
   async login(
     @Body(zodBody(loginSchema)) input: LoginInput,
@@ -84,7 +83,7 @@ export class AuthController {
   @Public()
   @Post('accept-invite')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ auth: { limit: 1000, ttl: 60_000 } })
+  @CredentialRoute()
   @ApiOperation({
     summary: 'Set your password from an email invite and sign in',
   })
@@ -105,7 +104,7 @@ export class AuthController {
   @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ auth: { limit: 1000, ttl: 60_000 } })
+  @CredentialRoute()
   @ApiOperation({
     summary: 'Rotate the refresh token and mint a new access token',
   })
@@ -126,7 +125,6 @@ export class AuthController {
   @Public()
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ auth: { limit: 1000, ttl: 60_000 } })
   @ApiOperation({ summary: 'Revoke the current session and clear cookies' })
   async logout(
     @Req() req: Request,
@@ -148,6 +146,7 @@ export class AuthController {
   }
 
   @Post('change-password')
+  @CredentialRoute()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Change your own password; signs out every other device',
