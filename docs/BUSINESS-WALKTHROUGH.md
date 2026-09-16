@@ -269,7 +269,7 @@ they find that page by exploring.
 
 ## 4. Buying anything is impossible
 
-### 4.1 A purchase order cannot be created — blocker
+### 4.1 A purchase order cannot be created — blocker — FIXED
 
 Suppliers can be created (the form is fine: contact, tax id, address, payment
 terms, lead time). Then the chain stops.
@@ -296,7 +296,32 @@ wraps it — `api.purchaseOrders.create` in
 component imports that hook**, and none imports `useSuggestPurchaseOrders`
 either. The plumbing is finished; the screen was never built.
 
-### 4.2 A supplier bill cannot be entered either — blocker
+**Fix.** Purchase orders now has a **New purchase order** button, gated on
+`purchase_order:create`, opening a form with supplier, expected date, notes and
+a repeating line editor. `useCreatePurchaseOrder` — which already existed and
+which nothing imported — is finally the thing behind a button. Picking a
+material fills the line's description, unit and cost from the catalog, while
+leaving all three editable, because what goes on the order is the supplier's
+price on the day rather than the standing cost. The order total adds up live,
+and the order opens on its own page once created.
+
+Writing the test caught a real bug in the form: an empty date input reads as
+`''`, which `z.coerce.date()` turns into an Invalid Date rather than treating as
+absent, so leaving Expected date blank failed the whole submission with an error
+against a field the user never touched. It now normalises to `null` first.
+
+Verified end to end against the live staging API, which is what makes this a
+fix rather than a screen: **PO-2026-0001** created as a draft, submitted,
+approved, then received in full as **GRN-2026-0001** — at which point
+`/inventory/stock` returned, for the first time on this tenant, a real row:
+
+> 350gsm folding boxboard (FBB-350) — 500 SHEET on hand at $0.42 average cost,
+> in Main store
+
+and `/purchase-orders/<id>/billable` offered 500 units to bill. So goods
+receipts, stock and the supplier-bill path all open with it.
+
+### 4.2 A supplier bill cannot be entered either — blocker — FIXED
 
 `/purchasing/bills` likewise has no create button:
 
@@ -307,6 +332,12 @@ Bills are reachable only from a purchase order, which cannot be raised. So the
 whole procure-to-pay chain — order, goods receipt, bill, three-way match,
 payment — is sealed off, and with it accounts payable, stock inward movements and
 supplier balances. A business cannot record that it owes anyone money.
+
+**Fix.** Bills were never the blocker in themselves — they are reachable from a
+purchase order, and no purchase order could exist. With §4.1 fixed the path is
+open: the billable endpoint returned the received 500 units against
+PO-2026-0001, ready to be billed and three-way matched. The stock finding in
+§7.6 clears the same way, since stock arrives through a goods receipt.
 
 ### 4.3 The one remaining way to record spending does not reach the books — blocker — FIXED
 

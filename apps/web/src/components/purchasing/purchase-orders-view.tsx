@@ -3,11 +3,14 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ColumnDef } from '@tanstack/react-table';
-import { ClipboardList } from 'lucide-react';
-import type { PurchaseOrderDto, PurchaseOrderStatus } from '@saas/shared';
+import { ClipboardList, Plus } from 'lucide-react';
+import { PERMISSIONS, type PurchaseOrderDto, type PurchaseOrderStatus } from '@saas/shared';
 import { usePurchaseOrders } from '@/hooks/use-purchase-orders';
 import { formatRelative } from '@/lib/utils';
+import { Can } from '@/components/auth/can';
+import { Button } from '@/components/ui/button';
 import { EmptyState, PageHeader } from '@/components/ui/primitives';
+import { PurchaseOrderFormDialog } from './purchase-order-form-dialog';
 import { DataTable } from '@/components/ui/data-table';
 import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
 
@@ -50,6 +53,7 @@ const money = (amount: number, currency: string) =>
 
 export function PurchaseOrdersView() {
   const [status, setStatus] = useState<PurchaseOrderStatus | ''>('');
+  const [creating, setCreating] = useState(false);
   const { data, isPending, isError, error } = usePurchaseOrders({
     page: 1,
     limit: 100,
@@ -121,20 +125,28 @@ export function PurchaseOrdersView() {
         title="Purchase orders"
         description="What you have on order, and what still needs approving."
         actions={
-          <select
-            id="po-status-filter"
-            aria-label="Filter by status"
-            value={status}
-            onChange={(event) => setStatus(event.target.value as PurchaseOrderStatus | '')}
-            className="rounded border border-line bg-surface px-3 py-2 text-sm text-ink"
-          >
-            <option value="">All statuses</option>
-            {Object.entries(STATUS_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2">
+            <select
+              id="po-status-filter"
+              aria-label="Filter by status"
+              value={status}
+              onChange={(event) => setStatus(event.target.value as PurchaseOrderStatus | '')}
+              className="rounded border border-line bg-surface px-3 py-2 text-sm text-ink"
+            >
+              <option value="">All statuses</option>
+              {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <Can permission={PERMISSIONS.PURCHASE_ORDER_CREATE}>
+              <Button onClick={() => setCreating(true)}>
+                <Plus className="size-4" />
+                New purchase order
+              </Button>
+            </Can>
+          </div>
         }
       />
 
@@ -153,10 +165,12 @@ export function PurchaseOrdersView() {
           cardSubtitleKey="supplierName"
           searchPlaceholder="Search order number or supplier…"
           emptyTitle="No purchase orders yet"
-          emptyDescription="Raise one from a quote, or from a chat message on a linked channel."
+          emptyDescription="Raise one directly, from a quote, or from a chat message on a linked channel. Receiving against an order is what brings stock in and what a supplier's bill is matched to."
           emptyIcon={<ClipboardList className="size-8 text-ink-muted" />}
         />
       )}
+
+      <PurchaseOrderFormDialog open={creating} onClose={() => setCreating(false)} />
     </>
   );
 }
