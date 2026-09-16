@@ -19,6 +19,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // Server-component guard: nothing to enforce in a test run.
+      'server-only': fileURLToPath(
+        new URL('./src/test/server-only-stub.ts', import.meta.url),
+      ),
     },
   },
 });

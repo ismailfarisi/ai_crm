@@ -34,8 +34,11 @@ async function bootstrap(): Promise<void> {
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   });
 
-  // Behind a proxy, req.ip must come from X-Forwarded-For for rate limiting to work.
-  app.set('trust proxy', 1);
+  // Behind a proxy, req.ip must come from X-Forwarded-For, or every visitor
+  // shares the proxy's identity: one rate-limit bucket for the whole
+  // deployment, and an audit trail that records the proxy. The hop count has
+  // to match the real chain — see TRUST_PROXY_HOPS.
+  app.set('trust proxy', config.get('trustProxyHops', { infer: true }));
   app.enableShutdownHooks();
 
   if (!isProduction) {

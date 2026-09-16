@@ -57,6 +57,15 @@ const envSchema = z.object({
   // works for display purposes but isn't reachable from Telegram's servers.
   PUBLIC_API_URL: z.string().optional(),
 
+  // How many proxies sit in front of the API, counted from the API outwards.
+  // req.ip is taken from X-Forwarded-For by skipping exactly this many hops,
+  // so it must match the deployment: 1 for a single reverse proxy, 2 behind a
+  // CDN such as Cloudflare in front of that proxy. Too low and every visitor
+  // shares the CDN edge's identity — one rate-limit bucket, and an audit
+  // trail full of the CDN's addresses. Too high and a visitor can spoof their
+  // own address by sending an X-Forwarded-For header.
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(1),
+
   // Rate limiting
   THROTTLE_TTL: z.coerce.number().int().positive().default(60_000),
   THROTTLE_LIMIT: z.coerce.number().int().positive().default(120),
@@ -218,6 +227,7 @@ export function configuration() {
       secure: env.COOKIE_SECURE || env.NODE_ENV === 'production',
       sameSite: env.COOKIE_SAME_SITE,
     },
+    trustProxyHops: env.TRUST_PROXY_HOPS,
     throttle: {
       ttl: env.THROTTLE_TTL,
       limit: env.THROTTLE_LIMIT,
