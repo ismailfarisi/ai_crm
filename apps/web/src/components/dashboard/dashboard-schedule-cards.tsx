@@ -24,38 +24,6 @@ export interface ScheduleItem {
   href: string;
 }
 
-const DEFAULT_SCHEDULE_ITEMS: ScheduleItem[] = [
-  {
-    id: '1',
-    title: 'Acme Corp — Enterprise Contract Review',
-    category: 'meeting',
-    categoryLabel: 'Google Meet',
-    timeLabel: 'Today, 10:30 AM',
-    attendees: ['AC', 'JD', 'MS'],
-    href: '/contacts',
-  },
-  {
-    id: '2',
-    title: 'Quantum Dynamics — Cloud Migration Suite',
-    category: 'quote',
-    categoryLabel: 'Draft Quote',
-    timeLabel: 'Due Today, 2:00 PM',
-    amount: '$45,000',
-    statusBadge: 'Ready for Review',
-    attendees: ['QD', 'IF'],
-    href: '/quotes',
-  },
-  {
-    id: '3',
-    title: 'Starlight Industries — Discovery & Scope',
-    category: 'call',
-    categoryLabel: 'Discovery Call',
-    timeLabel: 'Tomorrow, 11:00 AM',
-    attendees: ['SI', 'JD'],
-    href: '/contacts',
-  },
-];
-
 const CATEGORY_ICONS = {
   meeting: Video,
   quote: FileText,
@@ -63,12 +31,21 @@ const CATEGORY_ICONS = {
 };
 
 export interface DashboardScheduleCardsProps {
+  /**
+   * Real work items. There is no sample list: this panel used to show three
+   * invented meetings — Acme Corp, Quantum Dynamics for $45,000 and Starlight
+   * Industries — to every account, including empty ones, and they were
+   * identical across unrelated tenants.
+   */
   items?: ScheduleItem[];
+  /** Shown when there is nothing outstanding. */
+  emptyLabel?: string;
   className?: string;
 }
 
 export function DashboardScheduleCards({
-  items = DEFAULT_SCHEDULE_ITEMS,
+  items = [],
+  emptyLabel = 'Nothing is waiting on you.',
   className,
 }: DashboardScheduleCardsProps) {
   return (
@@ -84,7 +61,7 @@ export function DashboardScheduleCards({
           <span className="grid size-7 place-items-center rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400">
             <Calendar className="size-3.5" />
           </span>
-          <h3 className="text-sm font-semibold text-ink">Upcoming Deals & Schedule</h3>
+          <h3 className="text-sm font-semibold text-ink">Waiting on you</h3>
         </div>
 
         <Link
@@ -98,6 +75,14 @@ export function DashboardScheduleCards({
 
       {/* Schedule Stack of Warm Gradient Cards */}
       <div className="mt-3.5 space-y-3">
+        {items.length === 0 ? (
+          <p
+            data-testid="schedule-empty-state"
+            className="py-10 text-center text-xs text-ink-muted"
+          >
+            {emptyLabel}
+          </p>
+        ) : null}
         {items.map((item) => {
           const Icon = CATEGORY_ICONS[item.category] || FileText;
 

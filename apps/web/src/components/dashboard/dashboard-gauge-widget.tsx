@@ -4,20 +4,28 @@ import { Target, TrendingUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface DashboardGaugeWidgetProps {
-  percentage?: number;
+  /**
+   * The real figure. Required, and with no default: this widget used to
+   * default to 84% against an 80% target, so a brand new account was told it
+   * had met a goal it had no data for.
+   */
+  percentage: number;
   targetPercentage?: number;
   title?: string;
   subtitle?: string;
   trendLabel?: string;
+  /** Shown instead of the gauge when there is nothing to measure yet. */
+  emptyLabel?: string;
   className?: string;
 }
 
 export function DashboardGaugeWidget({
-  percentage = 84,
-  targetPercentage = 80,
+  percentage,
+  targetPercentage,
   title = 'Quotation Win Rate',
-  subtitle = 'Customer Satisfaction & Conversion',
-  trendLabel = '+12.4% vs last month',
+  subtitle,
+  trendLabel,
+  emptyLabel,
   className,
 }: DashboardGaugeWidgetProps) {
   // Circular arc calculation (260 degree arc)
@@ -50,12 +58,23 @@ export function DashboardGaugeWidget({
           </div>
         </div>
 
-        <span className="inline-flex items-center gap-1 rounded-full border border-amber-200/60 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:border-amber-900/50 dark:text-amber-300">
-          <TrendingUp className="size-3" />
-          {percentage >= targetPercentage ? 'Target Met' : 'In Progress'}
-        </span>
+        {targetPercentage !== undefined && !emptyLabel ? (
+          <span className="inline-flex items-center gap-1 rounded-full border border-amber-200/60 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:border-amber-900/50 dark:text-amber-300">
+            <TrendingUp className="size-3" />
+            {percentage >= targetPercentage ? 'Target Met' : 'In Progress'}
+          </span>
+        ) : null}
       </div>
 
+      {emptyLabel ? (
+        <div
+          data-testid="gauge-empty-state"
+          className="flex flex-1 items-center justify-center px-2 py-10 text-center text-xs text-ink-muted"
+        >
+          {emptyLabel}
+        </div>
+      ) : (
+      <>
       {/* Gauge Visual Center */}
       <div className="relative my-3 flex items-center justify-center">
         <svg
@@ -109,15 +128,26 @@ export function DashboardGaugeWidget({
       </div>
 
       {/* Footer Metrics Row */}
-      <div className="flex items-center justify-between border-t border-border/60 pt-3 text-xs">
-        <div className="flex items-center gap-1.5 text-ink-muted">
-          <span className="size-1.5 rounded-full bg-amber-500" />
-          <span>Goal: <strong className="font-medium text-ink">{targetPercentage}%</strong></span>
+      {targetPercentage !== undefined || trendLabel ? (
+        <div className="flex items-center justify-between border-t border-border/60 pt-3 text-xs">
+          <div className="flex items-center gap-1.5 text-ink-muted">
+            {targetPercentage !== undefined ? (
+              <>
+                <span className="size-1.5 rounded-full bg-amber-500" />
+                <span>
+                  Goal:{' '}
+                  <strong className="font-medium text-ink">{targetPercentage}%</strong>
+                </span>
+              </>
+            ) : null}
+          </div>
+          <span className="font-medium text-emerald-600 dark:text-emerald-400">
+            {trendLabel}
+          </span>
         </div>
-        <span className="font-medium text-emerald-600 dark:text-emerald-400">
-          {trendLabel}
-        </span>
-      </div>
+      ) : null}
+      </>
+      )}
     </div>
   );
 }

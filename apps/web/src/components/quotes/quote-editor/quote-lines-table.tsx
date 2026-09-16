@@ -10,6 +10,12 @@ export interface QuoteLinesTableProps {
   onChange: (items: QuoteLineItem[]) => void;
   currency?: string;
   readOnly?: boolean;
+  /**
+   * The organisation's own sales tax codes. When empty the table falls back to
+   * a handful of round percentages so a tenant that has not configured tax yet
+   * can still quote.
+   */
+  taxCodes?: Array<{ id: string; code: string; name: string; rate: number }>;
 }
 
 const UOM_OPTIONS = [
@@ -23,12 +29,20 @@ const UOM_OPTIONS = [
   { value: 'Items', label: 'Items' },
 ];
 
-const TAX_RATE_OPTIONS = [
-  { value: '0', label: '0% (Exempt)' },
-  { value: '5', label: '5% (VAT)' },
-  { value: '10', label: '10% (Sales Tax)' },
-  { value: '15', label: '15% (Standard Tax)' },
-  { value: '20', label: '20% (VAT 20%)' },
+/**
+ * Used only by organisations that have not set any tax codes up yet.
+ *
+ * This list used to be the whole story, so a rate the business actually needed
+ * — 8.25% for California, say — could not be put on a quote at all, and the
+ * codes configured under Finance → Tax never reached a document. Real codes
+ * take precedence whenever they exist.
+ */
+const FALLBACK_TAX_RATE_OPTIONS = [
+  { value: '0', label: 'No tax (0%)' },
+  { value: '5', label: '5%' },
+  { value: '10', label: '10%' },
+  { value: '15', label: '15%' },
+  { value: '20', label: '20%' },
 ];
 
 export function formatCurrency(amount: number, currency = 'USD'): string {
@@ -49,7 +63,16 @@ export function QuoteLinesTable({
   onChange,
   currency = 'USD',
   readOnly = false,
+  taxCodes = [],
 }: QuoteLinesTableProps) {
+  const taxRateOptions =
+    taxCodes.length > 0
+      ? taxCodes.map((code) => ({
+          value: String(code.rate),
+          label: `${code.name} (${code.rate}%)`,
+        }))
+      : FALLBACK_TAX_RATE_OPTIONS;
+
   const handleItemChange = (
     id: string,
     field: keyof QuoteLineItem,
@@ -382,7 +405,7 @@ export function QuoteLinesTable({
                           }
                           className="w-full rounded-xl border border-border/40 bg-surface-muted/30 px-2 py-1.5 text-xs text-ink focus:bg-surface focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden transition-colors"
                         >
-                          {TAX_RATE_OPTIONS.map((opt) => (
+                          {taxRateOptions.map((opt) => (
                             <option key={opt.value} value={opt.value}>
                               {opt.label}
                             </option>

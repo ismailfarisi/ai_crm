@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager, MoreThanOrEqual, Repository } from 'typeorm';
 import {
   calculateRunwayMonths,
   LEDGER_ROLES,
@@ -76,8 +76,57 @@ export class FinanceService {
       0,
     );
 
-    const monthlyOutflow = recurringMonthly + expenseMonthly;
-    const monthlyInflow = 0;
+    // What actually moved through the bank over the last 30 days, taken from
+    // posted journal lines rather than assumed. Internal transfers are left
+    // out because moving money between your own accounts is not cashflow, and
+    // so are opening balances, which are a starting position rather than a
+    // receipt. Inflow used to be hardcoded to zero, so a company that had been
+    // paid still showed no money coming in.
+    const windowStart = new Date();
+    windowStart.setDate(windowStart.getDate() - 29);
+    windowStart.setHours(0, 0, 0, 0);
+
+    const cashMovements = await this.journalRepository.find({
+      where: { tenantId, entryDate: MoreThanOrEqual(windowStart) },
+    });
+
+    const movementByDay = new Map<string, { inflow: number; outflow: number }>();
+    for (const entry of cashMovements) {
+      if (entry.referenceType === 'TRANSFER') continue;
+      if (
+        entry.referenceType === 'MANUAL' &&
+        String(entry.referenceId ?? '').startsWith('opening-balance:')
+      ) {
+        continue;
+      }
+
+      const day = new Date(entry.entryDate).toISOString().split('T')[0];
+      const bucket = movementByDay.get(day) ?? { inflow: 0, outflow: 0 };
+
+      for (const line of entry.lines ?? []) {
+        if (!line.financeAccountId) continue;
+        bucket.inflow += Number(line.debit || 0);
+        bucket.outflow += Number(line.credit || 0);
+      }
+
+      movementByDay.set(day, bucket);
+    }
+
+    const monthlyInflow =
+      Math.round(
+        [...movementByDay.values()].reduce((sum, d) => sum + d.inflow, 0) * 100,
+      ) / 100;
+    const observedOutflow =
+      Math.round(
+        [...movementByDay.values()].reduce((sum, d) => sum + d.outflow, 0) * 100,
+      ) / 100;
+
+    // Recurring commitments are a forward-looking obligation, so they stay in
+    // the burn rate even before they have been charged.
+    const monthlyOutflow = Math.max(
+      observedOutflow,
+      recurringMonthly + expenseMonthly,
+    );
     const netCashflow = monthlyInflow - monthlyOutflow;
     const monthlyBurnRate = monthlyOutflow;
     const runwayMonths = calculateRunwayMonths(totalCash, monthlyBurnRate);
@@ -96,26 +145,15 @@ export class FinanceService {
       d.setDate(d.getDate() - i);
       const dateStr = d.toISOString().split('T')[0];
 
-      // Match expenses on that date if any
-      const dayExpenseTotal = approvedExpenses
-        .filter((e) => {
-          const expDate = new Date(e.expenseDate || e.createdAt)
-            .toISOString()
-            .split('T')[0];
-          return expDate === dateStr;
-        })
-        .reduce((sum, e) => sum + Number(e.amount || 0), 0);
-
-      const dayRecurring = recurringMonthly / 30;
-      const dayOutflow =
-        Math.round((dayExpenseTotal + dayRecurring) * 100) / 100;
-      const dayInflow = 0;
+      const moved = movementByDay.get(dateStr) ?? { inflow: 0, outflow: 0 };
+      const dayInflow = Math.round(moved.inflow * 100) / 100;
+      const dayOutflow = Math.round(moved.outflow * 100) / 100;
 
       recentCashflowSeries.push({
         date: dateStr,
         inflow: dayInflow,
         outflow: dayOutflow,
-        net: dayInflow - dayOutflow,
+        net: Math.round((dayInflow - dayOutflow) * 100) / 100,
       });
     }
 
@@ -150,17 +188,84 @@ export class FinanceService {
       );
     }
 
+    const openingBalance = Number(dto.balance) || 0;
+
     const account = this.accountRepository.create({
       tenantId,
       name: dto.name,
       accountType: dto.accountType,
       currency: dto.currency || 'USD',
-      balance: dto.balance || 0,
+      balance: openingBalance,
       accountNumber: dto.accountNumber || null,
       isDefault: dto.isDefault ?? false,
     });
 
-    return this.accountRepository.save(account);
+    const saved = await this.accountRepository.save(account);
+
+    if (openingBalance !== 0) {
+      await this.postOpeningBalance(tenantId, saved, openingBalance);
+    }
+
+    return saved;
+  }
+
+  /**
+   * Puts a new account's starting figure into the books.
+   *
+   * Without this the account carries a balance that treasury reports and the
+   * ledger does not, so the balance sheet understates assets by every opening
+   * balance ever entered and no account can be reconciled against a statement.
+   *
+   * The contra is opening balance equity rather than income: money the tenant
+   * already had when they arrived is not revenue earned here. Idempotent on
+   * `referenceId`, so a retry cannot double the opening position.
+   */
+  private async postOpeningBalance(
+    tenantId: string,
+    account: FinanceAccount,
+    amount: number,
+  ): Promise<void> {
+    const referenceId = `opening-balance:${account.id}`;
+
+    const already = await this.journalRepository.findOne({
+      where: { tenantId, referenceType: 'MANUAL', referenceId },
+    });
+    if (already) return;
+
+    // Tenants created before opening balance equity existed have no 3100 in
+    // their chart. Provisioning is idempotent, so this only adds what is
+    // missing rather than rebuilding the chart.
+    await this.ledger.provisionChartOfAccounts(tenantId);
+
+    const debitsCash = amount > 0;
+    const magnitude = Math.abs(amount);
+
+    const entry = this.journalRepository.create({
+      tenantId,
+      entryNumber: `JE-OB-${account.id.slice(0, 8)}`,
+      referenceType: 'MANUAL',
+      referenceId,
+      entryDate: new Date(),
+      totalAmount: magnitude,
+      lines: await this.ledger.resolveLines(tenantId, [
+        {
+          financeAccountId: account.id,
+          accountName: account.name,
+          debit: debitsCash ? magnitude : 0,
+          credit: debitsCash ? 0 : magnitude,
+          description: `Opening balance for ${account.name}`,
+        },
+        {
+          role: LEDGER_ROLES.OPENING_BALANCE_EQUITY,
+          accountName: 'Opening balance equity',
+          debit: debitsCash ? 0 : magnitude,
+          credit: debitsCash ? magnitude : 0,
+          description: `Opening balance for ${account.name}`,
+        },
+      ]),
+    });
+
+    await this.journalRepository.save(entry);
   }
 
   async transferFunds(

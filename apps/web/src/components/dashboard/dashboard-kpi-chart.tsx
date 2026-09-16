@@ -10,32 +10,20 @@ interface DataPoint {
   value: number;
 }
 
-const DEFAULT_DATA: Record<'30D' | '90D' | '1Y', DataPoint[]> = {
-  '30D': [
-    { month: 'W1', value: 58 },
-    { month: 'W2', value: 64 },
-    { month: 'W3', value: 61 },
-    { month: 'W4', value: 72.4 },
-  ],
-  '90D': [
-    { month: 'May', value: 52 },
-    { month: 'Jun', value: 63 },
-    { month: 'Jul', value: 59 },
-    { month: 'Aug', value: 72.4 },
-  ],
-  '1Y': [
-    { month: 'Jan', value: 38 },
-    { month: 'Feb', value: 45 },
-    { month: 'Mar', value: 54 },
-    { month: 'Apr', value: 49 },
-    { month: 'May', value: 62 },
-    { month: 'Jun', value: 68 },
-    { month: 'Jul', value: 64 },
-    { month: 'Aug', value: 72.4 },
-  ],
+/** How many trailing months each period shows of the series it is given. */
+const PERIOD_MONTHS: Record<'30D' | '90D' | '1Y', number> = {
+  '30D': 1,
+  '90D': 3,
+  '1Y': 12,
 };
 
 export interface DashboardKpiChartProps {
+  /**
+   * Real monthly figures, oldest first. There is no sample fallback: this
+   * chart used to draw an invented Jan–Aug curve rising to 72.4% for every
+   * account, including one created seconds earlier with no revenue at all.
+   */
+  series?: DataPoint[];
   title?: string;
   metricLabel?: string;
   metricValue?: string;
@@ -44,16 +32,18 @@ export interface DashboardKpiChartProps {
 }
 
 export function DashboardKpiChart({
-  title = 'Revenue & Conversion Velocity',
-  metricLabel = 'Team Conversion KPI',
-  metricValue = '72.4%',
-  growthLabel = '+14.8% YoY',
+  series = [],
+  title = 'Revenue',
+  metricLabel,
+  metricValue,
+  growthLabel,
   className,
 }: DashboardKpiChartProps) {
   const [period, setPeriod] = useState<'30D' | '90D' | '1Y'>('1Y');
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
-  const data = DEFAULT_DATA[period];
+  const data = series.slice(-PERIOD_MONTHS[period]);
+  const hasData = data.some((d) => d.value !== 0);
   const width = 600;
   const height = 180;
   const paddingX = 30;
@@ -62,10 +52,17 @@ export function DashboardKpiChart({
   const chartWidth = width - paddingX * 2;
   const chartHeight = height - paddingY * 2;
 
-  // Calculate coordinates
+  // Scaled to the data rather than to a fixed 20–90 band, so real figures of
+  // any size fill the chart instead of running off it.
+  const peak = Math.max(...data.map((d) => d.value), 0);
+  const scaleMax = peak > 0 ? peak * 1.15 : 1;
+
   const points = data.map((d, i) => {
-    const x = paddingX + (i / (data.length - 1)) * chartWidth;
-    const y = paddingY + (1 - (d.value - 20) / 70) * chartHeight;
+    const x =
+      data.length === 1
+        ? paddingX + chartWidth / 2
+        : paddingX + (i / (data.length - 1)) * chartWidth;
+    const y = paddingY + (1 - d.value / scaleMax) * chartHeight;
     return { x, y, ...d };
   });
 
@@ -117,13 +114,17 @@ export function DashboardKpiChart({
 
           <div className="mt-1 flex items-baseline gap-2.5">
             <h3 className="text-3xl font-extrabold tracking-tight text-ink tabular-nums">
-              {metricValue}
+              {metricValue ?? '—'}
             </h3>
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-              <TrendingUp className="size-3" />
-              {growthLabel}
-            </span>
-            <span className="hidden text-xs text-ink-muted sm:inline">• {metricLabel}</span>
+            {growthLabel ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                <TrendingUp className="size-3" />
+                {growthLabel}
+              </span>
+            ) : null}
+            {metricLabel ? (
+              <span className="hidden text-xs text-ink-muted sm:inline">• {metricLabel}</span>
+            ) : null}
           </div>
         </div>
 
@@ -160,6 +161,18 @@ export function DashboardKpiChart({
 
       {/* Golden Wave SVG Chart */}
       <div className="relative mt-4 w-full">
+        {!hasData ? (
+          <div
+            data-testid="kpi-chart-empty"
+            className="flex h-44 flex-col items-center justify-center gap-1 text-center"
+          >
+            <p className="text-sm font-medium text-ink">Nothing invoiced yet</p>
+            <p className="max-w-xs text-xs text-ink-muted">
+              Revenue appears here once your first invoice is issued.
+            </p>
+          </div>
+        ) : (
+        <>
         <svg
           viewBox={`0 0 ${width} ${height}`}
           className="h-44 w-full overflow-visible"
@@ -282,6 +295,8 @@ export function DashboardKpiChart({
             </span>
           ))}
         </div>
+        </>
+        )}
       </div>
     </div>
   );

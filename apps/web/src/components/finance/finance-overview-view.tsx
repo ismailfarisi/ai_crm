@@ -95,6 +95,7 @@ export function FinanceOverviewView() {
       {/* Charts & Analytical Breakdown */}
       <div className="grid grid-cols-1 gap-6">
         <CashflowTrendChart
+          series={overview?.recentCashflowSeries ?? []}
           currency={overview?.currency || 'USD'}
           isLoading={isOverviewLoading}
         />

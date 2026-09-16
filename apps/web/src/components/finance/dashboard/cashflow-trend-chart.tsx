@@ -31,27 +31,20 @@ export interface CashflowTrendChartProps {
   defaultPeriod?: '7D' | '30D' | '90D';
 }
 
-const DEFAULT_SAMPLE_SERIES: Record<'7D' | '30D' | '90D', CashflowDataPoint[]> = {
-  '7D': [
-    { date: 'Mon', label: 'Day 1', inflow: 14200, outflow: 8400, net: 5800 },
-    { date: 'Tue', label: 'Day 2', inflow: 22500, outflow: 11200, net: 11300 },
-    { date: 'Wed', label: 'Day 3', inflow: 18900, outflow: 14500, net: 4400 },
-    { date: 'Thu', label: 'Day 4', inflow: 31000, outflow: 16800, net: 14200 },
-    { date: 'Fri', label: 'Day 5', inflow: 27400, outflow: 19300, net: 8100 },
-    { date: 'Sat', label: 'Day 6', inflow: 12100, outflow: 5200, net: 6900 },
-    { date: 'Sun', label: 'Day 7', inflow: 9800, outflow: 4100, net: 5700 },
-  ],
-  '30D': [
-    { date: 'W1', label: 'Week 1', inflow: 58400, outflow: 34200, net: 24200 },
-    { date: 'W2', label: 'Week 2', inflow: 74200, outflow: 42100, net: 32100 },
-    { date: 'W3', label: 'Week 3', inflow: 63800, outflow: 48900, net: 14900 },
-    { date: 'W4', label: 'Week 4', inflow: 91500, outflow: 52400, net: 39100 },
-  ],
-  '90D': [
-    { date: 'Month 1', label: 'Month 1', inflow: 220000, outflow: 145000, net: 75000 },
-    { date: 'Month 2', label: 'Month 2', inflow: 265000, outflow: 168000, net: 97000 },
-    { date: 'Month 3', label: 'Month 3', inflow: 312000, outflow: 184000, net: 128000 },
-  ],
+/**
+ * How many days back each period covers. The server sends 30 days of daily
+ * movement; the shorter periods are a window onto it rather than a different
+ * request.
+ *
+ * There is deliberately no sample series here. This component used to fall
+ * back to invented figures whenever the caller passed nothing, so an account
+ * with no bank accounts and no money showed "+$287.90K inflow" directly above
+ * a card reading "$0.00". An empty series now renders as empty.
+ */
+const PERIOD_DAYS: Record<'7D' | '30D' | '90D', number> = {
+  '7D': 7,
+  '30D': 30,
+  '90D': 90,
 };
 
 export function CashflowTrendChart({
@@ -68,14 +61,16 @@ export function CashflowTrendChart({
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   const activeSeries = useMemo<CashflowDataPoint[]>(() => {
-    if (series !== undefined) {
-      return series.map((pt) => ({
-        ...pt,
-        net: pt.net !== undefined ? pt.net : pt.inflow - pt.outflow,
-      }));
-    }
-    return DEFAULT_SAMPLE_SERIES[period];
+    const points = series ?? [];
+    return points.slice(-PERIOD_DAYS[period]).map((pt) => ({
+      ...pt,
+      net: pt.net !== undefined ? pt.net : pt.inflow - pt.outflow,
+    }));
   }, [series, period]);
+
+  const hasMovement = activeSeries.some(
+    (pt) => pt.inflow !== 0 || pt.outflow !== 0,
+  );
 
   const handlePeriodChange = (newPeriod: '7D' | '30D' | '90D') => {
     setPeriod(newPeriod);
@@ -295,7 +290,7 @@ export function CashflowTrendChart({
 
       {/* Interactive SVG Chart */}
       <div className="relative mt-4 w-full">
-        {activeSeries.length === 0 ? (
+        {!hasMovement ? (
           <div
             data-testid="chart-empty-state"
             className="flex h-52 flex-col items-center justify-center text-center text-ink-muted"

@@ -43,6 +43,7 @@ export const LEDGER_ROLES = {
   ACCOUNTS_PAYABLE: 'ACCOUNTS_PAYABLE',
   TAX_PAYABLE: 'TAX_PAYABLE',
   RETAINED_EARNINGS: 'RETAINED_EARNINGS',
+  OPENING_BALANCE_EQUITY: 'OPENING_BALANCE_EQUITY',
   SALES: 'SALES',
   COGS: 'COGS',
   OPERATING_EXPENSE: 'OPERATING_EXPENSE',
@@ -125,6 +126,14 @@ export const SYSTEM_LEDGER_ACCOUNTS: SystemLedgerAccount[] = [
     type: 'EQUITY',
     role: LEDGER_ROLES.RETAINED_EARNINGS,
     description: 'Accumulated result of prior periods',
+  },
+  {
+    code: '3100',
+    name: 'Opening balance equity',
+    type: 'EQUITY',
+    role: LEDGER_ROLES.OPENING_BALANCE_EQUITY,
+    description:
+      'Contra for balances a tenant brought in from their previous system. A cash account opened with a starting figure debits the bank and credits this, so the books balance without inventing a transaction that never happened. An accountant clears it to retained earnings or capital once the opening position is agreed.',
   },
   {
     code: '4000',

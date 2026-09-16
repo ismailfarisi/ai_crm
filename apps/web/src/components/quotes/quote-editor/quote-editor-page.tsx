@@ -29,6 +29,7 @@ import type {
 } from '@saas/shared';
 import { calculateQuoteTotals, evaluateGuardrails } from '@saas/shared';
 import { useCostingPolicy } from '@/hooks/use-catalog';
+import { useTaxCodes } from '@/hooks/use-credits';
 import { api } from '@/lib/api/endpoints';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -87,6 +88,22 @@ export function QuoteEditorPage({
     paymentTerms: initialQuote?.paymentTerms || 'immediate',
     currency: initialQuote?.currency || 'USD',
   });
+
+  // The rates offered on a line come from the organisation's own sales tax
+  // codes, so a code configured under Finance → Tax actually reaches a quote.
+  const { data: taxCodes } = useTaxCodes();
+  const salesTaxCodes = useMemo(
+    () =>
+      (taxCodes ?? [])
+        .filter((code) => code.isActive && code.kind !== 'PURCHASE')
+        .map((code) => ({
+          id: code.id,
+          code: code.code,
+          name: code.name,
+          rate: code.rate,
+        })),
+    [taxCodes],
+  );
 
   const [items, setItems] = useState<QuoteLineItem[]>(initialQuote?.items || [
     {
@@ -641,6 +658,7 @@ export function QuoteEditorPage({
           onChange={setItems}
           currency={headerData.currency}
           readOnly={isReadOnly}
+          taxCodes={salesTaxCodes}
         />
       </div>
 

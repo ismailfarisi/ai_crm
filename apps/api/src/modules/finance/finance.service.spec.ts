@@ -73,6 +73,9 @@ describe('FinanceService', () => {
 
     journalRepo = {
       find: jest.fn().mockResolvedValue([]),
+      // An opening balance posts an entry; nothing is posted yet, so the
+      // idempotency check finds nothing.
+      findOne: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockImplementation((dto) => ({ id: 'je-1', ...dto })),
       save: jest.fn().mockImplementation(async (je) => ({ id: 'je-1', ...je })),
     };
@@ -98,6 +101,9 @@ describe('FinanceService', () => {
             description: line.description,
           })),
       ),
+      // Called before an opening balance posts, so 3100 exists on charts
+      // created before opening balance equity was introduced.
+      provisionChartOfAccounts: jest.fn().mockResolvedValue([]),
     };
 
     service = new FinanceService(
@@ -238,6 +244,43 @@ describe('FinanceService', () => {
         }),
       );
       expect(result.name).toBe('New Checking Account');
+    });
+
+    // Opening balances used to live only on the account row, so treasury and
+    // the balance sheet reported different figures for the same account and
+    // nothing could be reconciled against a statement.
+    it('posts a new account opening balance against opening balance equity', async () => {
+      await service.createAccount(tenantId, {
+        name: 'Operating Checking',
+        accountType: 'BANK',
+        currency: 'USD',
+        balance: 15000,
+      } as CreateFinanceAccountDto);
+
+      expect(journalRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          referenceType: 'MANUAL',
+          totalAmount: 15000,
+          lines: expect.arrayContaining([
+            expect.objectContaining({ debit: 15000 }),
+            expect.objectContaining({
+              accountName: 'Opening balance equity',
+              credit: 15000,
+            }),
+          ]),
+        }),
+      );
+    });
+
+    it('posts nothing when an account opens at zero', async () => {
+      await service.createAccount(tenantId, {
+        name: 'Empty Account',
+        accountType: 'BANK',
+        currency: 'USD',
+        balance: 0,
+      } as CreateFinanceAccountDto);
+
+      expect(journalRepo.save).not.toHaveBeenCalled();
     });
 
     it('transfers funds between accounts and records double-entry journal entry', async () => {

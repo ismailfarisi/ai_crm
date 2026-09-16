@@ -10,6 +10,7 @@ import { ExpenseClaim } from './entities/expense-claim.entity';
 import { FinanceAccount } from './entities/finance-account.entity';
 import { CategoryBudget } from './entities/category-budget.entity';
 import { JournalEntry } from './entities/journal-entry.entity';
+import { LedgerService } from './ledger.service';
 import { TemporalService } from '../temporal/temporal.service';
 import { AiService } from '../ai/ai.service';
 import {
@@ -31,7 +32,7 @@ import {
   scannedReceiptResultSchema,
   scannedReceiptJsonSchema,
 } from './dto';
-import type { ExpenseStatus } from '@saas/shared';
+import { LEDGER_ROLES, type ExpenseStatus } from '@saas/shared';
 import {
   allocateNextSequenceValue,
   formatSequenceNumber,
@@ -52,6 +53,7 @@ export class ExpensesService {
     private readonly journalRepository: Repository<JournalEntry>,
     private readonly temporalService: TemporalService,
     private readonly aiService: AiService,
+    private readonly ledger: LedgerService,
   ) {}
 
   async generateNextClaimNumber(tenantId: string): Promise<string> {
@@ -239,7 +241,159 @@ export class ExpensesService {
       }
     }
 
+    // Posting happens here, not in the workflow. The workflow's
+    // `postJournalEntryActivity` only ever logged and returned a synthetic id,
+    // so an approved claim never reached the ledger whether Temporal was
+    // healthy or not: the P&L showed no expense and the bank balance never
+    // moved. Doing it on the same path as every other posting site — payables,
+    // credit notes, inventory — keeps the books right regardless of whether
+    // the workflow ran, and both entries are idempotent on `referenceId` so a
+    // retry or a later workflow replay cannot double them.
+    if (claim.status === 'APPROVED') {
+      await this.postExpenseAccrual(tenantId, claim);
+    } else if (claim.status === 'PAID') {
+      // A claim can be reimbursed straight from submitted, so make sure the
+      // cost is accrued before it is settled.
+      await this.postExpenseAccrual(tenantId, claim);
+      await this.postExpenseReimbursement(tenantId, claim, dto.accountId);
+    }
+
     return this.expenseRepository.save(claim);
+  }
+
+  /**
+   * Recognises the cost when the claim is approved: the company owes the
+   * employee from that moment, whether or not it has paid them yet.
+   *
+   * A category ("Travel", "Software") is a label rather than an account, so
+   * every claim lands in operating expense until categories are mapped to a
+   * tenant's own accounts.
+   */
+  private async postExpenseAccrual(
+    tenantId: string,
+    claim: ExpenseClaim,
+  ): Promise<void> {
+    const amount = Number(claim.amount) || 0;
+    if (amount <= 0) return;
+
+    const referenceId = claim.id;
+    const already = await this.journalRepository.findOne({
+      where: { tenantId, referenceType: 'EXPENSE', referenceId },
+    });
+    if (already) return;
+
+    const label = claim.claimNumber || claim.id;
+
+    const entry = this.journalRepository.create({
+      tenantId,
+      entryNumber: `JE-EXP-${label}`,
+      referenceType: 'EXPENSE',
+      referenceId,
+      entryDate: claim.expenseDate ? new Date(claim.expenseDate) : new Date(),
+      totalAmount: amount,
+      lines: await this.ledger.resolveLines(tenantId, [
+        {
+          role: LEDGER_ROLES.OPERATING_EXPENSE,
+          accountName: claim.category || 'Operating expense',
+          debit: amount,
+          credit: 0,
+          description: `Expense claim ${label} — ${claim.category ?? 'uncategorised'}`,
+        },
+        {
+          role: LEDGER_ROLES.ACCOUNTS_PAYABLE,
+          accountName: 'Accounts payable',
+          debit: 0,
+          credit: amount,
+          description: `Payable for expense claim ${label}`,
+        },
+      ]),
+    });
+
+    await this.journalRepository.save(entry);
+  }
+
+  /**
+   * Settles the payable and takes the money out of a real account.
+   *
+   * The caller may name the account; otherwise the organisation's default is
+   * used, falling back to its only account when exactly one exists. With no
+   * account at all this refuses rather than marking a claim paid out of
+   * nowhere — the treasury balance and the ledger have to move together.
+   */
+  private async postExpenseReimbursement(
+    tenantId: string,
+    claim: ExpenseClaim,
+    accountId?: string,
+  ): Promise<void> {
+    const amount = Number(claim.amount) || 0;
+    if (amount <= 0) return;
+
+    const referenceId = `${claim.id}:reimbursement`;
+    const already = await this.journalRepository.findOne({
+      where: { tenantId, referenceType: 'EXPENSE', referenceId },
+    });
+    if (already) return;
+
+    const account = await this.resolveReimbursementAccount(tenantId, accountId);
+    const label = claim.claimNumber || claim.id;
+
+    const entry = this.journalRepository.create({
+      tenantId,
+      entryNumber: `JE-EXPPAY-${label}`,
+      referenceType: 'EXPENSE',
+      referenceId,
+      entryDate: new Date(),
+      totalAmount: amount,
+      lines: await this.ledger.resolveLines(tenantId, [
+        {
+          role: LEDGER_ROLES.ACCOUNTS_PAYABLE,
+          accountName: 'Accounts payable',
+          debit: amount,
+          credit: 0,
+          description: `Settlement of expense claim ${label}`,
+        },
+        {
+          financeAccountId: account.id,
+          accountName: account.name,
+          debit: 0,
+          credit: amount,
+          description: `Reimbursement of expense claim ${label}`,
+        },
+      ]),
+    });
+
+    await this.journalRepository.save(entry);
+
+    account.balance = Number(account.balance) - amount;
+    await this.accountRepository.save(account);
+  }
+
+  private async resolveReimbursementAccount(
+    tenantId: string,
+    accountId?: string,
+  ): Promise<FinanceAccount> {
+    if (accountId) {
+      const named = await this.accountRepository.findOne({
+        where: { id: accountId, tenantId },
+      });
+      if (!named) {
+        throw new NotFoundException(`Account ${accountId} not found`);
+      }
+      return named;
+    }
+
+    const accounts = await this.accountRepository.find({
+      where: { tenantId },
+      order: { isDefault: 'DESC', createdAt: 'ASC' },
+    });
+
+    if (accounts.length === 0) {
+      throw new BadRequestException(
+        'There is no bank or cash account to reimburse from. Add one under Finance → Bank & Cash Accounts first.',
+      );
+    }
+
+    return accounts[0];
   }
 
   private static readonly DEGRADED_RESULT: Omit<

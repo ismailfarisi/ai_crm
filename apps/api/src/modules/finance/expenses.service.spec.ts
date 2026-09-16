@@ -5,6 +5,7 @@ import { ExpenseClaim } from './entities/expense-claim.entity';
 import { FinanceAccount } from './entities/finance-account.entity';
 import { CategoryBudget } from './entities/category-budget.entity';
 import { JournalEntry } from './entities/journal-entry.entity';
+import { LedgerService } from './ledger.service';
 import { TemporalService } from '../temporal/temporal.service';
 import { AiService } from '../ai/ai.service';
 import { AiNotConfiguredException } from '../ai/interfaces/ai-provider.interface';
@@ -24,6 +25,7 @@ describe('ExpensesService', () => {
   let journalRepo: jest.Mocked<Partial<Repository<JournalEntry>>>;
   let temporalService: jest.Mocked<Partial<TemporalService>>;
   let aiService: jest.Mocked<Partial<AiService>>;
+  let ledgerService: jest.Mocked<Partial<LedgerService>>;
   let mockWorkflowHandle: any;
   let claimSequenceValue: number;
 
@@ -61,7 +63,13 @@ describe('ExpensesService', () => {
     };
 
     accountRepo = {
-      findOne: jest.fn().mockResolvedValue(null),
+      // A reimbursement has to leave a real account, so there is one to leave.
+      findOne: jest
+        .fn()
+        .mockResolvedValue({ id: 'acc-1', name: 'Operating', balance: 5000 }),
+      find: jest
+        .fn()
+        .mockResolvedValue([{ id: 'acc-1', name: 'Operating', balance: 5000 }]),
       save: jest.fn().mockImplementation(async (a) => a),
     };
 
@@ -73,6 +81,8 @@ describe('ExpensesService', () => {
     journalRepo = {
       create: jest.fn().mockImplementation((dto) => ({ id: 'je-1', ...dto })),
       save: jest.fn().mockImplementation(async (j) => j),
+      // Nothing posted yet, so the idempotency check always finds nothing.
+      findOne: jest.fn().mockResolvedValue(null),
     };
 
     temporalService = {
@@ -88,6 +98,14 @@ describe('ExpensesService', () => {
       generateStructured: jest.fn(),
     };
 
+    // Approval and reimbursement post through the ledger now, so the double
+    // entry has to be resolvable here. Echoing the lines back is enough: the
+    // service's own arithmetic is what these tests are about.
+    ledgerService = {
+      resolveLines: jest.fn().mockImplementation(async (_tenantId, lines) => lines),
+      provisionChartOfAccounts: jest.fn().mockResolvedValue([]),
+    };
+
     service = new ExpensesService(
       expenseRepo as unknown as Repository<ExpenseClaim>,
       accountRepo as unknown as Repository<FinanceAccount>,
@@ -95,6 +113,7 @@ describe('ExpensesService', () => {
       journalRepo as unknown as Repository<JournalEntry>,
       temporalService as unknown as TemporalService,
       aiService as unknown as AiService,
+      ledgerService as unknown as LedgerService,
     );
   });
 
@@ -296,6 +315,108 @@ describe('ExpensesService', () => {
         }),
       );
       expect(res.status).toBe('PAID');
+    });
+
+    // The workflow's posting activity only ever logged, so an approved claim
+    // never reached the ledger: the P&L read zero expenses however much had
+    // been claimed, and the bank balance never moved when it was paid.
+    it('posts the cost to the ledger on approval', async () => {
+      expenseRepo.findOne = jest.fn().mockResolvedValue({
+        id: expenseId,
+        tenantId,
+        amount: 4200,
+        category: 'Other',
+        claimNumber: 'EXP-2026-0001',
+        status: 'SUBMITTED',
+        temporalWorkflowId: `expense-${expenseId}`,
+      } as ExpenseClaim);
+
+      await service.sendSignal(tenantId, expenseId, {
+        action: 'APPROVE',
+        approvedBy: 'manager-1',
+      } as SignalExpenseDto);
+
+      expect(journalRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          referenceType: 'EXPENSE',
+          referenceId: expenseId,
+          totalAmount: 4200,
+          lines: expect.arrayContaining([
+            expect.objectContaining({ role: 'OPERATING_EXPENSE', debit: 4200 }),
+            expect.objectContaining({ role: 'ACCOUNTS_PAYABLE', credit: 4200 }),
+          ]),
+        }),
+      );
+    });
+
+    it('settles the payable and takes the money out of the account on reimbursement', async () => {
+      expenseRepo.findOne = jest.fn().mockResolvedValue({
+        id: expenseId,
+        tenantId,
+        amount: 4200,
+        claimNumber: 'EXP-2026-0001',
+        status: 'APPROVED',
+        temporalWorkflowId: `expense-${expenseId}`,
+      } as ExpenseClaim);
+
+      await service.sendSignal(tenantId, expenseId, {
+        action: 'REIMBURSE',
+        accountId: 'acc-1',
+        reimbursedBy: 'finance-admin',
+      } as SignalExpenseDto);
+
+      expect(journalRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          referenceId: `${expenseId}:reimbursement`,
+          lines: expect.arrayContaining([
+            expect.objectContaining({ role: 'ACCOUNTS_PAYABLE', debit: 4200 }),
+            expect.objectContaining({
+              financeAccountId: 'acc-1',
+              credit: 4200,
+            }),
+          ]),
+        }),
+      );
+      // Treasury has to move with the ledger, or the two disagree.
+      expect(accountRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'acc-1', balance: 800 }),
+      );
+    });
+
+    it('refuses to reimburse when the organization has no account to pay from', async () => {
+      expenseRepo.findOne = jest.fn().mockResolvedValue({
+        id: expenseId,
+        tenantId,
+        amount: 4200,
+        status: 'APPROVED',
+        temporalWorkflowId: `expense-${expenseId}`,
+      } as ExpenseClaim);
+      accountRepo.find = jest.fn().mockResolvedValue([]);
+
+      await expect(
+        service.sendSignal(tenantId, expenseId, {
+          action: 'REIMBURSE',
+          reimbursedBy: 'finance-admin',
+        } as SignalExpenseDto),
+      ).rejects.toThrow(/no bank or cash account/i);
+    });
+
+    it('does not post twice when a claim is signalled again', async () => {
+      expenseRepo.findOne = jest.fn().mockResolvedValue({
+        id: expenseId,
+        tenantId,
+        amount: 4200,
+        status: 'SUBMITTED',
+        temporalWorkflowId: `expense-${expenseId}`,
+      } as ExpenseClaim);
+      journalRepo.findOne = jest.fn().mockResolvedValue({ id: 'je-existing' });
+
+      await service.sendSignal(tenantId, expenseId, {
+        action: 'APPROVE',
+        approvedBy: 'manager-1',
+      } as SignalExpenseDto);
+
+      expect(journalRepo.save).not.toHaveBeenCalled();
     });
 
     it('throws BadRequestException for invalid signal action', async () => {

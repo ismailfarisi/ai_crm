@@ -42,14 +42,137 @@ function getFormattedDate(date: Date = new Date()): string {
   });
 }
 
+/** Only the fields the dashboard reads, so it is not coupled to the full DTO. */
+interface DashboardQuote {
+  id: string;
+  quoteNumber: string | null;
+  title: string;
+  customerName: string;
+  status: 'DRAFT' | 'AWAITING_APPROVAL' | 'APPROVED' | 'REJECTED';
+  totalAmount: number | string;
+  currency?: string;
+  acceptedAt: string | null;
+  createdAt: string;
+}
+
+interface DashboardInvoice {
+  amount: number | string;
+  issuedAt: string;
+}
+
+/**
+ * A win is a quote the customer actually accepted; a loss is one that was
+ * rejected. Quotes still in flight count as neither, so a shop that has sent
+ * two quotes and heard back on none is told there is nothing to measure rather
+ * than being given a percentage of nothing.
+ */
+function summariseWinRate(quotes: DashboardQuote[]): {
+  percentage: number;
+  won: number;
+  decided: number;
+} {
+  const won = quotes.filter((q) => q.acceptedAt !== null).length;
+  const lost = quotes.filter(
+    (q) => q.status === 'REJECTED' && q.acceptedAt === null,
+  ).length;
+  const decided = won + lost;
+
+  return {
+    percentage: decided === 0 ? 0 : Math.round((won / decided) * 100),
+    won,
+    decided,
+  };
+}
+
+/** Invoiced totals for the trailing 12 months, oldest first. */
+function monthlyRevenue(
+  invoices: DashboardInvoice[],
+  now: Date,
+): Array<{ month: string; value: number }> {
+  const buckets: Array<{ month: string; key: string; value: number }> = [];
+
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    buckets.push({
+      month: d.toLocaleDateString('en-US', { month: 'short' }),
+      key: `${d.getFullYear()}-${d.getMonth()}`,
+      value: 0,
+    });
+  }
+
+  const byKey = new Map(buckets.map((b) => [b.key, b]));
+  for (const invoice of invoices) {
+    if (!invoice.issuedAt) continue;
+    const issued = new Date(invoice.issuedAt);
+    const bucket = byKey.get(`${issued.getFullYear()}-${issued.getMonth()}`);
+    if (bucket) bucket.value += Number(invoice.amount) || 0;
+  }
+
+  return buckets.map(({ month, value }) => ({
+    month,
+    value: Math.round(value * 100) / 100,
+  }));
+}
+
+/** Quotes that need a decision, newest first. */
+function quotesAwaitingAction(quotes: DashboardQuote[]) {
+  return quotes
+    .filter((q) => q.status === 'AWAITING_APPROVAL' || q.status === 'DRAFT')
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    )
+    .slice(0, 3)
+    .map((q) => ({
+      id: q.id,
+      title: q.title
+        ? `${q.customerName} — ${q.title}`
+        : q.customerName || 'Untitled quote',
+      category: 'quote' as const,
+      categoryLabel:
+        q.status === 'AWAITING_APPROVAL' ? 'Awaiting approval' : 'Draft',
+      timeLabel: q.quoteNumber ?? 'Not yet numbered',
+      amount: new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: q.currency || 'USD',
+        maximumFractionDigits: 0,
+      }).format(Number(q.totalAmount) || 0),
+      statusBadge:
+        q.status === 'AWAITING_APPROVAL' ? 'Needs your decision' : undefined,
+      href: `/quotes/${q.id}`,
+    }));
+}
+
 export default async function DashboardPage() {
   const session = await requireSession();
   const now = new Date();
   const greeting = getGreeting(now);
   const formattedDate = getFormattedDate(now);
 
-  // Returns null rather than throwing when the user lacks contact:read.
-  const stats = await serverFetchOrNull<ContactStatsDto>('/contacts/stats');
+  // Each returns null rather than throwing when the user lacks the permission.
+  const [stats, quotes, invoices] = await Promise.all([
+    serverFetchOrNull<ContactStatsDto>('/contacts/stats'),
+    serverFetchOrNull<DashboardQuote[]>('/quotes'),
+    serverFetchOrNull<{ items?: DashboardInvoice[] } | DashboardInvoice[]>(
+      '/invoices',
+    ),
+  ]);
+
+  const winRate = summariseWinRate(quotes ?? []);
+  const revenueSeries = monthlyRevenue(
+    Array.isArray(invoices) ? invoices : (invoices?.items ?? []),
+    now,
+  );
+  const awaiting = quotesAwaitingAction(quotes ?? []);
+
+  const invoicedThisMonth = revenueSeries[revenueSeries.length - 1]?.value ?? 0;
+  const invoicedLastMonth = revenueSeries[revenueSeries.length - 2]?.value ?? 0;
+  const revenueGrowth =
+    invoicedLastMonth > 0
+      ? Math.round(
+          ((invoicedThisMonth - invoicedLastMonth) / invoicedLastMonth) * 1000,
+        ) / 10
+      : null;
 
   return (
     <div className="space-y-6">
@@ -94,11 +217,18 @@ export default async function DashboardPage() {
 
             <div className="lg:col-span-4">
               <DashboardGaugeWidget
-                percentage={84}
-                targetPercentage={80}
-                title="Quotation Win Rate"
-                subtitle="Customer Satisfaction"
-                trendLabel="+12.4% this month"
+                percentage={winRate.percentage}
+                title="Quotation win rate"
+                subtitle={
+                  winRate.decided > 0
+                    ? `${winRate.won} of ${winRate.decided} decided`
+                    : 'Accepted vs rejected quotes'
+                }
+                emptyLabel={
+                  winRate.decided === 0
+                    ? 'No quote has been accepted or rejected yet, so there is no win rate to show.'
+                    : undefined
+                }
                 className="h-full"
               />
             </div>
@@ -108,16 +238,29 @@ export default async function DashboardPage() {
           <div className="grid gap-5 lg:grid-cols-12">
             <div className="lg:col-span-7">
               <DashboardKpiChart
-                title="Revenue & Conversion Velocity"
-                metricLabel="Team Conversion KPI"
-                metricValue="72.4%"
-                growthLabel="+14.8% YoY"
+                series={revenueSeries}
+                title="Invoiced revenue"
+                metricLabel="This month"
+                metricValue={new Intl.NumberFormat('en-US', {
+                  style: 'currency',
+                  currency: 'USD',
+                  maximumFractionDigits: 0,
+                }).format(invoicedThisMonth)}
+                growthLabel={
+                  revenueGrowth === null
+                    ? undefined
+                    : `${revenueGrowth >= 0 ? '+' : ''}${revenueGrowth}% vs last month`
+                }
                 className="h-full"
               />
             </div>
 
             <div className="lg:col-span-5">
-              <DashboardScheduleCards className="h-full" />
+              <DashboardScheduleCards
+                items={awaiting}
+                emptyLabel="No quotes are waiting for a decision."
+                className="h-full"
+              />
             </div>
           </div>
 
