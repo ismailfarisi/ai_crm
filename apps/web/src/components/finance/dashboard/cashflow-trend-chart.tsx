@@ -483,7 +483,12 @@ export function CashflowTrendChart({
                 // is hovered. Printing all thirty overlapped into an
                 // unreadable smear.
                 const isLast = idx === chartPoints.length - 1;
-                if (!isHovered && !isLast && idx % labelEvery !== 0) return null;
+                // A regular tick close to the end is dropped rather than left
+                // to collide with the final date, which is always drawn.
+                const crowdsLast = chartPoints.length - 1 - idx < labelEvery;
+                if (!isHovered && !isLast && (crowdsLast || idx % labelEvery !== 0)) {
+                  return null;
+                }
 
                 return (
                   <text
