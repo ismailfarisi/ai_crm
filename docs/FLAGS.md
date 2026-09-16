@@ -89,6 +89,22 @@ specified. Sales orders, work orders, delivery notes and credit notes have no
 file panel. Adding one is an entry in `modules/storage/attachment-owners.ts`, a
 string in `@saas/shared`, and the panel on the page.
 
+### Finance, quotes and dashboard still use raw palette colours — open
+
+`globals.css` defines semantic tokens (`surface`, `ink`, `border`, `brand`,
+`success`/`warning`/`danger`/`info`) and a `.dark` block that overrides them.
+Screens written against raw Tailwind values instead — `stone-200`, `amber-600`,
+`emerald-50` — neither match the rest of the app nor follow dark mode, because
+the dark block only moves the tokens.
+
+Automations was converted when it was reported as looking different. What is
+left, by rough count of raw palette classes: finance ~440, quotes ~130,
+dashboard ~58, settings ~15, and the app shell ~9 (those last ones carry
+explicit `dark:` variants, so they do at least follow the theme).
+
+The conversion is mechanical: greys to `surface`/`ink`/`border`, the brand
+amber to `brand`, and status colours to the four semantic families.
+
 ### Uploads are buffered in memory — open
 
 Capped at 25MB per file. Fine at that size; larger artwork would need a
