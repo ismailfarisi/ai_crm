@@ -272,24 +272,24 @@ export function ExpressionHelper({
     <div
       data-testid="expression-helper"
       className={clsx(
-        'rounded-xl border border-stone-200 bg-white shadow-xs flex flex-col text-xs text-stone-800',
+        'rounded-xl border border-border bg-surface shadow-xs flex flex-col text-xs text-ink',
         compact ? 'p-2 space-y-2' : 'p-3 space-y-3',
         className,
       )}
     >
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5 font-semibold text-stone-900">
-          <Sparkles className="h-3.5 w-3.5 text-amber-600" />
+        <div className="flex items-center gap-1.5 font-semibold text-ink">
+          <Sparkles className="h-3.5 w-3.5 text-brand" />
           <span>Expression & Variable Helper</span>
         </div>
-        <span className="text-[10px] text-stone-400 font-mono">
+        <span className="text-[10px] text-ink-subtle font-mono">
           Click pill to copy / insert
         </span>
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-stone-100 pb-1.5 overflow-x-auto no-scrollbar">
+      <div className="flex items-center gap-1 border-b border-border/40 pb-1.5 overflow-x-auto no-scrollbar">
         <button
           type="button"
           data-testid="tab-all"
@@ -297,8 +297,8 @@ export function ExpressionHelper({
           className={clsx(
             'px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer',
             activeTab === 'all'
-              ? 'bg-amber-100 text-amber-900 font-semibold'
-              : 'text-stone-600 hover:bg-stone-100',
+              ? 'bg-brand-soft text-ink font-semibold'
+              : 'text-ink-muted hover:bg-surface-muted',
           )}
         >
           All
@@ -310,11 +310,11 @@ export function ExpressionHelper({
           className={clsx(
             'px-2 py-0.5 rounded text-[11px] font-medium transition-colors flex items-center gap-1 cursor-pointer',
             activeTab === 'json'
-              ? 'bg-amber-100 text-amber-900 font-semibold'
-              : 'text-stone-600 hover:bg-stone-100',
+              ? 'bg-brand-soft text-ink font-semibold'
+              : 'text-ink-muted hover:bg-surface-muted',
           )}
         >
-          <Database className="h-3 w-3 text-amber-700" />
+          <Database className="h-3 w-3 text-ink" />
           $json
         </button>
         <button
@@ -324,11 +324,11 @@ export function ExpressionHelper({
           className={clsx(
             'px-2 py-0.5 rounded text-[11px] font-medium transition-colors flex items-center gap-1 cursor-pointer',
             activeTab === 'trigger'
-              ? 'bg-amber-100 text-amber-900 font-semibold'
-              : 'text-stone-600 hover:bg-stone-100',
+              ? 'bg-brand-soft text-ink font-semibold'
+              : 'text-ink-muted hover:bg-surface-muted',
           )}
         >
-          <Zap className="h-3 w-3 text-emerald-600" />
+          <Zap className="h-3 w-3 text-success" />
           $trigger
         </button>
         <button
@@ -338,11 +338,11 @@ export function ExpressionHelper({
           className={clsx(
             'px-2 py-0.5 rounded text-[11px] font-medium transition-colors flex items-center gap-1 cursor-pointer',
             activeTab === 'node'
-              ? 'bg-amber-100 text-amber-900 font-semibold'
-              : 'text-stone-600 hover:bg-stone-100',
+              ? 'bg-brand-soft text-ink font-semibold'
+              : 'text-ink-muted hover:bg-surface-muted',
           )}
         >
-          <Layers className="h-3 w-3 text-blue-600" />
+          <Layers className="h-3 w-3 text-info" />
           $node
         </button>
         <button
@@ -352,11 +352,11 @@ export function ExpressionHelper({
           className={clsx(
             'px-2 py-0.5 rounded text-[11px] font-medium transition-colors flex items-center gap-1 cursor-pointer',
             activeTab === 'env'
-              ? 'bg-amber-100 text-amber-900 font-semibold'
-              : 'text-stone-600 hover:bg-stone-100',
+              ? 'bg-brand-soft text-ink font-semibold'
+              : 'text-ink-muted hover:bg-surface-muted',
           )}
         >
-          <Key className="h-3 w-3 text-purple-600" />
+          <Key className="h-3 w-3 text-info" />
           $env
         </button>
         <button
@@ -366,8 +366,8 @@ export function ExpressionHelper({
           className={clsx(
             'px-2 py-0.5 rounded text-[11px] font-medium transition-colors flex items-center gap-1 ml-auto cursor-pointer',
             activeTab === 'preview'
-              ? 'bg-amber-500 text-white font-semibold'
-              : 'text-stone-600 hover:bg-stone-100',
+              ? 'bg-brand text-ink font-semibold'
+              : 'text-ink-muted hover:bg-surface-muted',
           )}
         >
           <Code className="h-3 w-3" />
@@ -379,14 +379,14 @@ export function ExpressionHelper({
         <>
           {/* Search bar */}
           <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-stone-400 pointer-events-none" />
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-ink-subtle pointer-events-none" />
             <input
               type="text"
               data-testid="expression-search-input"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search variables (e.g. email, quote, amount)..."
-              className="w-full pl-7 pr-3 py-1 text-[11px] bg-stone-50 border border-stone-200 rounded-lg text-stone-900 placeholder:text-stone-400 focus:bg-white focus:border-amber-500 focus:outline-none"
+              className="w-full pl-7 pr-3 py-1 text-[11px] bg-surface-muted border border-border rounded-lg text-ink placeholder:text-ink-subtle focus:bg-surface focus:border-brand focus:outline-none"
             />
           </div>
 
@@ -396,7 +396,7 @@ export function ExpressionHelper({
             className="max-h-48 overflow-y-auto space-y-1.5 pr-1"
           >
             {filteredVariables.length === 0 ? (
-              <div className="py-4 text-center text-stone-400 text-[11px]">
+              <div className="py-4 text-center text-ink-subtle text-[11px]">
                 No variables match &quot;{searchQuery}&quot;
               </div>
             ) : (
@@ -407,27 +407,27 @@ export function ExpressionHelper({
                     key={v.key}
                     data-testid={`variable-item-${v.key}`}
                     onClick={() => handleCopyOrSelect(v.expression)}
-                    className="group flex items-center justify-between p-1.5 rounded-lg border border-stone-200/70 bg-stone-50/50 hover:bg-amber-50/60 hover:border-amber-300 transition-all cursor-pointer"
+                    className="group flex items-center justify-between p-1.5 rounded-lg border border-border/70 bg-surface-muted/50 hover:bg-brand-soft/60 hover:border-brand/40 transition-all cursor-pointer"
                   >
                     <div className="min-w-0 flex-1 pr-2">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-mono font-semibold text-amber-900 text-[11px] group-hover:text-amber-700 truncate">
+                        <span className="font-mono font-semibold text-ink text-[11px] group-hover:text-ink truncate">
                           {v.expression}
                         </span>
                         {v.sampleValue !== undefined && (
-                          <span className="text-[10px] text-stone-400 truncate max-w-[120px] font-mono">
+                          <span className="text-[10px] text-ink-subtle truncate max-w-[120px] font-mono">
                             = {typeof v.sampleValue === 'object' ? '{...}' : String(v.sampleValue)}
                           </span>
                         )}
                       </div>
-                      <p className="text-[10px] text-stone-500 truncate mt-0.5">
+                      <p className="text-[10px] text-ink-muted truncate mt-0.5">
                         {v.description}
                       </p>
                     </div>
 
-                    <div className="shrink-0 flex items-center gap-1 text-stone-400 group-hover:text-amber-700">
+                    <div className="shrink-0 flex items-center gap-1 text-ink-subtle group-hover:text-ink">
                       {isCopied ? (
-                        <Check className="h-3.5 w-3.5 text-emerald-600 animate-in zoom-in-50" />
+                        <Check className="h-3.5 w-3.5 text-success animate-in zoom-in-50" />
                       ) : (
                         <Copy className="h-3.5 w-3.5 opacity-60 group-hover:opacity-100" />
                       )}
@@ -442,7 +442,7 @@ export function ExpressionHelper({
         /* Live Preview / Expression Evaluator */
         <div data-testid="expression-preview-panel" className="space-y-2.5">
           <div className="space-y-1">
-            <label className="text-[11px] font-medium text-stone-700">
+            <label className="text-[11px] font-medium text-ink">
               Expression Template:
             </label>
             <textarea
@@ -454,30 +454,30 @@ export function ExpressionHelper({
                 onPreviewChange?.(e.target.value);
               }}
               placeholder="e.g. Contact {{ $json.name }} was updated at {{ $trigger.timestamp }}"
-              className="w-full p-2 font-mono text-[11px] bg-stone-50 border border-stone-200 rounded-lg text-stone-900 focus:bg-white focus:border-amber-500 focus:outline-none resize-none"
+              className="w-full p-2 font-mono text-[11px] bg-surface-muted border border-border rounded-lg text-ink focus:bg-surface focus:border-brand focus:outline-none resize-none"
             />
           </div>
 
           <div className="space-y-1">
             <div className="flex items-center justify-between">
-              <label className="text-[11px] font-medium text-stone-700 flex items-center gap-1">
-                <Info className="h-3 w-3 text-stone-400" />
+              <label className="text-[11px] font-medium text-ink flex items-center gap-1">
+                <Info className="h-3 w-3 text-ink-subtle" />
                 Evaluated Output:
               </label>
               <button
                 type="button"
                 data-testid="copy-preview-btn"
                 onClick={() => handleCopyOrSelect(interpolatedPreview)}
-                className="text-[10px] text-amber-700 hover:text-amber-800 font-medium cursor-pointer"
+                className="text-[10px] text-ink hover:text-ink font-medium cursor-pointer"
               >
                 Copy Output
               </button>
             </div>
             <div
               data-testid="expression-preview-output"
-              className="p-2 rounded-lg bg-stone-900 text-amber-300 font-mono text-[11px] min-h-[44px] break-all border border-stone-800 shadow-inner"
+              className="p-2 rounded-lg bg-brand-dark text-brand font-mono text-[11px] min-h-[44px] break-all border border-border-strong shadow-inner"
             >
-              {interpolatedPreview || <span className="text-stone-500 italic">Empty output</span>}
+              {interpolatedPreview || <span className="text-ink-muted italic">Empty output</span>}
             </div>
           </div>
         </div>

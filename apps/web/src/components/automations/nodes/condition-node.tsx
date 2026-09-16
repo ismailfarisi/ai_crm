@@ -31,15 +31,15 @@ export function ConditionNode({
       selected={selected}
       hasInput={true}
       hasOutput={false}
-      iconBg="bg-indigo-50"
-      iconColor="text-indigo-700"
+      iconBg="bg-info-soft"
+      iconColor="text-info"
       testId="condition-node"
     >
       <div className="space-y-2.5">
         {/* Condition expression display */}
         <div
           title={conditionExpression}
-          className="rounded-md bg-stone-50 px-2 py-1.5 border border-stone-200/80 font-mono text-[11px] text-stone-700 truncate"
+          className="rounded-md bg-surface-muted px-2 py-1.5 border border-border/80 font-mono text-[11px] text-ink truncate"
         >
           {conditionExpression}
         </div>
@@ -47,33 +47,33 @@ export function ConditionNode({
         {/* Dual Branch Output Ports */}
         <div className="space-y-1.5 pt-0.5">
           {/* True Branch */}
-          <div className="relative flex items-center justify-between rounded-lg bg-emerald-50/60 px-2.5 py-1 border border-emerald-200/60">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+          <div className="relative flex items-center justify-between rounded-lg bg-success-soft/60 px-2.5 py-1 border border-success/20">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-success">
               True
             </span>
             <div className="relative flex items-center">
-              <span className="text-[9px] font-medium text-emerald-600 mr-2">Then</span>
+              <span className="text-[9px] font-medium text-success mr-2">Then</span>
               <Handle
                 type="source"
                 position={Position.Right}
                 id="true"
-                className="!w-3 !h-3 !bg-emerald-500 !border-2 !border-white transition-all hover:scale-125 !right-[-16px]"
+                className="!w-3 !h-3 !bg-success !border-2 !border-surface transition-all hover:scale-125 !right-[-16px]"
               />
             </div>
           </div>
 
           {/* False Branch */}
-          <div className="relative flex items-center justify-between rounded-lg bg-stone-100/60 px-2.5 py-1 border border-stone-200/60">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-stone-600">
+          <div className="relative flex items-center justify-between rounded-lg bg-surface-muted/60 px-2.5 py-1 border border-border/60">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">
               False
             </span>
             <div className="relative flex items-center">
-              <span className="text-[9px] font-medium text-stone-500 mr-2">Else</span>
+              <span className="text-[9px] font-medium text-ink-muted mr-2">Else</span>
               <Handle
                 type="source"
                 position={Position.Right}
                 id="false"
-                className="!w-3 !h-3 !bg-stone-400 !border-2 !border-white transition-all hover:scale-125 !right-[-16px]"
+                className="!w-3 !h-3 !bg-border-strong !border-2 !border-surface transition-all hover:scale-125 !right-[-16px]"
               />
             </div>
           </div>

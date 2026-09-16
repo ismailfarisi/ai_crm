@@ -31,8 +31,8 @@ export function ActionNode({
   let Icon = Globe;
   let category = 'Action';
   let defaultTitle = 'Action';
-  let iconBg = 'bg-stone-100';
-  let iconColor = 'text-stone-700';
+  let iconBg = 'bg-surface-muted';
+  let iconColor = 'text-ink';
 
   let previewContent: React.ReactNode = null;
 
@@ -41,14 +41,14 @@ export function ActionNode({
       Icon = Globe;
       category = 'HTTP';
       defaultTitle = 'HTTP Request';
-      iconBg = 'bg-sky-50';
-      iconColor = 'text-sky-700';
+      iconBg = 'bg-info-soft';
+      iconColor = 'text-info';
       previewContent = (
         <div className="flex items-center gap-1.5 font-mono text-[11px] truncate">
-          <span className="rounded bg-sky-100 px-1 py-0.5 font-bold text-sky-800 text-[10px]">
+          <span className="rounded bg-info-soft px-1 py-0.5 font-bold text-info text-[10px]">
             {config.method || 'GET'}
           </span>
-          <span className="text-stone-600 truncate">{config.url || 'https://api.example.com'}</span>
+          <span className="text-ink-muted truncate">{config.url || 'https://api.example.com'}</span>
         </div>
       );
       break;
@@ -57,17 +57,17 @@ export function ActionNode({
       Icon = Sparkles;
       category = 'AI';
       defaultTitle = 'AI Prompt / LLM';
-      iconBg = 'bg-violet-50';
-      iconColor = 'text-violet-700';
+      iconBg = 'bg-info-soft';
+      iconColor = 'text-info';
       previewContent = (
         <div className="space-y-1 text-[11px]">
-          <div className="flex items-center justify-between text-stone-500">
+          <div className="flex items-center justify-between text-ink-muted">
             <span>Model:</span>
-            <span className="font-mono text-[10px] font-semibold text-violet-700 bg-violet-50 px-1.5 py-0.5 rounded border border-violet-200/50">
+            <span className="font-mono text-[10px] font-semibold text-info bg-info-soft px-1.5 py-0.5 rounded border border-info/20">
               {config.model || 'gpt-4o-mini'}
             </span>
           </div>
-          <p className="text-stone-600 italic truncate font-sans text-[11px]">
+          <p className="text-ink-muted italic truncate font-sans text-[11px]">
             {config.prompt ? `"${config.prompt}"` : 'Generate completion...'}
           </p>
         </div>
@@ -78,15 +78,15 @@ export function ActionNode({
       Icon = Mail;
       category = 'Email';
       defaultTitle = 'Send Email';
-      iconBg = 'bg-rose-50';
-      iconColor = 'text-rose-700';
+      iconBg = 'bg-danger-soft';
+      iconColor = 'text-danger';
       previewContent = (
         <div className="space-y-0.5 text-[11px] truncate">
-          <div className="text-stone-700 font-medium truncate">
-            To: <span className="text-stone-500">{config.to || 'recipient@example.com'}</span>
+          <div className="text-ink font-medium truncate">
+            To: <span className="text-ink-muted">{config.to || 'recipient@example.com'}</span>
           </div>
           {config.subject && (
-            <div className="text-stone-500 truncate text-[10px]">
+            <div className="text-ink-muted truncate text-[10px]">
               Sub: {config.subject}
             </div>
           )}
@@ -98,20 +98,20 @@ export function ActionNode({
       Icon = Database;
       category = 'CRM';
       defaultTitle = 'CRM Mutation';
-      iconBg = 'bg-amber-50';
-      iconColor = 'text-amber-700';
+      iconBg = 'bg-brand-soft';
+      iconColor = 'text-ink';
       previewContent = (
         <div className="flex items-center gap-1.5 text-[11px]">
-          <span className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-800 uppercase tracking-tight">
+          <span className="rounded bg-brand-soft px-1.5 py-0.5 font-mono text-[10px] font-bold text-ink uppercase tracking-tight">
             {config.action || 'CREATE_CONTACT'}
           </span>
-          <span className="text-stone-500 truncate">CRM Entity</span>
+          <span className="text-ink-muted truncate">CRM Entity</span>
         </div>
       );
       break;
 
     default:
-      previewContent = <div className="text-[11px] text-stone-500 truncate">Generic Action</div>;
+      previewContent = <div className="text-[11px] text-ink-muted truncate">Generic Action</div>;
       break;
   }
 
@@ -130,7 +130,7 @@ export function ActionNode({
       iconColor={iconColor}
       testId={`action-node-${type}`}
     >
-      <div className="rounded-md bg-stone-50 p-1.5 border border-stone-100">
+      <div className="rounded-md bg-surface-muted p-1.5 border border-border/40">
         {previewContent}
       </div>
     </BaseNode>

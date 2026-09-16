@@ -31,12 +31,12 @@ export function TransformNode({
       selected={selected}
       hasInput={true}
       hasOutput={true}
-      iconBg="bg-emerald-50"
-      iconColor="text-emerald-700"
+      iconBg="bg-success-soft"
+      iconColor="text-success"
       testId="transform-node"
     >
-      <div className="rounded-md bg-stone-900 px-2.5 py-1.5 font-mono text-[11px] text-emerald-400 truncate shadow-inner">
-        <span className="text-stone-500 mr-1.5 select-none">$</span>
+      <div className="rounded-md bg-brand-dark px-2.5 py-1.5 font-mono text-[11px] text-success truncate shadow-inner">
+        <span className="text-ink-muted mr-1.5 select-none">$</span>
         <span className="truncate">{scriptSnippet}</span>
       </div>
     </BaseNode>

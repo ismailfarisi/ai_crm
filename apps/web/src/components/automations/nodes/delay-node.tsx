@@ -33,13 +33,13 @@ export function DelayNode({
       selected={selected}
       hasInput={true}
       hasOutput={true}
-      iconBg="bg-amber-50"
-      iconColor="text-amber-700"
+      iconBg="bg-brand-soft"
+      iconColor="text-ink"
       testId="delay-node"
     >
-      <div className="flex items-center justify-between rounded-md bg-stone-50 px-2.5 py-1.5 border border-stone-100 text-[11px] text-stone-600">
-        <span className="text-stone-500 font-medium">Wait Duration:</span>
-        <span className="font-mono font-semibold text-stone-800 bg-white px-1.5 py-0.5 rounded border border-stone-200">
+      <div className="flex items-center justify-between rounded-md bg-surface-muted px-2.5 py-1.5 border border-border/40 text-[11px] text-ink-muted">
+        <span className="text-ink-muted font-medium">Wait Duration:</span>
+        <span className="font-mono font-semibold text-ink bg-surface px-1.5 py-0.5 rounded border border-border">
           {displayText}
         </span>
       </div>

@@ -52,8 +52,8 @@ export const NODE_PALETTE_ITEMS: NodePaletteItem[] = [
     icon: Webhook,
     description: 'Listen for incoming HTTP POST/GET webhook calls',
     badge: 'Trigger',
-    iconBg: 'bg-amber-50',
-    iconColor: 'text-amber-700',
+    iconBg: 'bg-brand-soft',
+    iconColor: 'text-ink',
   },
   {
     type: 'scheduleTrigger',
@@ -62,8 +62,8 @@ export const NODE_PALETTE_ITEMS: NodePaletteItem[] = [
     icon: Calendar,
     description: 'Trigger workflow periodically on a cron schedule',
     badge: 'Trigger',
-    iconBg: 'bg-blue-50',
-    iconColor: 'text-blue-700',
+    iconBg: 'bg-info-soft',
+    iconColor: 'text-info',
   },
   {
     type: 'crmEventTrigger',
@@ -72,8 +72,8 @@ export const NODE_PALETTE_ITEMS: NodePaletteItem[] = [
     icon: Zap,
     description: 'Trigger on contact, deal, quote, or invoice events',
     badge: 'Trigger',
-    iconBg: 'bg-emerald-50',
-    iconColor: 'text-emerald-700',
+    iconBg: 'bg-success-soft',
+    iconColor: 'text-success',
   },
   {
     type: 'manualTrigger',
@@ -82,8 +82,8 @@ export const NODE_PALETTE_ITEMS: NodePaletteItem[] = [
     icon: Play,
     description: 'Run workflow on-demand via studio UI or API call',
     badge: 'Trigger',
-    iconBg: 'bg-purple-50',
-    iconColor: 'text-purple-700',
+    iconBg: 'bg-info-soft',
+    iconColor: 'text-info',
   },
 
   // Logic
@@ -94,8 +94,8 @@ export const NODE_PALETTE_ITEMS: NodePaletteItem[] = [
     icon: Split,
     description: 'Branch flow into True / False paths based on expressions',
     badge: 'Branch',
-    iconBg: 'bg-indigo-50',
-    iconColor: 'text-indigo-700',
+    iconBg: 'bg-info-soft',
+    iconColor: 'text-info',
   },
   {
     type: 'delayNode',
@@ -104,8 +104,8 @@ export const NODE_PALETTE_ITEMS: NodePaletteItem[] = [
     icon: Timer,
     description: 'Durable execution pause for a specified duration',
     badge: 'Pause',
-    iconBg: 'bg-amber-50',
-    iconColor: 'text-amber-700',
+    iconBg: 'bg-brand-soft',
+    iconColor: 'text-ink',
   },
 
   // Transform
@@ -116,8 +116,8 @@ export const NODE_PALETTE_ITEMS: NodePaletteItem[] = [
     icon: Code2,
     description: 'Reshape, compute, and map variables via JS expressions',
     badge: 'Mapper',
-    iconBg: 'bg-emerald-50',
-    iconColor: 'text-emerald-700',
+    iconBg: 'bg-success-soft',
+    iconColor: 'text-success',
   },
 
   // Actions
@@ -128,8 +128,8 @@ export const NODE_PALETTE_ITEMS: NodePaletteItem[] = [
     icon: Globe,
     description: 'Call external REST APIs with custom headers and body',
     badge: 'REST',
-    iconBg: 'bg-sky-50',
-    iconColor: 'text-sky-700',
+    iconBg: 'bg-info-soft',
+    iconColor: 'text-info',
   },
   {
     type: 'sendEmailNode',
@@ -138,8 +138,8 @@ export const NODE_PALETTE_ITEMS: NodePaletteItem[] = [
     icon: Mail,
     description: 'Send transactional or alert emails with template fields',
     badge: 'Email',
-    iconBg: 'bg-rose-50',
-    iconColor: 'text-rose-700',
+    iconBg: 'bg-danger-soft',
+    iconColor: 'text-danger',
   },
   {
     type: 'crmMutateNode',
@@ -148,8 +148,8 @@ export const NODE_PALETTE_ITEMS: NodePaletteItem[] = [
     icon: Database,
     description: 'Create or update CRM contacts, deals, quotes, and tasks',
     badge: 'CRM',
-    iconBg: 'bg-amber-50',
-    iconColor: 'text-amber-700',
+    iconBg: 'bg-brand-soft',
+    iconColor: 'text-ink',
   },
 
   // AI
@@ -160,8 +160,8 @@ export const NODE_PALETTE_ITEMS: NodePaletteItem[] = [
     icon: Sparkles,
     description: 'Execute LLM reasoning, draft generation, or summarization',
     badge: 'AI',
-    iconBg: 'bg-violet-50',
-    iconColor: 'text-violet-700',
+    iconBg: 'bg-info-soft',
+    iconColor: 'text-info',
   },
 
   // Human-in-the-Loop
@@ -172,8 +172,8 @@ export const NODE_PALETTE_ITEMS: NodePaletteItem[] = [
     icon: ShieldAlert,
     description: 'Pause and wait for manager approval before continuing',
     badge: 'HITL',
-    iconBg: 'bg-amber-50',
-    iconColor: 'text-amber-800',
+    iconBg: 'bg-brand-soft',
+    iconColor: 'text-ink',
   },
 ];
 
@@ -233,28 +233,28 @@ export function NodePaletteDrawer({
     <aside
       data-testid="node-palette-drawer"
       className={clsx(
-        'w-80 border-r border-stone-200 bg-white flex flex-col h-full select-none shadow-sm z-20',
+        'w-80 border-r border-border bg-surface flex flex-col h-full select-none shadow-sm z-20',
         className,
       )}
     >
       {/* Drawer Header */}
-      <div className="p-4 border-b border-stone-100 space-y-3">
+      <div className="p-4 border-b border-border/40 space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-bold text-stone-900 flex items-center gap-1.5">
+            <h3 className="text-sm font-bold text-ink flex items-center gap-1.5">
               <span>Node Palette</span>
-              <span className="text-[10px] font-semibold bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded-full border border-amber-200/60">
+              <span className="text-[10px] font-semibold bg-brand-soft text-ink px-1.5 py-0.5 rounded-full border border-brand/30">
                 {NODE_PALETTE_ITEMS.length}
               </span>
             </h3>
-            <p className="text-[11px] text-stone-500 mt-0.5">
+            <p className="text-[11px] text-ink-muted mt-0.5">
               Drag nodes onto canvas or click + to add
             </p>
           </div>
           {onClose && (
             <button
               onClick={onClose}
-              className="rounded-lg p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700 transition-colors"
+              className="rounded-lg p-1 text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors"
               aria-label="Close palette"
             >
               <X className="h-4 w-4" />
@@ -264,19 +264,19 @@ export function NodePaletteDrawer({
 
         {/* Search Bar */}
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-400 pointer-events-none" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ink-subtle pointer-events-none" />
           <input
             type="text"
             data-testid="node-palette-search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search nodes (e.g. Webhook, AI)..."
-            className="w-full pl-8 pr-7 py-1.5 text-xs bg-stone-50 border border-stone-200 rounded-lg text-stone-900 placeholder:text-stone-400 focus:bg-white focus:border-amber-500 focus:outline-none transition-colors"
+            className="w-full pl-8 pr-7 py-1.5 text-xs bg-surface-muted border border-border rounded-lg text-ink placeholder:text-ink-subtle focus:bg-surface focus:border-brand focus:outline-none transition-colors"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 p-0.5"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-subtle hover:text-ink p-0.5"
               aria-label="Clear search"
             >
               <X className="h-3 w-3" />
@@ -294,8 +294,8 @@ export function NodePaletteDrawer({
               className={clsx(
                 'px-2.5 py-1 text-[11px] font-medium rounded-md whitespace-nowrap transition-all cursor-pointer',
                 selectedCategory === cat
-                  ? 'bg-amber-500 text-white shadow-2xs font-semibold'
-                  : 'bg-stone-100 text-stone-600 hover:bg-stone-200/80 hover:text-stone-900',
+                  ? 'bg-brand text-ink shadow-2xs font-semibold'
+                  : 'bg-surface-muted text-ink-muted hover:bg-surface-muted hover:text-ink',
               )}
             >
               {cat}
@@ -310,9 +310,9 @@ export function NodePaletteDrawer({
         className="flex-1 overflow-y-auto p-3 space-y-2"
       >
         {filteredItems.length === 0 ? (
-          <div className="py-12 text-center text-stone-400 space-y-1">
+          <div className="py-12 text-center text-ink-subtle space-y-1">
             <Search className="h-6 w-6 mx-auto stroke-1" />
-            <p className="text-xs font-medium text-stone-600">No nodes found</p>
+            <p className="text-xs font-medium text-ink-muted">No nodes found</p>
             <p className="text-[11px]">Try searching for something else</p>
           </div>
         ) : (
@@ -325,10 +325,10 @@ export function NodePaletteDrawer({
                 data-testid={`palette-item-${item.type}`}
                 onDragStart={(e) => handleDragStart(e, item)}
                 onClick={() => onAddNode?.(item.type)}
-                className="group relative flex items-start gap-2.5 p-2.5 bg-white border border-stone-200 rounded-xl hover:border-amber-500 hover:shadow-xs transition-all cursor-grab active:cursor-grabbing hover:bg-stone-50/50"
+                className="group relative flex items-start gap-2.5 p-2.5 bg-surface border border-border rounded-xl hover:border-brand hover:shadow-xs transition-all cursor-grab active:cursor-grabbing hover:bg-surface-muted/50"
               >
                 {/* Drag Handle Indicator */}
-                <div className="pt-1 text-stone-300 group-hover:text-stone-400">
+                <div className="pt-1 text-ink-subtle group-hover:text-ink-subtle">
                   <GripVertical className="h-3.5 w-3.5" />
                 </div>
 
@@ -346,16 +346,16 @@ export function NodePaletteDrawer({
                 {/* Info */}
                 <div className="flex-1 min-w-0 pr-6">
                   <div className="flex items-center gap-1.5">
-                    <h4 className="text-xs font-semibold text-stone-900 truncate">
+                    <h4 className="text-xs font-semibold text-ink truncate">
                       {item.label}
                     </h4>
                     {item.badge && (
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-stone-500 bg-stone-100 px-1 py-0.2 rounded">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-ink-muted bg-surface-muted px-1 py-0.2 rounded">
                         {item.badge}
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-stone-500 leading-snug line-clamp-2 mt-0.5">
+                  <p className="text-[11px] text-ink-muted leading-snug line-clamp-2 mt-0.5">
                     {item.description}
                   </p>
                 </div>
@@ -368,7 +368,7 @@ export function NodePaletteDrawer({
                     e.stopPropagation();
                     onAddNode?.(item.type);
                   }}
-                  className="absolute right-2 top-2 h-6 w-6 rounded-md bg-stone-100 text-stone-600 opacity-0 group-hover:opacity-100 hover:bg-amber-500 hover:text-white flex items-center justify-center transition-all shadow-2xs cursor-pointer"
+                  className="absolute right-2 top-2 h-6 w-6 rounded-md bg-surface-muted text-ink-muted opacity-0 group-hover:opacity-100 hover:bg-brand hover:text-ink flex items-center justify-center transition-all shadow-2xs cursor-pointer"
                   title="Add to canvas"
                   aria-label={`Add ${item.label}`}
                 >

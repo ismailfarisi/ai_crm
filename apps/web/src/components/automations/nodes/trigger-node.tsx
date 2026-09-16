@@ -26,32 +26,32 @@ export function TriggerNode({
 
   let Icon = Play;
   let defaultTitle = 'Manual Trigger';
-  let iconBg = 'bg-purple-50';
-  let iconColor = 'text-purple-700';
+  let iconBg = 'bg-info-soft';
+  let iconColor = 'text-info';
   let previewText = 'Manual Execution';
 
   switch (type) {
     case 'webhookTrigger':
       Icon = Webhook;
       defaultTitle = 'Webhook Trigger';
-      iconBg = 'bg-amber-50';
-      iconColor = 'text-amber-700';
+      iconBg = 'bg-brand-soft';
+      iconColor = 'text-ink';
       previewText = config.slug ? `/webhooks/${config.slug}` : 'POST /webhooks/...';
       break;
 
     case 'scheduleTrigger':
       Icon = Calendar;
       defaultTitle = 'Schedule Trigger';
-      iconBg = 'bg-blue-50';
-      iconColor = 'text-blue-700';
+      iconBg = 'bg-info-soft';
+      iconColor = 'text-info';
       previewText = config.cron ? `Cron: ${config.cron}` : 'Recurring Schedule (e.g. 0 9 * * 1-5)';
       break;
 
     case 'crmEventTrigger':
       Icon = Zap;
       defaultTitle = 'CRM Event Trigger';
-      iconBg = 'bg-emerald-50';
-      iconColor = 'text-emerald-700';
+      iconBg = 'bg-success-soft';
+      iconColor = 'text-success';
       previewText = config.eventType ? `Event: ${config.eventType}` : 'On CRM Event';
       break;
 
@@ -59,8 +59,8 @@ export function TriggerNode({
     default:
       Icon = Play;
       defaultTitle = 'Manual Trigger';
-      iconBg = 'bg-purple-50';
-      iconColor = 'text-purple-700';
+      iconBg = 'bg-info-soft';
+      iconColor = 'text-info';
       previewText = 'Manual execution from UI or API';
       break;
   }
@@ -80,7 +80,7 @@ export function TriggerNode({
       iconColor={iconColor}
       testId={`trigger-node-${type}`}
     >
-      <div className="flex items-center justify-between text-[11px] text-stone-600 font-mono bg-stone-50 px-2 py-1 rounded border border-stone-100 truncate">
+      <div className="flex items-center justify-between text-[11px] text-ink-muted font-mono bg-surface-muted px-2 py-1 rounded border border-border/40 truncate">
         <span className="truncate">{previewText}</span>
       </div>
     </BaseNode>

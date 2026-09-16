@@ -115,9 +115,9 @@ export default function AutomationStudioPage({ params }: PageProps) {
 
   if (isLoading) {
     return (
-      <div className="h-[calc(100vh-3.5rem)] flex items-center justify-center bg-stone-50 text-stone-500">
+      <div className="h-[calc(100vh-3.5rem)] flex items-center justify-center bg-surface-muted text-ink-muted">
         <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-600 border-t-transparent" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand border-t-transparent" />
           <p className="text-xs font-semibold">Loading Automation Studio...</p>
         </div>
       </div>
@@ -126,13 +126,13 @@ export default function AutomationStudioPage({ params }: PageProps) {
 
   if (error || !workflow) {
     return (
-      <div className="h-[calc(100vh-3.5rem)] flex items-center justify-center bg-stone-50 text-stone-700">
-        <div className="p-8 rounded-2xl bg-white border border-stone-200 shadow-sm max-w-md text-center space-y-4">
-          <h3 className="text-sm font-bold text-stone-900">Automation Not Found</h3>
-          <p className="text-xs text-stone-500">The requested automation workflow does not exist or has been deleted.</p>
+      <div className="h-[calc(100vh-3.5rem)] flex items-center justify-center bg-surface-muted text-ink">
+        <div className="p-8 rounded-2xl bg-surface border border-border shadow-sm max-w-md text-center space-y-4">
+          <h3 className="text-sm font-bold text-ink">Automation Not Found</h3>
+          <p className="text-xs text-ink-muted">The requested automation workflow does not exist or has been deleted.</p>
           <button
             onClick={() => router.push('/automations')}
-            className="px-4 py-2 rounded-xl bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 cursor-pointer"
+            className="px-4 py-2 rounded-xl bg-brand text-ink text-xs font-semibold hover:bg-brand-hover cursor-pointer"
           >
             Back to Automations
           </button>
@@ -142,7 +142,7 @@ export default function AutomationStudioPage({ params }: PageProps) {
   }
 
   return (
-    <div data-testid="automation-studio-page" className="h-[calc(100vh-3.5rem)] flex flex-col overflow-hidden bg-stone-50">
+    <div data-testid="automation-studio-page" className="h-[calc(100vh-3.5rem)] flex flex-col overflow-hidden bg-surface-muted">
       {/* Studio Header */}
       <CanvasHeader
         workflow={workflow}

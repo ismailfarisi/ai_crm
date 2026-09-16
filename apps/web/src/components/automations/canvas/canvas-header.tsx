@@ -56,7 +56,7 @@ export function CanvasHeader({
     <header
       data-testid="canvas-header"
       className={clsx(
-        'h-14 border-b border-stone-200 bg-white/95 backdrop-blur-sm px-4 flex items-center justify-between gap-4 z-30 select-none',
+        'h-14 border-b border-border bg-surface/95 backdrop-blur-sm px-4 flex items-center justify-between gap-4 z-30 select-none',
         className,
       )}
     >
@@ -65,7 +65,7 @@ export function CanvasHeader({
         <Link
           href="/automations"
           data-testid="back-to-automations-link"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-stone-200 text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition-colors"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border text-ink-muted hover:bg-surface-muted hover:text-ink transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
         </Link>
@@ -77,7 +77,7 @@ export function CanvasHeader({
             value={workflowName}
             onChange={(e) => onNameChange(e.target.value)}
             placeholder="Untitled Automation Workflow"
-            className="text-sm font-bold text-stone-900 bg-transparent border border-transparent hover:border-stone-200 focus:border-amber-500 rounded-md px-2 py-1 focus:bg-white focus:outline-none transition-all truncate"
+            className="text-sm font-bold text-ink bg-transparent border border-transparent hover:border-border focus:border-brand rounded-md px-2 py-1 focus:bg-surface focus:outline-none transition-all truncate"
           />
 
           <span
@@ -85,10 +85,10 @@ export function CanvasHeader({
             className={clsx(
               'px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0',
               status === 'ACTIVE'
-                ? 'bg-emerald-100 text-emerald-800'
+                ? 'bg-success-soft text-success'
                 : status === 'PAUSED'
-                ? 'bg-amber-100 text-amber-800'
-                : 'bg-stone-100 text-stone-600',
+                ? 'bg-brand-soft text-ink'
+                : 'bg-surface-muted text-ink-muted',
             )}
           >
             {status}
@@ -104,10 +104,10 @@ export function CanvasHeader({
           disabled={!canUndo}
           onClick={onUndo}
           className={clsx(
-            'p-1.5 rounded-lg border border-stone-200 transition-colors',
+            'p-1.5 rounded-lg border border-border transition-colors',
             canUndo
-              ? 'text-stone-700 hover:bg-stone-100 cursor-pointer'
-              : 'text-stone-300 border-stone-100 cursor-not-allowed',
+              ? 'text-ink hover:bg-surface-muted cursor-pointer'
+              : 'text-ink-subtle border-border/40 cursor-not-allowed',
           )}
           title="Undo"
         >
@@ -120,25 +120,25 @@ export function CanvasHeader({
           disabled={!canRedo}
           onClick={onRedo}
           className={clsx(
-            'p-1.5 rounded-lg border border-stone-200 transition-colors',
+            'p-1.5 rounded-lg border border-border transition-colors',
             canRedo
-              ? 'text-stone-700 hover:bg-stone-100 cursor-pointer'
-              : 'text-stone-300 border-stone-100 cursor-not-allowed',
+              ? 'text-ink hover:bg-surface-muted cursor-pointer'
+              : 'text-ink-subtle border-border/40 cursor-not-allowed',
           )}
           title="Redo"
         >
           <Redo2 className="h-4 w-4" />
         </button>
 
-        <div className="h-4 w-px bg-stone-200 mx-1" />
+        <div className="h-4 w-px bg-surface-muted mx-1" />
 
         <button
           type="button"
           data-testid="open-palette-btn"
           onClick={onOpenPalette}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 bg-stone-50 hover:bg-stone-100 text-xs font-semibold text-stone-700 transition-colors cursor-pointer"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-surface-muted hover:bg-surface-muted text-xs font-semibold text-ink transition-colors cursor-pointer"
         >
-          <Plus className="h-3.5 w-3.5 text-amber-600" />
+          <Plus className="h-3.5 w-3.5 text-brand" />
           Add Node
         </button>
       </div>
@@ -153,14 +153,14 @@ export function CanvasHeader({
           className={clsx(
             'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer',
             status === 'ACTIVE'
-              ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
-              : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50',
+              ? 'border-success/40 bg-success-soft text-success'
+              : 'border-border bg-surface text-ink-muted hover:bg-surface-muted',
           )}
         >
           <span
             className={clsx(
               'h-2 w-2 rounded-full',
-              status === 'ACTIVE' ? 'bg-emerald-500 animate-pulse' : 'bg-stone-300',
+              status === 'ACTIVE' ? 'bg-success animate-pulse' : 'bg-border-strong',
             )}
           />
           {status === 'ACTIVE' ? 'Active' : 'Inactive'}
@@ -171,9 +171,9 @@ export function CanvasHeader({
           type="button"
           data-testid="open-test-run-btn"
           onClick={onOpenTestRun}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 bg-white hover:bg-stone-50 text-xs font-semibold text-stone-800 shadow-xs transition-colors cursor-pointer"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-surface hover:bg-surface-muted text-xs font-semibold text-ink shadow-xs transition-colors cursor-pointer"
         >
-          <Play className="h-3.5 w-3.5 text-amber-600 fill-amber-600" />
+          <Play className="h-3.5 w-3.5 text-brand fill-brand" />
           Test Run
         </button>
 
@@ -184,10 +184,10 @@ export function CanvasHeader({
           disabled={isSaving}
           onClick={onSave}
           className={clsx(
-            'flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white shadow-xs transition-all cursor-pointer',
+            'flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-ink-inverted shadow-xs transition-all cursor-pointer',
             isDirty
-              ? 'bg-amber-600 hover:bg-amber-700 active:scale-95'
-              : 'bg-stone-800 hover:bg-stone-900',
+              ? 'bg-brand hover:bg-brand-hover active:scale-95'
+              : 'bg-brand-dark hover:bg-brand-dark',
           )}
         >
           <Save className="h-3.5 w-3.5" />

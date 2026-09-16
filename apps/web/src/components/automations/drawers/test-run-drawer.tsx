@@ -73,26 +73,26 @@ export function TestRunDrawer({
     <aside
       data-testid="test-run-drawer"
       className={clsx(
-        'w-[440px] border-l border-stone-200 bg-white shadow-2xl flex flex-col h-full z-40 select-text',
+        'w-[440px] border-l border-border bg-surface shadow-2xl flex flex-col h-full z-40 select-text',
         className,
       )}
     >
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-stone-100 bg-stone-50/50">
+      <div className="flex items-center justify-between p-4 border-b border-border/40 bg-surface-muted/50">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500 text-white font-bold">
-            <Play className="h-4 w-4 fill-white" />
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-ink font-bold">
+            <Play className="h-4 w-4 fill-surface" />
           </div>
           <div>
-            <h3 className="text-xs font-bold text-stone-900">Test Run Workflow</h3>
-            <p className="text-[10px] text-stone-500">Live trigger simulation & step tracer</p>
+            <h3 className="text-xs font-bold text-ink">Test Run Workflow</h3>
+            <p className="text-[10px] text-ink-muted">Live trigger simulation & step tracer</p>
           </div>
         </div>
         <button
           type="button"
           data-testid="close-test-drawer-btn"
           onClick={onClose}
-          className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 cursor-pointer"
+          className="p-1.5 rounded-lg text-ink-subtle hover:text-ink hover:bg-surface-muted cursor-pointer"
         >
           <X className="h-4 w-4" />
         </button>
@@ -101,16 +101,16 @@ export function TestRunDrawer({
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* Test Payload Input Form */}
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-stone-800 flex items-center justify-between">
+          <label className="text-xs font-semibold text-ink flex items-center justify-between">
             <span>Trigger Input JSON Payload</span>
-            <span className="text-[10px] text-stone-400 font-mono">mock $trigger</span>
+            <span className="text-[10px] text-ink-subtle font-mono">mock $trigger</span>
           </label>
           <textarea
             rows={5}
             data-testid="test-payload-input"
             value={testPayloadStr}
             onChange={(e) => setTestPayloadStr(e.target.value)}
-            className="w-full rounded-lg border border-stone-200 p-2.5 font-mono text-[11px] text-stone-900 bg-stone-50 focus:bg-white focus:border-amber-500 focus:outline-none resize-none leading-relaxed"
+            className="w-full rounded-lg border border-border p-2.5 font-mono text-[11px] text-ink bg-surface-muted focus:bg-surface focus:border-brand focus:outline-none resize-none leading-relaxed"
           />
         </div>
 
@@ -121,10 +121,10 @@ export function TestRunDrawer({
           disabled={isRunning}
           onClick={handleRun}
           className={clsx(
-            'w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-white shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer',
+            'w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-ink-inverted shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer',
             isRunning
-              ? 'bg-amber-400 cursor-not-allowed'
-              : 'bg-amber-600 hover:bg-amber-700 active:scale-[0.99]',
+              ? 'bg-brand cursor-not-allowed'
+              : 'bg-brand hover:bg-brand-hover active:scale-[0.99]',
           )}
         >
           {isRunning ? (
@@ -134,7 +134,7 @@ export function TestRunDrawer({
             </>
           ) : (
             <>
-              <Play className="h-3.5 w-3.5 fill-white" />
+              <Play className="h-3.5 w-3.5 fill-surface" />
               Run Test Now
             </>
           )}
@@ -142,16 +142,16 @@ export function TestRunDrawer({
 
         {/* Execution Results View */}
         {executionResult && (
-          <div data-testid="execution-result-section" className="space-y-3 pt-3 border-t border-stone-200">
+          <div data-testid="execution-result-section" className="space-y-3 pt-3 border-t border-border">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-stone-900">Execution Output</span>
+              <span className="text-xs font-semibold text-ink">Execution Output</span>
               <span
                 className={clsx(
                   'px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider',
-                  executionResult.status === 'COMPLETED' && 'bg-emerald-100 text-emerald-800',
-                  executionResult.status === 'RUNNING' && 'bg-blue-100 text-blue-800',
-                  executionResult.status === 'WAITING_APPROVAL' && 'bg-amber-100 text-amber-800',
-                  executionResult.status === 'FAILED' && 'bg-rose-100 text-rose-800',
+                  executionResult.status === 'COMPLETED' && 'bg-success-soft text-success',
+                  executionResult.status === 'RUNNING' && 'bg-info-soft text-info',
+                  executionResult.status === 'WAITING_APPROVAL' && 'bg-brand-soft text-ink',
+                  executionResult.status === 'FAILED' && 'bg-danger-soft text-danger',
                 )}
               >
                 {executionResult.status}
@@ -160,7 +160,7 @@ export function TestRunDrawer({
 
             {/* Step-by-Step Node Results Timeline */}
             <div className="space-y-1.5">
-              <label className="text-[11px] font-medium text-stone-600">Step Traces</label>
+              <label className="text-[11px] font-medium text-ink-muted">Step Traces</label>
               <div className="space-y-1.5">
                 {Object.entries(executionResult.nodeResults || {}).map(([nodeId, res]) => (
                   <button
@@ -171,21 +171,21 @@ export function TestRunDrawer({
                     className={clsx(
                       'w-full flex items-center justify-between p-2 rounded-lg border text-left text-xs transition-all cursor-pointer',
                       selectedNodeResultKey === nodeId
-                        ? 'border-amber-500 bg-amber-50/60 font-semibold'
-                        : 'border-stone-200 bg-stone-50 hover:bg-stone-100',
+                        ? 'border-brand bg-brand-soft/60 font-semibold'
+                        : 'border-border bg-surface-muted hover:bg-surface-muted',
                     )}
                   >
                     <div className="flex items-center gap-2 truncate">
                       {res.status === 'SUCCESS' ? (
-                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                        <CheckCircle2 className="h-3.5 w-3.5 text-success shrink-0" />
                       ) : res.status === 'WAITING' ? (
-                        <Clock className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                        <Clock className="h-3.5 w-3.5 text-brand shrink-0" />
                       ) : (
-                        <XCircle className="h-3.5 w-3.5 text-rose-600 shrink-0" />
+                        <XCircle className="h-3.5 w-3.5 text-danger shrink-0" />
                       )}
                       <span className="truncate">{nodeId}</span>
                     </div>
-                    <span className="text-[10px] font-mono text-stone-400 shrink-0">
+                    <span className="text-[10px] font-mono text-ink-subtle shrink-0">
                       {res.durationMs !== undefined ? `${res.durationMs}ms` : ''}
                     </span>
                   </button>
@@ -196,13 +196,13 @@ export function TestRunDrawer({
             {/* Selected Node Details */}
             {selectedNodeResultKey && executionResult.nodeResults?.[selectedNodeResultKey] && (
               <div className="space-y-2 pt-2">
-                <label className="text-[11px] font-semibold text-stone-700 flex items-center gap-1">
-                  <Terminal className="h-3 w-3 text-stone-500" />
+                <label className="text-[11px] font-semibold text-ink flex items-center gap-1">
+                  <Terminal className="h-3 w-3 text-ink-muted" />
                   Output for: {selectedNodeResultKey}
                 </label>
                 <pre
                   data-testid="selected-node-output-json"
-                  className="p-2.5 rounded-lg bg-stone-900 text-emerald-400 font-mono text-[11px] overflow-x-auto max-h-56 border border-stone-800"
+                  className="p-2.5 rounded-lg bg-brand-dark text-success font-mono text-[11px] overflow-x-auto max-h-56 border border-border-strong"
                 >
                   {JSON.stringify(
                     executionResult.nodeResults[selectedNodeResultKey].output ||

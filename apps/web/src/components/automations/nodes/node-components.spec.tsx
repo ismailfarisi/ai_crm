@@ -113,7 +113,7 @@ describe('Automation Node Components', () => {
       );
 
       const node = screen.getByTestId('selected-node');
-      expect(node.className).toContain('border-amber-500');
+      expect(node.className).toContain('border-brand');
     });
 
     it('renders execution status badges and highlight borders', () => {
@@ -121,7 +121,7 @@ describe('Automation Node Components', () => {
         <BaseNode icon={Sparkles} title="Status Node" category="Test" status="SUCCESS" testId="status-node" />,
       );
       expect(screen.getByText('Success')).toBeInTheDocument();
-      expect(screen.getByTestId('status-node').className).toContain('border-emerald-500');
+      expect(screen.getByTestId('status-node').className).toContain('border-success');
 
       rerender(
         <ReactFlowProvider>
@@ -129,7 +129,7 @@ describe('Automation Node Components', () => {
         </ReactFlowProvider>,
       );
       expect(screen.getByText('Failed')).toBeInTheDocument();
-      expect(screen.getByTestId('status-node').className).toContain('border-rose-500');
+      expect(screen.getByTestId('status-node').className).toContain('border-danger');
 
       rerender(
         <ReactFlowProvider>

@@ -73,7 +73,7 @@ export function AutomationCanvas({
       data-testid="automation-canvas-viewport"
       onDragOver={onDragOver}
       onDrop={onDrop}
-      className={`relative h-full w-full bg-stone-50/60 overflow-hidden ${className || ''}`}
+      className={`relative h-full w-full bg-surface-muted/60 overflow-hidden ${className || ''}`}
     >
       <ReactFlow
         nodes={nodes}
@@ -94,9 +94,9 @@ export function AutomationCanvas({
         }}
       >
         <Background variant={BackgroundVariant.Dots} color="#d6d3d1" gap={18} size={1.5} />
-        <Controls className="!bg-white !border-stone-200 !shadow-sm !rounded-xl overflow-hidden" />
+        <Controls className="!bg-surface !border-border !shadow-sm !rounded-xl overflow-hidden" />
         <MiniMap
-          className="!bg-white !border-stone-200 !rounded-xl !shadow-sm overflow-hidden"
+          className="!bg-surface !border-border !rounded-xl !shadow-sm overflow-hidden"
           nodeColor={(n) => (n.selected ? '#d97706' : '#a8a29e')}
           maskColor="rgba(245, 245, 244, 0.7)"
         />

@@ -33,6 +33,15 @@
   --color-info: oklch(0.6 0.14 240);
   --color-info-soft: oklch(0.955 0.035 240);
 
+  /*
+   * Two names the components already use. They were never defined, so every
+   * `border-line`, `divide-line` and `bg-surface-sunk` in the app rendered as
+   * nothing at all — tables without rules, headers without their recess.
+   * Defined as aliases so they follow the theme, dark mode included.
+   */
+  --color-line: var(--color-border);
+  --color-surface-sunk: var(--color-canvas);
+
   --radius-card: 1.25rem;
   --radius-pill: 9999px;
 }
