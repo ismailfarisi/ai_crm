@@ -17,12 +17,33 @@ the file is named. It is deliberately separate from `docs/FLAGS.md`, which
 records trade-offs the team took knowingly; nothing here repeats those.
 
 
-> **Status, 2026-09-16.** The findings marked **FIXED** below have been
-> addressed in the working tree; the rest are untouched. MOSTLY/PARTLY FIXED
+> **Status, 2026-09-16.** The findings marked **FIXED** below are **deployed to
+> staging** (`ssh ismail`, branch `fix/walkthrough-correctness`) and verified
+> there against real data; the rest are untouched. MOSTLY/PARTLY FIXED
 > means part of the finding stands — each note says which part. Each fixed section
 > keeps its original description so the problem stays on record, and ends with
 > a *Fix* note saying what changed. `pnpm build` passes; API 618 tests and web
 > 221 tests pass.
+
+> **Verified on staging after deploying.** P&L went from income 2,030 /
+> expenses 0 to expenses 1,500 and net profit 530 once a claim was approved and
+> reimbursed. A new cash account opened at 250 posted debit 1002 / credit 3100
+> Opening balance equity, with the trial balance still at difference 0. The
+> dashboard reported a real 100% win rate ("1 of 1 decided") and 2,030 invoiced,
+> and the cashflow chart +$2.03K in, −$1.50K out, +$530 net. The customer's
+> quote now carries the address, tax registration, company number, contacts and
+> footer.
+>
+> **Two things deploying found that local tests did not:** the catalog Products
+> tab asked for `limit=500` against an endpoint capped at 100 and failed
+> outright, and the cashflow axis drew thirty full ISO dates on top of each
+> other. Both fixed and redeployed.
+>
+> **Still outstanding on the money side:** accounts created *before* the
+> opening-balance fix are not backfilled. Meridian's original account still
+> reads 15,530 in treasury against 530 in the ledger — the $15,000 it was opened
+> with. New accounts are correct; the old ones want a one-off backfill posting
+> the difference to 3100.
 
 ---
 
