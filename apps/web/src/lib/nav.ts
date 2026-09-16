@@ -139,6 +139,12 @@ export const SECONDARY_SECTIONS: NavSection[] = [
     title: 'Settings',
     items: [
       {
+        href: '/settings/company',
+        label: 'Company',
+        icon: Building2,
+        rule: { permission: PERMISSIONS.ORG_READ },
+      },
+      {
         href: '/settings/team',
         label: 'Team',
         icon: Users,

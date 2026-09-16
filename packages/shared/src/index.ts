@@ -10,6 +10,7 @@ export * from './schemas/customer';
 export * from './schemas/supplier';
 export * from './schemas/purchase-order';
 export * from './schemas/catalog';
+export * from './schemas/organization';
 export * from './schemas/rbac';
 export * from './schemas/teams';
 export * from './types/api';

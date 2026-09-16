@@ -95,8 +95,34 @@ export function PublicQuoteView({ token }: { token: string }) {
     <main className="min-h-screen bg-surface-muted px-4 py-10">
       <article className="mx-auto max-w-3xl rounded-2xl border border-line bg-surface shadow-2xs">
         <header className="border-b border-line p-6">
-          <p className="text-sm text-ink-subtle">{quote.organizationName}</p>
-          <h1 className="mt-1 text-xl font-semibold text-ink">{quote.title}</h1>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-ink">{quote.organizationName}</p>
+              {quote.seller?.legalName && quote.seller.legalName !== quote.organizationName ? (
+                <p className="text-xs text-ink-subtle">{quote.seller.legalName}</p>
+              ) : null}
+            </div>
+
+            {/* Who the quote is from. Blank until the sender fills in Company
+                settings, so nothing here assumes a value exists. */}
+            <address className="text-right text-xs leading-relaxed text-ink-subtle not-italic">
+              {(quote.seller?.addressLines ?? []).map((line) => (
+                <span key={line} className="block">
+                  {line}
+                </span>
+              ))}
+              {quote.seller?.taxId ? (
+                <span className="block">Tax reg. {quote.seller.taxId}</span>
+              ) : null}
+              {quote.seller?.registrationNumber ? (
+                <span className="block">Co. no. {quote.seller.registrationNumber}</span>
+              ) : null}
+              {quote.seller?.email ? <span className="block">{quote.seller.email}</span> : null}
+              {quote.seller?.phone ? <span className="block">{quote.seller.phone}</span> : null}
+            </address>
+          </div>
+
+          <h1 className="mt-4 text-xl font-semibold text-ink">{quote.title}</h1>
           <p className="mt-1 text-sm text-ink-muted">
             {quote.quoteNumber ? `${quote.quoteNumber} · ` : ''}Prepared for {quote.customerName}
             {quote.validUntil ? ` · Valid until ${new Date(quote.validUntil).toLocaleDateString()}` : ''}
@@ -165,6 +191,14 @@ export function PublicQuoteView({ token }: { token: string }) {
                 </li>
               ))}
             </ol>
+          </section>
+        )}
+
+        {quote.seller?.documentFooter && (
+          <section className="border-t border-line px-6 py-4">
+            <p className="whitespace-pre-line text-xs text-ink-muted">
+              {quote.seller.documentFooter}
+            </p>
           </section>
         )}
 

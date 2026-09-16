@@ -14,6 +14,7 @@ import {
   acceptanceRefusalMessage,
   allocateStageAmounts,
   DEFAULT_BILLING_SCHEDULE,
+  formatOrganizationAddress,
   type AcceptanceRefusal,
   type PublicQuoteDto,
 } from '@saas/shared';
@@ -224,6 +225,16 @@ export class QuoteAcceptanceService {
 
     return {
       organizationName: organization?.name ?? '',
+      seller: {
+        legalName: organization?.legalName ?? null,
+        taxId: organization?.taxId ?? null,
+        registrationNumber: organization?.registrationNumber ?? null,
+        email: organization?.email ?? null,
+        phone: organization?.phone ?? null,
+        website: organization?.website ?? null,
+        addressLines: organization ? formatOrganizationAddress(organization) : [],
+        documentFooter: organization?.documentFooter ?? null,
+      },
       quoteNumber: quote.quoteNumber,
       title: quote.title,
       customerName: quote.customerName,

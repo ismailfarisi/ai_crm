@@ -219,6 +219,24 @@ export interface SalesOrderDto {
 /** What a customer sees on the public page. Never cost, margin, or internal notes. */
 export interface PublicQuoteDto {
   organizationName: string;
+  /**
+   * Who the quote is from, as it should print.
+   *
+   * The customer used to see a trading name and nothing else — no address, no
+   * tax registration — because the organization record held nothing else to
+   * show. Every field is optional: a tenant that has not filled in the Company
+   * screen still gets a working document, just a barer one.
+   */
+  seller: {
+    legalName: string | null;
+    taxId: string | null;
+    registrationNumber: string | null;
+    email: string | null;
+    phone: string | null;
+    website: string | null;
+    addressLines: string[];
+    documentFooter: string | null;
+  };
   quoteNumber: string | null;
   title: string;
   customerName: string;

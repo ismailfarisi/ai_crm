@@ -381,7 +381,7 @@ entered on either side.
 
 ## 5. The company has no identity
 
-### 5.1 There is no company profile — address, tax number and logo cannot be set — blocker
+### 5.1 There is no company profile — address, tax number and logo cannot be set — blocker — MOSTLY FIXED
 
 Settings contains Team, Teams, Roles & permissions, Channels, Billing, Audit
 trail and AI Cost Guard. There is **no company or organisation profile page**,
@@ -406,6 +406,44 @@ compliant invoice must carry the seller's legal name, address and tax
 registration number, so the documents this product issues cannot be made to meet
 that requirement. This is also the first thing any owner tries to set up, and the
 most visible sign to their customers of what they are using.
+
+---
+
+**Fix.** The organization now has a record worth reading and a screen to edit
+it. Thirteen nullable columns were added to `organizations` — legal name, tax
+id, registration number, email, phone, website, four address lines plus region
+and postal code, ISO country, and a document footer — with a migration
+(`1787100000000-AddOrganizationProfile`). A real module sits behind them at
+last: `GET /organization` and `PATCH /organization`, gated on `org:read` and
+`org:update`, which had been granted to every owner while governing nothing.
+
+Settings → Company edits it, with a live preview of how the letterhead will
+read and an explicit warning while the address or tax registration is still
+missing, so the sender notices before the customer does. `country` is a
+two-letter ISO code rather than free text, because tax rules match an exact
+country code — the mistake §6.5 still describes on the customer and supplier
+forms.
+
+The details now print on the document the customer actually receives:
+`PublicQuoteDto` carries a `seller` block and the public quote page shows the
+address, tax registration, company number and contact details in its header,
+with the footer under the totals. Every field is optional, so a tenant who has
+not filled the screen in still gets a working, if barer, document.
+
+Six tests cover the service, including that a blank clears a field, that a
+patch omitting the name leaves it alone, and that "United States" is refused
+where "US" is wanted.
+
+**Not done: the logo.** There is still no image upload, so documents remain
+text-only. The storage module exists and could hold one; it wants an uploader,
+a size and type policy, and somewhere to render it on each document type.
+
+**The migration has not been run.** There is no local database in this
+environment, so it was hand-written to match the entity rather than produced by
+`pnpm migration:generate`, and neither `pnpm migration:run` nor
+`pnpm check:drift` has been executed against it. It is plain
+`ALTER TABLE ... ADD COLUMN IF NOT EXISTS` with a matching reversible `down`,
+but it should be run and drift-checked before this is deployed anywhere.
 
 ---
 

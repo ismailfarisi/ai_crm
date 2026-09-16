@@ -11,6 +11,7 @@ import { InventoryModule } from '@/modules/inventory/inventory.module';
 import { InvitationsModule } from '@/modules/invitations/invitations.module';
 import { MailModule } from '@/modules/mail/mail.module';
 import { OrdersModule } from '@/modules/orders/orders.module';
+import { OrganizationsModule } from '@/modules/organizations/organizations.module';
 import { PayablesModule } from '@/modules/payables/payables.module';
 import { ProductionModule } from '@/modules/production/production.module';
 import { TaxModule } from '@/modules/tax/tax.module';
@@ -44,6 +45,7 @@ export const FEATURE_MODULES = [
   RbacModule,
   UsersModule,
   AuthModule,
+  OrganizationsModule,
   ContactsModule,
   CustomersModule,
   TeamsModule,

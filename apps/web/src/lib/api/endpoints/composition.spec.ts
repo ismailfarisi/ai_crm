@@ -53,7 +53,7 @@ const API_SECTIONS = [
   'automations', 'finance', 'expenses', 'ai', 'suppliers',
   'purchaseOrders', 'purchasePolicy', 'inventory', 'goodsReceipts', 'bills',
   'salesOrders', 'quoteAcceptance', 'workOrders', 'creditNotes', 'deliveryNotes', 'tax',
-  'notifications', 'billing', 'currencies', 'reports', 'audit', 'attachments',
+  'notifications', 'billing', 'currencies', 'reports', 'organization', 'audit', 'attachments',
 ];
 
 const QUERY_KEYS = [
@@ -75,7 +75,7 @@ const QUERY_KEYS = [
   'workOrders', 'workOrder', 'workOrderVariance',
   'creditNotes', 'creditNoteRefunds', 'deliveryNotes', 'taxCodes', 'taxRules', 'taxReport',
   'notifications', 'billingPlans', 'subscription', 'currencySettings', 'fxRates', 'financialReport',
-  'audit', 'auditForSubject', 'attachments',
+  'organization', 'audit', 'auditForSubject', 'attachments',
 ];
 
 describe('api surface composition', () => {

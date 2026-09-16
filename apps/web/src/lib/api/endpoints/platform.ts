@@ -10,12 +10,14 @@ import type {
   FxRateDto,
   MarginReportDto,
   NotificationDto,
+  OrganizationProfileDto,
   PlanDto,
   ProfitAndLossDto,
   ReceivablesAgingDto,
   RevaluationResultDto,
   SubscriptionDto,
   TrialBalanceDto,
+  UpdateOrganizationPayload,
 } from '@saas/shared';
 import { apiFetch, apiFetchBlob, apiUpload } from '../client';
 
@@ -40,6 +42,13 @@ export interface AuditFilters {
 }
 
 export const platformEndpoints = {
+  /* The tenant's own record. It had no controller at all until the Company
+   * screen needed one, so `org:read` and `org:update` governed nothing. */
+  organization: {
+    get: () => apiFetch<OrganizationProfileDto>('/organization'),
+    update: (payload: UpdateOrganizationPayload) =>
+      apiFetch<OrganizationProfileDto>('/organization', { method: 'PATCH', body: payload }),
+  },
   audit: {
     list: (filters: AuditFilters) => apiFetch<AuditPageDto>('/audit', { query: filters }),
     forSubject: (subjectType: string, subjectId: string) =>
@@ -92,6 +101,7 @@ export const platformEndpoints = {
 };
 
 export const platformKeys = {
+  organization: ['organization'] as const,
   audit: (filters: AuditFilters) => ['audit', filters] as const,
   auditForSubject: (subjectType: string, subjectId: string) =>
     ['audit', subjectType, subjectId] as const,
