@@ -1,6 +1,10 @@
 import { ChannelsService } from '../../channels.service';
 import { AiAgent } from '../../entities/ai-agent.entity';
-import { ActionHandler, ChannelAgentContext, ChannelAgentResult } from '../types';
+import {
+  ActionHandler,
+  ChannelAgentContext,
+  ChannelAgentResult,
+} from '../types';
 
 const SYSTEM_ACTOR_ID = 'system:ai-auto-ack';
 
@@ -17,12 +21,16 @@ export class AutoAckActionHandler implements ActionHandler {
       return { autoAcked: false };
     }
 
-    await this.channelsService.sendMessage(ctx.organizationId, SYSTEM_ACTOR_ID, {
-      contactId: ctx.contactId,
-      provider: ctx.provider,
-      recipient: ctx.senderIdentifier,
-      body: template,
-    });
+    await this.channelsService.sendMessage(
+      ctx.organizationId,
+      SYSTEM_ACTOR_ID,
+      {
+        contactId: ctx.contactId,
+        provider: ctx.provider,
+        recipient: ctx.senderIdentifier,
+        body: template,
+      },
+    );
 
     return { autoAcked: true };
   }

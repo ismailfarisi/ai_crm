@@ -13,19 +13,27 @@ jest.mock('@temporalio/workflow', () => {
   const handlers = new Map<any, Function>();
   return {
     proxyActivities: () => ({
-      executeHttpActivity: (...args: any[]) => (global as any).__mockActivities.executeHttpActivity(...args),
-      executeAiPromptActivity: (...args: any[]) => (global as any).__mockActivities.executeAiPromptActivity(...args),
-      executeEmailActivity: (...args: any[]) => (global as any).__mockActivities.executeEmailActivity(...args),
-      executeCodeTransformActivity: (...args: any[]) => (global as any).__mockActivities.executeCodeTransformActivity(...args),
-      executeCrmMutationActivity: (...args: any[]) => (global as any).__mockActivities.executeCrmMutationActivity(...args),
-      recordNodeResultActivity: (...args: any[]) => (global as any).__mockActivities.recordNodeResultActivity(...args),
+      executeHttpActivity: (...args: any[]) =>
+        (global as any).__mockActivities.executeHttpActivity(...args),
+      executeAiPromptActivity: (...args: any[]) =>
+        (global as any).__mockActivities.executeAiPromptActivity(...args),
+      executeEmailActivity: (...args: any[]) =>
+        (global as any).__mockActivities.executeEmailActivity(...args),
+      executeCodeTransformActivity: (...args: any[]) =>
+        (global as any).__mockActivities.executeCodeTransformActivity(...args),
+      executeCrmMutationActivity: (...args: any[]) =>
+        (global as any).__mockActivities.executeCrmMutationActivity(...args),
+      recordNodeResultActivity: (...args: any[]) =>
+        (global as any).__mockActivities.recordNodeResultActivity(...args),
     }),
     setHandler: (def: any, handler: Function) => {
       (global as any).__mockHandlers.set(def, handler);
     },
-    condition: jest.fn().mockImplementation(async (predicate: () => boolean) => {
-      return predicate();
-    }),
+    condition: jest
+      .fn()
+      .mockImplementation(async (predicate: () => boolean) => {
+        return predicate();
+      }),
     sleep: jest.fn().mockResolvedValue(undefined),
     defineSignal: (name: string) => ({ name, type: 'signal' }),
     defineQuery: (name: string) => ({ name, type: 'query' }),
@@ -189,8 +197,18 @@ describe('DynamicDagWorkflow', () => {
       ],
       edges: [
         { id: 'e1', source: 'trigger', target: 'cond-1' },
-        { id: 'e-true', source: 'cond-1', target: 'email-high', sourceHandle: 'true' },
-        { id: 'e-false', source: 'cond-1', target: 'email-low', sourceHandle: 'false' },
+        {
+          id: 'e-true',
+          source: 'cond-1',
+          target: 'email-high',
+          sourceHandle: 'true',
+        },
+        {
+          id: 'e-false',
+          source: 'cond-1',
+          target: 'email-low',
+          sourceHandle: 'false',
+        },
       ],
     };
 
@@ -248,14 +266,22 @@ describe('DynamicDagWorkflow', () => {
       ],
       edges: [
         { id: 'e1', source: 'trigger', target: 'approval-node' },
-        { id: 'e2', source: 'approval-node', target: 'post-approval', sourceHandle: 'approved' },
+        {
+          id: 'e2',
+          source: 'approval-node',
+          target: 'post-approval',
+          sourceHandle: 'approved',
+        },
       ],
     };
 
     // Simulate approval signal during execution
     (condition as jest.Mock).mockImplementationOnce(async (predicate) => {
       approveSignalHandler = mockHandlers.get(approveNodeSignal)!;
-      approveSignalHandler({ nodeId: 'approval-node', approvedBy: 'manager@corp.com' });
+      approveSignalHandler({
+        nodeId: 'approval-node',
+        approvedBy: 'manager@corp.com',
+      });
       return predicate();
     });
 
@@ -311,7 +337,12 @@ describe('DynamicDagWorkflow', () => {
       ],
       edges: [
         { id: 'e1', source: 'trigger', target: 'approval-node' },
-        { id: 'e2', source: 'approval-node', target: 'post-rejection', sourceHandle: 'rejected' },
+        {
+          id: 'e2',
+          source: 'approval-node',
+          target: 'post-rejection',
+          sourceHandle: 'rejected',
+        },
       ],
     };
 
@@ -376,7 +407,12 @@ describe('DynamicDagWorkflow', () => {
       ],
       edges: [
         { id: 'e1', source: 'trigger', target: 'approval-node' },
-        { id: 'e2', source: 'approval-node', target: 'timeout-alert', sourceHandle: 'timeout' },
+        {
+          id: 'e2',
+          source: 'approval-node',
+          target: 'timeout-alert',
+          sourceHandle: 'timeout',
+        },
       ],
     };
 
@@ -496,7 +532,9 @@ describe('DynamicDagWorkflow', () => {
   });
 
   it('should fail workflow on node failure when continueOnFail is false', async () => {
-    mockActivities.executeHttpActivity.mockRejectedValue(new Error('500 Internal Server Error'));
+    mockActivities.executeHttpActivity.mockRejectedValue(
+      new Error('500 Internal Server Error'),
+    );
 
     const input: DynamicWorkflowInput = {
       executionId: 'exec-4',
@@ -532,7 +570,9 @@ describe('DynamicDagWorkflow', () => {
   });
 
   it('should continue workflow on node failure when continueOnFail is true', async () => {
-    mockActivities.executeHttpActivity.mockRejectedValue(new Error('404 Not Found'));
+    mockActivities.executeHttpActivity.mockRejectedValue(
+      new Error('404 Not Found'),
+    );
     mockActivities.executeEmailActivity.mockResolvedValue({ success: true });
 
     const input: DynamicWorkflowInput = {

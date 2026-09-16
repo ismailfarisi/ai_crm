@@ -391,8 +391,6 @@ export class PurchasingService {
     });
   }
 
-
-
   /* ------------------------------------------------------------------ *
    * Purchase order queries and sending
    * ------------------------------------------------------------------ */
@@ -407,9 +405,12 @@ export class PurchasingService {
       .where('po.tenant_id = :tenantId', { tenantId })
       .andWhere('po.deletedAt IS NULL');
 
-    if (query.status) qb.andWhere('po.status = :status', { status: query.status });
+    if (query.status)
+      qb.andWhere('po.status = :status', { status: query.status });
     if (query.supplierId) {
-      qb.andWhere('po.supplier_id = :supplierId', { supplierId: query.supplierId });
+      qb.andWhere('po.supplier_id = :supplierId', {
+        supplierId: query.supplierId,
+      });
     }
     if (query.search) {
       qb.andWhere(
@@ -449,13 +450,22 @@ export class PurchasingService {
     };
   }
 
-  async renderPdf(tenantId: string, orderId: string): Promise<{ order: PurchaseOrder; pdf: Buffer }> {
+  async renderPdf(
+    tenantId: string,
+    orderId: string,
+  ): Promise<{ order: PurchaseOrder; pdf: Buffer }> {
     const order = await this.findById(tenantId, orderId);
     const supplier = await this.suppliers.findOne({
       where: { id: order.supplierId, tenantId },
     });
-    const organization = await this.organizations.findOne({ where: { id: tenantId } });
-    const pdf = await this.pdf.generate(order, supplier, organization?.name ?? 'Your company');
+    const organization = await this.organizations.findOne({
+      where: { id: tenantId },
+    });
+    const pdf = await this.pdf.generate(
+      order,
+      supplier,
+      organization?.name ?? 'Your company',
+    );
     return { order, pdf };
   }
 
@@ -466,7 +476,10 @@ export class PurchasingService {
    * first and mailing second would leave an order recorded as sent that the
    * supplier never received, which is the failure that actually costs money.
    */
-  async sendToSupplier(tenantId: string, orderId: string): Promise<PurchaseOrder> {
+  async sendToSupplier(
+    tenantId: string,
+    orderId: string,
+  ): Promise<PurchaseOrder> {
     const { order, pdf } = await this.renderPdf(tenantId, orderId);
 
     if (order.status !== 'APPROVED') {
@@ -482,7 +495,9 @@ export class PurchasingService {
       );
     }
 
-    const organization = await this.organizations.findOne({ where: { id: tenantId } });
+    const organization = await this.organizations.findOne({
+      where: { id: tenantId },
+    });
     const from = organization?.name ?? 'our team';
 
     await this.mail.sendMail({
@@ -532,7 +547,10 @@ ${from}`,
     const unsourced: UnsourcedDemand[] = [];
 
     for (const item of demand) {
-      const preferred = await this.findPreferredSupplierFor(tenantId, item.materialId);
+      const preferred = await this.findPreferredSupplierFor(
+        tenantId,
+        item.materialId,
+      );
       if (!preferred) {
         unsourced.push({
           materialId: item.materialId,

@@ -1,7 +1,11 @@
 import http from 'http';
 import { Connection, Client } from '@temporalio/client';
 
-function request(options: http.RequestOptions, postData: string | null = null, cookie: string | null = null): Promise<any> {
+function request(
+  options: http.RequestOptions,
+  postData: string | null = null,
+  cookie: string | null = null,
+): Promise<any> {
   return new Promise((resolve, reject) => {
     const headers = (options.headers || {}) as Record<string, string | number>;
     if (postData) {
@@ -45,27 +49,42 @@ async function main() {
   // 2. Log in as Organization Owner
   console.log('\n2. Authenticating as Owner (owner@northwind.test)...');
   const login = await request(
-    { hostname: 'localhost', port: 4000, path: '/api/v1/auth/login', method: 'POST' },
-    JSON.stringify({ email: 'owner@northwind.test', password: 'Password123!' })
+    {
+      hostname: 'localhost',
+      port: 4000,
+      path: '/api/v1/auth/login',
+      method: 'POST',
+    },
+    JSON.stringify({ email: 'owner@northwind.test', password: 'Password123!' }),
   );
-  
+
   if (login.status !== 200 && login.status !== 201) {
-    throw new Error(`Login failed with status ${login.status}: ${JSON.stringify(login.data)}`);
+    throw new Error(
+      `Login failed with status ${login.status}: ${JSON.stringify(login.data)}`,
+    );
   }
 
-  const cookie = login.setCookie?.map((c: string) => c.split(';')[0]).join('; ');
+  const cookie = login.setCookie
+    ?.map((c: string) => c.split(';')[0])
+    .join('; ');
   console.log('   ✅ Logged in successfully.');
 
   // 3. Create a Quote with AI mode
   console.log('\n3. Creating Quote with AI drafting mode...');
   const createQuoteRes = await request(
-    { hostname: 'localhost', port: 4000, path: '/api/v1/quotes', method: 'POST' },
+    {
+      hostname: 'localhost',
+      port: 4000,
+      path: '/api/v1/quotes',
+      method: 'POST',
+    },
     JSON.stringify({
       title: 'Enterprise Cloud Migration & Security Suite',
       customerName: 'Acme Global Corp',
       customerEmail: 'billing@acmeglobal.test',
       createdBy: 'AI',
-      prompt: 'Need 10 cloud server migrations with 24/7 security auditing for Q3',
+      prompt:
+        'Need 10 cloud server migrations with 24/7 security auditing for Q3',
       currency: 'USD',
       items: [
         {
@@ -74,7 +93,7 @@ async function main() {
           description: 'Cloud Infrastructure Migration',
           quantity: 10,
           unitPrice: 1200,
-          subtotal: 12000
+          subtotal: 12000,
         },
         {
           id: 'item-2',
@@ -82,11 +101,11 @@ async function main() {
           description: '24/7 Security Audit Suite',
           quantity: 1,
           unitPrice: 3500,
-          subtotal: 3500
-        }
-      ]
+          subtotal: 3500,
+        },
+      ],
     }),
-    cookie
+    cookie,
   );
 
   console.log(`   ✅ Quote Created! Status: ${createQuoteRes.status}`);
@@ -108,11 +127,18 @@ async function main() {
   console.log(`      Start Time: ${description.startTime}`);
 
   // 5. Send APPROVE Signal via API
-  console.log('\n5. Sending APPROVE Signal via CRM API (POST /api/v1/quotes/:id/signal)...');
+  console.log(
+    '\n5. Sending APPROVE Signal via CRM API (POST /api/v1/quotes/:id/signal)...',
+  );
   const signalRes = await request(
-    { hostname: 'localhost', port: 4000, path: `/api/v1/quotes/${quote.id}/signal`, method: 'POST' },
+    {
+      hostname: 'localhost',
+      port: 4000,
+      path: `/api/v1/quotes/${quote.id}/signal`,
+      method: 'POST',
+    },
     JSON.stringify({ action: 'APPROVE' }),
-    cookie
+    cookie,
   );
 
   console.log(`   ✅ Signal Dispatched! Status: ${signalRes.status}`);
@@ -121,9 +147,14 @@ async function main() {
   // 6. Verify quote in CRM
   console.log('\n6. Fetching updated quote from CRM...');
   const fetchQuote = await request(
-    { hostname: 'localhost', port: 4000, path: `/api/v1/quotes/${quote.id}`, method: 'GET' },
+    {
+      hostname: 'localhost',
+      port: 4000,
+      path: `/api/v1/quotes/${quote.id}`,
+      method: 'GET',
+    },
     null,
-    cookie
+    cookie,
   );
   console.log(`   ✅ Final Quote Status in DB: ${fetchQuote.data.status}`);
 
@@ -131,7 +162,7 @@ async function main() {
   console.log('   Temporal Dashboard: http://localhost:8233');
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('Temporal test failed:', err);
   process.exit(1);
 });

@@ -11,8 +11,11 @@ import {
   type ChangePasswordInput,
   type LoginInput,
   type RegisterInput,
-  type SessionDto, TRIAL_DAYS } from '@saas/shared';
+  type SessionDto,
+  TRIAL_DAYS,
+} from '@saas/shared';
 import { Organization } from '@/modules/organizations/entities/organization.entity';
+import { AuditService } from '../audit/audit.service';
 import { LedgerService } from '@/modules/finance/ledger.service';
 import { InvitationsService } from '@/modules/invitations/invitations.service';
 import { RbacService } from '@/modules/rbac/rbac.service';
@@ -37,6 +40,7 @@ export class AuthService {
     private readonly dataSource: DataSource,
     private readonly invitations: InvitationsService,
     private readonly ledger: LedgerService,
+    private readonly audit: AuditService,
   ) {}
 
   /**
@@ -136,6 +140,20 @@ export class AuthService {
     }
 
     await this.users.recordLogin(user.id);
+    // Sign-ins are recorded here rather than by the HTTP interceptor: the
+    // login route has no authenticated user for the interceptor to attribute
+    // it to, and who signed in from where is the first thing anyone asks
+    // after an account is misused.
+    await this.audit.record({
+      tenantId: user.organizationId,
+      actorId: user.id,
+      actorName: [user.firstName, user.lastName].filter(Boolean).join(' '),
+      action: 'auth.login',
+      subjectType: 'USER',
+      subjectId: user.id,
+      summary: user.email,
+      ip: context.ipAddress ?? null,
+    });
     const tokens = await this.tokens.issue(user, context);
     return { ...tokens, userId: user.id };
   }
@@ -206,6 +224,14 @@ export class AuthService {
     await this.users.setPassword(userId, input.newPassword);
     // Every other device is signed out; the caller gets a fresh pair.
     await this.tokens.revokeAllForUser(userId);
+    await this.audit.record({
+      tenantId: user.organizationId,
+      actorId: user.id,
+      actorName: [user.firstName, user.lastName].filter(Boolean).join(' '),
+      action: 'auth.change_password',
+      subjectType: 'USER',
+      subjectId: user.id,
+    });
   }
 
   /** The full session payload the web app hydrates from. */

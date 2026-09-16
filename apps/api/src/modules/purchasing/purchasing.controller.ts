@@ -38,7 +38,10 @@ import {
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
 import { zodBody, zodQuery } from '@/common/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
-import { PurchasingService, type PurchaseSuggestion } from './purchasing.service';
+import {
+  PurchasingService,
+  type PurchaseSuggestion,
+} from './purchasing.service';
 import { PurchaseOrderLifecycleService } from './purchase-order-lifecycle.service';
 import { PurchaseOrder } from './entities/purchase-order.entity';
 import { CostingService } from '../catalog/costing.service';
@@ -207,7 +210,11 @@ export class PurchasingController {
     @CurrentUser() user: AuthenticatedUser,
     @Body(zodBody(createPurchaseOrderSchema)) body: CreatePurchaseOrderPayload,
   ): Promise<PurchaseOrder> {
-    return this.purchasing.createPurchaseOrder(user.organizationId, user.id, body);
+    return this.purchasing.createPurchaseOrder(
+      user.organizationId,
+      user.id,
+      body,
+    );
   }
 
   @Post('purchase-orders/suggest')
@@ -219,9 +226,13 @@ export class PurchasingController {
   })
   async suggest(
     @CurrentUser() user: AuthenticatedUser,
-    @Body(zodBody(suggestPurchaseOrderSchema)) body: SuggestPurchaseOrderPayload,
+    @Body(zodBody(suggestPurchaseOrderSchema))
+    body: SuggestPurchaseOrderPayload,
   ): Promise<PurchaseSuggestion> {
-    const quote = await this.quotes.findQuoteById(user.organizationId, body.quoteId);
+    const quote = await this.quotes.findQuoteById(
+      user.organizationId,
+      body.quoteId,
+    );
     const demand = await this.costing.materialDemandForItems(
       user.organizationId,
       quote.items ?? [],
@@ -320,7 +331,9 @@ export class PurchasingController {
   @Get('purchase-policy')
   @RequirePermissions(PERMISSIONS.PURCHASE_ORDER_READ)
   @ApiOperation({ summary: 'Get the purchasing policy' })
-  async getPolicy(@CurrentUser() user: AuthenticatedUser): Promise<PurchasePolicy> {
+  async getPolicy(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<PurchasePolicy> {
     return this.lifecycle.getPolicy(user.organizationId);
   }
 
@@ -333,7 +346,8 @@ export class PurchasingController {
   })
   async updatePolicy(
     @CurrentUser() user: AuthenticatedUser,
-    @Body(zodBody(updatePurchasePolicySchema)) body: UpdatePurchasePolicyPayload,
+    @Body(zodBody(updatePurchasePolicySchema))
+    body: UpdatePurchasePolicyPayload,
   ): Promise<PurchasePolicy> {
     return this.lifecycle.updatePolicy(user.organizationId, body);
   }

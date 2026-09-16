@@ -3,6 +3,7 @@ import {
   Boxes,
   ClipboardList,
   CreditCard,
+  History,
   Factory,
   Building2,
   FileText,
@@ -159,6 +160,12 @@ export const SECONDARY_SECTIONS: NavSection[] = [
         label: 'Billing',
         icon: CreditCard,
         rule: { permission: PERMISSIONS.ORG_MANAGE_BILLING },
+      },
+      {
+        href: '/settings/audit',
+        label: 'Audit trail',
+        icon: History,
+        rule: { permission: PERMISSIONS.AUDIT_READ },
       },
       {
         href: '/settings/ai',

@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class ExtendInvoicesForLifecycle1786090000000
-  implements MigrationInterface
-{
+export class ExtendInvoicesForLifecycle1786090000000 implements MigrationInterface {
   name = 'ExtendInvoicesForLifecycle1786090000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
@@ -62,18 +60,14 @@ export class ExtendInvoicesForLifecycle1786090000000
     await queryRunner.query(
       `ALTER TABLE "invoices" DROP COLUMN "paid_via_account_id"`,
     );
-    await queryRunner.query(
-      `ALTER TABLE "invoices" DROP COLUMN "paid_amount"`,
-    );
+    await queryRunner.query(`ALTER TABLE "invoices" DROP COLUMN "paid_amount"`);
     await queryRunner.query(`ALTER TABLE "invoices" DROP COLUMN "paid_at"`);
     await queryRunner.query(`ALTER TABLE "invoices" DROP COLUMN "notes"`);
     await queryRunner.query(`ALTER TABLE "invoices" DROP COLUMN "due_date"`);
     await queryRunner.query(
       `ALTER TABLE "invoices" DROP COLUMN "payment_terms"`,
     );
-    await queryRunner.query(
-      `ALTER TABLE "invoices" DROP COLUMN "tax_amount"`,
-    );
+    await queryRunner.query(`ALTER TABLE "invoices" DROP COLUMN "tax_amount"`);
     await queryRunner.query(
       `ALTER TABLE "invoices" DROP COLUMN "discount_amount"`,
     );
@@ -88,8 +82,6 @@ export class ExtendInvoicesForLifecycle1786090000000
     await queryRunner.query(
       `ALTER TABLE "invoices" DROP COLUMN "customer_name"`,
     );
-    await queryRunner.query(
-      `ALTER TABLE "invoices" DROP COLUMN "customer_id"`,
-    );
+    await queryRunner.query(`ALTER TABLE "invoices" DROP COLUMN "customer_id"`);
   }
 }

@@ -17,6 +17,8 @@ import { TaxModule } from '@/modules/tax/tax.module';
 import { CreditsModule } from '@/modules/credits/credits.module';
 import { NotificationsModule } from '@/modules/notifications/notifications.module';
 import { BillingModule } from '@/modules/billing/billing.module';
+import { AuditModule } from '@/modules/audit/audit.module';
+import { StorageModule } from '@/modules/storage/storage.module';
 import { PurchasingModule } from '@/modules/purchasing/purchasing.module';
 import { QuotesModule } from '@/modules/quotes/quotes.module';
 import { RbacModule } from '@/modules/rbac/rbac.module';
@@ -34,6 +36,10 @@ import { UsersModule } from '@/modules/users/users.module';
  * `AppModule` imports array.
  */
 export const FEATURE_MODULES = [
+  // The spine first: the audit interceptor and the file store are what every
+  // other module assumes is already there.
+  AuditModule,
+  StorageModule,
   AiModule,
   RbacModule,
   UsersModule,
@@ -72,6 +78,8 @@ export const FEATURE_MODULES = [
  * do it because the worker needs it, not for symmetry.
  */
 export const WORKER_FEATURE_MODULES = [
+  // The worker records what its activities change, same as the HTTP app.
+  AuditModule,
   TemporalModule,
   RbacModule,
   UsersModule,

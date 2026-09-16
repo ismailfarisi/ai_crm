@@ -35,7 +35,10 @@ export class NormaliseChannelTimestamps1786420000000 implements MigrationInterfa
   ];
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    for (const [table, columns] of NormaliseChannelTimestamps1786420000000.COLUMNS) {
+    for (const [
+      table,
+      columns,
+    ] of NormaliseChannelTimestamps1786420000000.COLUMNS) {
       for (const column of columns) {
         // `AT TIME ZONE 'UTC'` is the load-bearing part. These values were
         // written by Node as UTC instants and stored without a zone; without
@@ -56,7 +59,10 @@ export class NormaliseChannelTimestamps1786420000000 implements MigrationInterfa
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    for (const [table, columns] of NormaliseChannelTimestamps1786420000000.COLUMNS) {
+    for (const [
+      table,
+      columns,
+    ] of NormaliseChannelTimestamps1786420000000.COLUMNS) {
       for (const column of columns) {
         // Symmetrical: read the instant back out as UTC wall-clock time, which
         // is exactly what was stored before.

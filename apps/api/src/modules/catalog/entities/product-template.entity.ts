@@ -28,9 +28,13 @@ import { BaseEntity } from '@/common/entities/base.entity';
  */
 @Entity('product_templates')
 @Index('idx_product_templates_tenant', ['tenantId'])
-@Index('uq_product_templates_tenant_key_version', ['tenantId', 'templateKey', 'version'], {
-  unique: true,
-})
+@Index(
+  'uq_product_templates_tenant_key_version',
+  ['tenantId', 'templateKey', 'version'],
+  {
+    unique: true,
+  },
+)
 export class ProductTemplate extends BaseEntity {
   @Column({ name: 'tenant_id', type: 'uuid' })
   tenantId: string;

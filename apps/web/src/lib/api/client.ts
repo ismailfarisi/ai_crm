@@ -100,6 +100,47 @@ export async function apiFetchBlob(
 }
 
 /**
+ * Like `apiFetch`, but sends a file.
+ *
+ * `Content-Type` is deliberately left unset: the browser has to add the
+ * multipart boundary itself, and setting the header by hand produces a body
+ * the server cannot parse.
+ */
+export async function apiUpload<T>(
+  path: string,
+  file: File,
+  options: { query?: object } = {},
+  _retried = false,
+): Promise<T> {
+  const url = new URL(`${API_PUBLIC_URL}${path}`);
+  for (const [key, value] of Object.entries((options.query ?? {}) as Record<string, unknown>)) {
+    if (value !== undefined && value !== null && value !== '') {
+      url.searchParams.set(key, String(value));
+    }
+  }
+
+  const form = new FormData();
+  form.append('file', file);
+
+  const response = await fetch(url.toString(), {
+    method: 'POST',
+    credentials: 'include',
+    body: form,
+  });
+
+  if (response.status === 401 && !_retried) {
+    const refreshed = await silentRefresh();
+    if (refreshed) return apiUpload<T>(path, file, options, true);
+  }
+
+  if (!response.ok) {
+    throw await toApiError(response);
+  }
+
+  return (await response.json()) as T;
+}
+
+/**
  * Several requests can 401 at once after an access token expires. They all share
  * one in-flight refresh so we don't rotate the refresh token N times in
  * parallel — which the API would treat as token reuse and revoke the session.

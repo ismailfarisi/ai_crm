@@ -16,7 +16,9 @@ import {
 /**
  * Executes an HTTP request with configurable method, headers, query parameters, and body.
  */
-export async function executeHttpActivity(config: HttpActivityConfig): Promise<HttpActivityResult> {
+export async function executeHttpActivity(
+  config: HttpActivityConfig,
+): Promise<HttpActivityResult> {
   let targetUrl = config.url;
 
   if (config.query && Object.keys(config.query).length > 0) {
@@ -33,7 +35,12 @@ export async function executeHttpActivity(config: HttpActivityConfig): Promise<H
   const headers: Record<string, string> = { ...(config.headers || {}) };
 
   let body: any = undefined;
-  if (config.body !== undefined && config.body !== null && method !== 'GET' && method !== 'HEAD') {
+  if (
+    config.body !== undefined &&
+    config.body !== null &&
+    method !== 'GET' &&
+    method !== 'HEAD'
+  ) {
     if (typeof config.body === 'object') {
       if (!headers['Content-Type'] && !headers['content-type']) {
         headers['Content-Type'] = 'application/json';
@@ -108,7 +115,10 @@ export async function executeAiPromptActivity(
     };
   }
 
-  const promptSnippet = config.prompt.length > 80 ? `${config.prompt.slice(0, 80)}...` : config.prompt;
+  const promptSnippet =
+    config.prompt.length > 80
+      ? `${config.prompt.slice(0, 80)}...`
+      : config.prompt;
   const simulatedOutput = `AI response for prompt: "${promptSnippet}" using model ${config.model || 'gpt-4o'}`;
 
   return {
@@ -125,11 +135,17 @@ export async function executeAiPromptActivity(
 /**
  * Sends an email notification or message payload.
  */
-export async function executeEmailActivity(config: EmailActivityConfig): Promise<EmailActivityResult> {
+export async function executeEmailActivity(
+  config: EmailActivityConfig,
+): Promise<EmailActivityResult> {
   const messageId = `email_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-  const recipients = Array.isArray(config.to) ? config.to.join(', ') : config.to;
+  const recipients = Array.isArray(config.to)
+    ? config.to.join(', ')
+    : config.to;
 
-  console.log(`[AutomationActivity] sendEmail to [${recipients}], subject: "${config.subject}"`);
+  console.log(
+    `[AutomationActivity] sendEmail to [${recipients}], subject: "${config.subject}"`,
+  );
 
   return {
     success: true,
@@ -149,7 +165,11 @@ export async function executeCodeTransformActivity(
     const code = config.code.trim();
     const functionBody = code.includes('return') ? code : `return (${code});`;
 
-    const transformFn = new Function('input', 'context', `"use strict"; ${functionBody}`);
+    const transformFn = new Function(
+      'input',
+      'context',
+      `"use strict"; ${functionBody}`,
+    );
     const output = transformFn(config.input, config.context ?? {});
 
     return { output };
@@ -165,7 +185,8 @@ export async function executeCrmMutationActivity(
   config: CrmMutationActivityConfig,
 ): Promise<CrmMutationActivityResult> {
   const recordId =
-    config.recordId || `${config.entity}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    config.recordId ||
+    `${config.entity}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
   console.log(
     `[AutomationActivity] crmMutation: entity=${config.entity}, action=${config.action}, recordId=${recordId}`,

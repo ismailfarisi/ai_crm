@@ -14,9 +14,9 @@ function formatMoney(amount: number, currency: string): string {
 
 function formatDate(value: Date | null): string {
   if (!value) return '—';
-  return new Intl.DateTimeFormat(CURRENCY_LOCALE, { dateStyle: 'medium' }).format(
-    new Date(value),
-  );
+  return new Intl.DateTimeFormat(CURRENCY_LOCALE, {
+    dateStyle: 'medium',
+  }).format(new Date(value));
 }
 
 /**
@@ -52,7 +52,10 @@ export class PurchaseOrderPdfService {
     organizationName: string,
   ): void {
     doc.fontSize(18).font('Helvetica-Bold').text(organizationName, 50, 50);
-    doc.fontSize(20).font('Helvetica-Bold').text('PURCHASE ORDER', 0, 50, { align: 'right' });
+    doc
+      .fontSize(20)
+      .font('Helvetica-Bold')
+      .text('PURCHASE ORDER', 0, 50, { align: 'right' });
     doc.fontSize(10).font('Helvetica').text(order.poNumber, { align: 'right' });
 
     // A draft that reaches a supplier by accident must not look orderable.
@@ -61,7 +64,9 @@ export class PurchaseOrderPdfService {
         .fontSize(9)
         .font('Helvetica-Bold')
         .fillColor('#9B3626')
-        .text(`${order.status.replace(/_/g, ' ')} — NOT AN ORDER`, { align: 'right' })
+        .text(`${order.status.replace(/_/g, ' ')} — NOT AN ORDER`, {
+          align: 'right',
+        })
         .fillColor('black');
     }
 
@@ -69,7 +74,10 @@ export class PurchaseOrderPdfService {
 
     const detailsTop = 120;
     doc.fontSize(9).font('Helvetica-Bold').text('SUPPLIER', 50, detailsTop);
-    doc.font('Helvetica').fontSize(10).text(order.supplierName, 50, detailsTop + 14);
+    doc
+      .font('Helvetica')
+      .fontSize(10)
+      .text(order.supplierName, 50, detailsTop + 14);
     let y = detailsTop + 28;
     for (const line of [
       supplier?.contactName,
@@ -85,9 +93,15 @@ export class PurchaseOrderPdfService {
     }
 
     doc.fontSize(9).font('Helvetica-Bold').text('ORDER DATE', 350, detailsTop);
-    doc.font('Helvetica').fontSize(10).text(formatDate(order.orderDate), 350, detailsTop + 14);
+    doc
+      .font('Helvetica')
+      .fontSize(10)
+      .text(formatDate(order.orderDate), 350, detailsTop + 14);
     doc.fontSize(9).font('Helvetica-Bold').text('EXPECTED', 450, detailsTop);
-    doc.font('Helvetica').fontSize(10).text(formatDate(order.expectedDate), 450, detailsTop + 14);
+    doc
+      .font('Helvetica')
+      .fontSize(10)
+      .text(formatDate(order.expectedDate), 450, detailsTop + 14);
 
     // Table
     let tableY = Math.max(y, detailsTop + 70) + 20;
@@ -103,13 +117,22 @@ export class PurchaseOrderPdfService {
     doc.font('Helvetica').fontSize(10);
     for (const line of order.lines ?? []) {
       doc.text(line.description, 50, tableY, { width: 270 });
-      doc.text(String(line.qtyOrdered), 330, tableY, { width: 50, align: 'right' });
-      doc.text(line.unitCost.toFixed(4), 385, tableY, { width: 60, align: 'right' });
+      doc.text(String(line.qtyOrdered), 330, tableY, {
+        width: 50,
+        align: 'right',
+      });
+      doc.text(line.unitCost.toFixed(4), 385, tableY, {
+        width: 60,
+        align: 'right',
+      });
       doc.text(formatMoney(line.lineTotal, order.currency), 450, tableY, {
         width: 95,
         align: 'right',
       });
-      tableY += Math.max(18, doc.heightOfString(line.description, { width: 270 }) + 4);
+      tableY += Math.max(
+        18,
+        doc.heightOfString(line.description, { width: 270 }) + 4,
+      );
 
       if (tableY > 720) {
         doc.addPage();
@@ -129,7 +152,10 @@ export class PurchaseOrderPdfService {
     if (order.notes) {
       tableY += 30;
       doc.font('Helvetica-Bold').fontSize(9).text('NOTES', 50, tableY);
-      doc.font('Helvetica').fontSize(9).text(order.notes, 50, tableY + 12, { width: 495 });
+      doc
+        .font('Helvetica')
+        .fontSize(9)
+        .text(order.notes, 50, tableY + 12, { width: 495 });
     }
   }
 }

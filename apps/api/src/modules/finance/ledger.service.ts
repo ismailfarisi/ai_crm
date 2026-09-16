@@ -323,7 +323,9 @@ export class LedgerService {
       // balance is concerned — a revaluation's reversal is dated the first of
       // next month for exactly that reason.
       this.journal.find({
-        where: asOf ? { tenantId, entryDate: LessThanOrEqual(asOf) } : { tenantId },
+        where: asOf
+          ? { tenantId, entryDate: LessThanOrEqual(asOf) }
+          : { tenantId },
       }),
     ]);
 

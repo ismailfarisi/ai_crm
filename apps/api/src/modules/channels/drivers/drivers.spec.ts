@@ -162,7 +162,10 @@ describe('Channel Drivers', () => {
           'https://example.com/api/v1/webhooks/channels/TELEGRAM/org-1',
         );
 
-        expect(res).toEqual({ success: true, message: 'Telegram webhook registered' });
+        expect(res).toEqual({
+          success: true,
+          message: 'Telegram webhook registered',
+        });
         expect(global.fetch).toHaveBeenCalledWith(
           'https://api.telegram.org/bot12345:ABC/setWebhook',
           expect.objectContaining({
@@ -176,7 +179,10 @@ describe('Channel Drivers', () => {
 
       it('returns success false when Telegram rejects the URL', async () => {
         global.fetch = jest.fn().mockResolvedValue({
-          json: jest.fn().mockResolvedValue({ ok: false, description: 'Bad webhook: HTTPS url must be provided' }),
+          json: jest.fn().mockResolvedValue({
+            ok: false,
+            description: 'Bad webhook: HTTPS url must be provided',
+          }),
         } as any);
 
         const res = await driver.registerWebhook(
@@ -191,7 +197,10 @@ describe('Channel Drivers', () => {
       });
 
       it('handles missing botToken gracefully', async () => {
-        const res = await driver.registerWebhook({}, 'https://example.com/hook');
+        const res = await driver.registerWebhook(
+          {},
+          'https://example.com/hook',
+        );
         expect(res.success).toBe(false);
         expect(res.message).toContain('Missing botToken');
       });

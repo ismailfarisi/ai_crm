@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   catalogSearchSchema,
@@ -38,7 +48,11 @@ import { CurrentUser, RequirePermissions } from '@/common/decorators';
 import { zodBody, zodQuery } from '@/common/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { CatalogService } from './catalog.service';
-import { CostingService, type ResolvedLines, type TemplatePriceBreaks } from './costing.service';
+import {
+  CostingService,
+  type ResolvedLines,
+  type TemplatePriceBreaks,
+} from './costing.service';
 import { CatalogItem } from './entities/catalog-item.entity';
 import { Material } from './entities/material.entity';
 import { ProductTemplate } from './entities/product-template.entity';
@@ -62,7 +76,10 @@ export class CatalogController {
     @CurrentUser() user: AuthenticatedUser,
     @Query('includeInactive') includeInactive?: string,
   ): Promise<Material[]> {
-    return this.catalogService.listMaterials(user.organizationId, includeInactive === 'true');
+    return this.catalogService.listMaterials(
+      user.organizationId,
+      includeInactive === 'true',
+    );
   }
 
   @Post('catalog/materials')
@@ -106,7 +123,10 @@ export class CatalogController {
     @CurrentUser() user: AuthenticatedUser,
     @Query('includeInactive') includeInactive?: string,
   ): Promise<WorkCenter[]> {
-    return this.catalogService.listWorkCenters(user.organizationId, includeInactive === 'true');
+    return this.catalogService.listWorkCenters(
+      user.organizationId,
+      includeInactive === 'true',
+    );
   }
 
   @Post('catalog/work-centers')
@@ -150,7 +170,10 @@ export class CatalogController {
     @CurrentUser() user: AuthenticatedUser,
     @Query('includeInactive') includeInactive?: string,
   ): Promise<Tooling[]> {
-    return this.catalogService.listTooling(user.organizationId, includeInactive === 'true');
+    return this.catalogService.listTooling(
+      user.organizationId,
+      includeInactive === 'true',
+    );
   }
 
   @Post('catalog/tooling')
@@ -197,7 +220,10 @@ export class CatalogController {
     @CurrentUser() user: AuthenticatedUser,
     @Query(zodQuery(catalogSearchSchema)) query: CatalogSearchPayload,
   ): Promise<CatalogItem[]> {
-    const items = await this.catalogService.searchItems(user.organizationId, query);
+    const items = await this.catalogService.searchItems(
+      user.organizationId,
+      query,
+    );
     return canSeeCost(user) ? items : items.map(withoutStandardCost);
   }
 
@@ -270,7 +296,10 @@ export class CatalogController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ProductTemplate> {
-    const template = await this.catalogService.findTemplate(user.organizationId, id);
+    const template = await this.catalogService.findTemplate(
+      user.organizationId,
+      id,
+    );
     return canSeeCost(user) ? template : withoutCostModel(template);
   }
 
@@ -281,8 +310,14 @@ export class CatalogController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ProductTemplate[]> {
-    const template = await this.catalogService.findTemplate(user.organizationId, id);
-    return this.catalogService.listTemplateVersions(user.organizationId, template.templateKey);
+    const template = await this.catalogService.findTemplate(
+      user.organizationId,
+      id,
+    );
+    return this.catalogService.listTemplateVersions(
+      user.organizationId,
+      template.templateKey,
+    );
   }
 
   @Post('catalog/templates')
@@ -290,9 +325,14 @@ export class CatalogController {
   @ApiOperation({ summary: 'Create product template (version 1)' })
   async createTemplate(
     @CurrentUser() user: AuthenticatedUser,
-    @Body(zodBody(createProductTemplateSchema)) dto: CreateProductTemplatePayload,
+    @Body(zodBody(createProductTemplateSchema))
+    dto: CreateProductTemplatePayload,
   ): Promise<ProductTemplate> {
-    return this.catalogService.createTemplate(user.organizationId, dto, user.id);
+    return this.catalogService.createTemplate(
+      user.organizationId,
+      dto,
+      user.id,
+    );
   }
 
   @Post('catalog/templates/:id/versions')
@@ -305,16 +345,23 @@ export class CatalogController {
   async publishTemplateVersion(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body(zodBody(updateProductTemplateSchema)) dto: UpdateProductTemplatePayload,
+    @Body(zodBody(updateProductTemplateSchema))
+    dto: UpdateProductTemplatePayload,
   ): Promise<ProductTemplate> {
-    return this.catalogService.publishTemplateVersion(user.organizationId, id, dto, user.id);
+    return this.catalogService.publishTemplateVersion(
+      user.organizationId,
+      id,
+      dto,
+      user.id,
+    );
   }
 
   @Delete('catalog/templates/:id')
   @RequirePermissions(PERMISSIONS.CATALOG_MANAGE)
   @ApiOperation({
     summary: 'Retire a template',
-    description: 'Removes it from the picker. Versions are never deleted — quotes reference them.',
+    description:
+      'Removes it from the picker. Versions are never deleted — quotes reference them.',
   })
   async retireTemplate(
     @CurrentUser() user: AuthenticatedUser,
@@ -331,7 +378,9 @@ export class CatalogController {
   @ApiOperation({
     summary: 'Get the tenant margin floor and discount cap',
   })
-  async getPolicy(@CurrentUser() user: AuthenticatedUser): Promise<CostingPolicy> {
+  async getPolicy(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<CostingPolicy> {
     return this.costingService.getPolicy(user.organizationId);
   }
 
@@ -362,7 +411,10 @@ export class CatalogController {
     @CurrentUser() user: AuthenticatedUser,
     @Body(zodBody(resolveLinesSchema)) dto: ResolveLinesPayload,
   ): Promise<ResolvedLines> {
-    const resolved = await this.costingService.resolveLines(user.organizationId, dto);
+    const resolved = await this.costingService.resolveLines(
+      user.organizationId,
+      dto,
+    );
     if (canSeeCost(user)) return resolved;
 
     return {
@@ -384,16 +436,22 @@ export class CatalogController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body(zodBody(priceBreaksSchema)) dto: PriceBreaksPayload,
   ): Promise<TemplatePriceBreaks> {
-    const result = await this.costingService.priceBreaks(user.organizationId, id, dto);
+    const result = await this.costingService.priceBreaks(
+      user.organizationId,
+      id,
+      dto,
+    );
     if (canSeeCost(user)) return result;
 
     return {
       ...result,
-      breaks: result.breaks.map(({ unitCost: _unitCost, marginPct: _marginPct, ...rest }) => ({
-        ...rest,
-        unitCost: 0,
-        marginPct: 0,
-      })),
+      breaks: result.breaks.map(
+        ({ unitCost: _unitCost, marginPct: _marginPct, ...rest }) => ({
+          ...rest,
+          unitCost: 0,
+          marginPct: 0,
+        }),
+      ),
     };
   }
 }
@@ -407,7 +465,7 @@ function canSeeCost(user: AuthenticatedUser): boolean {
 }
 
 function withoutStandardCost(item: CatalogItem): CatalogItem {
-  return { ...item, standardCost: 0 } as CatalogItem;
+  return { ...item, standardCost: 0 };
 }
 
 /**
@@ -422,5 +480,5 @@ function withoutCostModel(template: ProductTemplate): ProductTemplate {
     operations: [],
     tooling: [],
     pricing: { method: 'MARGIN', rate: 0, overheadPct: 0 },
-  } as ProductTemplate;
+  };
 }

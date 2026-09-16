@@ -59,14 +59,22 @@ describe('AutomationsService', () => {
 
     mockTemporalClient = {
       workflow: {
-        start: jest.fn().mockResolvedValue({ workflowId: 'automation-exec-exec-uuid-1' }),
+        start: jest
+          .fn()
+          .mockResolvedValue({ workflowId: 'automation-exec-exec-uuid-1' }),
         getHandle: jest.fn().mockReturnValue(mockWorkflowHandle),
       },
     };
 
     workflowRepo = {
-      create: jest.fn().mockImplementation((dto) => ({ ...dto, id: 'wf-uuid-1', version: 1 })),
-      save: jest.fn().mockImplementation((entity) => Promise.resolve({ ...entity, id: entity.id || 'wf-uuid-1' })),
+      create: jest
+        .fn()
+        .mockImplementation((dto) => ({ ...dto, id: 'wf-uuid-1', version: 1 })),
+      save: jest
+        .fn()
+        .mockImplementation((entity) =>
+          Promise.resolve({ ...entity, id: entity.id || 'wf-uuid-1' }),
+        ),
       find: jest.fn().mockResolvedValue([mockWorkflow]),
       findOne: jest.fn().mockResolvedValue(mockWorkflow),
       delete: jest.fn().mockResolvedValue({ affected: 1 }),
@@ -74,8 +82,14 @@ describe('AutomationsService', () => {
     };
 
     executionRepo = {
-      create: jest.fn().mockImplementation((dto) => ({ ...dto, id: 'exec-uuid-1' })),
-      save: jest.fn().mockImplementation((entity) => Promise.resolve({ ...entity, id: entity.id || 'exec-uuid-1' })),
+      create: jest
+        .fn()
+        .mockImplementation((dto) => ({ ...dto, id: 'exec-uuid-1' })),
+      save: jest
+        .fn()
+        .mockImplementation((entity) =>
+          Promise.resolve({ ...entity, id: entity.id || 'exec-uuid-1' }),
+        ),
       find: jest.fn().mockResolvedValue([mockExecution]),
       findOne: jest.fn().mockResolvedValue(mockExecution),
     };
@@ -170,9 +184,9 @@ describe('AutomationsService', () => {
 
     it('throws NotFoundException when workflow does not exist', async () => {
       workflowRepo.findOne.mockResolvedValueOnce(null);
-      await expect(service.findWorkflowById(mockTenantId, 'wf-missing')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.findWorkflowById(mockTenantId, 'wf-missing'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -195,7 +209,11 @@ describe('AutomationsService', () => {
     });
 
     it('generates webhookSlug if updated to WEBHOOK and slug was missing', async () => {
-      const existing = { ...mockWorkflow, webhookSlug: null, triggerType: 'MANUAL' as const };
+      const existing = {
+        ...mockWorkflow,
+        webhookSlug: null,
+        triggerType: 'MANUAL' as const,
+      };
       workflowRepo.findOne.mockResolvedValueOnce(existing);
 
       const result = await service.updateWorkflow(mockTenantId, 'wf-uuid-1', {
@@ -222,16 +240,20 @@ describe('AutomationsService', () => {
 
     it('throws NotFoundException if workflow not found', async () => {
       workflowRepo.findOne.mockResolvedValueOnce(null);
-      await expect(service.deleteWorkflow(mockTenantId, 'wf-missing')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.deleteWorkflow(mockTenantId, 'wf-missing'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('triggerExecution', () => {
     it('creates execution record and starts temporal workflow', async () => {
       const payload = { amount: 500, customer: 'Acme' };
-      const exec = await service.triggerExecution(mockTenantId, 'wf-uuid-1', payload);
+      const exec = await service.triggerExecution(
+        mockTenantId,
+        'wf-uuid-1',
+        payload,
+      );
 
       expect(exec).toBeDefined();
       expect(executionRepo.create).toHaveBeenCalledWith(
@@ -264,7 +286,11 @@ describe('AutomationsService', () => {
         throw new Error('Temporal offline');
       });
 
-      const exec = await service.triggerExecution(mockTenantId, 'wf-uuid-1', {});
+      const exec = await service.triggerExecution(
+        mockTenantId,
+        'wf-uuid-1',
+        {},
+      );
       expect(exec).toBeDefined();
       expect(exec.id).toBe('exec-uuid-1');
     });
@@ -272,10 +298,16 @@ describe('AutomationsService', () => {
 
   describe('triggerWebhook', () => {
     it('finds workflow by slug and triggers execution', async () => {
-      const webhookWf = { ...mockWorkflow, webhookSlug: 'wh_test_slug', status: 'ACTIVE' as const };
+      const webhookWf = {
+        ...mockWorkflow,
+        webhookSlug: 'wh_test_slug',
+        status: 'ACTIVE' as const,
+      };
       workflowRepo.findOne.mockResolvedValueOnce(webhookWf);
 
-      const exec = await service.triggerWebhook('wh_test_slug', { event: 'user_created' });
+      const exec = await service.triggerWebhook('wh_test_slug', {
+        event: 'user_created',
+      });
       expect(exec).toBeDefined();
       expect(workflowRepo.findOne).toHaveBeenCalledWith({
         where: { webhookSlug: 'wh_test_slug' },
@@ -285,13 +317,18 @@ describe('AutomationsService', () => {
 
     it('throws NotFoundException if webhook slug does not exist', async () => {
       workflowRepo.findOne.mockResolvedValueOnce(null);
-      await expect(service.triggerWebhook('wh_unknown', {})).rejects.toThrow(NotFoundException);
+      await expect(service.triggerWebhook('wh_unknown', {})).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
   describe('findExecutionsByWorkflow', () => {
     it('returns executions list for workflow', async () => {
-      const execs = await service.findExecutionsByWorkflow(mockTenantId, 'wf-uuid-1');
+      const execs = await service.findExecutionsByWorkflow(
+        mockTenantId,
+        'wf-uuid-1',
+      );
       expect(execs).toEqual([mockExecution]);
       expect(executionRepo.find).toHaveBeenCalledWith({
         where: { tenantId: mockTenantId, workflowId: 'wf-uuid-1' },
@@ -301,15 +338,18 @@ describe('AutomationsService', () => {
 
     it('throws NotFoundException if workflow does not exist', async () => {
       workflowRepo.findOne.mockResolvedValueOnce(null);
-      await expect(service.findExecutionsByWorkflow(mockTenantId, 'wf-unknown')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.findExecutionsByWorkflow(mockTenantId, 'wf-unknown'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('findExecutionById', () => {
     it('returns execution when found', async () => {
-      const result = await service.findExecutionById(mockTenantId, 'exec-uuid-1');
+      const result = await service.findExecutionById(
+        mockTenantId,
+        'exec-uuid-1',
+      );
       expect(result).toEqual(mockExecution);
       expect(executionRepo.findOne).toHaveBeenCalledWith({
         where: { id: 'exec-uuid-1', tenantId: mockTenantId },
@@ -318,19 +358,23 @@ describe('AutomationsService', () => {
 
     it('throws NotFoundException when execution does not exist', async () => {
       executionRepo.findOne.mockResolvedValueOnce(null);
-      await expect(service.findExecutionById(mockTenantId, 'exec-missing')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.findExecutionById(mockTenantId, 'exec-missing'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('signalExecution', () => {
     it('signals APPROVE to temporal workflow', async () => {
-      const result = await service.signalExecution(mockTenantId, 'exec-uuid-1', {
-        action: 'APPROVE',
-        nodeId: 'approval-node-1',
-        comment: 'Approved by manager',
-      });
+      const result = await service.signalExecution(
+        mockTenantId,
+        'exec-uuid-1',
+        {
+          action: 'APPROVE',
+          nodeId: 'approval-node-1',
+          comment: 'Approved by manager',
+        },
+      );
 
       expect(result).toEqual(mockExecution);
       expect(mockTemporalClient.workflow.getHandle).toHaveBeenCalledWith(
@@ -346,11 +390,15 @@ describe('AutomationsService', () => {
     });
 
     it('signals REJECT to temporal workflow', async () => {
-      const result = await service.signalExecution(mockTenantId, 'exec-uuid-1', {
-        action: 'REJECT',
-        nodeId: 'approval-node-1',
-        reason: 'Budget exceeded',
-      });
+      const result = await service.signalExecution(
+        mockTenantId,
+        'exec-uuid-1',
+        {
+          action: 'REJECT',
+          nodeId: 'approval-node-1',
+          reason: 'Budget exceeded',
+        },
+      );
 
       expect(result).toEqual(mockExecution);
       expect(mockWorkflowHandle.signal).toHaveBeenCalledWith(
@@ -363,12 +411,18 @@ describe('AutomationsService', () => {
     });
 
     it('handles temporal offline during signal gracefully', async () => {
-      mockWorkflowHandle.signal.mockRejectedValueOnce(new Error('Connection lost'));
+      mockWorkflowHandle.signal.mockRejectedValueOnce(
+        new Error('Connection lost'),
+      );
 
-      const result = await service.signalExecution(mockTenantId, 'exec-uuid-1', {
-        action: 'APPROVE',
-        nodeId: 'node-1',
-      });
+      const result = await service.signalExecution(
+        mockTenantId,
+        'exec-uuid-1',
+        {
+          action: 'APPROVE',
+          nodeId: 'node-1',
+        },
+      );
       expect(result).toEqual(mockExecution);
     });
 

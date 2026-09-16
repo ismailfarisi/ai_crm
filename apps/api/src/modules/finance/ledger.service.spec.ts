@@ -370,13 +370,29 @@ describe('LedgerService', () => {
       const lines = await service.resolveLines(
         tenantId,
         [
-          { role: LEDGER_ROLES.CASH, accountName: 'Bank', debit: 1000, credit: 0, fxRate: 0.87, description: 'Receipt' },
-          { role: LEDGER_ROLES.ACCOUNTS_RECEIVABLE, accountName: 'AR', debit: 0, credit: 1000, fxRate: 0.85, description: 'Receipt' },
+          {
+            role: LEDGER_ROLES.CASH,
+            accountName: 'Bank',
+            debit: 1000,
+            credit: 0,
+            fxRate: 0.87,
+            description: 'Receipt',
+          },
+          {
+            role: LEDGER_ROLES.ACCOUNTS_RECEIVABLE,
+            accountName: 'AR',
+            debit: 0,
+            credit: 1000,
+            fxRate: 0.85,
+            description: 'Receipt',
+          },
         ],
         undefined,
         0.87,
       );
-      expect(lines.map((l) => [l.ledgerAccountCode, l.debit, l.credit])).toEqual([
+      expect(
+        lines.map((l) => [l.ledgerAccountCode, l.debit, l.credit]),
+      ).toEqual([
         ['1000', 870, 0],
         ['1100', 0, 850],
         ['7000', 0, 20],
@@ -389,8 +405,22 @@ describe('LedgerService', () => {
         service.resolveLines(
           tenantId,
           [
-            { role: LEDGER_ROLES.CASH, accountName: 'Bank', debit: 1000, credit: 0, fxRate: 0.87, description: 'x' },
-            { role: LEDGER_ROLES.ACCOUNTS_RECEIVABLE, accountName: 'AR', debit: 0, credit: 999, fxRate: 0.85, description: 'x' },
+            {
+              role: LEDGER_ROLES.CASH,
+              accountName: 'Bank',
+              debit: 1000,
+              credit: 0,
+              fxRate: 0.87,
+              description: 'x',
+            },
+            {
+              role: LEDGER_ROLES.ACCOUNTS_RECEIVABLE,
+              accountName: 'AR',
+              debit: 0,
+              credit: 999,
+              fxRate: 0.85,
+              description: 'x',
+            },
           ],
           undefined,
           0.87,
@@ -401,8 +431,20 @@ describe('LedgerService', () => {
     it('adds nothing when everything is already in base currency', async () => {
       const { service } = makeService({ accounts: seededChart() });
       const lines = await service.resolveLines(tenantId, [
-        { role: LEDGER_ROLES.CASH, accountName: 'Bank', debit: 10, credit: 0, description: 'x' },
-        { role: LEDGER_ROLES.SALES, accountName: 'Sales', debit: 0, credit: 10, description: 'x' },
+        {
+          role: LEDGER_ROLES.CASH,
+          accountName: 'Bank',
+          debit: 10,
+          credit: 0,
+          description: 'x',
+        },
+        {
+          role: LEDGER_ROLES.SALES,
+          accountName: 'Sales',
+          debit: 0,
+          credit: 10,
+          description: 'x',
+        },
       ]);
       expect(lines).toHaveLength(2);
     });

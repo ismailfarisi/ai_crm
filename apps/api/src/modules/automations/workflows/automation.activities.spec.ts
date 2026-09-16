@@ -158,7 +158,10 @@ describe('AutomationActivities', () => {
       expect(result.entity).toBe('contact');
       expect(result.action).toBe('create');
       expect(result.recordId).toMatch(/^contact_/);
-      expect(result.data).toEqual({ name: 'Sarah Connor', email: 'sarah@example.com' });
+      expect(result.data).toEqual({
+        name: 'Sarah Connor',
+        email: 'sarah@example.com',
+      });
     });
   });
 

@@ -43,6 +43,8 @@ import { QuotePrintModal } from './quote-print-modal';
 import { AddLineFlow } from './add-line-flow';
 import { QuoteMarginCard } from './quote-margin-card';
 import { QuoteBillingCard } from './quote-billing-card';
+import { AttachmentsPanel } from '@/components/platform/attachments-panel';
+import { ActivityTimeline } from '@/components/platform/activity-timeline';
 import { QuoteCustomerPanel } from './quote-customer-panel';
 
 interface QuoteEditorPageProps {
@@ -665,6 +667,14 @@ export function QuoteEditorPage({
           <strong className="text-ink">Reverse charge.</strong> This customer&apos;s address and tax number put
           these lines at 0%; the invoice will say the customer accounts for the tax.
         </p>
+      )}
+
+      {/* Files and history, once the quote exists to hang them off */}
+      {id && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <AttachmentsPanel ownerType="QUOTE" ownerId={id} canEdit={!isReadOnly} />
+          <ActivityTimeline subjectType="QUOTE" subjectId={id} />
+        </div>
       )}
 
       {/* Section 4: Terms & Internal Notes Tabs */}

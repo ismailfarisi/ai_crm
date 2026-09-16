@@ -14,10 +14,7 @@ describe('FinanceController', () => {
     organizationId: 'tenant-123',
     email: 'finance@example.com',
     roleId: 'role-admin',
-    permissions: [
-      'finance:read',
-      'finance:manage',
-    ],
+    permissions: ['finance:read', 'finance:manage'],
   };
 
   beforeEach(async () => {
@@ -49,9 +46,12 @@ describe('FinanceController', () => {
 
     ledgerService = {
       list: jest.fn().mockResolvedValue([]),
-      trialBalance: jest
-        .fn()
-        .mockResolvedValue({ rows: [], totalDebit: 0, totalCredit: 0, difference: 0 }),
+      trialBalance: jest.fn().mockResolvedValue({
+        rows: [],
+        totalDebit: 0,
+        totalCredit: 0,
+        difference: 0,
+      }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -86,14 +86,20 @@ describe('FinanceController', () => {
   it('should create an account', async () => {
     const dto = { name: 'Savings Account', accountType: 'BANK' as const };
     const result = await controller.createAccount(mockUser, dto);
-    expect(financeService.createAccount).toHaveBeenCalledWith('tenant-123', dto);
+    expect(financeService.createAccount).toHaveBeenCalledWith(
+      'tenant-123',
+      dto,
+    );
     expect(result).toEqual({ id: 'acc-1' });
   });
 
   it('should transfer funds', async () => {
     const dto = { fromAccountId: 'acc-1', toAccountId: 'acc-2', amount: 500 };
     await controller.transferFunds(mockUser, dto);
-    expect(financeService.transferFunds).toHaveBeenCalledWith('tenant-123', dto);
+    expect(financeService.transferFunds).toHaveBeenCalledWith(
+      'tenant-123',
+      dto,
+    );
   });
 
   it('should list and create budgets', async () => {
@@ -108,12 +114,17 @@ describe('FinanceController', () => {
       endDate: '2026-08-31',
     };
     await controller.createBudget(mockUser, budgetDto);
-    expect(financeService.createBudget).toHaveBeenCalledWith('tenant-123', budgetDto);
+    expect(financeService.createBudget).toHaveBeenCalledWith(
+      'tenant-123',
+      budgetDto,
+    );
   });
 
   it('should list and create subscriptions', async () => {
     await controller.findAllSubscriptions(mockUser);
-    expect(financeService.findAllSubscriptions).toHaveBeenCalledWith('tenant-123');
+    expect(financeService.findAllSubscriptions).toHaveBeenCalledWith(
+      'tenant-123',
+    );
 
     const subDto = {
       vendorName: 'Slack',
@@ -123,12 +134,16 @@ describe('FinanceController', () => {
       nextBillingDate: '2026-09-01',
     };
     await controller.createSubscription(mockUser, subDto);
-    expect(financeService.createSubscription).toHaveBeenCalledWith('tenant-123', subDto);
+    expect(financeService.createSubscription).toHaveBeenCalledWith(
+      'tenant-123',
+      subDto,
+    );
   });
 
   it('should list journal entries', async () => {
     await controller.findAllJournalEntries(mockUser);
-    expect(financeService.findAllJournalEntries).toHaveBeenCalledWith('tenant-123');
+    expect(financeService.findAllJournalEntries).toHaveBeenCalledWith(
+      'tenant-123',
+    );
   });
 });
-

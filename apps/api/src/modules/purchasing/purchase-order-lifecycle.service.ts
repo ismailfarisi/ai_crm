@@ -69,7 +69,10 @@ export class PurchaseOrderLifecycleService {
     };
   }
 
-  async updatePolicy(tenantId: string, input: Partial<PurchasePolicy>): Promise<PurchasePolicy> {
+  async updatePolicy(
+    tenantId: string,
+    input: Partial<PurchasePolicy>,
+  ): Promise<PurchasePolicy> {
     const existing = await this.policies.findOne({ where: { tenantId } });
     const row =
       existing ??
@@ -85,7 +88,10 @@ export class PurchaseOrderLifecycleService {
    * Exposed on its own so the editor can show the same warnings the API will
    * enforce, before anyone clicks submit.
    */
-  async check(tenantId: string, orderId: string): Promise<PurchaseGuardrailViolation[]> {
+  async check(
+    tenantId: string,
+    orderId: string,
+  ): Promise<PurchaseGuardrailViolation[]> {
     const order = await this.load(tenantId, orderId);
     return this.evaluate(tenantId, order);
   }
@@ -138,7 +144,11 @@ export class PurchaseOrderLifecycleService {
    * Guardrails run here rather than at approval so the person who raised the
    * order finds out it is over threshold while they can still change it.
    */
-  async submit(tenantId: string, orderId: string, actor: Actor): Promise<PurchaseOrder> {
+  async submit(
+    tenantId: string,
+    orderId: string,
+    actor: Actor,
+  ): Promise<PurchaseOrder> {
     const order = await this.load(tenantId, orderId);
     this.assertTransition(order.status, 'AWAITING_APPROVAL', order.poNumber);
 
@@ -165,12 +175,18 @@ export class PurchaseOrderLifecycleService {
     return this.orders.save(order);
   }
 
-  async approve(tenantId: string, orderId: string, actor: Actor): Promise<PurchaseOrder> {
+  async approve(
+    tenantId: string,
+    orderId: string,
+    actor: Actor,
+  ): Promise<PurchaseOrder> {
     const order = await this.load(tenantId, orderId);
     this.assertTransition(order.status, 'APPROVED', order.poNumber);
 
     if (!actor.permissions.includes(PERMISSIONS.PURCHASE_ORDER_APPROVE)) {
-      throw new ForbiddenException('You do not have permission to approve purchase orders.');
+      throw new ForbiddenException(
+        'You do not have permission to approve purchase orders.',
+      );
     }
 
     // Compared against what this actor actually holds. Checking a role here
@@ -219,7 +235,6 @@ export class PurchaseOrderLifecycleService {
     return saved;
   }
 
-
   /**
    * Accepts that the rest of a delivery is not coming, and closes the order.
    *
@@ -249,7 +264,10 @@ export class PurchaseOrderLifecycleService {
     }));
 
     order.status = 'RECEIVED';
-    order.notes = [order.notes, reason ? `Closed short: ${reason}` : 'Closed short']
+    order.notes = [
+      order.notes,
+      reason ? `Closed short: ${reason}` : 'Closed short',
+    ]
       .filter(Boolean)
       .join('\n');
     const saved = await this.orders.save(order);
@@ -306,15 +324,24 @@ export class PurchaseOrderLifecycleService {
 
   /* ------------------------------------------------------------------ */
 
-  private linesFor(tenantId: string, orderId: string): Promise<PurchaseOrderLine[]> {
-    return this.orderLines.find({ where: { tenantId, purchaseOrderId: orderId } });
+  private linesFor(
+    tenantId: string,
+    orderId: string,
+  ): Promise<PurchaseOrderLine[]> {
+    return this.orderLines.find({
+      where: { tenantId, purchaseOrderId: orderId },
+    });
   }
 
-  private async load(tenantId: string, orderId: string): Promise<PurchaseOrder> {
+  private async load(
+    tenantId: string,
+    orderId: string,
+  ): Promise<PurchaseOrder> {
     const order = await this.orders.findOne({
       where: { id: orderId, tenantId, deletedAt: IsNull() },
     });
-    if (!order) throw new NotFoundException(`Purchase order ${orderId} not found`);
+    if (!order)
+      throw new NotFoundException(`Purchase order ${orderId} not found`);
     return order;
   }
 

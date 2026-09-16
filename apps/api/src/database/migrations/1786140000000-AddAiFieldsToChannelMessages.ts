@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddAiFieldsToChannelMessages1786140000000
-  implements MigrationInterface
-{
+export class AddAiFieldsToChannelMessages1786140000000 implements MigrationInterface {
   name = 'AddAiFieldsToChannelMessages1786140000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

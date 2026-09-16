@@ -1,5 +1,10 @@
 /* One slice of the browser's API surface. Composed in ./index.ts. */
 import type {
+  AttachmentDto,
+  AttachmentLinkDto,
+  AttachmentOwnerType,
+  AuditLogDto,
+  AuditPageDto,
   BalanceSheetDto,
   CurrencySettingsDto,
   FxRateDto,
@@ -12,7 +17,7 @@ import type {
   SubscriptionDto,
   TrialBalanceDto,
 } from '@saas/shared';
-import { apiFetch, apiFetchBlob } from '../client';
+import { apiFetch, apiFetchBlob, apiUpload } from '../client';
 
 export type FinancialReport = 'trial-balance' | 'profit-and-loss' | 'balance-sheet' | 'receivables-aging' | 'margins';
 
@@ -23,7 +28,31 @@ export interface ReportParams {
   by?: 'customer' | 'template';
 }
 
+export interface AuditFilters {
+  subjectType?: string;
+  actorId?: string;
+  action?: string;
+  origin?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  offset?: number;
+}
+
 export const platformEndpoints = {
+  audit: {
+    list: (filters: AuditFilters) => apiFetch<AuditPageDto>('/audit', { query: filters }),
+    forSubject: (subjectType: string, subjectId: string) =>
+      apiFetch<AuditLogDto[]>(`/audit/${subjectType}/${subjectId}`),
+  },
+  attachments: {
+    list: (ownerType: AttachmentOwnerType, ownerId: string) =>
+      apiFetch<AttachmentDto[]>('/attachments', { query: { ownerType, ownerId } }),
+    upload: (ownerType: AttachmentOwnerType, ownerId: string, file: File) =>
+      apiUpload<AttachmentDto>('/attachments', file, { query: { ownerType, ownerId } }),
+    link: (id: string) => apiFetch<AttachmentLinkDto>(`/attachments/${id}/link`),
+    remove: (id: string) => apiFetch<void>(`/attachments/${id}`, { method: 'DELETE' }),
+  },
   notifications: {
     list: () => apiFetch<{ items: NotificationDto[]; unread: number }>('/notifications'),
     read: (id: string) => apiFetch<void>(`/notifications/${id}/read`, { method: 'POST' }),
@@ -63,6 +92,11 @@ export const platformEndpoints = {
 };
 
 export const platformKeys = {
+  audit: (filters: AuditFilters) => ['audit', filters] as const,
+  auditForSubject: (subjectType: string, subjectId: string) =>
+    ['audit', subjectType, subjectId] as const,
+  attachments: (ownerType: string, ownerId: string) =>
+    ['attachments', ownerType, ownerId] as const,
   notifications: ['notifications'] as const,
   billingPlans: ['billing', 'plans'] as const,
   subscription: ['billing', 'subscription'] as const,

@@ -241,9 +241,7 @@ export class CreateFinanceTables1786060000000 implements MigrationInterface {
       `DROP INDEX IF EXISTS "public"."idx_expense_claims_tenant_id"`,
     );
     await queryRunner.query(`DROP TABLE "expense_claims"`);
-    await queryRunner.query(
-      `DROP TYPE "public"."expense_claims_status_enum"`,
-    );
+    await queryRunner.query(`DROP TYPE "public"."expense_claims_status_enum"`);
 
     // Drop finance_accounts
     await queryRunner.query(

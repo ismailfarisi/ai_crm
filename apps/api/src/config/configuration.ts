@@ -89,6 +89,17 @@ const envSchema = z.object({
   // these env vars are unread. Left here rather than removed to avoid touching
   // .env.example/docker-compose env passthrough in the same change — remove once
   // every environment has migrated to configuring a provider via Settings > AI.
+  // File attachments (see modules/storage — the same shape as MAIL_PROVIDER)
+  STORAGE_PROVIDER: z.enum(['local', 's3']).default('local'),
+  // Where the local driver writes. A mounted volume in Docker; unused for s3.
+  STORAGE_LOCAL_DIR: z.string().default('./storage'),
+  STORAGE_S3_BUCKET: z.string().optional(),
+  // Credentials come from the SDK's default chain, never from .env.
+  STORAGE_S3_REGION: z.string().optional(),
+  // How long a download link stays valid. Long enough to click, short enough
+  // that a link pasted into a chat is useless by the time anyone reads it.
+  STORAGE_URL_TTL: z.coerce.number().int().min(30).max(3600).default(300),
+
   AI_PROVIDER: z.enum(['anthropic']).default('anthropic'),
   AI_ANTHROPIC_API_KEY: z.string().optional(),
   AI_ANTHROPIC_MODEL: z.string().default('claude-sonnet-5'),
@@ -138,6 +149,12 @@ export function validateEnv(raw: Record<string, unknown>): Env {
           'Generate real secrets (e.g. `openssl rand -base64 48`) before deploying.',
       );
     }
+  }
+
+  if (env.STORAGE_PROVIDER === 's3' && !env.STORAGE_S3_BUCKET) {
+    throw new Error(
+      'Invalid environment configuration: STORAGE_PROVIDER=s3 requires STORAGE_S3_BUCKET.',
+    );
   }
 
   if (
@@ -210,6 +227,16 @@ export function configuration() {
       provider: env.MAIL_PROVIDER,
       from: env.MAIL_FROM,
       region: env.MAIL_REGION,
+    },
+    storage: {
+      provider: env.STORAGE_PROVIDER,
+      localDir: env.STORAGE_LOCAL_DIR,
+      bucket: env.STORAGE_S3_BUCKET,
+      region: env.STORAGE_S3_REGION,
+      urlTtlSeconds: env.STORAGE_URL_TTL,
+      // Download links are signed with the access-token secret: same lifetime
+      // assumptions, same rotation, one fewer secret to manage.
+      signingSecret: env.JWT_ACCESS_SECRET,
     },
     billing: {
       provider: env.BILLING_PROVIDER,

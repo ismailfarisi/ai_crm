@@ -197,6 +197,21 @@ const mockTransferFunds = vi.fn();
 const mockCreateBudget = vi.fn();
 const mockCreateSub = vi.fn();
 
+// The expense detail page now carries the files and history panels, which ask
+// the session what the viewer may change.
+vi.mock('@/lib/session-context', () => ({
+  useSession: () => ({ check: () => true }),
+  useCan: () => true,
+}));
+
+vi.mock('@/components/platform/attachments-panel', () => ({
+  AttachmentsPanel: () => null,
+}));
+
+vi.mock('@/components/platform/activity-timeline', () => ({
+  ActivityTimeline: () => null,
+}));
+
 vi.mock('@/hooks/use-finance', () => ({
   useFinanceOverview: () => ({ data: mockOverview, isLoading: false }),
   useFinanceAccounts: () => ({ data: mockAccounts, isLoading: false }),

@@ -508,7 +508,12 @@ export class InventoryService {
       // The rate the goods came in at. Stock is valued at it, GRNI is credited
       // at it, and the supplier's bill later clears GRNI at it, whatever the
       // rate has done by the time the bill arrives.
-      const rate = await fxRateFor(manager, tenantId, order.currency, new Date());
+      const rate = await fxRateFor(
+        manager,
+        tenantId,
+        order.currency,
+        new Date(),
+      );
 
       for (const input_line of input.lines) {
         const orderLine = byId.get(input_line.purchaseOrderLineId);

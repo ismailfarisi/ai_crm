@@ -1,8 +1,10 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PERMISSIONS, type PurchaseOrderStatus } from '@saas/shared';
 import { PurchaseOrderLifecycleService } from './purchase-order-lifecycle.service';
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 const tenantId = '11111111-1111-1111-1111-111111111111';
 const raiser = 'user-raiser';
@@ -16,11 +18,17 @@ const ALL = [
 ];
 const APPROVER_ONLY = [PERMISSIONS.PURCHASE_ORDER_APPROVE];
 
-function makeService(seed: {
-  order?: Partial<{ status: PurchaseOrderStatus; totalAmount: number; submittedById: string | null }>;
-  policy?: any;
-  preferred?: any[];
-} = {}) {
+function makeService(
+  seed: {
+    order?: Partial<{
+      status: PurchaseOrderStatus;
+      totalAmount: number;
+      submittedById: string | null;
+    }>;
+    policy?: any;
+    preferred?: any[];
+  } = {},
+) {
   const order: any = {
     id: 'po-1',
     tenantId,
@@ -101,7 +109,10 @@ describe('PurchaseOrderLifecycleService', () => {
     it('moves a draft to awaiting approval', async () => {
       const { service, order } = makeService();
 
-      const saved = await service.submit(tenantId, 'po-1', { userId: raiser, permissions: ALL });
+      const saved = await service.submit(tenantId, 'po-1', {
+        userId: raiser,
+        permissions: ALL,
+      });
 
       expect(saved.status).toBe('AWAITING_APPROVAL');
       expect(saved.submittedById).toBe(raiser);
@@ -116,7 +127,10 @@ describe('PurchaseOrderLifecycleService', () => {
         policy: enforcedPolicy,
       });
 
-      const saved = await service.submit(tenantId, 'po-1', { userId: raiser, permissions: ALL });
+      const saved = await service.submit(tenantId, 'po-1', {
+        userId: raiser,
+        permissions: ALL,
+      });
       expect(saved.status).toBe('AWAITING_APPROVAL');
     });
 
@@ -162,10 +176,16 @@ describe('PurchaseOrderLifecycleService', () => {
   });
 
   describe('approve', () => {
-    const awaiting = { status: 'AWAITING_APPROVAL' as PurchaseOrderStatus, submittedById: raiser };
+    const awaiting = {
+      status: 'AWAITING_APPROVAL' as PurchaseOrderStatus,
+      submittedById: raiser,
+    };
 
     it('approves an order under the threshold with only the base permission', async () => {
-      const { service } = makeService({ order: awaiting, policy: enforcedPolicy });
+      const { service } = makeService({
+        order: awaiting,
+        policy: enforcedPolicy,
+      });
 
       const saved = await service.approve(tenantId, 'po-1', {
         userId: approver,
@@ -183,7 +203,10 @@ describe('PurchaseOrderLifecycleService', () => {
       });
 
       await expect(
-        service.approve(tenantId, 'po-1', { userId: approver, permissions: APPROVER_ONLY }),
+        service.approve(tenantId, 'po-1', {
+          userId: approver,
+          permissions: APPROVER_ONLY,
+        }),
       ).rejects.toThrow(/900.00.*500.00/);
     });
 
@@ -201,7 +224,9 @@ describe('PurchaseOrderLifecycleService', () => {
     });
 
     it('ignores the threshold entirely while the policy is unenforced', async () => {
-      const { service } = makeService({ order: { ...awaiting, totalAmount: 9999 } });
+      const { service } = makeService({
+        order: { ...awaiting, totalAmount: 9999 },
+      });
 
       const saved = await service.approve(tenantId, 'po-1', {
         userId: approver,
@@ -229,7 +254,10 @@ describe('PurchaseOrderLifecycleService', () => {
       });
 
       await expect(
-        service.approve(tenantId, 'po-1', { userId: approver, permissions: APPROVER_ONLY }),
+        service.approve(tenantId, 'po-1', {
+          userId: approver,
+          permissions: APPROVER_ONLY,
+        }),
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
@@ -250,7 +278,10 @@ describe('PurchaseOrderLifecycleService', () => {
       const { service } = makeService({ order: { status: 'DRAFT' } });
 
       await expect(
-        service.approve(tenantId, 'po-1', { userId: approver, permissions: ALL }),
+        service.approve(tenantId, 'po-1', {
+          userId: approver,
+          permissions: ALL,
+        }),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
@@ -272,17 +303,26 @@ describe('PurchaseOrderLifecycleService', () => {
 
     it('refuses once goods have arrived', async () => {
       // Cancelling would strand stock that was already received.
-      const { service } = makeService({ order: { status: 'PARTIALLY_RECEIVED' } });
+      const { service } = makeService({
+        order: { status: 'PARTIALLY_RECEIVED' },
+      });
 
       await expect(
-        service.cancel(tenantId, 'po-1', { userId: approver, permissions: ALL }, null),
+        service.cancel(
+          tenantId,
+          'po-1',
+          { userId: approver, permissions: ALL },
+          null,
+        ),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 
   describe('markSent', () => {
     it('only sends an approved order', async () => {
-      const { service } = makeService({ order: { status: 'AWAITING_APPROVAL' } });
+      const { service } = makeService({
+        order: { status: 'AWAITING_APPROVAL' },
+      });
       await expect(service.markSent(tenantId, 'po-1')).rejects.toBeInstanceOf(
         BadRequestException,
       );
@@ -308,7 +348,10 @@ describe('PurchaseOrderLifecycleService', () => {
       // must stop suggesting it.
       const { service, inventory } = makeService({ order: awaiting });
 
-      await service.approve(tenantId, 'po-1', { userId: approver, permissions: ALL });
+      await service.approve(tenantId, 'po-1', {
+        userId: approver,
+        permissions: ALL,
+      });
 
       expect(inventory.adjustOnOrder).toHaveBeenCalledWith(tenantId, [
         { materialId: 'mat-1', qty: 500 },
@@ -319,7 +362,10 @@ describe('PurchaseOrderLifecycleService', () => {
       const { service, inventory, order } = makeService({ order: awaiting });
       order.lines[0].qtyReceived = 200;
 
-      await service.approve(tenantId, 'po-1', { userId: approver, permissions: ALL });
+      await service.approve(tenantId, 'po-1', {
+        userId: approver,
+        permissions: ALL,
+      });
 
       expect(inventory.adjustOnOrder).toHaveBeenCalledWith(tenantId, [
         { materialId: 'mat-1', qty: 300 },
@@ -329,19 +375,25 @@ describe('PurchaseOrderLifecycleService', () => {
     it('releases the outstanding quantity when a committed order is cancelled', async () => {
       const { service, inventory } = makeService({ order: { status: 'SENT' } });
 
-      await service.cancel(tenantId, 'po-1', { userId: approver, permissions: ALL }, null);
+      await service.cancel(
+        tenantId,
+        'po-1',
+        { userId: approver, permissions: ALL },
+        null,
+      );
 
       expect(inventory.adjustOnOrder).toHaveBeenCalledWith(tenantId, [
         { materialId: 'mat-1', qty: -500 },
       ]);
     });
 
-
     it('closes a partially-received order short and releases the balance', async () => {
       // Without this the order has no exit: it cannot be cancelled (goods have
       // arrived) and cannot complete (the rest is not coming), so its
       // outstanding quantity would count as on order forever.
-      const { service, inventory, order } = makeService({ order: { status: 'PARTIALLY_RECEIVED' } });
+      const { service, inventory, order } = makeService({
+        order: { status: 'PARTIALLY_RECEIVED' },
+      });
       order.lines[0].qtyReceived = 150;
 
       const saved = await service.closeShort(
@@ -352,7 +404,9 @@ describe('PurchaseOrderLifecycleService', () => {
       );
 
       expect(saved.status).toBe('RECEIVED');
-      expect(saved.notes).toContain('Closed short: Supplier discontinued the line');
+      expect(saved.notes).toContain(
+        'Closed short: Supplier discontinued the line',
+      );
       expect(inventory.adjustOnOrder).toHaveBeenCalledWith(tenantId, [
         { materialId: 'mat-1', qty: -350 },
       ]);
@@ -362,16 +416,28 @@ describe('PurchaseOrderLifecycleService', () => {
       const { service } = makeService({ order: { status: 'DRAFT' } });
 
       await expect(
-        service.closeShort(tenantId, 'po-1', { userId: approver, permissions: ALL }, null),
+        service.closeShort(
+          tenantId,
+          'po-1',
+          { userId: approver, permissions: ALL },
+          null,
+        ),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('releases nothing when a draft is cancelled', async () => {
       // A draft never counted as on order; subtracting would push the figure
       // negative.
-      const { service, inventory } = makeService({ order: { status: 'DRAFT' } });
+      const { service, inventory } = makeService({
+        order: { status: 'DRAFT' },
+      });
 
-      await service.cancel(tenantId, 'po-1', { userId: approver, permissions: ALL }, null);
+      await service.cancel(
+        tenantId,
+        'po-1',
+        { userId: approver, permissions: ALL },
+        null,
+      );
 
       expect(inventory.adjustOnOrder).not.toHaveBeenCalled();
     });

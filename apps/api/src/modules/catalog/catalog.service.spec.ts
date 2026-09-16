@@ -23,7 +23,14 @@ function validTemplate(
     description: null,
     currency: 'USD',
     parameters: [
-      { key: 'width_mm', label: 'Width', type: 'NUMBER', unit: 'mm', min: 10, max: 500 },
+      {
+        key: 'width_mm',
+        label: 'Width',
+        type: 'NUMBER',
+        unit: 'mm',
+        min: 10,
+        max: 500,
+      },
     ],
     derived: [{ key: 'blank_w', formula: 'width_mm * 2', unit: 'mm' }],
     materials: [
@@ -71,26 +78,34 @@ describe('CatalogService', () => {
     };
 
     materials = { findBy: jest.fn().mockResolvedValue([{ id: materialId }]) };
-    workCenters = { findBy: jest.fn().mockResolvedValue([{ id: workCenterId }]) };
+    workCenters = {
+      findBy: jest.fn().mockResolvedValue([{ id: workCenterId }]),
+    };
     tooling = { findBy: jest.fn().mockResolvedValue([{ id: toolingId }]) };
     items = {
       find: jest.fn().mockResolvedValue([]),
       findOne: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockImplementation((dto) => dto),
-      save: jest.fn().mockImplementation(async (row) => ({ id: 'new', ...row })),
+      save: jest
+        .fn()
+        .mockImplementation(async (row) => ({ id: 'new', ...row })),
     };
     templates = {
       find: jest.fn().mockResolvedValue([]),
       findOne: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockImplementation((dto) => dto),
-      save: jest.fn().mockImplementation(async (row) => ({ id: 'new', ...row })),
+      save: jest
+        .fn()
+        .mockImplementation(async (row) => ({ id: 'new', ...row })),
       update: jest.fn().mockResolvedValue({ affected: 1 }),
       createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
     };
     dataSource = {
-      transaction: jest.fn().mockImplementation(async (run: (m: unknown) => unknown) =>
-        run({ getRepository: () => templates }),
-      ),
+      transaction: jest
+        .fn()
+        .mockImplementation(async (run: (m: unknown) => unknown) =>
+          run({ getRepository: () => templates }),
+        ),
     };
 
     service = new CatalogService(
@@ -105,7 +120,11 @@ describe('CatalogService', () => {
 
   describe('template validation', () => {
     it('accepts a well-formed template as version 1', async () => {
-      const created = await service.createTemplate(tenantId, validTemplate(), userId);
+      const created = await service.createTemplate(
+        tenantId,
+        validTemplate(),
+        userId,
+      );
 
       expect(created).toMatchObject({
         tenantId,
@@ -121,7 +140,16 @@ describe('CatalogService', () => {
       await expect(
         service.createTemplate(
           tenantId,
-          validTemplate({ derived: [{ key: 'bad', formula: '2 + * 3', label: undefined, unit: undefined }] }),
+          validTemplate({
+            derived: [
+              {
+                key: 'bad',
+                formula: '2 + * 3',
+                label: undefined,
+                unit: undefined,
+              },
+            ],
+          }),
           userId,
         ),
       ).rejects.toThrow(/Derived variable "bad"/);
@@ -133,8 +161,18 @@ describe('CatalogService', () => {
           tenantId,
           validTemplate({
             derived: [
-              { key: 'blank_w', formula: 'width_mm * 2', label: undefined, unit: undefined },
-              { key: 'blank_w', formula: 'width_mm * 3', label: undefined, unit: undefined },
+              {
+                key: 'blank_w',
+                formula: 'width_mm * 2',
+                label: undefined,
+                unit: undefined,
+              },
+              {
+                key: 'blank_w',
+                formula: 'width_mm * 3',
+                label: undefined,
+                unit: undefined,
+              },
             ],
           }),
           userId,
@@ -147,7 +185,14 @@ describe('CatalogService', () => {
         service.createTemplate(
           tenantId,
           validTemplate({
-            derived: [{ key: 'quantity', formula: '1', label: undefined, unit: undefined }],
+            derived: [
+              {
+                key: 'quantity',
+                formula: '1',
+                label: undefined,
+                unit: undefined,
+              },
+            ],
           }),
           userId,
         ),
@@ -208,9 +253,15 @@ describe('CatalogService', () => {
     it('scopes the reference check to the caller tenant', async () => {
       await service.createTemplate(tenantId, validTemplate(), userId);
 
-      expect(materials.findBy).toHaveBeenCalledWith([{ id: materialId, tenantId }]);
-      expect(workCenters.findBy).toHaveBeenCalledWith([{ id: workCenterId, tenantId }]);
-      expect(tooling.findBy).toHaveBeenCalledWith([{ id: toolingId, tenantId }]);
+      expect(materials.findBy).toHaveBeenCalledWith([
+        { id: materialId, tenantId },
+      ]);
+      expect(workCenters.findBy).toHaveBeenCalledWith([
+        { id: workCenterId, tenantId },
+      ]);
+      expect(tooling.findBy).toHaveBeenCalledWith([
+        { id: toolingId, tenantId },
+      ]);
     });
 
     it('refuses a duplicate template key', async () => {
@@ -275,7 +326,16 @@ describe('CatalogService', () => {
         service.publishTemplateVersion(
           tenantId,
           'template-1',
-          { derived: [{ key: 'bad', formula: 'ceil(', label: undefined, unit: undefined }] },
+          {
+            derived: [
+              {
+                key: 'bad',
+                formula: 'ceil(',
+                label: undefined,
+                unit: undefined,
+              },
+            ],
+          },
           userId,
         ),
       ).rejects.toThrow(BadRequestException);
@@ -293,13 +353,17 @@ describe('CatalogService', () => {
 
   describe('deleting primitives', () => {
     it('blocks deleting a material a live template still uses', async () => {
-      materials.findOne = jest.fn().mockResolvedValue({ id: materialId, tenantId, name: 'Board' });
+      materials.findOne = jest
+        .fn()
+        .mockResolvedValue({ id: materialId, tenantId, name: 'Board' });
       materials.softRemove = jest.fn();
-      queryBuilder.getMany = jest.fn().mockResolvedValue([{ name: 'Rigid box' }]);
+      queryBuilder.getMany = jest
+        .fn()
+        .mockResolvedValue([{ name: 'Rigid box' }]);
 
-      await expect(service.deleteMaterial(tenantId, materialId)).rejects.toThrow(
-        /still used by 1 template/,
-      );
+      await expect(
+        service.deleteMaterial(tenantId, materialId),
+      ).rejects.toThrow(/still used by 1 template/);
       expect(materials.softRemove).not.toHaveBeenCalled();
     });
 
@@ -315,13 +379,17 @@ describe('CatalogService', () => {
 
     it('404s on a material from another tenant', async () => {
       materials.findOne = jest.fn().mockResolvedValue(null);
-      await expect(service.deleteMaterial(tenantId, materialId)).rejects.toThrow(NotFoundException);
+      await expect(
+        service.deleteMaterial(tenantId, materialId),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('catalog items', () => {
     it('refuses a duplicate SKU', async () => {
-      items.findOne = jest.fn().mockResolvedValue({ id: 'other', name: 'Existing box' });
+      items.findOne = jest
+        .fn()
+        .mockResolvedValue({ id: 'other', name: 'Existing box' });
 
       await expect(
         service.createItem(tenantId, {
@@ -339,7 +407,11 @@ describe('CatalogService', () => {
     });
 
     it('searches name, sku and description, scoped to the tenant', async () => {
-      await service.searchItems(tenantId, { q: 'mailer', limit: 25, includeInactive: false });
+      await service.searchItems(tenantId, {
+        q: 'mailer',
+        limit: 25,
+        includeInactive: false,
+      });
 
       const [[where]] = (items.find as jest.Mock).mock.calls;
       expect(where.where).toHaveLength(3);

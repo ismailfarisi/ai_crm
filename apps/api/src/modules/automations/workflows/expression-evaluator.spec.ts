@@ -1,4 +1,8 @@
-import { evaluateExpression, interpolateObject, ExpressionContext } from './expression-evaluator';
+import {
+  evaluateExpression,
+  interpolateObject,
+  ExpressionContext,
+} from './expression-evaluator';
 
 describe('ExpressionEvaluator', () => {
   describe('evaluateExpression', () => {
@@ -20,7 +24,9 @@ describe('ExpressionEvaluator', () => {
           },
         },
       };
-      expect(evaluateExpression('$json.user.profile.email', context)).toBe('alice@example.com');
+      expect(evaluateExpression('$json.user.profile.email', context)).toBe(
+        'alice@example.com',
+      );
     });
 
     it('should evaluate $trigger property access', () => {
@@ -33,8 +39,12 @@ describe('ExpressionEvaluator', () => {
           },
         },
       };
-      expect(evaluateExpression('$trigger.event', context)).toBe('lead.created');
-      expect(evaluateExpression('$trigger.payload.leadId', context)).toBe('lead-123');
+      expect(evaluateExpression('$trigger.event', context)).toBe(
+        'lead.created',
+      );
+      expect(evaluateExpression('$trigger.payload.leadId', context)).toBe(
+        'lead-123',
+      );
       expect(evaluateExpression('$trigger.payload.amount', context)).toBe(5000);
     });
 
@@ -51,9 +61,15 @@ describe('ExpressionEvaluator', () => {
           },
         },
       };
-      expect(evaluateExpression('$node["Fetch User"].json.id', context)).toBe('usr-99');
-      expect(evaluateExpression("$node['Fetch User'].output.name", context)).toBe('Bob');
-      expect(evaluateExpression('$node["HTTP Request"].json.data.token', context)).toBe('xyz');
+      expect(evaluateExpression('$node["Fetch User"].json.id', context)).toBe(
+        'usr-99',
+      );
+      expect(
+        evaluateExpression("$node['Fetch User'].output.name", context),
+      ).toBe('Bob');
+      expect(
+        evaluateExpression('$node["HTTP Request"].json.data.token', context),
+      ).toBe('xyz');
     });
 
     it('should evaluate $node property access with dot notation', () => {
@@ -64,7 +80,9 @@ describe('ExpressionEvaluator', () => {
           },
         },
       };
-      expect(evaluateExpression('$node.node1.json.result', context)).toBe('success');
+      expect(evaluateExpression('$node.node1.json.result', context)).toBe(
+        'success',
+      );
     });
 
     it('should evaluate expressions enclosed in {{ }} braces', () => {
@@ -82,23 +100,33 @@ describe('ExpressionEvaluator', () => {
       };
       expect(evaluateExpression('$trigger.amount > 1000', context)).toBe(true);
       expect(evaluateExpression('$trigger.amount < 1000', context)).toBe(false);
-      expect(evaluateExpression('$trigger.status === "OPEN"', context)).toBe(true);
-      expect(evaluateExpression('$json.score >= 50 ? "PASS" : "FAIL"', context)).toBe('PASS');
+      expect(evaluateExpression('$trigger.status === "OPEN"', context)).toBe(
+        true,
+      );
+      expect(
+        evaluateExpression('$json.score >= 50 ? "PASS" : "FAIL"', context),
+      ).toBe('PASS');
     });
 
     it('should safely return undefined or handle missing paths gracefully without throwing', () => {
       const context: ExpressionContext = {
         $json: {},
       };
-      expect(evaluateExpression('$json.nonExistent.field', context)).toBeUndefined();
-      expect(evaluateExpression('$node["Unknown Node"].json.id', context)).toBeUndefined();
+      expect(
+        evaluateExpression('$json.nonExistent.field', context),
+      ).toBeUndefined();
+      expect(
+        evaluateExpression('$node["Unknown Node"].json.id', context),
+      ).toBeUndefined();
     });
 
     it('should handle $env context variables if provided', () => {
       const context: ExpressionContext = {
         $env: { API_BASE: 'https://api.crm.com' },
       };
-      expect(evaluateExpression('$env.API_BASE', context)).toBe('https://api.crm.com');
+      expect(evaluateExpression('$env.API_BASE', context)).toBe(
+        'https://api.crm.com',
+      );
     });
   });
 
@@ -115,8 +143,14 @@ describe('ExpressionEvaluator', () => {
 
       expect(interpolateObject('{{ $json.count }}', context)).toBe(42);
       expect(interpolateObject('{{ $json.isActive }}', context)).toBe(true);
-      expect(interpolateObject('{{ $json.details }}', context)).toEqual({ nested: 'value' });
-      expect(interpolateObject('{{ $json.items }}', context)).toEqual(['a', 'b', 'c']);
+      expect(interpolateObject('{{ $json.details }}', context)).toEqual({
+        nested: 'value',
+      });
+      expect(interpolateObject('{{ $json.items }}', context)).toEqual([
+        'a',
+        'b',
+        'c',
+      ]);
     });
 
     it('should interpolate template strings with multiple tokens and surrounding text', () => {
@@ -125,8 +159,10 @@ describe('ExpressionEvaluator', () => {
         $json: { total: '$450' },
       };
 
-      const template = 'Notification: Order {{ $trigger.orderId }} for {{ $trigger.customer }} with total {{ $json.total }}.';
-      const expected = 'Notification: Order ORD-900 for Acme Corp with total $450.';
+      const template =
+        'Notification: Order {{ $trigger.orderId }} for {{ $trigger.customer }} with total {{ $json.total }}.';
+      const expected =
+        'Notification: Order ORD-900 for Acme Corp with total $450.';
       expect(interpolateObject(template, context)).toBe(expected);
     });
 

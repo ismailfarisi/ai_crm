@@ -25,6 +25,8 @@ import { Textarea } from '@/components/ui/field';
 import { StatusPill } from './purchase-orders-view';
 import { ReceiveDialog } from '@/components/inventory/receive-dialog';
 import { EnterBillDialog } from '@/components/payables/enter-bill-dialog';
+import { AttachmentsPanel } from '@/components/platform/attachments-panel';
+import { ActivityTimeline } from '@/components/platform/activity-timeline';
 
 const money = (amount: number, currency: string) =>
   new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount);
@@ -197,6 +199,15 @@ export function PurchaseOrderDetail({ id }: { id: string }) {
             ))}
           </tbody>
         </table>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Can permission={PERMISSIONS.PURCHASE_ORDER_UPDATE}>
+          {(allowed) => (
+            <AttachmentsPanel ownerType="PURCHASE_ORDER" ownerId={order.id} canEdit={allowed} />
+          )}
+        </Can>
+        <ActivityTimeline subjectType="PURCHASE_ORDER" subjectId={order.id} />
       </div>
 
       <ReceiveDialog open={receiving} order={order} onClose={() => setReceiving(false)} />

@@ -1,5 +1,9 @@
 import { defineQuery, defineSignal } from '@temporalio/workflow';
-import type { ExpenseStatus, ExpenseItemDto, JournalLineInput } from '@saas/shared';
+import type {
+  ExpenseStatus,
+  ExpenseItemDto,
+  JournalLineInput,
+} from '@saas/shared';
 
 export interface ExpenseWorkflowInput {
   expenseId: string;
@@ -93,7 +97,14 @@ export interface UpdateBudgetSpendResult {
 
 export interface EmitFinanceEventParams {
   tenantId: string;
-  event: 'EXPENSE_SUBMITTED' | 'EXPENSE_APPROVED' | 'EXPENSE_REJECTED' | 'EXPENSE_PAID' | 'BUDGET_THRESHOLD_REACHED' | 'CASH_RESERVE_DEFICIT' | string;
+  event:
+    | 'EXPENSE_SUBMITTED'
+    | 'EXPENSE_APPROVED'
+    | 'EXPENSE_REJECTED'
+    | 'EXPENSE_PAID'
+    | 'BUDGET_THRESHOLD_REACHED'
+    | 'CASH_RESERVE_DEFICIT'
+    | string;
   payload: Record<string, any>;
 }
 
@@ -134,7 +145,14 @@ export interface UpdateExpenseStatusResult {
   status: string;
 }
 
-export const approveExpenseSignal = defineSignal<[ApproveExpenseSignalPayload | string | void]>('approveExpense');
-export const rejectExpenseSignal = defineSignal<[RejectExpenseSignalPayload | string | void]>('rejectExpense');
-export const reimburseExpenseSignal = defineSignal<[ReimburseExpenseSignalPayload | string | void]>('reimburseExpense');
-export const getExpenseWorkflowStateQuery = defineQuery<ExpenseWorkflowState>('getExpenseWorkflowState');
+export const approveExpenseSignal =
+  defineSignal<[ApproveExpenseSignalPayload | string | void]>('approveExpense');
+export const rejectExpenseSignal =
+  defineSignal<[RejectExpenseSignalPayload | string | void]>('rejectExpense');
+export const reimburseExpenseSignal =
+  defineSignal<[ReimburseExpenseSignalPayload | string | void]>(
+    'reimburseExpense',
+  );
+export const getExpenseWorkflowStateQuery = defineQuery<ExpenseWorkflowState>(
+  'getExpenseWorkflowState',
+);

@@ -53,34 +53,43 @@ export async function expenseApprovalWorkflow(
   let reimbursementJournalEntryId: string | undefined;
 
   // 1. Register signal handlers
-  setHandler(approveExpenseSignal, (payload?: ApproveExpenseSignalPayload | string | void) => {
-    if (typeof payload === 'string') {
-      approvedBy = payload;
-    } else if (payload && typeof payload === 'object') {
-      approvedBy = payload.approvedBy;
-    }
-    isApproved = true;
-  });
+  setHandler(
+    approveExpenseSignal,
+    (payload?: ApproveExpenseSignalPayload | string | void) => {
+      if (typeof payload === 'string') {
+        approvedBy = payload;
+      } else if (payload && typeof payload === 'object') {
+        approvedBy = payload.approvedBy;
+      }
+      isApproved = true;
+    },
+  );
 
-  setHandler(rejectExpenseSignal, (payload?: RejectExpenseSignalPayload | string | void) => {
-    if (typeof payload === 'string') {
-      rejectionReason = payload;
-    } else if (payload && typeof payload === 'object') {
-      rejectedBy = payload.rejectedBy;
-      rejectionReason = payload.reason || rejectionReason;
-    }
-    isRejected = true;
-  });
+  setHandler(
+    rejectExpenseSignal,
+    (payload?: RejectExpenseSignalPayload | string | void) => {
+      if (typeof payload === 'string') {
+        rejectionReason = payload;
+      } else if (payload && typeof payload === 'object') {
+        rejectedBy = payload.rejectedBy;
+        rejectionReason = payload.reason || rejectionReason;
+      }
+      isRejected = true;
+    },
+  );
 
-  setHandler(reimburseExpenseSignal, (payload?: ReimburseExpenseSignalPayload | string | void) => {
-    if (typeof payload === 'string') {
-      reimbursementAccountId = payload;
-    } else if (payload && typeof payload === 'object') {
-      reimbursementAccountId = payload.accountId;
-      reimbursedBy = payload.reimbursedBy;
-    }
-    isReimbursed = true;
-  });
+  setHandler(
+    reimburseExpenseSignal,
+    (payload?: ReimburseExpenseSignalPayload | string | void) => {
+      if (typeof payload === 'string') {
+        reimbursementAccountId = payload;
+      } else if (payload && typeof payload === 'object') {
+        reimbursementAccountId = payload.accountId;
+        reimbursedBy = payload.reimbursedBy;
+      }
+      isReimbursed = true;
+    },
+  );
 
   // 2. Register query handler
   setHandler(getExpenseWorkflowStateQuery, (): ExpenseWorkflowState => ({
@@ -90,7 +99,8 @@ export async function expenseApprovalWorkflow(
     amount: input.amount,
     category: input.category,
     employeeId: input.employeeId,
-    approvedBy: approvedBy || (isAutoApproved ? 'SYSTEM_AUTO_APPROVE' : undefined),
+    approvedBy:
+      approvedBy || (isAutoApproved ? 'SYSTEM_AUTO_APPROVE' : undefined),
     rejectionReason,
     isAutoApproved,
     paidFromAccountId: reimbursementAccountId,
@@ -167,7 +177,8 @@ export async function expenseApprovalWorkflow(
     expenseId: input.expenseId,
     tenantId: input.tenantId,
     status: 'APPROVED',
-    approvedById: approvedBy || (isAutoApproved ? 'SYSTEM_AUTO_APPROVE' : undefined),
+    approvedById:
+      approvedBy || (isAutoApproved ? 'SYSTEM_AUTO_APPROVE' : undefined),
     approvedAt: new Date(),
   });
 
@@ -212,7 +223,8 @@ export async function expenseApprovalWorkflow(
       amount: input.amount,
       category: input.category,
       employeeId: input.employeeId,
-      approvedBy: approvedBy || (isAutoApproved ? 'SYSTEM_AUTO_APPROVE' : undefined),
+      approvedBy:
+        approvedBy || (isAutoApproved ? 'SYSTEM_AUTO_APPROVE' : undefined),
       isAutoApproved,
       journalEntryId,
     },
@@ -293,7 +305,8 @@ export async function expenseApprovalWorkflow(
     status: 'APPROVED',
     expenseId: input.expenseId,
     journalEntryId,
-    approvedBy: approvedBy || (isAutoApproved ? 'SYSTEM_AUTO_APPROVE' : undefined),
+    approvedBy:
+      approvedBy || (isAutoApproved ? 'SYSTEM_AUTO_APPROVE' : undefined),
     isAutoApproved,
   };
 }

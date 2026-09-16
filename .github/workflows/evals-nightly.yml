@@ -1,0 +1,28 @@
+name: Chat evals (live provider)
+
+# The routing set against a real model, reporting accuracy rather than
+# pass/fail. Nightly and off the critical path: a model's behaviour drifting is
+# something to know about, not something that should block a merge.
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    if: ${{ github.repository_owner != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter shared build
+      - name: Routing accuracy
+        env:
+          EVAL_LIVE: 'true'
+          EVAL_ANTHROPIC_API_KEY: ${{ secrets.EVAL_ANTHROPIC_API_KEY }}
+        run: pnpm --filter api test:evals

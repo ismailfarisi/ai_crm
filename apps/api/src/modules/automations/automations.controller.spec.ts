@@ -14,7 +14,14 @@ describe('AutomationsController', () => {
     userId: 'user-123',
     organizationId: 'org-tenant-123',
     role: 'ADMIN',
-    permissions: ['automation:read', 'automation:create', 'automation:update', 'automation:delete', 'automation:execute', 'automation:approve'],
+    permissions: [
+      'automation:read',
+      'automation:create',
+      'automation:update',
+      'automation:delete',
+      'automation:execute',
+      'automation:approve',
+    ],
     roles: ['admin'],
   };
 
@@ -83,7 +90,9 @@ describe('AutomationsController', () => {
     it('returns all workflows for the authenticated tenant', async () => {
       const result = await controller.findAllWorkflows(mockUser);
       expect(result).toEqual([mockWorkflow]);
-      expect(service.findAllWorkflows).toHaveBeenCalledWith(mockUser.organizationId);
+      expect(service.findAllWorkflows).toHaveBeenCalledWith(
+        mockUser.organizationId,
+      );
     });
   });
 
@@ -97,7 +106,10 @@ describe('AutomationsController', () => {
       };
       const result = await controller.createWorkflow(mockUser, dto);
       expect(result).toEqual(mockWorkflow);
-      expect(service.createWorkflow).toHaveBeenCalledWith(mockUser.organizationId, dto);
+      expect(service.createWorkflow).toHaveBeenCalledWith(
+        mockUser.organizationId,
+        dto,
+      );
     });
   });
 
@@ -105,7 +117,10 @@ describe('AutomationsController', () => {
     it('returns a single workflow by id', async () => {
       const result = await controller.findWorkflowById(mockUser, 'wf-123');
       expect(result).toEqual(mockWorkflow);
-      expect(service.findWorkflowById).toHaveBeenCalledWith(mockUser.organizationId, 'wf-123');
+      expect(service.findWorkflowById).toHaveBeenCalledWith(
+        mockUser.organizationId,
+        'wf-123',
+      );
     });
   });
 
@@ -117,23 +132,38 @@ describe('AutomationsController', () => {
       };
       const result = await controller.updateWorkflow(mockUser, 'wf-123', dto);
       expect(result).toEqual(mockWorkflow);
-      expect(service.updateWorkflow).toHaveBeenCalledWith(mockUser.organizationId, 'wf-123', dto);
+      expect(service.updateWorkflow).toHaveBeenCalledWith(
+        mockUser.organizationId,
+        'wf-123',
+        dto,
+      );
     });
   });
 
   describe('deleteWorkflow', () => {
     it('deletes a workflow', async () => {
       await controller.deleteWorkflow(mockUser, 'wf-123');
-      expect(service.deleteWorkflow).toHaveBeenCalledWith(mockUser.organizationId, 'wf-123');
+      expect(service.deleteWorkflow).toHaveBeenCalledWith(
+        mockUser.organizationId,
+        'wf-123',
+      );
     });
   });
 
   describe('testRunWorkflow', () => {
     it('triggers a test run with custom payload', async () => {
       const payload = { testInput: 123 };
-      const result = await controller.testRunWorkflow(mockUser, 'wf-123', payload);
+      const result = await controller.testRunWorkflow(
+        mockUser,
+        'wf-123',
+        payload,
+      );
       expect(result).toEqual(mockExecution);
-      expect(service.triggerExecution).toHaveBeenCalledWith(mockUser.organizationId, 'wf-123', payload);
+      expect(service.triggerExecution).toHaveBeenCalledWith(
+        mockUser.organizationId,
+        'wf-123',
+        payload,
+      );
     });
   });
 
@@ -142,7 +172,10 @@ describe('AutomationsController', () => {
       const payload = { event: 'deal_won', amount: 5000 };
       const result = await controller.handleWebhook('wh_sample_slug', payload);
       expect(result).toEqual(mockExecution);
-      expect(service.triggerWebhook).toHaveBeenCalledWith('wh_sample_slug', payload);
+      expect(service.triggerWebhook).toHaveBeenCalledWith(
+        'wh_sample_slug',
+        payload,
+      );
     });
   });
 
@@ -150,7 +183,10 @@ describe('AutomationsController', () => {
     it('returns executions for a workflow', async () => {
       const result = await controller.findExecutions(mockUser, 'wf-123');
       expect(result).toEqual([mockExecution]);
-      expect(service.findExecutionsByWorkflow).toHaveBeenCalledWith(mockUser.organizationId, 'wf-123');
+      expect(service.findExecutionsByWorkflow).toHaveBeenCalledWith(
+        mockUser.organizationId,
+        'wf-123',
+      );
     });
   });
 
@@ -158,7 +194,10 @@ describe('AutomationsController', () => {
     it('returns a single execution record', async () => {
       const result = await controller.findExecutionById(mockUser, 'exec-123');
       expect(result).toEqual(mockExecution);
-      expect(service.findExecutionById).toHaveBeenCalledWith(mockUser.organizationId, 'exec-123');
+      expect(service.findExecutionById).toHaveBeenCalledWith(
+        mockUser.organizationId,
+        'exec-123',
+      );
     });
   });
 
@@ -169,9 +208,17 @@ describe('AutomationsController', () => {
         nodeId: 'node-approval-1',
         comment: 'Looks great',
       };
-      const result = await controller.signalExecution(mockUser, 'exec-123', dto);
+      const result = await controller.signalExecution(
+        mockUser,
+        'exec-123',
+        dto,
+      );
       expect(result).toEqual(mockExecution);
-      expect(service.signalExecution).toHaveBeenCalledWith(mockUser.organizationId, 'exec-123', dto);
+      expect(service.signalExecution).toHaveBeenCalledWith(
+        mockUser.organizationId,
+        'exec-123',
+        dto,
+      );
     });
   });
 });

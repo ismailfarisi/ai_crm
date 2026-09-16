@@ -15,7 +15,9 @@ export function createActionHandlerRegistry(deps: {
   quotesService: QuotesService;
 }): Record<AiAgentActionType, ActionHandler> {
   return {
-    [AiAgentActionType.AUTO_ACK]: new AutoAckActionHandler(deps.channelsService),
+    [AiAgentActionType.AUTO_ACK]: new AutoAckActionHandler(
+      deps.channelsService,
+    ),
     [AiAgentActionType.CREATE_DRAFT_QUOTE]: new CreateDraftQuoteActionHandler(
       deps.channelsService,
       deps.quotesService,

@@ -1,7 +1,15 @@
 export interface ExpressionContext {
   $json?: Record<string, any>;
   $trigger?: Record<string, any>;
-  $node?: Record<string, { json?: Record<string, any>; data?: Record<string, any>; output?: any; [key: string]: any }>;
+  $node?: Record<
+    string,
+    {
+      json?: Record<string, any>;
+      data?: Record<string, any>;
+      output?: any;
+      [key: string]: any;
+    }
+  >;
   $env?: Record<string, any>;
   [key: string]: any;
 }
@@ -11,7 +19,10 @@ export interface ExpressionContext {
  * Supports $json, $trigger, $node, $env, and standard JS operations.
  * Safely returns undefined on missing paths or syntax/eval errors.
  */
-export function evaluateExpression(expression: string, context: ExpressionContext = {}): any {
+export function evaluateExpression(
+  expression: string,
+  context: ExpressionContext = {},
+): any {
   if (typeof expression !== 'string') {
     return expression;
   }
@@ -46,7 +57,7 @@ export function evaluateExpression(expression: string, context: ExpressionContex
          return (${cleaned});
        } catch (err) {
          return undefined;
-       }`
+       }`,
     );
 
     return evaluator($json, $trigger, $node, $env, context);
@@ -59,7 +70,10 @@ export function evaluateExpression(expression: string, context: ExpressionContex
  * Recursively interpolates dynamic expressions ({{ ... }}) within a value or nested data structure.
  * Preserves data types (numbers, booleans, objects, arrays) for single-token expressions.
  */
-export function interpolateObject<T = any>(obj: T, context: ExpressionContext = {}): T {
+export function interpolateObject<T = any>(
+  obj: T,
+  context: ExpressionContext = {},
+): T {
   if (obj === null || obj === undefined) {
     return obj;
   }

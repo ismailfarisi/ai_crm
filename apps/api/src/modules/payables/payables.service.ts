@@ -477,7 +477,10 @@ export class PayablesService {
           {
             type: 'BILL_VARIANCE',
             title: `${created.billNumber} from ${created.supplierName} does not match its order`,
-            body: matched.variances.map((v) => v.message).join('; ').slice(0, 1000),
+            body: matched.variances
+              .map((v) => v.message)
+              .join('; ')
+              .slice(0, 1000),
             link: `/purchasing/bills/${created.id}`,
             entityType: 'BILL',
             entityId: created.id,

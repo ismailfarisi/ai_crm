@@ -33,6 +33,10 @@ import {
 import { useExpense } from '@/hooks/use-expenses';
 import { ExpenseStatusRibbon, ExpenseStatusBadge } from './expense-status-ribbon';
 import { ReceiptPreviewCard, formatExpenseCurrency } from './receipt-preview-card';
+import { PERMISSIONS } from '@saas/shared';
+import { Can } from '@/components/auth/can';
+import { AttachmentsPanel } from '@/components/platform/attachments-panel';
+import { ActivityTimeline } from '@/components/platform/activity-timeline';
 
 export interface ExpenseDetailViewProps {
   id: string;
@@ -378,6 +382,15 @@ export function ExpenseDetailView({ id }: ExpenseDetailViewProps) {
             claim={claim}
           />
         </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Can permission={PERMISSIONS.FINANCE_MANAGE}>
+          {(allowed) => (
+            <AttachmentsPanel ownerType="EXPENSE_CLAIM" ownerId={claim.id} canEdit={allowed} />
+          )}
+        </Can>
+        <ActivityTimeline subjectType="EXPENSE_CLAIM" subjectId={claim.id} />
       </div>
 
       {/* Reject Reason Dialog */}

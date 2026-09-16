@@ -10,6 +10,7 @@ import { StaffChannelIdentity } from '../entities/staff-channel-identity.entity'
 import { ChannelLinkCode } from '../entities/channel-link-code.entity';
 import { ChannelConversation } from '../entities/channel-conversation.entity';
 import { ChannelProviderType } from '../entities/channel-config.entity';
+import { AuditService } from '../../audit/audit.service';
 import { RbacService } from '../../rbac/rbac.service';
 import { SkillRegistry } from '../skills/skill.registry';
 import {
@@ -79,6 +80,7 @@ export class ChannelCommandService {
     private readonly rbacService: RbacService,
     private readonly registry: SkillRegistry,
     private readonly router: SkillRouterService,
+    private readonly audit: AuditService,
   ) {}
 
   // ---- Settings-facing API (linking codes + identity management) ----
@@ -338,6 +340,27 @@ export class ChannelCommandService {
       await this.conversations.update(conversation.id, {
         resultType: outcome.resultType ?? null,
         resultId: outcome.resultId ?? null,
+      });
+      // The record itself was created by an ordinary service call, so the
+      // HTTP interceptor never saw it. Without this the trail would show a
+      // purchase order that appeared from nowhere; with it, the row names the
+      // message, the model and the prompt version that produced it.
+      await this.audit.record({
+        tenantId: ctx.organizationId,
+        actorId: ctx.userId,
+        action: `${skill.name.replace('.', '_')}.execute`.slice(0, 80),
+        subjectType: outcome.resultType ?? 'CHANNEL_COMMAND',
+        subjectId: outcome.resultId ?? null,
+        summary: outcome.reply?.slice(0, 200) ?? null,
+        after: { slots: conversation.slots[RESOLVED_KEY] ?? null },
+        origin: 'AI_DRAFTED',
+        channel: channelOriginFor(ctx.provider),
+        messageId: conversation.originMessageId,
+        model: conversation.originModel,
+        // The conversation records the version that routed it; falling back
+        // to the skill's own covers a row written before this was stamped.
+        promptVersion: conversation.originPromptVersion ?? skill.promptVersion,
+        confidence: conversation.confidence,
       });
       return this.reply(ctx, outcome.reply);
     } catch (err: unknown) {
@@ -630,4 +653,18 @@ export class ChannelCommandService {
       .map((s) => `• ${s.examples[0]}`)
       .join('\n')}`;
   }
+}
+
+/** Where the instruction arrived from, in the audit trail's vocabulary. */
+function channelOriginFor(
+  provider: ChannelProviderType,
+): 'TELEGRAM' | 'WHATSAPP' | 'EMAIL' | 'SYSTEM' {
+  if (provider === ChannelProviderType.TELEGRAM) return 'TELEGRAM';
+  if (provider === ChannelProviderType.WHATSAPP_META) return 'WHATSAPP';
+  if (
+    provider === ChannelProviderType.EMAIL_SMTP ||
+    provider === ChannelProviderType.EMAIL_RESEND
+  )
+    return 'EMAIL';
+  return 'SYSTEM';
 }

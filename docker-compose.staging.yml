@@ -63,6 +63,11 @@ services:
       DB_HOST: postgres
       DB_PORT: 5432
       TEMPORAL_ADDRESS: temporal:7233
+      # Attachments with the local driver live on a volume: a container
+      # rebuild must not take the files with it.
+      STORAGE_LOCAL_DIR: /app/storage
+    volumes:
+      - attachments_staging_data:/app/storage
     ports:
       - "127.0.0.1:4100:4000"
 
@@ -107,3 +112,4 @@ services:
 volumes:
   postgres_staging_data:
   redis_staging_data:
+  attachments_staging_data:

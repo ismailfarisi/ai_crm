@@ -307,14 +307,18 @@ export class QuotesService {
 
     const saved = await this.quoteRepository.save(quote);
     if (submittedForApproval) {
-      await this.notifications.notifyHolders(tenantId, PERMISSIONS.QUOTE_APPROVE, {
-        type: 'QUOTE_AWAITING_APPROVAL',
-        title: `${saved.quoteNumber ?? 'A quote'} is waiting for approval`,
-        body: `${saved.customerName} · ${Number(saved.totalAmount).toFixed(2)} ${saved.currency}`,
-        link: `/quotes/${saved.id}`,
-        entityType: 'QUOTE',
-        entityId: saved.id,
-      });
+      await this.notifications.notifyHolders(
+        tenantId,
+        PERMISSIONS.QUOTE_APPROVE,
+        {
+          type: 'QUOTE_AWAITING_APPROVAL',
+          title: `${saved.quoteNumber ?? 'A quote'} is waiting for approval`,
+          body: `${saved.customerName} · ${Number(saved.totalAmount).toFixed(2)} ${saved.currency}`,
+          link: `/quotes/${saved.id}`,
+          entityType: 'QUOTE',
+          entityId: saved.id,
+        },
+      );
     }
     return saved;
   }
@@ -371,7 +375,12 @@ export class QuotesService {
       // The invoice this approval raises is booked at today's rate. Checked
       // now, so a missing rate refuses the approval instead of approving a
       // quote whose invoice then silently fails to appear.
-      await fxRateFor(this.quoteRepository.manager, tenantId, quote.currency, new Date());
+      await fxRateFor(
+        this.quoteRepository.manager,
+        tenantId,
+        quote.currency,
+        new Date(),
+      );
 
       // Persist the re-costed lines before signalling. The Temporal activity
       // builds the order from the stored quote, and can run before this

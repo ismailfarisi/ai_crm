@@ -10,11 +10,7 @@ import {
 import { AutomationWorkflow } from './automation-workflow.entity';
 
 export type AutomationExecutionStatus =
-  | 'RUNNING'
-  | 'WAITING_APPROVAL'
-  | 'COMPLETED'
-  | 'FAILED'
-  | 'CANCELLED';
+  'RUNNING' | 'WAITING_APPROVAL' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 
 export enum AutomationExecutionStatusEnum {
   RUNNING = 'RUNNING',

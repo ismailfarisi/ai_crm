@@ -26,7 +26,11 @@ export class PurchasePolicyEntity extends BaseEntity {
   })
   approvalThreshold: number;
 
-  @Column({ name: 'require_preferred_supplier', type: 'boolean', default: false })
+  @Column({
+    name: 'require_preferred_supplier',
+    type: 'boolean',
+    default: false,
+  })
   requirePreferredSupplier: boolean;
 
   /** How far a supplier's bill may drift from the ordered price, 0-1. Used from sprint 4. */

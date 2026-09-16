@@ -95,7 +95,11 @@ export class InventoryController {
     @CurrentUser() user: AuthenticatedUser,
     @Body(zodBody(setReorderLevelsSchema)) body: SetReorderLevelsPayload,
   ): Promise<StockItem> {
-    return this.inventory.setReorderLevels(user.organizationId, body.materialId, body);
+    return this.inventory.setReorderLevels(
+      user.organizationId,
+      body.materialId,
+      body,
+    );
   }
 
   @Get('goods-receipts')

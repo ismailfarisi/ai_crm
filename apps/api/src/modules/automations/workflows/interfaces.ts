@@ -54,9 +54,12 @@ export interface NodeRejectionSignalPayload {
   reason?: string;
 }
 
-export const approveNodeSignal = defineSignal<[NodeApprovalSignalPayload | string]>('approveNode');
-export const rejectNodeSignal = defineSignal<[NodeRejectionSignalPayload | string]>('rejectNode');
-export const getExecutionStateQuery = defineQuery<WorkflowExecutionState>('getExecutionState');
+export const approveNodeSignal =
+  defineSignal<[NodeApprovalSignalPayload | string]>('approveNode');
+export const rejectNodeSignal =
+  defineSignal<[NodeRejectionSignalPayload | string]>('rejectNode');
+export const getExecutionStateQuery =
+  defineQuery<WorkflowExecutionState>('getExecutionState');
 
 // Activity config & return interfaces
 export interface HttpActivityConfig {

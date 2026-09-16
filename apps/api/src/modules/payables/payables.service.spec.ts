@@ -162,7 +162,10 @@ function makeService(seed: Seed = {}) {
       findCode: jest.fn(async (_t: string, id: string) => ({ id })),
       purchaseCodeForSupplier: jest.fn(async () => null),
     } as any,
-    { notifyHolders: jest.fn(async () => 0), resolve: jest.fn(async () => undefined) } as any,
+    {
+      notifyHolders: jest.fn(async () => 0),
+      resolve: jest.fn(async () => undefined),
+    } as any,
   );
 
   return { service, bill, saved, ledger };

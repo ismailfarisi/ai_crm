@@ -2,7 +2,14 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { api, queryKeys, type FinancialReport, type ReportParams } from '@/lib/api/endpoints';
+import type { AttachmentOwnerType } from '@saas/shared';
+import {
+  api,
+  queryKeys,
+  type AuditFilters,
+  type FinancialReport,
+  type ReportParams,
+} from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/client';
 
 const describe = (error: unknown, fallback: string) =>
@@ -158,4 +165,89 @@ export async function downloadReportCsv(report: FinancialReport, params: ReportP
   } catch (error) {
     toast.error(describe(error, 'Could not download the report'));
   }
+}
+
+/* ---------------- audit trail ---------------- */
+
+export function useAuditTrail(filters: AuditFilters) {
+  return useQuery({
+    queryKey: queryKeys.audit(filters),
+    queryFn: () => api.audit.list(filters),
+    placeholderData: (previous) => previous,
+  });
+}
+
+/** The trail for one record — what the activity drawer on a page shows. */
+export function useRecordActivity(
+  subjectType: string,
+  subjectId: string | undefined,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: queryKeys.auditForSubject(subjectType, subjectId ?? ''),
+    queryFn: () => api.audit.forSubject(subjectType, subjectId!),
+    enabled: enabled && !!subjectId,
+  });
+}
+
+/* ---------------- attachments ---------------- */
+
+export function useAttachments(
+  ownerType: AttachmentOwnerType,
+  ownerId: string | undefined,
+) {
+  return useQuery({
+    queryKey: queryKeys.attachments(ownerType, ownerId ?? ''),
+    queryFn: () => api.attachments.list(ownerType, ownerId!),
+    enabled: !!ownerId,
+  });
+}
+
+export function useUploadAttachment(
+  ownerType: AttachmentOwnerType,
+  ownerId: string,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => api.attachments.upload(ownerType, ownerId, file),
+    onSuccess: (attachment) => {
+      toast.success(`${attachment.filename} attached`);
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.attachments(ownerType, ownerId),
+      });
+    },
+    onError: (error) => toast.error(describe(error, 'Could not attach that file')),
+  });
+}
+
+export function useRemoveAttachment(
+  ownerType: AttachmentOwnerType,
+  ownerId: string,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.attachments.remove(id),
+    onSuccess: () => {
+      toast.success('File removed');
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.attachments(ownerType, ownerId),
+      });
+    },
+    onError: (error) => toast.error(describe(error, 'Could not remove that file')),
+  });
+}
+
+/**
+ * Opens a file through a short-lived signed link.
+ *
+ * The link is fetched at click time rather than rendered into the list: a URL
+ * that is valid for five minutes should not sit in the DOM of a page someone
+ * left open all afternoon.
+ */
+export function useOpenAttachment() {
+  return useMutation({
+    mutationFn: (id: string) => api.attachments.link(id),
+    onSuccess: (link) => window.open(link.url, '_blank', 'noopener'),
+    onError: (error) => toast.error(describe(error, 'Could not open that file')),
+  });
 }

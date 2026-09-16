@@ -36,7 +36,9 @@ export function buildTypeOrmModule() {
           db.synchronize && !config.get('isProduction', { infer: true }),
         logging: db.logging,
         autoLoadEntities: true,
-        migrations: [join(__dirname, '..', 'database', 'migrations', '*.{ts,js}')],
+        migrations: [
+          join(__dirname, '..', 'database', 'migrations', '*.{ts,js}'),
+        ],
         migrationsRun: false,
       };
     },

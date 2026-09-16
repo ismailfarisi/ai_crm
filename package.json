@@ -22,7 +22,9 @@
     "migration:generate": "pnpm --filter api migration:generate",
     "migration:run": "pnpm --filter api migration:run",
     "migration:revert": "pnpm --filter api migration:revert",
-    "seed": "pnpm --filter api seed"
+    "seed": "pnpm --filter api seed",
+    "check:drift": "node scripts/check-drift.mjs",
+    "check:books": "pnpm --filter api exec node dist/database/check-trial-balance.js"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

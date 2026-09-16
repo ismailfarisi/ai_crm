@@ -46,9 +46,11 @@ jest.mock('@temporalio/workflow', () => {
     setHandler: (def: any, handler: Function) => {
       (global as any).__mockHandlers.set(def, handler);
     },
-    condition: jest.fn().mockImplementation(async (predicate: () => boolean) => {
-      return predicate();
-    }),
+    condition: jest
+      .fn()
+      .mockImplementation(async (predicate: () => boolean) => {
+        return predicate();
+      }),
     sleep: jest.fn().mockResolvedValue(undefined),
     defineSignal: (name: string) => ({ name, type: 'signal' }),
     defineQuery: (name: string) => ({ name, type: 'query' }),
@@ -112,7 +114,10 @@ describe('ExpenseApprovalWorkflow & Activities', () => {
           totalAmount: 35.5,
           lines: expect.arrayContaining([
             expect.objectContaining({ accountName: 'MEALS', debit: 35.5 }),
-            expect.objectContaining({ accountName: 'Accounts Payable', credit: 35.5 }),
+            expect.objectContaining({
+              accountName: 'Accounts Payable',
+              credit: 35.5,
+            }),
           ]),
         }),
       );
@@ -210,7 +215,10 @@ describe('ExpenseApprovalWorkflow & Activities', () => {
       (condition as jest.Mock).mockImplementationOnce(async (predicate) => {
         const handler = mockHandlers.get(rejectExpenseSignal);
         expect(handler).toBeDefined();
-        handler({ rejectedBy: 'usr-cfo-1', reason: 'Unapproved license subscription' });
+        handler({
+          rejectedBy: 'usr-cfo-1',
+          reason: 'Unapproved license subscription',
+        });
         return predicate();
       });
 
@@ -296,7 +304,10 @@ describe('ExpenseApprovalWorkflow & Activities', () => {
       (condition as jest.Mock).mockImplementationOnce(async (predicate) => {
         const reimburseHandler = mockHandlers.get(reimburseExpenseSignal);
         expect(reimburseHandler).toBeDefined();
-        reimburseHandler({ accountId: 'acc-bank-primary', reimbursedBy: 'usr-treasury-1' });
+        reimburseHandler({
+          accountId: 'acc-bank-primary',
+          reimbursedBy: 'usr-treasury-1',
+        });
         return predicate();
       });
 
@@ -381,7 +392,12 @@ describe('ExpenseApprovalWorkflow & Activities', () => {
         referenceId: 'exp-1',
         lines: [
           { accountName: 'MEALS', debit: 50, credit: 0, description: 'Lunch' },
-          { accountName: 'Accounts Payable', debit: 0, credit: 50, description: 'Payable' },
+          {
+            accountName: 'Accounts Payable',
+            debit: 0,
+            credit: 50,
+            description: 'Payable',
+          },
         ],
         totalAmount: 50,
       });

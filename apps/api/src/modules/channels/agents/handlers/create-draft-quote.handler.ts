@@ -2,7 +2,11 @@ import type { CreateQuotePayload } from '@saas/shared';
 import { ChannelsService } from '../../channels.service';
 import { QuotesService } from '../../../quotes/quotes.service';
 import { AiAgent } from '../../entities/ai-agent.entity';
-import { ActionHandler, ChannelAgentContext, ChannelAgentResult } from '../types';
+import {
+  ActionHandler,
+  ChannelAgentContext,
+  ChannelAgentResult,
+} from '../types';
 
 const SYSTEM_ACTOR_ID = 'system:ai-auto-ack';
 

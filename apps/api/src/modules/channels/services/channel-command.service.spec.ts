@@ -244,6 +244,7 @@ function makeService(o: Options = {}) {
   );
   const router = new SkillRouterService(aiService as any);
 
+  const audit = { record: jest.fn().mockResolvedValue(undefined) };
   const service = new ChannelCommandService(
     identityRepository as any,
     linkCodeRepository as any,
@@ -251,10 +252,12 @@ function makeService(o: Options = {}) {
     rbacService as any,
     registry,
     router,
+    audit as any,
   );
 
   return {
     service,
+    audit,
     identities,
     linkCodes,
     conversations,
@@ -798,7 +801,7 @@ describe('ChannelCommandService', () => {
         },
       ];
 
-      const { service } = makeService({
+      const { service, audit } = makeService({
         identities: [linkedIdentity],
         conversations,
         suppliers: [papertree],
@@ -815,6 +818,18 @@ describe('ChannelCommandService', () => {
       expect(input.originMetadata.promptVersion).toBe('po-create/1');
       expect(result.reply?.body).toContain('PO-2026-0042');
       expect(result.reply?.body).toContain('draft');
+
+      // The order was created by a service call, not an HTTP request, so the
+      // audit row has to come from here or the trail would show a purchase
+      // order that appeared from nowhere.
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subjectType: 'PURCHASE_ORDER',
+          origin: 'AI_DRAFTED',
+          channel: 'TELEGRAM',
+          promptVersion: 'po-create/1',
+        }),
+      );
     });
   });
 });

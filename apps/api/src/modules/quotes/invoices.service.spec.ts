@@ -137,7 +137,9 @@ describe('InvoicesService', () => {
         }
         if (entity.name === 'InvoicePayment') return paymentRepo;
         if (entity.name === 'Organization') {
-          return { findOne: jest.fn().mockResolvedValue({ baseCurrency: 'USD' }) };
+          return {
+            findOne: jest.fn().mockResolvedValue({ baseCurrency: 'USD' }),
+          };
         }
         if (entity.name === 'JournalEntry') {
           return { findOne: jest.fn().mockResolvedValue(null) };

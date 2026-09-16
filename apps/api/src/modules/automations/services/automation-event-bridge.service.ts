@@ -42,7 +42,8 @@ export class AutomationEventBridgeService {
 
     for (const wf of workflows) {
       // Check if workflow trigger configuration matches this event type
-      const targetEvent = wf.triggerConfig?.event || wf.triggerConfig?.eventType;
+      const targetEvent =
+        wf.triggerConfig?.event || wf.triggerConfig?.eventType;
       if (!targetEvent || targetEvent === eventType || targetEvent === '*') {
         this.logger.log(
           `Triggering Automation "${wf.name}" (${wf.id}) for event ${eventType}`,

@@ -24,7 +24,10 @@ function actor(permissions: Permission[]): AuthenticatedUser {
   };
 }
 
-const WITH_COST = actor([PERMISSIONS.CATALOG_READ, PERMISSIONS.QUOTE_VIEW_COST]);
+const WITH_COST = actor([
+  PERMISSIONS.CATALOG_READ,
+  PERMISSIONS.QUOTE_VIEW_COST,
+]);
 const WITHOUT_COST = actor([PERMISSIONS.CATALOG_READ]);
 
 const COSTED_LINE: QuoteLineItem = {
@@ -86,8 +89,20 @@ describe('CatalogController', () => {
         templateId: 'template-1',
         templateVersion: 3,
         breaks: [
-          { quantity: 100, unitPrice: 8.25, totalPrice: 825, unitCost: 5.35, marginPct: 0.351 },
-          { quantity: 500, unitPrice: 3.7, totalPrice: 1850, unitCost: 2.4, marginPct: 0.351 },
+          {
+            quantity: 100,
+            unitPrice: 8.25,
+            totalPrice: 825,
+            unitCost: 5.35,
+            marginPct: 0.351,
+          },
+          {
+            quantity: 500,
+            unitPrice: 3.7,
+            totalPrice: 1850,
+            unitCost: 2.4,
+            marginPct: 0.351,
+          },
         ],
         warnings: [],
         leadTimeDays: 1,
@@ -127,7 +142,10 @@ describe('CatalogController', () => {
     });
 
     it('omits the cost object entirely without the permission', async () => {
-      const result = await controller.resolveLines(WITHOUT_COST, resolvePayload);
+      const result = await controller.resolveLines(
+        WITHOUT_COST,
+        resolvePayload,
+      );
 
       expect(result.lines[0]).not.toHaveProperty('cost');
       expect(JSON.stringify(result)).not.toContain('1199.67');
@@ -135,7 +153,10 @@ describe('CatalogController', () => {
     });
 
     it('still returns the price, so a rep can quote without seeing margin', async () => {
-      const result = await controller.resolveLines(WITHOUT_COST, resolvePayload);
+      const result = await controller.resolveLines(
+        WITHOUT_COST,
+        resolvePayload,
+      );
 
       expect(result.lines[0].unitPrice).toBe(3.7);
       expect(result.lines[0].subtotal).toBe(1850);
@@ -144,7 +165,10 @@ describe('CatalogController', () => {
     });
 
     it('zeroes margin rather than reporting a false 100%', async () => {
-      const result = await controller.resolveLines(WITHOUT_COST, resolvePayload);
+      const result = await controller.resolveLines(
+        WITHOUT_COST,
+        resolvePayload,
+      );
 
       // costAmount 0 with a real subtotal would otherwise read as 100% margin.
       expect(result.totals.costAmount).toBe(0);
@@ -231,6 +255,9 @@ describe('CatalogController', () => {
 
   it('passes the caller tenant to the services, never a client-supplied one', async () => {
     await controller.resolveLines(WITH_COST, resolvePayload);
-    expect(costingService.resolveLines).toHaveBeenCalledWith(tenantId, resolvePayload);
+    expect(costingService.resolveLines).toHaveBeenCalledWith(
+      tenantId,
+      resolvePayload,
+    );
   });
 });

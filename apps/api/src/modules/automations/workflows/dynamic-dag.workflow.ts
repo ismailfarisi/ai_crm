@@ -6,7 +6,11 @@ import {
 } from '@temporalio/workflow';
 import type { AutomationEdge, AutomationNode } from '@saas/shared';
 import type * as activities from './automation.activities';
-import { evaluateExpression, ExpressionContext, interpolateObject } from './expression-evaluator';
+import {
+  evaluateExpression,
+  ExpressionContext,
+  interpolateObject,
+} from './expression-evaluator';
 import {
   AiPromptActivityConfig,
   approveNodeSignal,
@@ -59,22 +63,30 @@ export async function dynamicDagWorkflow(
   };
 
   // Signal handlers
-  setHandler(approveNodeSignal, (payload: NodeApprovalSignalPayload | string) => {
-    const data: NodeApprovalSignalPayload =
-      typeof payload === 'string' ? { nodeId: payload } : payload;
-    approvedNodes.set(data.nodeId, data);
-  });
+  setHandler(
+    approveNodeSignal,
+    (payload: NodeApprovalSignalPayload | string) => {
+      const data: NodeApprovalSignalPayload =
+        typeof payload === 'string' ? { nodeId: payload } : payload;
+      approvedNodes.set(data.nodeId, data);
+    },
+  );
 
-  setHandler(rejectNodeSignal, (payload: NodeRejectionSignalPayload | string) => {
-    const data: NodeRejectionSignalPayload =
-      typeof payload === 'string' ? { nodeId: payload } : payload;
-    rejectedNodes.set(data.nodeId, data);
-  });
+  setHandler(
+    rejectNodeSignal,
+    (payload: NodeRejectionSignalPayload | string) => {
+      const data: NodeRejectionSignalPayload =
+        typeof payload === 'string' ? { nodeId: payload } : payload;
+      rejectedNodes.set(data.nodeId, data);
+    },
+  );
 
   // Query handler
   setHandler(getExecutionStateQuery, () => executionState);
 
-  const nodesById = new Map<string, AutomationNode>(input.nodes.map((n) => [n.id, n]));
+  const nodesById = new Map<string, AutomationNode>(
+    input.nodes.map((n) => [n.id, n]),
+  );
   const outgoingEdges = new Map<string, AutomationEdge[]>();
 
   for (const edge of input.edges) {
@@ -87,7 +99,12 @@ export async function dynamicDagWorkflow(
   let startNodeId = input.triggerNodeId;
   if (!startNodeId) {
     const triggerNode = input.nodes.find((n) =>
-      ['webhookTrigger', 'scheduleTrigger', 'crmEventTrigger', 'manualTrigger'].includes(n.type),
+      [
+        'webhookTrigger',
+        'scheduleTrigger',
+        'crmEventTrigger',
+        'manualTrigger',
+      ].includes(n.type),
     );
     if (triggerNode) {
       startNodeId = triggerNode.id;
@@ -132,7 +149,11 @@ export async function dynamicDagWorkflow(
       const nodeMeta = nodesById.get(id);
       const outputData = res.output ?? {};
       const jsonPayload =
-        outputData && typeof outputData === 'object' && 'data' in outputData && outputData.data && typeof outputData.data === 'object'
+        outputData &&
+        typeof outputData === 'object' &&
+        'data' in outputData &&
+        outputData.data &&
+        typeof outputData.data === 'object'
           ? { ...outputData.data, ...outputData }
           : outputData;
 
@@ -151,9 +172,13 @@ export async function dynamicDagWorkflow(
     }
 
     const prevJson =
-      previousOutput && typeof previousOutput === 'object' && 'data' in previousOutput && previousOutput.data && typeof previousOutput.data === 'object'
+      previousOutput &&
+      typeof previousOutput === 'object' &&
+      'data' in previousOutput &&
+      previousOutput.data &&
+      typeof previousOutput.data === 'object'
         ? { ...previousOutput.data, ...previousOutput }
-        : previousOutput ?? {};
+        : (previousOutput ?? {});
 
     const context: ExpressionContext = {
       $json: prevJson,
@@ -179,15 +204,21 @@ export async function dynamicDagWorkflow(
           break;
 
         case 'httpRequestNode':
-          nodeOutput = await executeHttpActivity(config as unknown as HttpActivityConfig);
+          nodeOutput = await executeHttpActivity(
+            config as unknown as HttpActivityConfig,
+          );
           break;
 
         case 'aiPromptNode':
-          nodeOutput = await executeAiPromptActivity(config as unknown as AiPromptActivityConfig);
+          nodeOutput = await executeAiPromptActivity(
+            config as unknown as AiPromptActivityConfig,
+          );
           break;
 
         case 'sendEmailNode':
-          nodeOutput = await executeEmailActivity(config as unknown as EmailActivityConfig);
+          nodeOutput = await executeEmailActivity(
+            config as unknown as EmailActivityConfig,
+          );
           break;
 
         case 'transformNode':
@@ -214,7 +245,9 @@ export async function dynamicDagWorkflow(
         case 'conditionNode': {
           let conditionValue = false;
           if (config.expression !== undefined) {
-            conditionValue = Boolean(evaluateExpression(config.expression, context));
+            conditionValue = Boolean(
+              evaluateExpression(config.expression, context),
+            );
           } else if (config.condition !== undefined) {
             conditionValue = Boolean(
               typeof config.condition === 'string'
@@ -223,7 +256,9 @@ export async function dynamicDagWorkflow(
             );
           } else if (config.rules && Array.isArray(config.rules)) {
             conditionValue = config.rules.every((rule: any) =>
-              Boolean(evaluateExpression(rule.expression || rule.condition, context)),
+              Boolean(
+                evaluateExpression(rule.expression || rule.condition, context),
+              ),
             );
           }
 
@@ -233,7 +268,8 @@ export async function dynamicDagWorkflow(
         }
 
         case 'approvalNode': {
-          const timeoutDuration = node.data.timeoutDuration || config.timeoutDuration || '3 days';
+          const timeoutDuration =
+            node.data.timeoutDuration || config.timeoutDuration || '3 days';
 
           const pendingApproval: PendingApprovalState = {
             nodeId: node.id,
@@ -372,7 +408,9 @@ export async function dynamicDagWorkflow(
 
     if (branchHandle) {
       nextEdges = edgesFromNode.filter(
-        (e) => e.sourceHandle === branchHandle || (!e.sourceHandle && branchHandle === 'approved'),
+        (e) =>
+          e.sourceHandle === branchHandle ||
+          (!e.sourceHandle && branchHandle === 'approved'),
       );
     } else {
       nextEdges = edgesFromNode;

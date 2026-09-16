@@ -19,6 +19,8 @@ import { Dialog } from '@/components/ui/dialog';
 import { EmptyState, PageHeader } from '@/components/ui/primitives';
 import { Input, Textarea } from '@/components/ui/field';
 import { BillStatusPill } from './bills-view';
+import { AttachmentsPanel } from '@/components/platform/attachments-panel';
+import { ActivityTimeline } from '@/components/platform/activity-timeline';
 
 const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -199,6 +201,13 @@ export function BillDetail({ id }: { id: string }) {
           </ul>
         </section>
       )}
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Can permission={PERMISSIONS.BILL_UPDATE}>
+          {(allowed) => <AttachmentsPanel ownerType="BILL" ownerId={id} canEdit={allowed} />}
+        </Can>
+        <ActivityTimeline subjectType="BILL" subjectId={id} />
+      </div>
 
       <Dialog
         open={paying}

@@ -1,6 +1,10 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Repository } from 'typeorm';
-import { PERMISSIONS, RIGID_BOX_TEMPLATE, type ResolveLinesPayload } from '@saas/shared';
+import {
+  PERMISSIONS,
+  RIGID_BOX_TEMPLATE,
+  type ResolveLinesPayload,
+} from '@saas/shared';
 import { CostingService } from './costing.service';
 import { CatalogItem } from './entities/catalog-item.entity';
 import { CostingPolicy } from './entities/costing-policy.entity';
@@ -108,7 +112,8 @@ function materialRows(): Material[] {
 
 function workCenterRows(): WorkCenter[] {
   return Object.values(SAMPLE_WORK_CENTERS).map(
-    (wc) => ({ ...wc, id: uuidFor(wc.id), tenantId, isActive: true }) as WorkCenter,
+    (wc) =>
+      ({ ...wc, id: uuidFor(wc.id), tenantId, isActive: true }) as WorkCenter,
   );
 }
 
@@ -254,7 +259,8 @@ describe('CostingService', () => {
     );
   });
 
-  const resolve = (payload: ResolveLinesPayload) => service.resolveLines(tenantId, payload);
+  const resolve = (payload: ResolveLinesPayload) =>
+    service.resolveLines(tenantId, payload);
 
   describe('template lines', () => {
     it('produces a priced line with a full cost breakdown', async () => {
@@ -333,7 +339,9 @@ describe('CostingService', () => {
         discount: 0,
       };
 
-      const first = await resolve({ lines: [{ ...line, toolingAlreadyOwned: [] }] });
+      const first = await resolve({
+        lines: [{ ...line, toolingAlreadyOwned: [] }],
+      });
       const repeat = await resolve({
         lines: [{ ...line, toolingAlreadyOwned: [uuidFor('cutting-die')] }],
       });
@@ -396,12 +404,19 @@ describe('CostingService', () => {
         taxRate: 5,
         leadTimeDays: 7,
         isActive: true,
-      } as CatalogItem);
+      });
     });
 
     it('snapshots the standing price and cost', async () => {
       const result = await resolve({
-        lines: [{ kind: 'CATALOG_ITEM', catalogItemId: itemId, quantity: 1000, discount: 0 }],
+        lines: [
+          {
+            kind: 'CATALOG_ITEM',
+            catalogItemId: itemId,
+            quantity: 1000,
+            discount: 0,
+          },
+        ],
       });
 
       const [line] = result.lines;
@@ -409,13 +424,22 @@ describe('CostingService', () => {
       expect(line.unitPrice).toBe(1.4);
       expect(line.taxRate).toBe(5);
       expect(line.leadTimeDays).toBe(7);
-      expect(line.cost).toEqual({ unitCost: 0.82, totalCost: 820, source: 'STANDARD' });
+      expect(line.cost).toEqual({
+        unitCost: 0.82,
+        totalCost: 820,
+        source: 'STANDARD',
+      });
     });
 
     it('rolls several lines into one set of totals', async () => {
       const result = await resolve({
         lines: [
-          { kind: 'CATALOG_ITEM', catalogItemId: itemId, quantity: 1000, discount: 0 },
+          {
+            kind: 'CATALOG_ITEM',
+            catalogItemId: itemId,
+            quantity: 1000,
+            discount: 0,
+          },
           {
             kind: 'TEMPLATE',
             templateId,
@@ -431,7 +455,9 @@ describe('CostingService', () => {
       expect(result.totals.hasCompleteCost).toBe(true);
       expect(result.totals.costAmount).toBeGreaterThan(0);
       expect(result.totals.marginAmount).toBe(
-        Number((result.totals.subtotalAmount - result.totals.costAmount).toFixed(2)),
+        Number(
+          (result.totals.subtotalAmount - result.totals.costAmount).toFixed(2),
+        ),
       );
     });
   });
@@ -445,7 +471,12 @@ describe('CostingService', () => {
               kind: 'TEMPLATE',
               templateId,
               quantity: 500,
-              parameters: { ...BOX_PARAMS, length_mm: 600, width_mm: 600, height_mm: 400 },
+              parameters: {
+                ...BOX_PARAMS,
+                length_mm: 600,
+                width_mm: 600,
+                height_mm: 400,
+              },
               toolingAlreadyOwned: [],
               discount: 0,
             },
@@ -460,7 +491,12 @@ describe('CostingService', () => {
               kind: 'TEMPLATE',
               templateId,
               quantity: 500,
-              parameters: { ...BOX_PARAMS, length_mm: 600, width_mm: 600, height_mm: 400 },
+              parameters: {
+                ...BOX_PARAMS,
+                length_mm: 600,
+                width_mm: 600,
+                height_mm: 400,
+              },
               toolingAlreadyOwned: [],
               discount: 0,
             },
@@ -546,8 +582,12 @@ describe('CostingService', () => {
       });
 
       expect(result.templateVersion).toBe(3);
-      expect(result.breaks.map((row) => row.quantity)).toEqual([100, 500, 2500]);
-      expect(result.breaks[0].unitPrice).toBeGreaterThan(result.breaks[2].unitPrice);
+      expect(result.breaks.map((row) => row.quantity)).toEqual([
+        100, 500, 2500,
+      ]);
+      expect(result.breaks[0].unitPrice).toBeGreaterThan(
+        result.breaks[2].unitPrice,
+      );
       expect(result.leadTimeDays).toBeGreaterThanOrEqual(1);
     });
   });

@@ -171,7 +171,10 @@ function makeService(seed: Seed = {}) {
     repoFor('PurchasePolicyEntity') as any,
     ledger as any,
     dataSource,
-    { notifyHolders: jest.fn(async () => 0), resolve: jest.fn(async () => undefined) } as any,
+    {
+      notifyHolders: jest.fn(async () => 0),
+      resolve: jest.fn(async () => undefined),
+    } as any,
   );
 
   return { service, order, orderLines, stock, movements, journals, ledger };
@@ -518,7 +521,11 @@ describe('InventoryService.moveForWorkOrder', () => {
     expect(stock[0].qtyOnHand).toBe(70);
     expect(stock[0].avgUnitCost).toBe(0.5);
     expect(movements[0]).toEqual(
-      expect.objectContaining({ type: 'ISSUE', qtyDelta: -30, referenceType: 'WORK_ORDER' }),
+      expect.objectContaining({
+        type: 'ISSUE',
+        qtyDelta: -30,
+        referenceType: 'WORK_ORDER',
+      }),
     );
     expect(value).toBe(15);
   });
@@ -539,7 +546,9 @@ describe('InventoryService.moveForWorkOrder', () => {
 
     expect(stock[0].qtyOnHand).toBe(110);
     expect(stock[0].avgUnitCost).toBe(0.5);
-    expect(movements[0]).toEqual(expect.objectContaining({ type: 'RETURN', qtyDelta: 10 }));
+    expect(movements[0]).toEqual(
+      expect.objectContaining({ type: 'RETURN', qtyDelta: 10 }),
+    );
     expect(value).toBe(5);
   });
 

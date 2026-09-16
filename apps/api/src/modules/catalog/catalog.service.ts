@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, DeepPartial, ILike, IsNull, Repository } from 'typeorm';
 import {
@@ -50,7 +54,10 @@ export class CatalogService {
 
   /* ---------------- Materials ---------------- */
 
-  async listMaterials(tenantId: string, includeInactive = false): Promise<Material[]> {
+  async listMaterials(
+    tenantId: string,
+    includeInactive = false,
+  ): Promise<Material[]> {
     return this.materials.find({
       where: includeInactive ? { tenantId } : { tenantId, isActive: true },
       order: { name: 'ASC' },
@@ -63,7 +70,10 @@ export class CatalogService {
     return material;
   }
 
-  async createMaterial(tenantId: string, payload: CreateMaterialPayload): Promise<Material> {
+  async createMaterial(
+    tenantId: string,
+    payload: CreateMaterialPayload,
+  ): Promise<Material> {
     return this.materials.save(this.materials.create({ ...payload, tenantId }));
   }
 
@@ -85,7 +95,10 @@ export class CatalogService {
 
   /* ---------------- Work centres ---------------- */
 
-  async listWorkCenters(tenantId: string, includeInactive = false): Promise<WorkCenter[]> {
+  async listWorkCenters(
+    tenantId: string,
+    includeInactive = false,
+  ): Promise<WorkCenter[]> {
     return this.workCenters.find({
       where: includeInactive ? { tenantId } : { tenantId, isActive: true },
       order: { name: 'ASC' },
@@ -93,13 +106,20 @@ export class CatalogService {
   }
 
   async findWorkCenter(tenantId: string, id: string): Promise<WorkCenter> {
-    const workCenter = await this.workCenters.findOne({ where: { id, tenantId } });
+    const workCenter = await this.workCenters.findOne({
+      where: { id, tenantId },
+    });
     if (!workCenter) throw new NotFoundException(`Work centre ${id} not found`);
     return workCenter;
   }
 
-  async createWorkCenter(tenantId: string, payload: CreateWorkCenterPayload): Promise<WorkCenter> {
-    return this.workCenters.save(this.workCenters.create({ ...payload, tenantId }));
+  async createWorkCenter(
+    tenantId: string,
+    payload: CreateWorkCenterPayload,
+  ): Promise<WorkCenter> {
+    return this.workCenters.save(
+      this.workCenters.create({ ...payload, tenantId }),
+    );
   }
 
   async updateWorkCenter(
@@ -114,13 +134,21 @@ export class CatalogService {
 
   async deleteWorkCenter(tenantId: string, id: string): Promise<void> {
     const workCenter = await this.findWorkCenter(tenantId, id);
-    await this.assertNotReferenced(tenantId, 'workCenterId', id, workCenter.name);
+    await this.assertNotReferenced(
+      tenantId,
+      'workCenterId',
+      id,
+      workCenter.name,
+    );
     await this.workCenters.softRemove(workCenter);
   }
 
   /* ---------------- Tooling ---------------- */
 
-  async listTooling(tenantId: string, includeInactive = false): Promise<Tooling[]> {
+  async listTooling(
+    tenantId: string,
+    includeInactive = false,
+  ): Promise<Tooling[]> {
     return this.tooling.find({
       where: includeInactive ? { tenantId } : { tenantId, isActive: true },
       order: { name: 'ASC' },
@@ -133,7 +161,10 @@ export class CatalogService {
     return tool;
   }
 
-  async createTooling(tenantId: string, payload: CreateToolingPayload): Promise<Tooling> {
+  async createTooling(
+    tenantId: string,
+    payload: CreateToolingPayload,
+  ): Promise<Tooling> {
     return this.tooling.save(this.tooling.create({ ...payload, tenantId }));
   }
 
@@ -155,11 +186,20 @@ export class CatalogService {
 
   /* ---------------- Catalog items ---------------- */
 
-  async searchItems(tenantId: string, query: CatalogSearchPayload): Promise<CatalogItem[]> {
-    const base = query.includeInactive ? { tenantId } : { tenantId, isActive: true };
+  async searchItems(
+    tenantId: string,
+    query: CatalogSearchPayload,
+  ): Promise<CatalogItem[]> {
+    const base = query.includeInactive
+      ? { tenantId }
+      : { tenantId, isActive: true };
 
     if (!query.q) {
-      return this.items.find({ where: base, order: { name: 'ASC' }, take: query.limit });
+      return this.items.find({
+        where: base,
+        order: { name: 'ASC' },
+        take: query.limit,
+      });
     }
 
     const term = `%${query.q}%`;
@@ -180,7 +220,10 @@ export class CatalogService {
     return item;
   }
 
-  async createItem(tenantId: string, payload: CreateCatalogItemPayload): Promise<CatalogItem> {
+  async createItem(
+    tenantId: string,
+    payload: CreateCatalogItemPayload,
+  ): Promise<CatalogItem> {
     await this.assertSkuFree(tenantId, payload.sku);
     return this.items.save(this.items.create({ ...payload, tenantId }));
   }
@@ -207,13 +250,18 @@ export class CatalogService {
       where: { tenantId, sku, deletedAt: IsNull() },
     });
     if (clash) {
-      throw new BadRequestException(`SKU "${sku}" is already used by "${clash.name}"`);
+      throw new BadRequestException(
+        `SKU "${sku}" is already used by "${clash.name}"`,
+      );
     }
   }
 
   /* ---------------- Product templates ---------------- */
 
-  async listTemplates(tenantId: string, includeAllVersions = false): Promise<ProductTemplate[]> {
+  async listTemplates(
+    tenantId: string,
+    includeAllVersions = false,
+  ): Promise<ProductTemplate[]> {
     return this.templates.find({
       where: includeAllVersions ? { tenantId } : { tenantId, isCurrent: true },
       order: { name: 'ASC', version: 'DESC' },
@@ -222,11 +270,15 @@ export class CatalogService {
 
   async findTemplate(tenantId: string, id: string): Promise<ProductTemplate> {
     const template = await this.templates.findOne({ where: { id, tenantId } });
-    if (!template) throw new NotFoundException(`Product template ${id} not found`);
+    if (!template)
+      throw new NotFoundException(`Product template ${id} not found`);
     return template;
   }
 
-  async listTemplateVersions(tenantId: string, templateKey: string): Promise<ProductTemplate[]> {
+  async listTemplateVersions(
+    tenantId: string,
+    templateKey: string,
+  ): Promise<ProductTemplate[]> {
     return this.templates.find({
       where: { tenantId, templateKey },
       order: { version: 'DESC' },
@@ -360,12 +412,17 @@ export class CatalogService {
     for (const parameter of model.parameters ?? []) {
       claim(parameter.key, 'Parameter');
       if (parameter.type === 'ENUM' && !(parameter.options ?? []).length) {
-        throw new BadRequestException(`Parameter "${parameter.key}" is an enum with no options`);
+        throw new BadRequestException(
+          `Parameter "${parameter.key}" is an enum with no options`,
+        );
       }
     }
-    for (const derived of model.derived ?? []) claim(derived.key, 'Derived variable');
-    for (const material of model.materials ?? []) claim(material.key, 'Material line');
-    for (const operation of model.operations ?? []) claim(operation.key, 'Operation');
+    for (const derived of model.derived ?? [])
+      claim(derived.key, 'Derived variable');
+    for (const material of model.materials ?? [])
+      claim(material.key, 'Material line');
+    for (const operation of model.operations ?? [])
+      claim(operation.key, 'Operation');
     for (const tool of model.tooling ?? []) claim(tool.key, 'Tooling line');
 
     const check = (formula: string | null | undefined, where: string): void => {
@@ -373,7 +430,8 @@ export class CatalogService {
       try {
         compileExpression(formula);
       } catch (error) {
-        const detail = error instanceof ExpressionError ? error.message : String(error);
+        const detail =
+          error instanceof ExpressionError ? error.message : String(error);
         throw new BadRequestException(`${where}: ${detail}`);
       }
     };
@@ -382,8 +440,14 @@ export class CatalogService {
       check(derived.formula, `Derived variable "${derived.key}"`);
     }
     for (const material of model.materials ?? []) {
-      check(material.blankWidthFormula, `Material "${material.key}" blank width`);
-      check(material.blankHeightFormula, `Material "${material.key}" blank height`);
+      check(
+        material.blankWidthFormula,
+        `Material "${material.key}" blank width`,
+      );
+      check(
+        material.blankHeightFormula,
+        `Material "${material.key}" blank height`,
+      );
       check(material.quantityFormula, `Material "${material.key}" quantity`);
       check(material.wastePctFormula, `Material "${material.key}" waste`);
       check(material.condition, `Material "${material.key}" condition`);
@@ -395,12 +459,20 @@ export class CatalogService {
           );
         }
       } else if (!material.quantityFormula) {
-        throw new BadRequestException(`Material "${material.key}" needs a quantity formula`);
+        throw new BadRequestException(
+          `Material "${material.key}" needs a quantity formula`,
+        );
       }
     }
     for (const operation of model.operations ?? []) {
-      check(operation.runMinutesFormula, `Operation "${operation.key}" run time`);
-      check(operation.setupMinutesFormula, `Operation "${operation.key}" setup time`);
+      check(
+        operation.runMinutesFormula,
+        `Operation "${operation.key}" run time`,
+      );
+      check(
+        operation.setupMinutesFormula,
+        `Operation "${operation.key}" setup time`,
+      );
       check(operation.condition, `Operation "${operation.key}" condition`);
     }
     for (const tool of model.tooling ?? []) {
@@ -417,9 +489,15 @@ export class CatalogService {
       tooling?: TemplateTooling[];
     },
   ): Promise<void> {
-    const materialIds = [...new Set((model.materials ?? []).map((line) => line.materialId))];
-    const workCenterIds = [...new Set((model.operations ?? []).map((line) => line.workCenterId))];
-    const toolingIds = [...new Set((model.tooling ?? []).map((line) => line.toolingId))];
+    const materialIds = [
+      ...new Set((model.materials ?? []).map((line) => line.materialId)),
+    ];
+    const workCenterIds = [
+      ...new Set((model.operations ?? []).map((line) => line.workCenterId)),
+    ];
+    const toolingIds = [
+      ...new Set((model.tooling ?? []).map((line) => line.toolingId)),
+    ];
 
     const [materials, workCenters, tools] = await Promise.all([
       materialIds.length
@@ -440,11 +518,17 @@ export class CatalogService {
     ];
 
     if (missing.length) {
-      throw new BadRequestException(`Template references unknown ${missing.join(', ')}`);
+      throw new BadRequestException(
+        `Template references unknown ${missing.join(', ')}`,
+      );
     }
   }
 
-  private diff(ids: string[], found: { id: string }[], label: string): string[] {
+  private diff(
+    ids: string[],
+    found: { id: string }[],
+    label: string,
+  ): string[] {
     const have = new Set(found.map((row) => row.id));
     return ids.filter((id) => !have.has(id)).map((id) => `${label} ${id}`);
   }
@@ -460,7 +544,12 @@ export class CatalogService {
     id: string,
     name: string,
   ): Promise<void> {
-    const column = field === 'materialId' ? 'materials' : field === 'workCenterId' ? 'operations' : 'tooling';
+    const column =
+      field === 'materialId'
+        ? 'materials'
+        : field === 'workCenterId'
+          ? 'operations'
+          : 'tooling';
 
     const users = await this.templates
       .createQueryBuilder('template')
