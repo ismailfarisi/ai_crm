@@ -2,6 +2,7 @@
 
 import { Plus, Trash2, Layers, FileText, Package, Hash } from 'lucide-react';
 import type { QuoteLineItem, QuoteLineItemType } from '@saas/shared';
+import { DEFAULT_UNIT, UNIT_GROUPS } from '@saas/shared';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -18,16 +19,6 @@ export interface QuoteLinesTableProps {
   taxCodes?: Array<{ id: string; code: string; name: string; rate: number }>;
 }
 
-const UOM_OPTIONS = [
-  { value: 'Units', label: 'Units' },
-  { value: 'Hours', label: 'Hours (hrs)' },
-  { value: 'Days', label: 'Days' },
-  { value: 'Licenses', label: 'Licenses' },
-  { value: 'Months', label: 'Months (mo)' },
-  { value: 'Packages', label: 'Packages' },
-  { value: 'Services', label: 'Services' },
-  { value: 'Items', label: 'Items' },
-];
 
 /**
  * Used only by organisations that have not set any tax codes up yet.
@@ -142,6 +133,17 @@ export function QuoteLinesTable({
 
   return (
     <div className="bg-surface/85 backdrop-blur-xs rounded-2xl border border-border/30 overflow-hidden shadow-[0_2px_12px_rgba(0,0,0,0.015)]">
+      {/* Shared by every line's unit input. Grouped so the trades read apart. */}
+      <datalist id="quote-line-units">
+        {UNIT_GROUPS.map((group) => (
+          <optgroup key={group.label} label={group.label}>
+            {group.units.map((unit) => (
+              <option key={unit} value={unit} />
+            ))}
+          </optgroup>
+        ))}
+      </datalist>
+
       <div className="overflow-x-auto">
         <table className="w-full min-w-[840px] text-left border-collapse">
           <thead>
@@ -323,20 +325,25 @@ export function QuoteLinesTable({
                     <td className="px-3 py-2.5">
                       {readOnly ? (
                         <span className="text-xs text-ink-muted font-medium">
-                          {item.uom || 'Units'}
+                          {item.uom || DEFAULT_UNIT}
                         </span>
                       ) : (
-                        <select
-                          value={item.uom || 'Units'}
+                        /*
+                         * A combobox, not a dropdown. The list used to be eight
+                         * software-services units — Licenses, Months, Services —
+                         * with no kg, m², sheet, roll, pallet or thousand and no
+                         * way to add one, so a box maker had to quote 500 boxes
+                         * in "Units". The suggestions cover the common trades;
+                         * anything else can simply be typed.
+                         */
+                        <input
+                          type="text"
+                          list="quote-line-units"
+                          value={item.uom || DEFAULT_UNIT}
                           onChange={(e) => handleItemChange(item.id, 'uom', e.target.value)}
+                          aria-label="Unit of measure"
                           className="w-full rounded-xl border border-border/40 bg-surface-muted/30 px-2 py-1.5 text-xs text-ink focus:bg-surface focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden transition-colors"
-                        >
-                          {UOM_OPTIONS.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
+                        />
                       )}
                     </td>
 

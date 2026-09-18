@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Input, Select } from '@/components/ui/field';
 import { Badge } from '@/components/ui/primitives';
 import type { CreateCategoryBudgetPayload, BudgetPeriod } from '@saas/shared';
+import { EXPENSE_CATEGORIES } from '@saas/shared';
 
 export interface CreateBudgetModalProps {
   open: boolean;
@@ -26,17 +27,15 @@ export interface CreateBudgetModalProps {
   initialData?: Partial<CreateCategoryBudgetPayload>;
 }
 
-export const BUDGET_CATEGORIES = [
-  { value: 'Marketing', label: 'Marketing & Advertising' },
-  { value: 'Software & SaaS', label: 'Software & SaaS' },
-  { value: 'Travel & Lodging', label: 'Travel & Lodging' },
-  { value: 'Office Supplies', label: 'Office Supplies' },
-  { value: 'Payroll & Contractors', label: 'Payroll & Contractors' },
-  { value: 'Professional Services', label: 'Professional Services' },
-  { value: 'Hardware & Equipment', label: 'Hardware & Equipment' },
-  { value: 'Utilities & Telecom', label: 'Utilities & Telecom' },
-  { value: 'Other', label: 'Other' },
-];
+/**
+ * The same list the expense form files against — previously these two
+ * disagreed (`Marketing` against `Marketing & Advertising`), so a budget could
+ * never be measured against the spending it guarded.
+ */
+export const BUDGET_CATEGORIES = EXPENSE_CATEGORIES.map((category) => ({
+  value: category,
+  label: category,
+}));
 
 export const BUDGET_PERIOD_OPTIONS: { value: BudgetPeriod; label: string }[] = [
   { value: 'MONTHLY', label: 'Monthly' },

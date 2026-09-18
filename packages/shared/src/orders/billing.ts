@@ -236,6 +236,8 @@ export interface PublicQuoteDto {
     website: string | null;
     addressLines: string[];
     documentFooter: string | null;
+    /** Absolute URL to the logo, or null when none has been uploaded. */
+    logoUrl: string | null;
   };
   quoteNumber: string | null;
   title: string;

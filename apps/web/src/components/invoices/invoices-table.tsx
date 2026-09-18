@@ -91,14 +91,18 @@ export function InvoicesTable({
         cell: ({ row }) => <span className="text-ink font-medium">{row.original.customerName}</span>,
       },
       {
-        accessorKey: 'quoteId',
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Quote ID" />,
+        // Sorts and filters on the document number, not the UUID behind it:
+        // this column used to print `quoteId` raw, which is the only place in
+        // the product a user was ever shown one.
+        id: 'quoteNumber',
+        accessorFn: (invoice) => invoice.quoteNumber ?? '',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Quote" />,
         cell: ({ row }) => (
           <Link
-            href={`/quotes?id=${row.original.quoteId}`}
+            href={`/quotes/${row.original.quoteId}`}
             className="font-mono text-xs text-brand hover:underline"
           >
-            {row.original.quoteId}
+            {row.original.quoteNumber ?? 'Not yet numbered'}
           </Link>
         ),
       },
@@ -206,7 +210,7 @@ export function InvoicesTable({
       isLoading={isLoading}
       getRowId={(row) => row.id}
       cardTitleKey="invoiceNumber"
-      cardSubtitleKey="quoteId"
+      cardSubtitleKey="quoteNumber"
       enableRowSelection
       searchPlaceholder="Search invoices..."
       emptyTitle="No invoices found"

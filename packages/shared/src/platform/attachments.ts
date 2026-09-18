@@ -86,3 +86,17 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 102.4) / 10} KB`;
   return `${Math.round(bytes / 104857.6) / 10} MB`;
 }
+
+/**
+ * What a company logo may be.
+ *
+ * Narrower than `ATTACHMENT_CONTENT_TYPES` on purpose. A logo is the one
+ * stored file served back *inline* — it has to render in a document and on the
+ * public quote page a customer opens without signing in — and an inline
+ * `image/svg+xml` is a script that runs on the origin serving it. Raster only,
+ * so there is nothing to execute.
+ */
+export const LOGO_CONTENT_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const;
+
+/** 2 MB. A letterhead logo that is larger than this is the wrong asset. */
+export const LOGO_MAX_BYTES = 2 * 1024 * 1024;

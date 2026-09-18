@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   PERMISSIONS,
@@ -14,6 +23,7 @@ import { LedgerService } from './ledger.service';
 import { LedgerAccount } from './entities/ledger-account.entity';
 import {
   CreateFinanceAccountDto,
+  UpdateFinanceAccountDto,
   CreateCategoryBudgetDto,
   CreateRecurringExpenseDto,
   TransferFundsDto,
@@ -93,6 +103,21 @@ export class FinanceController {
     @Body() dto: CreateFinanceAccountDto,
   ): Promise<FinanceAccount> {
     return this.financeService.createAccount(user.organizationId, dto);
+  }
+
+  @Patch('accounts/:id')
+  @RequirePermissions(PERMISSIONS.FINANCE_MANAGE)
+  @ApiOperation({
+    summary: 'Update a finance account',
+    description:
+      'Renames an account or makes it the default one. Balances move through postings, not this route.',
+  })
+  async updateAccount(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateFinanceAccountDto,
+  ): Promise<FinanceAccount> {
+    return this.financeService.updateAccount(user.organizationId, id, dto);
   }
 
   @Post('accounts/transfer')

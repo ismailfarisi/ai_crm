@@ -127,6 +127,10 @@ export function StockActionsDialog({ open, onClose, item, mode }: StockActionsDi
                 locationId: item.locationId,
                 qtyDelta: delta,
                 note: note.trim(),
+                // A recount is valued at the standing average — putting back a
+                // miscounted box did not change what the stock cost. Only an
+                // opening count states a price of its own.
+                unitCost: null,
               });
               close();
             }}

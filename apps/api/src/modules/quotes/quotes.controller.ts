@@ -20,10 +20,13 @@ import {
   QuoteLineItem,
   QuoteStatus as SharedQuoteStatus,
   RecordInvoicePaymentPayload,
+  sendQuoteSchema,
+  type SendQuotePayload,
   UpdateQuotePayload,
   VoidInvoicePayload,
 } from '@saas/shared';
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
+import { zodBody } from '@/common/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { QuotesService } from './quotes.service';
 import { QuoteAcceptanceService } from './quote-acceptance.service';
@@ -207,6 +210,21 @@ export class QuotesController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<{ url: string; expiresAt: string }> {
     return this.acceptance.createLink(user.organizationId, id);
+  }
+
+  @Post('quotes/:id/send')
+  @RequirePermissions(PERMISSIONS.QUOTE_UPDATE)
+  @ApiOperation({
+    summary: 'Email the quote to the customer',
+    description:
+      'Issues an acceptance link and emails it, with an optional covering note. Defaults to the address on the quote. Any earlier link stops working, exactly as issuing one by hand does.',
+  })
+  async sendQuoteToCustomer(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(zodBody(sendQuoteSchema)) input: SendQuotePayload,
+  ): Promise<{ sentTo: string; url: string; expiresAt: string }> {
+    return this.acceptance.sendToCustomer(user.organizationId, id, input);
   }
 
   @Post('quotes/:id/revise')

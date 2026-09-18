@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Copy, GitBranch, Link2, PackageCheck, UserCheck } from 'lucide-react';
+import { Copy, GitBranch, Link2, PackageCheck, Send, UserCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { PERMISSIONS, type QuoteStatus } from '@saas/shared';
 import { api } from '@/lib/api/endpoints';
@@ -34,7 +34,7 @@ export function QuoteCustomerPanel({
 }: QuoteCustomerPanelProps) {
   const router = useRouter();
   const [link, setLink] = useState<{ url: string; expiresAt: string } | null>(null);
-  const [busy, setBusy] = useState<'link' | 'revise' | null>(null);
+  const [busy, setBusy] = useState<'link' | 'send' | 'revise' | null>(null);
   const { data: orderResult } = useQuoteSalesOrder(quoteId, status === 'APPROVED');
   const order = orderResult?.order ?? null;
 
@@ -51,6 +51,25 @@ export function QuoteCustomerPanel({
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not create the link');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /**
+   * Issues the link and emails it, which is what "send the quote" has always
+   * meant. Until now the only route was *Get acceptance link*, which copied a
+   * URL for the sender to paste into their own mail client — on a product
+   * that already has a mail provider and the customer's address on the quote.
+   */
+  const sendToCustomer = async () => {
+    setBusy('send');
+    try {
+      const sent = await api.quoteAcceptance.send(quoteId);
+      setLink({ url: sent.url, expiresAt: sent.expiresAt });
+      toast.success(`Quote sent to ${sent.sentTo}. Any earlier link no longer works.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not send the quote');
     } finally {
       setBusy(null);
     }
@@ -126,6 +145,19 @@ export function QuoteCustomerPanel({
           <Can permission={PERMISSIONS.QUOTE_UPDATE}>
             <Button
               type="button"
+              variant="primary"
+              size="sm"
+              loading={busy === 'send'}
+              disabled={busy !== null}
+              onClick={sendToCustomer}
+              className="rounded-full px-4 text-xs gap-1.5"
+            >
+              <Send className="size-4" />
+              Send to customer
+            </Button>
+            {/* Still here for anyone who would rather send it their own way. */}
+            <Button
+              type="button"
               variant="outline"
               size="sm"
               loading={busy === 'link'}
@@ -134,7 +166,7 @@ export function QuoteCustomerPanel({
               className="rounded-full px-4 text-xs gap-1.5"
             >
               <Link2 className="size-4" />
-              {link ? 'New link' : 'Get acceptance link'}
+              {link ? 'New link' : 'Copy link instead'}
             </Button>
           </Can>
         )}

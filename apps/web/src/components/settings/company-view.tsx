@@ -13,6 +13,7 @@ import { ApiError } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { Input, Textarea } from '@/components/ui/field';
 import { Card, CardBody, CardHeader, CardTitle, PageHeader, Skeleton } from '@/components/ui/primitives';
+import { CompanyLogoCard } from './company-logo-card';
 
 type FormValues = z.input<typeof updateOrganizationSchema>;
 type SubmitValues = z.output<typeof updateOrganizationSchema>;
@@ -209,6 +210,14 @@ export function CompanyView() {
             </Button>
           </div>
         </form>
+
+        {/*
+          Outside the form: the logo is multipart and saves on its own, and
+          nobody expects to press "Save changes" after picking an image.
+        */}
+        <div className="lg:col-start-1">
+          <CompanyLogoCard logoUrl={organization?.logoUrl ?? null} />
+        </div>
 
         <Card className="h-fit lg:sticky lg:top-6">
           <CardHeader>

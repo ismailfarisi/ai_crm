@@ -48,6 +48,10 @@ export const platformEndpoints = {
     get: () => apiFetch<OrganizationProfileDto>('/organization'),
     update: (payload: UpdateOrganizationPayload) =>
       apiFetch<OrganizationProfileDto>('/organization', { method: 'PATCH', body: payload }),
+    uploadLogo: (file: File) =>
+      apiUpload<OrganizationProfileDto>('/organization/logo', file),
+    clearLogo: () =>
+      apiFetch<OrganizationProfileDto>('/organization/logo', { method: 'DELETE' }),
   },
   audit: {
     list: (filters: AuditFilters) => apiFetch<AuditPageDto>('/audit', { query: filters }),

@@ -31,6 +31,20 @@ export const adjustStockSchema = z.object({
   qtyDelta: z.coerce.number().refine((v) => v !== 0, 'An adjustment of zero changes nothing'),
   /** Required: an adjustment nobody can explain erodes trust in the whole figure. */
   note: z.string().trim().min(1, 'Give a reason for the adjustment').max(500),
+  /**
+   * What the stock being added is worth, per unit.
+   *
+   * Only read when `qtyDelta` is positive, and omitted for an ordinary
+   * correction — putting back a miscounted box does not change what the stock
+   * cost. It exists for the opening count: a business that already holds stock
+   * on the day it arrives here has to be able to say what that stock is worth,
+   * or every job it is consumed on reports a cost of zero.
+   */
+  unitCost: z.coerce
+    .number()
+    .min(0)
+    .nullish()
+    .transform((v) => (v == null || Number.isNaN(v) ? null : v)),
 });
 
 /**

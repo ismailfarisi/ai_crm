@@ -84,6 +84,8 @@ async function seed(): Promise<void> {
         lastName: 'Okonkwo',
         email: 'owner@northwind.test',
         password: DEMO_PASSWORD,
+        baseCurrency: 'USD',
+        country: 'US',
       },
       {},
     );

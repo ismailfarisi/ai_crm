@@ -4,11 +4,15 @@ import { Brackets, Repository, type SelectQueryBuilder } from 'typeorm';
 import {
   type CreateCustomerInput,
   type CustomerDto,
+  type CustomerOverviewDto,
   type PaginatedResult,
   type UpdateCustomerInput,
 } from '@saas/shared';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { Customer } from './entities/customer.entity';
+import { Quote } from '../quotes/entities/quote.entity';
+import { Invoice } from '../quotes/entities/invoice.entity';
+import { SalesOrder } from '../orders/entities/sales-order.entity';
 import type { CustomerQueryDto } from './dto/customer-query.dto';
 
 @Injectable()
@@ -60,6 +64,94 @@ export class CustomersService {
 
   async findOne(actor: AuthenticatedUser, id: string): Promise<CustomerDto> {
     return this.toDto(await this.findEntity(actor, id));
+  }
+
+  /**
+   * One customer's whole trading history: quotes, orders, invoices, balance.
+   *
+   * Three narrow queries against the `customerId` each document already
+   * carries, rather than the page pulling every quote and invoice in the
+   * tenant and filtering them in the browser. The customer is loaded first, so
+   * a request for another tenant's customer 404s before anything else is read.
+   */
+  async overview(
+    actor: AuthenticatedUser,
+    id: string,
+  ): Promise<CustomerOverviewDto> {
+    const customer = await this.findEntity(actor, id);
+    const tenantId = actor.organizationId;
+
+    const [quotes, orders, invoices] = await Promise.all([
+      this.customers.manager.getRepository(Quote).find({
+        where: { tenantId, customerId: id },
+        order: { createdAt: 'DESC' },
+      }),
+      this.customers.manager.getRepository(SalesOrder).find({
+        where: { tenantId, customerId: id },
+        order: { createdAt: 'DESC' },
+      }),
+      this.customers.manager.getRepository(Invoice).find({
+        where: { tenantId, customerId: id },
+        order: { issuedAt: 'DESC' },
+      }),
+    ]);
+
+    const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+    // A cancelled invoice is not owed, and neither is a voided one.
+    const live = invoices.filter(
+      (invoice) => invoice.status !== 'CANCELLED' && !invoice.voidedAt,
+    );
+    const invoicedTotal = round2(
+      live.reduce((sum, invoice) => sum + Number(invoice.amount ?? 0), 0),
+    );
+    const outstandingTotal = round2(
+      live.reduce(
+        (sum, invoice) =>
+          sum + Number(invoice.amount ?? 0) - Number(invoice.paidAmount ?? 0),
+        0,
+      ),
+    );
+
+    return {
+      customerId: customer.id,
+      currency: customer.currency ?? 'USD',
+      quotes: quotes.map((quote) => ({
+        id: quote.id,
+        number: quote.quoteNumber,
+        status: quote.status,
+        currency: quote.currency,
+        amount: Number(quote.totalAmount ?? 0),
+        date: quote.createdAt.toISOString(),
+      })),
+      orders: orders.map((order) => ({
+        id: order.id,
+        number: order.orderNumber,
+        status: order.status,
+        currency: order.currency,
+        amount: Number(order.totalAmount ?? 0),
+        date: order.createdAt.toISOString(),
+      })),
+      invoices: invoices.map((invoice) => ({
+        id: invoice.id,
+        number: invoice.invoiceNumber,
+        status: invoice.status,
+        currency: invoice.currency,
+        amount: Number(invoice.amount ?? 0),
+        outstanding: round2(
+          Number(invoice.amount ?? 0) - Number(invoice.paidAmount ?? 0),
+        ),
+        date: invoice.issuedAt.toISOString(),
+      })),
+      totals: {
+        quotesSent: quotes.length,
+        quotesAccepted: quotes.filter((quote) => quote.acceptedAt !== null).length,
+        ordersPlaced: orders.length,
+        invoicedTotal,
+        outstandingTotal,
+        lastOrderedAt: orders[0]?.createdAt.toISOString() ?? null,
+      },
+    };
   }
 
   async create(

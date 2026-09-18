@@ -43,7 +43,39 @@ records trade-offs the team took knowingly; nothing here repeats those.
 > opening-balance fix are not backfilled. Meridian's original account still
 > reads 15,530 in treasury against 530 in the ledger — the $15,000 it was opened
 > with. New accounts are correct; the old ones want a one-off backfill posting
-> the difference to 3100.
+> the difference to 3100. *(Done — see the second pass below.)*
+
+---
+
+> **Status, 2026-09-18 — second pass.** Everything above that was still
+> outstanding has been worked through, except where this note says otherwise.
+> The sections below carry their own **FIXED** markers and a *Fix* note each.
+> `pnpm build` passes; API 641 tests, web 241 tests and shared 285 tests pass.
+>
+> **Run against a real database this time.** The previous pass could not:
+> there was no local Postgres, so `1787100000000-AddOrganizationProfile` was
+> hand-written and never executed. All migrations have now been run on a
+> migrated database *and* on an empty one, `pnpm check:drift` reports **no new
+> drift**, and `pnpm check:books` still reports the trial balance summing to
+> zero for every tenant.
+>
+> **The opening-balance backfill is written and verified**
+> (`1787200000000-BackfillOpeningBalances`). On the local database it found two
+> accounts carrying 75,000 in treasury against nothing in the ledger and posted
+> the difference to 3100; treasury and the ledger now agree exactly. It is
+> idempotent on `referenceId` — reverting removed exactly the two entries it
+> wrote, re-running recreated two and not four — and the books balance either
+> side.
+>
+> **Still not done, and why:**
+>
+> - **Cost of goods sold on catalog-priced lines** (§2.2) has not been proved
+>   end to end. The costed path exists and margin is real; nothing here
+>   demonstrates COGS posting on dispatch of a catalog line.
+> - **Nothing has been deployed to staging.** Everything below is verified
+>   locally — build, tests, migrations, drift, trial balance — but the previous
+>   pass found two faults that only deploying surfaced, so treat this as
+>   unproven in a browser until it has been.
 
 ---
 
@@ -104,7 +136,7 @@ other.
 
 **Fix.** `CashflowTrendChart` no longer falls back to `DEFAULT_SAMPLE_SERIES` when the caller passes nothing — that constant is deleted — and `finance-overview-view` passes the real `recentCashflowSeries` the API already returned. The server side was wrong too: `dayInflow` was hardcoded to `0`, so money coming in never appeared. Inflow and outflow are now derived from posted journal lines that touch a cash account, excluding internal transfers and opening balances, which are not cashflow. With no movement the chart shows its empty state.
 
-### 1.3 Nothing sets the company up — major
+### 1.3 Nothing sets the company up — major — FIXED
 
 Sign-up asks for organisation name, first name, last name, email, password, and
 nothing else. There is no onboarding: no wizard, no checklist, no "add your
@@ -127,17 +159,38 @@ A sensible first-run flow would ask for country and currency, seed a default
 chart of accounts and a tax code from the country, and offer a starter cash
 account.
 
-### 1.4 The dashboard shows the owner a 91-item permission dump — minor
+**Fix.** Sign-up now asks for base currency and country, because sign-up is the
+last moment either is free: the base currency can never be changed once
+anything is posted, and a country is what `taxRuleFor` matches on. Both are
+written onto the organization at registration. A chart of accounts was already
+provisioned there; registration now also seeds a sales and a purchase tax code
+so `/finance/tax-codes` is no longer empty and the tax report has something to
+group by. They are 0% on purpose — guessing a country's VAT rate would put a
+number in front of a customer that nobody chose.
+
+Instead of a wizard, which is in the way on the second visit, the dashboard
+carries a **Finish setting up** card listing what is still missing — company
+address and tax registration, a cash account, real tax rates, something in the
+catalog, a first customer — each linking to the screen that does it. It
+disappears when nothing is left, and a step the viewer has no permission to
+read counts as done rather than sending them somewhere they cannot go.
+
+### 1.4 The dashboard shows the owner a 91-item permission dump — minor — FIXED
 
 "Your Access & Roles" lists all 91 raw permission strings (`purchase_order:approve_above_threshold`,
 `quote:approve_below_margin`, …) on the main dashboard. That is a debugging view
 on the screen the owner sees most. It belongs in Settings → Roles.
 
+**Fix.** The card now reads one line per feature area — "Sales: full", "Stock: 2
+of 4" — built from `PERMISSION_GROUPS`, with areas the user holds nothing in
+left out. The codes themselves are one link away, in the role editor, which is
+where someone changing them is already standing.
+
 ---
 
 ## 2. The blocker: the core feature cannot be set up
 
-### 2.1 There is no way to create a product, material, work centre or tooling — blocker — MOSTLY FIXED
+### 2.1 There is no way to create a product, material, work centre or tooling — blocker — FIXED
 
 The product is sold on cost-model quoting. The sign-in page advertises it with a
 worked example (a rigid gift box priced from length/width/height, lamination,
@@ -197,7 +250,33 @@ parameters and routing, and that has no UI yet. So §2.2's *Plan production* and
 the price-break ladder remain blocked. What works now is the flat case: real
 products with real costs, and therefore real margin.
 
-### 2.2 Everything downstream of the catalog is unreachable too — blocker — PARTLY FIXED
+**Fix, second pass — templates now have an editor, so §2.1 is FIXED.** The API
+had full template CRUD all along (`POST /catalog/templates`, `POST
+/catalog/templates/:id/versions`) and the web client called only the read half,
+which is the same dead-plumbing pattern as purchase orders.
+
+A **Templates** tab now sits in the Catalog beside Products, and a template is
+edited on a page of its own — six repeating sections is too much for a dialog.
+It covers identity, parameters, derived values, materials, routing, tooling and
+pricing: everything `createProductTemplateSchema` accepts.
+
+Two things the editor is deliberate about. Formulas are plain text, validated by
+the server's expression parser on save rather than keystroke by keystroke — the
+parser is the only thing that knows what is in scope, and a second, weaker copy
+of that knowledge in the browser would eventually disagree with it. And every
+field is held as a string while it is being typed, converted once on save: a
+half-typed `0.` is not a number, and coercing per keystroke eats the decimal
+point.
+
+Saving an existing template publishes **version + 1** rather than editing it,
+because templates are immutable once published and quotes point at a version —
+so the toast names the version the save produced, and a quote priced from the
+old one still reads exactly as it did.
+
+With this, §2.2's *Plan production* and the price-break ladder are reachable,
+and §2.3's "start production" has a routing to follow.
+
+### 2.2 Everything downstream of the catalog is unreachable too — blocker — MOSTLY FIXED
 
 The quote itself can still be written by hand — type a description, quantity and
 price — and that path works well. But every feature that reads a cost model is
@@ -224,13 +303,35 @@ verified above. Cost of goods sold will follow for those lines. Production
 planning and the price-break ladder still need a product template, so they stay
 blocked until the template editor exists.
 
-### 2.3 "Start production" is a label with nothing behind it — major
+**Fix, second pass.** The template editor now exists (§2.1), so production
+planning and the price-break ladder are no longer blocked, and §2.3 makes
+*Start production* raise real work orders instead of flipping a badge.
+
+**What is still unproven: cost of goods sold.** The costed path is there and the
+margin on a catalog line is real, but nothing in this pass demonstrates COGS
+posting to the ledger when such a line is dispatched. Stock movements post
+(§7.6's opening count exercises the same valuation path), so the machinery is
+present — it has not been walked end to end on a sale, and this report should
+not claim it has.
+
+### 2.3 "Start production" is a label with nothing behind it — major — FIXED
 
 *Start production* on the sales order succeeds, toasts "SO-2026-0001 is now in
 production" and flips the status badge to **In production** — while the
 Production page still shows *"No work orders"*. The status is decorative: no job
 exists, nothing is scheduled, no material is committed. An owner reading the
 order list believes work has started on the floor when nothing has been raised.
+
+**Fix.** Moving an order to `IN_PRODUCTION` now plans production first, through
+the same `createFromSalesOrder` the *Plan production* button calls. Planning is
+idempotent, so a line that already has a live work order is skipped and an order
+already being made is not blocked. When nothing at all can be planned and
+nothing is already running, the move is **refused** with the reason — "not
+priced from a product template, so there is no routing to follow" — rather than
+leaving a badge that claims something untrue. Four tests cover it.
+
+With §2.1's template editor now built, the template case that made this
+unreachable is reachable too.
 
 ---
 
@@ -264,7 +365,7 @@ should be removed and replaced by an explicit opening journal.
 
 **Fix.** A new ledger role and system account, `OPENING_BALANCE_EQUITY` (code 3100), was added to `SYSTEM_LEDGER_ACCOUNTS`. `FinanceService.createAccount` now calls `postOpeningBalance`, which debits the account's own cash ledger account and credits opening balance equity, so treasury and the balance sheet agree and the account can be reconciled. Equity rather than income, because money the tenant already had is not revenue earned here. The entry is idempotent on `referenceId` (`opening-balance:<accountId>`), an account opened at zero posts nothing, and `provisionChartOfAccounts` is called first — it is idempotent — so tenants whose chart predates 3100 get it on demand without a migration.
 
-### 3.2 There is no way to record a payment on a new account, and the error does not say why — major
+### 3.2 There is no way to record a payment on a new account, and the error does not say why — major — FIXED
 
 *Record Payment* on an invoice opens a dialog whose "Deposit Into" dropdown is
 empty on a new tenant, because no cash account exists yet. Submitting returns:
@@ -276,7 +377,13 @@ and offers no link to Finance → Bank & Cash Accounts where the account is
 created. The first payment a new business tries to record is a dead end until
 they find that page by exploring.
 
-### 3.3 Smaller things on the money screens
+**Fix.** With no accounts the dropdown is replaced by a panel that says what is
+missing — "A payment has to land somewhere the books can see" — and links
+straight to Finance → Bank & Cash Accounts, with the submit button disabled so
+the form cannot fail at someone. The old message still appears when there *are*
+accounts and none was picked, which is the case it was always written for.
+
+### 3.3 Smaller things on the money screens — FIXED
 
 - The **Record Payment dialog is pinned to the top-left corner** of the viewport
   instead of being centred.
@@ -285,6 +392,25 @@ they find that page by exploring.
   document number. It should read `QT-2026-0001`.
 - **Ticking "default account" when creating the account had no effect** — the
   header still reads "DEFAULT ACCOUNT: None set".
+
+**Fix.** All three.
+
+The modal was not "pinned to the top-left" by a layout bug — every modal in the
+app was. `Dialog` is built on the native `<dialog>` element, which the user
+agent centres with `margin: auto`; Tailwind's preflight resets `margin: 0` on
+every element and killed it. One `m-auto` on the dialog fixes Record Payment,
+Add team member, Prepare delivery and every other modal at once.
+
+The invoices list now shows `QT-2026-0001` and sorts on it. `Invoice.quoteNumber`
+is a joined, non-persisted field filled in by one extra query per page, rather
+than a relation that would drag every quote's line items into the list.
+
+The default account had no route back once missed: there was no update endpoint
+at all. `PATCH /finance/accounts/:id` now exists, the accounts grid has a **Make
+default** action, and — the part that actually mattered — the *first* account a
+tenant opens becomes the default whether or not the box was ticked. "DEFAULT
+ACCOUNT: None set" beside a tenant's only account was never the right answer,
+and it left expense reimbursement with nothing to pay from.
 
 ---
 
@@ -402,7 +528,7 @@ entered on either side.
 
 ## 5. The company has no identity
 
-### 5.1 There is no company profile — address, tax number and logo cannot be set — blocker — MOSTLY FIXED
+### 5.1 There is no company profile — address, tax number and logo cannot be set — blocker — FIXED
 
 Settings contains Team, Teams, Roles & permissions, Channels, Billing, Audit
 trail and AI Cost Guard. There is **no company or organisation profile page**,
@@ -466,6 +592,31 @@ environment, so it was hand-written to match the entity rather than produced by
 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` with a matching reversible `down`,
 but it should be run and drift-checked before this is deployed anywhere.
 
+**Fix, second pass — both done, so §5.1 is FIXED.**
+
+*The logo.* Settings → Company has an upload, and the logo prints at the head of
+the public quote page the customer opens. It is stored on the organization row
+as bytes (`1787300000000-AddOrganizationLogo`) rather than in the attachment
+store, because it is the one stored file that must be served **inline to someone
+with no session** — attachments are deliberately short-lived signed downloads
+with `Content-Disposition: attachment`, which is exactly wrong for a letterhead.
+
+The type allowlist is narrower than for attachments for the same reason: PNG,
+JPEG and WebP only, capped at 2 MB. An inline `image/svg+xml` is a script
+running on the origin that served it, so SVG is refused even though it is a
+perfectly good attachment. The public route serves the stored type with
+`nosniff`, `Content-Security-Policy: default-src 'none'; sandbox` and a
+cache-busting `?v=` that changes when the logo does. Ten tests cover the
+constraints.
+
+*The migration.* Docker was started and a database brought up, so this pass ran
+what the last one could not. All migrations — including the previously unrun
+`AddOrganizationProfile` — were executed against both a migrated database and an
+empty one, and `pnpm check:drift` reports **no new drift**, which is the check
+CLAUDE.md asks for. The one drift that did appear (`idx_teams_org_name`) came
+from a stale local database and not from these changes: on a freshly migrated
+schema it is absent.
+
 ---
 
 ## 6. Configuration that pretends to be configurable
@@ -493,7 +644,7 @@ Consequences for a real business:
 
 **Fix.** `QuoteLinesTable` takes a `taxCodes` prop and builds its rate list from the organisation's active sales tax codes, which the editor fetches with the existing `useTaxCodes` hook. The five hardcoded literals remain only as a fallback for tenants who have not configured tax yet, relabelled so they no longer claim to be named tax regimes. A business can now put a rate it actually needs — 8.25%, 7.7% — on a quote, and codes created under Finance → Tax reach the document.
 
-### 6.2 Three different currency lists, none of them the same — major
+### 6.2 Three different currency lists, none of them the same — major — FIXED
 
 The same account offers three different sets of currencies depending on the
 screen:
@@ -509,7 +660,16 @@ held in an account but cannot be quoted or used as a base. INR, SEK, DKK, NOK an
 PLN can be a base currency, but no account can be opened in them and nothing can
 be quoted in them. These should be one list from one source.
 
-### 6.3 Units of measure are fixed, and are the wrong ones — major
+**Fix.** One list, `CURRENCY_OPTIONS` in `packages/shared/src/finance/currency.ts`,
+with a code, a symbol and a name apiece, plus `currencyLabel` and
+`currencyLongLabel` so a dropdown beside a number and one with room to spare can
+differ in presentation without differing in content. It is the union of the
+three old lists plus NZD, CNY and ZAR, and it now drives the base-currency
+screen, the quote editor, the bank-account form and the expense claim form —
+four places, one source. There were four lists, not three: the expense claim had
+its own five.
+
+### 6.3 Units of measure are fixed, and are the wrong ones — major — FIXED
 
 The quote line UOM dropdown offers Units, Hours, Days, Licenses, Months,
 Packages, Services, Items — a software-services list, hardcoded alongside the tax
@@ -517,7 +677,14 @@ rates in `quote-lines-table.tsx`. For the made-to-order manufacturer this produc
 targets there is no kg, m², sheet, roll, pallet or thousand, and no way to add
 one. My 500 boxes had to be quoted in "Units".
 
-### 6.4 Expense categories are fixed and office-shaped — major
+**Fix.** `UNIT_GROUPS` in `packages/shared/src/quotes/units.ts` groups the units
+a trade actually uses — count, weight, length, area, volume, packaging, time —
+including kg, m², sheet, roll, pallet and thousand. The line's unit is a
+combobox (`<input list>` over a grouped `<datalist>`), not a dropdown, because
+`uom` is a free string end to end: the list is the suggestions, and a trade with
+a unit of its own can simply type it.
+
+### 6.4 Expense categories are fixed and office-shaped — major — FIXED
 
 Travel & Lodging, Meals & Entertainment, Office Supplies, Software & SaaS,
 Hardware & Equipment, Marketing & Advertising, Professional Services, Utilities &
@@ -526,7 +693,20 @@ materials, Freight, Subcontract or Consumables and must file everything under
 "Other" — which also makes the Category Budgets page, which budgets against these
 same categories, useless for the costs that actually matter.
 
-### 6.5 Country is a free-text box while tax rules match on country — major
+**Fix.** `EXPENSE_CATEGORY_GROUPS` adds the costs a manufacturer actually has —
+Raw materials, Packaging, Consumables, Subcontract, Freight & shipping, Tooling,
+Plant & machinery, Repairs & maintenance — grouped into cost of sales,
+operations, people and overheads.
+
+Writing it surfaced a second bug this finding had not reached: the expense form
+and the budget form were **two different lists with different values for the
+same category**. A claim was filed under `Travel` while the budget guarding it
+was `Travel & Lodging`, so no budget could ever be measured against the spending
+it was set for. One list now serves both, with the value and the label the same
+string, and `normaliseExpenseCategory` maps the four pre-merge short values onto
+their canonical names so rows already filed under them still count.
+
+### 6.5 Country is a free-text box while tax rules match on country — major — FIXED
 
 Both the customer and supplier forms take Country as free text. Tax rules match
 on an exact country code, then `EU`, then `*` (`taxRuleFor`, noted in
@@ -534,11 +714,27 @@ on an exact country code, then `EU`, then `*` (`taxRuleFor`, noted in
 "united states", and any country-based tax rule will silently miss. It should be
 a picker bound to ISO codes.
 
+**Fix.** A `CountrySelect` bound to the 249 ISO 3166-1 alpha-2 codes, on the
+customer form, the supplier form and the new sign-up field. Names come from
+`Intl.DisplayNames` rather than a list we would have to maintain.
+
+The schema normalises rather than refuses, which matters for records typed
+before the picker existed: "United States", "USA", "UK" and "united kingdom" all
+resolve to their code, and only something that is no country at all is an error.
+A customer loaded from the API must stay re-submittable without the schema
+rejecting its own stored value — the same rule `createContactSchema` already
+follows for nulls. A value that is still free text is kept as an extra option in
+the picker rather than silently cleared, so opening an old record and saving it
+is the thing that fixes it.
+
+The organization profile keeps its stricter field: nothing ever typed free text
+into it, so there is nothing to convert and a typo is worth refusing.
+
 ---
 
 ## 7. Sessions, navigation and smaller friction
 
-### 7.1 The session drops about every 15 minutes — major
+### 7.1 The session drops about every 15 minutes — major — FIXED
 
 I was signed out mid-task twice, roughly a quarter of an hour apart, each time on
 a plain navigation and with no warning. The audit trail records the re-logins at
@@ -550,7 +746,25 @@ is good. But nothing preserves work in progress: being bounced out of a
 half-written quote would lose it. For a tool meant to be open all day beside the
 work, this is the single most grating thing about using it.
 
-### 7.2 A customer is not a record you can open — major
+**Fix.** The cause is structural, and `get-session.ts` had already written it
+down: a server component cannot set cookies, so it cannot refresh. Worse, the
+refresh cookie is scoped to the API's auth routes — deliberately, to keep it off
+ordinary requests — so the Next server never receives it and *could* not refresh
+even if it could write cookies. The browser has both, which is why the app
+refreshes silently while it is open and drops you the moment you navigate.
+
+So the refresh now happens in the browser. When `proxy.ts` sees no access token
+it redirects to `/continue?next=…` instead of `/login`, a small client page
+spends the refresh cookie against the API and continues to where the person was
+going. A short-lived `crm_refresh_try` cookie bounds it: if the token is still
+missing on the way back, the next stop is `/login`, so a revoked session cannot
+loop. Nine tests cover the proxy, including that the destination and its query
+string survive.
+
+This does not preserve a half-written quote across an expiry — that would need
+the editor to draft locally — but the sign-out it was a symptom of is gone.
+
+### 7.2 A customer is not a record you can open — major — FIXED
 
 Customers can be created, listed, searched, sorted and exported, but the rows are
 not clickable and there is no `/customers/[id]` route. There is no way to open
@@ -559,7 +773,19 @@ history or notes in one place — the basic customer-360 view that is the reason
 have a CRM at all. Contacts do have a detail page; the companies you actually
 sell to do not.
 
-### 7.3 A quote cannot be emailed to the customer — major
+**Fix.** `/customers/[id]` exists and the company name in the list links to it.
+It shows the customer's details, then quotes sent and how many were accepted,
+orders placed and when they last ordered, everything invoiced to date, and what
+they currently owe — then the three document lists, each row linking to the
+document.
+
+The numbers are shaped by a new `GET /customers/:id/overview` rather than
+assembled in the browser: three narrow queries on the `customerId` each document
+already carries, instead of the page pulling every quote and invoice in the
+tenant and filtering them. Cancelled and voided invoices are excluded from both
+totals, because neither is owed.
+
+### 7.3 A quote cannot be emailed to the customer — major — FIXED
 
 After approving a quote, the only way to get it to the customer is *Get
 acceptance link*, which copies a URL to the clipboard for you to paste into your
@@ -568,14 +794,34 @@ having a mail provider, a channels module, and the customer's email address
 already filled in on the quote. Sending the quote is the most common action in
 the entire sales process.
 
-### 7.4 The customer's acceptance link points at a different hostname — minor
+**Fix.** **Send to customer** is now the primary action on the quote. It issues
+the acceptance link and emails it, with the seller's own name in the subject and
+a link to the public page. *Get acceptance link* stays, relabelled "Copy link
+instead", for anyone who would rather send it their own way.
+
+It is built on `createLink`, so every refusal that already existed applies
+unchanged — superseded, rejected, already accepted, nothing priced — and sending
+invalidates any earlier link exactly as issuing one by hand does. The address
+defaults to the one on the quote and is checked *before* the link is issued, so
+a quote is not invalidated by a send that was never going to leave the building.
+
+### 7.4 The customer's acceptance link points at a different hostname — minor — FIXED
 
 The link generated on `switeaz.com` is `https://staging.switeaz.com/q/<token>`.
 It works, but the host says "staging" to every customer who receives one, and
 does not match the domain the business is using. Worth checking the public web
 URL configuration before anyone sends one to a real client.
 
-### 7.5 A pending invite cannot be resent or copied — minor
+**Fix.** The cause was that `WEB_ORIGIN` is a **CORS allow-list** and the link
+builders took `[0]` from it — on staging, the `staging.` host. A separate
+`PUBLIC_WEB_URL` now names the one origin customers and invitees are sent to,
+falling back to the first `WEB_ORIGIN` entry so nothing changes where it is
+unset. Acceptance links, invite links and billing checkout URLs all read it.
+
+Set `PUBLIC_WEB_URL=https://switeaz.com` on staging before sending a link to a
+real client — the code change alone does not fix the deployed value.
+
+### 7.5 A pending invite cannot be resent or copied — minor — FIXED
 
 The Team page lists pending invitations with an expiry and a Cancel action. There
 is no "resend" and no "copy invite link". If the mail never arrives — a
@@ -583,7 +829,16 @@ misconfigured provider, a spam filter — the owner's only option is to cancel a
 re-invite, and hope. The quote acceptance flow has a copy-link fallback; invites
 should have one too.
 
-### 7.6 Other friction
+**Fix.** The resend endpoint already existed and nothing called it; pending
+invites now have a **Resend** button. It also returns the link it just emailed,
+so the row shows a **Copy link** fallback for when the mail does not arrive.
+
+The link is returned only from the resend route and only to someone holding
+`user:create`, who can invite whoever they like anyway — never from the
+pending-invitation list, which is read far more widely. It is held in component
+state, for the invite just re-sent.
+
+### 7.6 Other friction — FIXED
 
 - **Modals open pinned to the top-left corner** of the viewport rather than
   centred — seen on Record Payment, Add team member and Prepare delivery.
@@ -598,6 +853,33 @@ should have one too.
   too (§4.1), stock can never be anything but zero, and an opening stock count
   cannot be entered.
 - **Dispatching 500 units with zero stock raised no warning** and moved no stock.
+
+**Fix.** All four.
+
+Modals are centred — one `m-auto`, see §3.3; it was every modal in the app, not
+three.
+
+Audit entries name their record. The interceptor already photographed the row
+either side of a write, so the document number was there and unused; it now
+fills `summary` from the snapshot (`after` first, so a rename files under the
+new name; `before` as a fallback, so a delete still says what was deleted) and
+the list reads "Created **QT-2026-0001** by Daniel Whitfield".
+
+Stock adjustment was half-fixed since the walkthrough: `StockActionsDialog`
+exists and corrects a row. What was still missing is the case that mattered —
+**an opening count**, where no row exists at all, so the only way to get stock in
+was to raise a purchase order for goods already bought elsewhere. **Enter opening
+stock** on the stock page picks any catalog material and adds a quantity, and it
+is available with an empty table. It asks for a unit cost and passes it through
+`applyReceipt`: stock entered at zero is consumed at zero, and every job made
+from it would report a 100% margin — the same wrong number this report already
+criticises elsewhere.
+
+Dispatching against zero stock is now visible. A line sold from stock was in fact
+already refused if short — `moveForReference` checks what is on hand. The silent
+case is a line with **no catalog material behind it**, which moves nothing by
+design and said nothing at all. The delivery note now warns which lines are not
+stock-tracked before you dispatch them.
 
 ---
 
@@ -632,6 +914,10 @@ Worth recording, because most of the sales side is genuinely strong:
 
 **Not yet — it can sell, but it cannot buy, make, cost or account.**
 
+*(As first written, 2026-09-16. After two passes of fixes every row of the table
+below has moved; the verdict is kept as it stood, because the point of it was
+what a paying customer met on their first day.)*
+
 Worked through as an owner, the product splits cleanly in two. The quote-to-cash
 path is real, polished, and would stand up to daily use. Everything behind it is
 either unreachable from the interface or never reaches the ledger.
@@ -643,19 +929,23 @@ permissions precisely, and see an audit trail of all of it.
 
 What it **cannot** do:
 
-| Operation | Status |
-| --- | --- |
-| Set up its own company details, tax number, logo | **No screen or API exists** (§5.1) |
-| Define products, materials, work centres, tooling | **No screen exists** (§2.1) |
-| Quote from a cost model — the headline feature | **Blocked by the above** (§2.1) |
-| Know the margin on a job | **Always an over-estimate; cost is always 0** (§2.2) |
-| Plan or run production | **Blocked; Production module unreachable** (§2.2) |
-| Raise a purchase order | **No screen exists** (§4.1) |
-| Enter a supplier bill, or owe a supplier money | **Reachable only from a PO** (§4.2) |
-| Record any cost in the accounts | **Expense claims never post** (§4.3) |
-| Hold any stock | **Requires a goods receipt against a PO** (§7.6) |
-| Produce a correct P&L or balance sheet | **No costs; opening balances missing** (§3.1, §4.3) |
-| Charge a tax rate it configured | **Quote tax list is hardcoded** (§6.1) |
+| Operation | Status as first written | Now |
+| --- | --- | --- |
+| Set up its own company details, tax number, logo | **No screen or API exists** (§5.1) | Settings → Company, logo included |
+| Define products, materials, work centres, tooling | **No screen exists** (§2.1) | Catalog screen |
+| Quote from a cost model — the headline feature | **Blocked by the above** (§2.1) | Templates tab and editor |
+| Know the margin on a job | **Always an over-estimate; cost is always 0** (§2.2) | Real for catalog-priced lines |
+| Plan or run production | **Blocked; Production module unreachable** (§2.2) | Reachable; *Start production* raises work orders |
+| Raise a purchase order | **No screen exists** (§4.1) | New purchase order |
+| Enter a supplier bill, or owe a supplier money | **Reachable only from a PO** (§4.2) | Open, via a PO |
+| Record any cost in the accounts | **Expense claims never post** (§4.3) | Claims post on approval and reimbursement |
+| Hold any stock | **Requires a goods receipt against a PO** (§7.6) | Goods receipts, plus an opening count |
+| Produce a correct P&L or balance sheet | **No costs; opening balances missing** (§3.1, §4.3) | Opening balances post, and are backfilled |
+| Charge a tax rate it configured | **Quote tax list is hardcoded** (§6.1) | Reads the organisation's own codes |
+
+The one line in that table not fully earned is **cost of goods sold** on a
+dispatched catalog line, which §2.2 explains: the path exists, and this pass did
+not walk it end to end.
 
 There is also a commercial consequence worth naming: the Growth plan at
 $39/seat/month advertises "Purchasing, stock and bills" and "Production and work
@@ -667,6 +957,13 @@ the screen is missing. `useCreatePurchaseOrder`, `inventory.adjust`,
 `setReorderLevels` and the entire catalog write API are built, typed and unused.
 This reads like a product whose back end ran ahead of its front end, not one with
 deep design problems.
+
+That diagnosis held. Almost every fix in both passes was a screen over plumbing
+that already worked — the purchase order form, the catalog, the template editor,
+the invitation resend, the stock opening count. The exceptions were the ones
+worth having found: expense claims posted nowhere because the activity behind
+them was a stub, opening balances were never journalled at all, and the session
+dropped because a server component cannot write a cookie.
 
 Suggested order of work, by how much each unblocks:
 
@@ -686,3 +983,21 @@ Suggested order of work, by how much each unblocks:
 
 None of this contradicts `docs/FLAGS.md`, which records trade-offs the team took
 knowingly. These are the gaps a paying customer meets on their first day.
+
+All seven of those are now done. What is left, in the order it is worth doing:
+
+1. **Deploy and walk it again.** Everything in the second pass is verified
+   locally and nothing is verified in a browser. The first pass found two faults
+   — a `limit=500` against an endpoint capped at 100, and an axis drawing thirty
+   dates on top of each other — that only deploying surfaced, and there is no
+   reason to think this pass is different. Set `PUBLIC_WEB_URL` when you do
+   (§7.4), or acceptance links will still say `staging.`.
+2. **Prove cost of goods sold** on a dispatched catalog-priced line (§2.2), the
+   one row of the verdict table not fully earned.
+3. **Write a template end to end as a customer would** — the editor accepts
+   everything the schema does, but a formula the expression parser rejects is
+   only discovered on save, and the messages it gives back have not been read by
+   anyone learning the language.
+4. **The legacy drift backlog.** `scripts/drift-baseline.json` still carries 101
+   statements. Nothing here added to it, and it is what the baseline exists to
+   let you pay down.

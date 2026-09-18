@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { AlertCircle } from 'lucide-react';
+import Link from 'next/link';
+import { AlertCircle, ArrowRight } from 'lucide-react';
 import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input, Select } from '@/components/ui/field';
@@ -54,7 +55,11 @@ export function RecordPaymentModal({
     setError(null);
 
     if (!accountId) {
-      setError('Please select an account to deposit the payment into.');
+      setError(
+        accounts.length === 0
+          ? 'This organisation has no bank or cash account yet, so there is nowhere to deposit the money. Add one under Finance → Bank & Cash Accounts first.'
+          : 'Please select an account to deposit the payment into.',
+      );
       return;
     }
     if (isNaN(numericAmount) || numericAmount <= 0) {
@@ -120,13 +125,40 @@ export function RecordPaymentModal({
           <label htmlFor="select-payment-account" className="block text-xs font-bold text-ink">
             Deposit Into
           </label>
-          <Select
-            id="select-payment-account"
-            value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
-            options={accountOptions}
-            placeholder="Select Account"
-          />
+          {accounts.length === 0 ? (
+            /*
+             * The dropdown used to render empty here and the form failed with
+             * "Please select an account", naming a field that had nothing in
+             * it. On a new tenant no cash account exists yet, so the first
+             * payment anyone tries to record is a dead end until they find the
+             * accounts page by exploring. Say what is missing, and link to it.
+             */
+            <div
+              data-testid="record-payment-no-accounts"
+              className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-xs text-ink"
+            >
+              <p className="font-semibold">No bank or cash account exists yet.</p>
+              <p className="mt-1 text-ink-muted">
+                A payment has to land somewhere the books can see. Add an account first, then
+                come back to this invoice.
+              </p>
+              <Link
+                href="/finance/accounts"
+                className="mt-2 inline-flex items-center gap-1 font-semibold text-brand hover:underline"
+              >
+                Go to Finance &rarr; Bank &amp; Cash Accounts
+                <ArrowRight className="size-3" />
+              </Link>
+            </div>
+          ) : (
+            <Select
+              id="select-payment-account"
+              value={accountId}
+              onChange={(e) => setAccountId(e.target.value)}
+              options={accountOptions}
+              placeholder="Select Account"
+            />
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -163,7 +195,12 @@ export function RecordPaymentModal({
           <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={isLoading}>
             Cancel
           </Button>
-          <Button type="submit" variant="primary" size="sm" disabled={isLoading}>
+          <Button
+            type="submit"
+            variant="primary"
+            size="sm"
+            disabled={isLoading || accounts.length === 0}
+          >
             {isLoading ? 'Recording...' : 'Record Payment'}
           </Button>
         </div>

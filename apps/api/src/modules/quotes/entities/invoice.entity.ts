@@ -218,4 +218,13 @@ export class Invoice {
     transformer: numericTransformer,
   })
   fxRate: number;
+
+  /**
+   * The quote's own document number, joined in for display.
+   *
+   * Not a column: the invoices list used to print `quoteId` — a raw UUID —
+   * in a column labelled "Quote ID", where every other screen in the product
+   * shows `QT-2026-0001`. Populated by the list and single-invoice reads.
+   */
+  quoteNumber?: string | null;
 }

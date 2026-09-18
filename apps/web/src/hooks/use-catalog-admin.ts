@@ -15,6 +15,9 @@ import type {
   ToolingDto,
   CreateToolingPayload,
   UpdateToolingPayload,
+  ProductTemplateDto,
+  CreateProductTemplatePayload,
+  UpdateProductTemplatePayload,
 } from '@saas/shared';
 import { api, queryKeys } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/client';
@@ -198,5 +201,68 @@ export function useDeleteCatalogItem() {
       toast.success('Product removed');
     },
     onError: (error) => toast.error(describe(error, 'Could not remove the product')),
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Product templates
+ * ------------------------------------------------------------------ */
+
+export function useTemplates() {
+  return useQuery<ProductTemplateDto[]>({
+    queryKey: queryKeys.catalogTemplates,
+    queryFn: () => api.catalog.listTemplates(),
+  });
+}
+
+export function useTemplate(id: string | null) {
+  return useQuery<ProductTemplateDto>({
+    queryKey: queryKeys.catalogTemplate(id ?? ''),
+    queryFn: () => api.catalog.getTemplate(id as string),
+    enabled: Boolean(id),
+  });
+}
+
+/**
+ * Creates a template, or publishes the next version of one.
+ *
+ * Saving an existing template never edits it: templates are immutable once
+ * published, so this inserts version + 1 and leaves quotes priced from the old
+ * version reading exactly as they did. That is why the toast says which
+ * version the save produced.
+ */
+export function useSaveTemplate() {
+  const invalidate = useInvalidateCatalog();
+
+  return useMutation({
+    mutationFn: (input: { id?: string; payload: CreateProductTemplatePayload }) =>
+      input.id
+        ? api.catalog.publishTemplateVersion(
+            input.id,
+            input.payload as UpdateProductTemplatePayload,
+          )
+        : api.catalog.createTemplate(input.payload),
+    onSuccess: async (template, variables) => {
+      await invalidate();
+      toast.success(
+        variables.id
+          ? `${template.name} published as version ${template.version}`
+          : `${template.name} created`,
+      );
+    },
+    onError: (error) => toast.error(describe(error, 'Could not save the template')),
+  });
+}
+
+export function useDeleteTemplate() {
+  const invalidate = useInvalidateCatalog();
+
+  return useMutation({
+    mutationFn: (id: string) => api.catalog.deleteTemplate(id),
+    onSuccess: async () => {
+      await invalidate();
+      toast.success('Template removed');
+    },
+    onError: (error) => toast.error(describe(error, 'Could not remove the template')),
   });
 }

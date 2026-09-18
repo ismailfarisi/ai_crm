@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { countryCodeField } from './country';
 
 /**
  * Optional text fields normalise blank input to `null` so the database holds one
@@ -49,7 +50,7 @@ export const createCustomerSchema = z.object({
   addressLine2: optionalText(160),
   city: optionalText(80),
   postalCode: optionalText(20),
-  country: optionalText(80),
+  country: countryCodeField,
   taxId: optionalText(40),
   currency: currency.default('USD'),
   paymentTermsDays: paymentTermsDays.default(30),
@@ -79,7 +80,7 @@ export const updateCustomerSchema = z.object({
   addressLine2: optionalText(160).optional(),
   city: optionalText(80).optional(),
   postalCode: optionalText(20).optional(),
-  country: optionalText(80).optional(),
+  country: countryCodeField.optional(),
   taxId: optionalText(40).optional(),
   currency: currency.optional(),
   paymentTermsDays: paymentTermsDays.optional(),

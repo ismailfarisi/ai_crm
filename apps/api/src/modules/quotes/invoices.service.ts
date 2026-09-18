@@ -110,6 +110,12 @@ export class InvoicesService {
     if (!invoice) {
       throw new NotFoundException(`Invoice with ID ${id} not found`);
     }
+    // So the invoice shows "QT-2026-0001" rather than the quote's UUID.
+    const quote = await this.dataSource.getRepository(Quote).findOne({
+      where: { id: invoice.quoteId, tenantId },
+      select: { id: true, quoteNumber: true },
+    });
+    invoice.quoteNumber = quote?.quoteNumber ?? null;
     return invoice;
   }
 

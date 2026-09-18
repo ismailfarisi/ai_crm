@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
 import { Building2, Pencil, Plus, Trash2 } from 'lucide-react';
@@ -33,7 +34,17 @@ export function CustomersView() {
         header: ({ column }) => <DataTableColumnHeader column={column} title="Company" />,
         cell: ({ row }) => (
           <div>
-            <p className="font-medium text-ink">{row.original.companyName}</p>
+            {/*
+              The row used to be inert: there was nowhere for it to go, so the
+              company you sell to was the one record in the product you could
+              not open.
+            */}
+            <Link
+              href={`/customers/${row.original.id}`}
+              className="font-medium text-ink hover:text-brand hover:underline"
+            >
+              {row.original.companyName}
+            </Link>
             {row.original.email && (
               <p className="text-xs text-ink-subtle">{row.original.email}</p>
             )}

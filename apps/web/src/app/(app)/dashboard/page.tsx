@@ -12,8 +12,10 @@ import {
 } from 'lucide-react';
 import {
   CONTACT_STATUS_LABELS,
+  PERMISSION_GROUPS,
   PERMISSIONS,
   type ContactStatsDto,
+  type OrganizationProfileDto,
   type SessionDto,
 } from '@saas/shared';
 import { serverFetchOrNull } from '@/lib/api/server';
@@ -23,6 +25,7 @@ import { Badge, Card, CardBody, CardHeader, CardTitle } from '@/components/ui/pr
 import { DashboardGaugeWidget } from '@/components/dashboard/dashboard-gauge-widget';
 import { DashboardKpiChart } from '@/components/dashboard/dashboard-kpi-chart';
 import { DashboardScheduleCards } from '@/components/dashboard/dashboard-schedule-cards';
+import { SetupChecklist, type SetupStep } from '@/components/dashboard/setup-checklist';
 
 export const metadata: Metadata = { title: 'Dashboard' };
 
@@ -143,6 +146,65 @@ function quotesAwaitingAction(quotes: DashboardQuote[]) {
     }));
 }
 
+/**
+ * The setup steps, and whether each is done.
+ *
+ * A step whose data the viewer cannot read (`null`, not an empty array) counts
+ * as done: telling someone to go and do something they have no permission for
+ * is worse than saying nothing.
+ */
+function buildSetupSteps(input: {
+  organization: OrganizationProfileDto | null;
+  accountCount: number | null;
+  catalogCount: number | null;
+  chargeableTaxCodes: number | null;
+  customerCount: number | null;
+}): SetupStep[] {
+  const org = input.organization;
+
+  return [
+    {
+      key: 'company',
+      label: 'Add your company address and tax registration',
+      detail:
+        'Most jurisdictions require them on an invoice, and they print on every document your customers see.',
+      href: '/settings/company',
+      done: org === null || Boolean(org.addressLine1 && org.taxId),
+    },
+    {
+      key: 'account',
+      label: 'Open a bank or cash account',
+      detail:
+        'A payment has nowhere to land without one, and an expense claim has nothing to be reimbursed from.',
+      href: '/finance/accounts',
+      done: input.accountCount === null || input.accountCount > 0,
+    },
+    {
+      key: 'tax',
+      label: 'Set the tax rates you charge',
+      detail:
+        'You start with a 0% code so nothing is invented on your behalf. Add the rates you actually charge.',
+      href: '/finance/tax',
+      done: input.chargeableTaxCodes === null || input.chargeableTaxCodes > 0,
+    },
+    {
+      key: 'catalog',
+      label: 'Add what you sell to the catalog',
+      detail:
+        'Quote lines priced from the catalog carry a real cost, which is what makes the margin on a job real.',
+      href: '/catalog',
+      done: input.catalogCount === null || input.catalogCount > 0,
+    },
+    {
+      key: 'customer',
+      label: 'Add your first customer',
+      detail: 'A quote is addressed to a customer, so this is the start of the sales trail.',
+      href: '/customers',
+      done: input.customerCount === null || input.customerCount > 0,
+    },
+  ];
+}
+
 export default async function DashboardPage() {
   const session = await requireSession();
   const now = new Date();
@@ -150,13 +212,41 @@ export default async function DashboardPage() {
   const formattedDate = getFormattedDate(now);
 
   // Each returns null rather than throwing when the user lacks the permission.
-  const [stats, quotes, invoices] = await Promise.all([
-    serverFetchOrNull<ContactStatsDto>('/contacts/stats'),
-    serverFetchOrNull<DashboardQuote[]>('/quotes'),
-    serverFetchOrNull<{ items?: DashboardInvoice[] } | DashboardInvoice[]>(
-      '/invoices',
-    ),
-  ]);
+  const [
+    stats,
+    quotes,
+    invoices,
+    organization,
+    accounts,
+    catalogItems,
+    taxCodes,
+    customers,
+  ] =
+    await Promise.all([
+      serverFetchOrNull<ContactStatsDto>('/contacts/stats'),
+      serverFetchOrNull<DashboardQuote[]>('/quotes'),
+      serverFetchOrNull<{ items?: DashboardInvoice[] } | DashboardInvoice[]>(
+        '/invoices',
+      ),
+      serverFetchOrNull<OrganizationProfileDto>('/organization'),
+      serverFetchOrNull<unknown[]>('/finance/accounts'),
+      serverFetchOrNull<unknown[]>('/catalog/items', { query: { limit: 1 } }),
+      serverFetchOrNull<Array<{ rate: number }>>('/finance/tax-codes'),
+      serverFetchOrNull<{ items?: unknown[] } | unknown[]>('/customers', {
+        query: { limit: 1 },
+      }),
+    ]);
+
+  const setupSteps = buildSetupSteps({
+    organization,
+    accountCount: accounts?.length ?? null,
+    catalogCount: catalogItems?.length ?? null,
+    // A rate someone chose, rather than the 0% code every tenant starts with.
+    chargeableTaxCodes: taxCodes ? taxCodes.filter((c) => Number(c.rate) > 0).length : null,
+    customerCount: Array.isArray(customers)
+      ? customers.length
+      : (customers?.items?.length ?? null),
+  });
 
   const winRate = summariseWinRate(quotes ?? []);
   const revenueSeries = monthlyRevenue(
@@ -203,6 +293,8 @@ export default async function DashboardPage() {
           </Link>
         </div>
       </div>
+
+      <SetupChecklist steps={setupSteps} />
 
       {stats ? (
         <>
@@ -363,6 +455,30 @@ function Stat({
   );
 }
 
+/**
+ * The owner's access as one line per feature area.
+ *
+ * This card used to print all 91 raw permission strings — `quote:approve_below_margin`
+ * and the rest — on the screen the owner sees most, which is a debugging view
+ * rather than an answer to "what can I do here". The codes still exist, in the
+ * role editor, which is where someone changing them is already standing.
+ *
+ * Areas the user holds nothing in are dropped: a list of things you cannot do
+ * is not what the dashboard is for.
+ */
+function summariseAccess(
+  permissions: string[],
+): Array<{ key: string; label: string; held: number; total: number }> {
+  const held = new Set(permissions);
+
+  return PERMISSION_GROUPS.map((group) => ({
+    key: group.key,
+    label: group.label,
+    held: group.permissions.filter((permission) => held.has(permission)).length,
+    total: group.permissions.length,
+  })).filter((area) => area.held > 0);
+}
+
 /** Makes the RBAC model visible — useful while building, and honest for users. */
 function AccessCard({ session }: { session: SessionDto }) {
   const canManageRoles = can(session, { permission: PERMISSIONS.ROLE_READ });
@@ -397,15 +513,33 @@ function AccessCard({ session }: { session: SessionDto }) {
         </div>
         <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-subtle">
-            Active Permissions ({session.permissions.length})
+            What you can reach ({session.permissions.length} permissions)
           </p>
-          <div className="flex flex-wrap gap-1.5">
-            {session.permissions.map((permission) => (
-              <Badge key={permission} className="rounded-lg border-border/60 bg-surface-muted/60 font-mono text-[11px] text-ink-muted">
-                {permission}
-              </Badge>
+          <div className="grid gap-x-4 gap-y-1.5 sm:grid-cols-2">
+            {summariseAccess(session.permissions).map((area) => (
+              <div key={area.key} className="flex items-baseline justify-between gap-2 text-xs">
+                <span className="truncate text-ink">{area.label}</span>
+                <span
+                  className={
+                    area.held === area.total
+                      ? 'shrink-0 font-semibold tabular-nums text-emerald-600 dark:text-emerald-400'
+                      : 'shrink-0 tabular-nums text-ink-subtle'
+                  }
+                >
+                  {area.held === area.total ? 'Full' : `${area.held} of ${area.total}`}
+                </span>
+              </div>
             ))}
           </div>
+          {canManageRoles && (
+            <p className="mt-3 text-[11px] text-ink-subtle">
+              The individual permission codes are on{' '}
+              <Link href="/settings/roles" className="font-medium text-brand hover:underline">
+                Settings &rarr; Roles &amp; permissions
+              </Link>
+              .
+            </p>
+          )}
         </div>
       </CardBody>
     </Card>

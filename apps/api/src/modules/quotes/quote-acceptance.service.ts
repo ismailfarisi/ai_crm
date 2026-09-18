@@ -21,10 +21,26 @@ import {
 import type { AppConfig } from '@/config/configuration';
 import { Organization } from '../organizations/entities/organization.entity';
 import { AutomationEventBridgeService } from '../automations/services/automation-event-bridge.service';
+import { MailService } from '../mail/mail.service';
+import { OrganizationsService } from '../organizations/organizations.service';
 import { Quote, QuoteStatus } from './entities/quote.entity';
 
 const hashToken = (token: string) =>
   createHash('sha256').update(token).digest('hex');
+
+/** The logo URL the DTO carries, resolved against the API's public origin. */
+function absoluteLogoUrl(apiOrigin: string, path: string | null): string | null {
+  return path ? `${apiOrigin}${path}` : null;
+}
+
+/** Customer names and free-typed notes go into an HTML email body. */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 /** Tokens are 32 random bytes as base64url: 43 characters, nothing else. */
 const TOKEN_SHAPE = /^[A-Za-z0-9_-]{43}$/;
@@ -49,6 +65,7 @@ export class QuoteAcceptanceService {
     private readonly organizations: Repository<Organization>,
     private readonly config: ConfigService<AppConfig, true>,
     private readonly events: AutomationEventBridgeService,
+    private readonly mail: MailService,
   ) {}
 
   /**
@@ -100,8 +117,78 @@ export class QuoteAcceptanceService {
       { acceptanceTokenHash: hashToken(token), acceptanceExpiresAt: expiresAt },
     );
 
-    const origin = this.config.get('webOrigin', { infer: true })[0];
+    const origin = this.config.get('publicWebUrl', { infer: true });
     return { url: `${origin}/q/${token}`, expiresAt: expiresAt.toISOString() };
+  }
+
+  /**
+   * Issues an acceptance link and emails it to the customer.
+   *
+   * Sending the quote is the most common action in the whole sales process,
+   * and the only way to do it was *Get acceptance link*, which copied a URL to
+   * the clipboard for the sender to paste into their own mail client — while
+   * the product had a mail provider, a channels module and the customer's
+   * address already on the quote.
+   *
+   * Built on `createLink`, so every refusal it makes — superseded, rejected,
+   * already accepted, nothing priced — applies here too, and sending also
+   * invalidates any earlier link exactly as issuing one by hand does.
+   */
+  async sendToCustomer(
+    tenantId: string,
+    quoteId: string,
+    options: { to?: string; message?: string } = {},
+  ): Promise<{ sentTo: string; url: string; expiresAt: string }> {
+    const quote = await this.quotes.findOne({
+      where: { id: quoteId, tenantId },
+    });
+    if (!quote) {
+      throw new NotFoundException(`Quote with ID ${quoteId} not found`);
+    }
+
+    const to = (options.to ?? quote.customerEmail ?? '').trim();
+    if (!to) {
+      throw new BadRequestException(
+        'This quote has no customer email address. Add one to the quote, or to the customer record, first.',
+      );
+    }
+
+    // After the address check, so a quote is not invalidated by a send that
+    // was never going to leave the building.
+    const link = await this.createLink(tenantId, quoteId);
+
+    const organization = await this.organizations.findOne({
+      where: { id: tenantId },
+    });
+    const sender = organization?.legalName || organization?.name || 'Relay CRM';
+    const reference = quote.quoteNumber ?? 'your quote';
+    const note = (options.message ?? '').trim();
+
+    await this.mail.sendMail({
+      to,
+      subject: `${reference} from ${sender}`,
+      html: [
+        `<p>Hi ${escapeHtml(quote.customerName)},</p>`,
+        note ? `<p>${escapeHtml(note).replace(/\n/g, '<br>')}</p>` : '',
+        `<p>Here is ${escapeHtml(reference)}${quote.title ? ` — ${escapeHtml(quote.title)}` : ''}.</p>`,
+        `<p><a href="${escapeHtml(link.url)}">View and accept the quote</a></p>`,
+        `<p>The link is valid until ${new Date(link.expiresAt).toDateString()}.</p>`,
+        `<p>${escapeHtml(sender)}</p>`,
+      ].join(''),
+      text: [
+        `Hi ${quote.customerName},`,
+        note,
+        `Here is ${reference}${quote.title ? ` — ${quote.title}` : ''}.`,
+        `View and accept it: ${link.url}`,
+        `The link is valid until ${new Date(link.expiresAt).toDateString()}.`,
+        sender,
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
+    });
+
+    this.logger.log(`Quote ${reference} sent to ${to}`);
+    return { sentTo: to, ...link };
   }
 
   async view(token: string): Promise<PublicQuoteDto> {
@@ -234,6 +321,14 @@ export class QuoteAcceptanceService {
         website: organization?.website ?? null,
         addressLines: organization ? formatOrganizationAddress(organization) : [],
         documentFooter: organization?.documentFooter ?? null,
+        // Absolute: the customer's browser is on the web app's origin, and the
+        // logo is served by the API.
+        logoUrl: organization
+          ? absoluteLogoUrl(
+              this.config.get('publicApiUrl', { infer: true }),
+              OrganizationsService.logoUrl(organization),
+            )
+          : null,
       },
       quoteNumber: quote.quoteNumber,
       title: quote.title,

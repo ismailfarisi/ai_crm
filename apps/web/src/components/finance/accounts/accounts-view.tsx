@@ -21,6 +21,7 @@ import { TransferFundsModal } from './transfer-funds-modal';
 import {
   useFinanceAccounts,
   useCreateFinanceAccount,
+  useUpdateFinanceAccount,
   useTransferFunds,
 } from '@/hooks/use-finance';
 import type { FinanceAccountDto } from '@saas/shared';
@@ -61,6 +62,7 @@ function StatItem({
 export function AccountsView() {
   const { data: accounts = [], isLoading } = useFinanceAccounts();
   const createAccountMutation = useCreateFinanceAccount();
+  const updateAccountMutation = useUpdateFinanceAccount();
   const transferFundsMutation = useTransferFunds();
 
   const [isNewAccountModalOpen, setIsNewAccountModalOpen] = useState(false);
@@ -153,6 +155,7 @@ export function AccountsView() {
         isLoading={isLoading}
         onTransfer={handleOpenTransfer}
         onNewAccount={() => setIsNewAccountModalOpen(true)}
+        onMakeDefault={(id) => updateAccountMutation.mutate({ id, isDefault: true })}
       />
 
       {/* Modals */}

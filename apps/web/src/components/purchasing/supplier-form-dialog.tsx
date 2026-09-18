@@ -10,6 +10,7 @@ import { ApiError } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Input, Textarea } from '@/components/ui/field';
+import { CountrySelect } from '@/components/ui/country-select';
 
 interface SupplierFormDialogProps {
   open: boolean;
@@ -55,6 +56,7 @@ export function SupplierFormDialog({ open, onClose, supplier }: SupplierFormDial
     handleSubmit,
     reset,
     setError,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<FormValues, unknown, SubmitValues>({
     resolver: zodResolver(createSupplierSchema),
@@ -165,7 +167,18 @@ export function SupplierFormDialog({ open, onClose, supplier }: SupplierFormDial
             error={errors.postalCode?.message}
             {...register('postalCode')}
           />
-          <Input label="Country" error={errors.country?.message} {...register('country')} />
+          {/*
+            `value` is watched rather than left to `register`, so a country
+            typed before this was a picker stays visible instead of reading as
+            blank the next time the record is opened.
+          */}
+          <CountrySelect
+            label="Country"
+            value={watch('country') ?? ''}
+            hint="Tax rules match on the country code, so this is a list rather than a box."
+            error={errors.country?.message}
+            {...register('country')}
+          />
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3">

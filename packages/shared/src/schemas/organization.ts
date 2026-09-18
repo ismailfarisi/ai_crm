@@ -74,6 +74,13 @@ export interface OrganizationProfileDto {
   postalCode: string | null;
   country: string | null;
   documentFooter: string | null;
+  /**
+   * Where the logo is served from, or null when none is set.
+   *
+   * Carries the upload time as a query parameter so replacing the logo
+   * replaces what a browser has cached.
+   */
+  logoUrl: string | null;
 }
 
 /**

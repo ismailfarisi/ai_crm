@@ -21,6 +21,7 @@ import {
   SalesOrderLine,
 } from './entities/sales-order.entity';
 import { raiseStageInvoice } from './order-provisioning';
+import { ProductionService } from '../production/production.service';
 
 /**
  * Where an order can go next. Invoicing is deliberately not tied to these:
@@ -53,6 +54,7 @@ export class OrdersService {
     private readonly ledger: LedgerService,
     private readonly dataSource: DataSource,
     private readonly events: AutomationEventBridgeService,
+    private readonly production: ProductionService,
   ) {}
 
   async list(
@@ -182,6 +184,7 @@ export class OrdersService {
     tenantId: string,
     id: string,
     status: SalesOrderStatus,
+    actorId: string,
   ): Promise<SalesOrderDto> {
     const order = await this.findOrder(tenantId, id);
     if (status === 'CANCELLED') {
@@ -207,6 +210,37 @@ export class OrdersService {
         );
       }
     }
+    /*
+     * "Start production" used to flip a badge and raise nothing: the
+     * Production page still read "No work orders", no job existed, nothing was
+     * scheduled and no material was committed — while the order list told the
+     * owner work had started on the floor.
+     *
+     * So it now starts production. Planning is idempotent (a line that already
+     * has a live work order is skipped), and when nothing at all can be
+     * planned the move is refused with the reason, rather than leaving a
+     * status that claims something untrue.
+     */
+    if (status === 'IN_PRODUCTION') {
+      const planned = await this.production.createFromSalesOrder(
+        tenantId,
+        actorId,
+        order.id,
+        { salesOrderLineIds: null, dueDate: null },
+      );
+
+      const alreadyRunning = await this.production.countLive(tenantId, order.id);
+
+      if (planned.created.length === 0 && alreadyRunning === 0) {
+        const reasons = [...new Set(planned.skipped.map((s) => s.reason))];
+        throw new BadRequestException(
+          `Nothing on ${order.orderNumber} can be made into a work order, so production cannot start. ${
+            reasons.join('. ') || 'The order has no lines to plan.'
+          }`,
+        );
+      }
+    }
+
     if (status === 'FULFILLED') {
       const deliveries = await this.countDeliveries(order.id);
       if (deliveries > 0) {

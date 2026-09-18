@@ -14,8 +14,59 @@
 
 export const RATE_DP = 8;
 
+/**
+ * The currencies the UI offers, with what to call them.
+ *
+ * One list, used everywhere a currency is picked. There used to be three, and
+ * none of them agreed: SAR could be quoted but never held in an account or
+ * used as a base; SGD could be held but never quoted; INR, SEK, DKK, NOK and
+ * PLN could be a base currency while no account could be opened in them and
+ * nothing could be quoted in them. The union of the three lists is what a
+ * business could reach by going to the right screen, so the union is what
+ * every screen now offers.
+ *
+ * Any ISO 4217 code is still accepted by the API — this is the offered set,
+ * not the permitted one.
+ */
+export const CURRENCY_OPTIONS: ReadonlyArray<{
+  code: string;
+  symbol: string;
+  name: string;
+}> = [
+  { code: 'USD', symbol: '$', name: 'US Dollar' },
+  { code: 'EUR', symbol: '€', name: 'Euro' },
+  { code: 'GBP', symbol: '£', name: 'British Pound' },
+  { code: 'CHF', symbol: 'Fr', name: 'Swiss Franc' },
+  { code: 'SEK', symbol: 'kr', name: 'Swedish Krona' },
+  { code: 'DKK', symbol: 'kr', name: 'Danish Krone' },
+  { code: 'NOK', symbol: 'kr', name: 'Norwegian Krone' },
+  { code: 'PLN', symbol: 'zł', name: 'Polish Złoty' },
+  { code: 'CAD', symbol: '$', name: 'Canadian Dollar' },
+  { code: 'AUD', symbol: '$', name: 'Australian Dollar' },
+  { code: 'NZD', symbol: '$', name: 'New Zealand Dollar' },
+  { code: 'SGD', symbol: '$', name: 'Singapore Dollar' },
+  { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
+  { code: 'CNY', symbol: '¥', name: 'Chinese Yuan' },
+  { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
+  { code: 'AED', symbol: 'د.إ', name: 'UAE Dirham' },
+  { code: 'SAR', symbol: '﷼', name: 'Saudi Riyal' },
+  { code: 'ZAR', symbol: 'R', name: 'South African Rand' },
+];
+
 /** Codes offered in the UI. Any ISO 4217 code is accepted by the API. */
-export const COMMON_CURRENCIES = ['GBP', 'EUR', 'USD', 'CHF', 'SEK', 'DKK', 'NOK', 'PLN', 'CAD', 'AUD', 'JPY', 'INR', 'AED'] as const;
+export const COMMON_CURRENCIES = CURRENCY_OPTIONS.map((c) => c.code);
+
+/** `USD ($)` — the short form, for a dropdown beside a number. */
+export function currencyLabel(code: string): string {
+  const match = CURRENCY_OPTIONS.find((c) => c.code === code);
+  return match ? `${match.code} (${match.symbol})` : code;
+}
+
+/** `USD ($) — US Dollar` — the long form, where there is room for it. */
+export function currencyLongLabel(code: string): string {
+  const match = CURRENCY_OPTIONS.find((c) => c.code === code);
+  return match ? `${match.code} (${match.symbol}) — ${match.name}` : code;
+}
 
 const cents = (n: number) => Math.round((n + Number.EPSILON) * 100);
 

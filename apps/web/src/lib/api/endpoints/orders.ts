@@ -1,6 +1,7 @@
 /* One slice of the browser's API surface. Composed in ./index.ts. */
 import type {
   QuoteDto,
+  SendQuoteInput,
   SalesOrderDto,
   SalesOrderStatus,
 } from '@saas/shared';
@@ -32,6 +33,12 @@ export const ordersEndpoints = {
       apiFetch<{ url: string; expiresAt: string }>(`/quotes/${quoteId}/acceptance-link`, {
         method: 'POST',
       }),
+    /** Issues a link and emails it, rather than handing the sender a URL to paste. */
+    send: (quoteId: string, body: SendQuoteInput = {}) =>
+      apiFetch<{ sentTo: string; url: string; expiresAt: string }>(
+        `/quotes/${quoteId}/send`,
+        { method: 'POST', body },
+      ),
     revise: (quoteId: string) => apiFetch<QuoteDto>(`/quotes/${quoteId}/revise`, { method: 'POST' }),
   },
 };

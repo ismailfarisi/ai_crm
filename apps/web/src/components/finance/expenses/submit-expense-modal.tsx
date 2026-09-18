@@ -28,6 +28,12 @@ import type {
   ScanReceiptPayload,
   ScannedReceiptResult,
 } from '@saas/shared';
+import {
+  CURRENCY_OPTIONS as SHARED_CURRENCIES,
+  EXPENSE_CATEGORIES as SHARED_EXPENSE_CATEGORIES,
+  currencyLabel,
+  normaliseExpenseCategory,
+} from '@saas/shared';
 import { useScanReceipt } from '@/hooks/use-expenses';
 
 export interface SubmitExpenseModalProps {
@@ -39,25 +45,21 @@ export interface SubmitExpenseModalProps {
   isLoading?: boolean;
 }
 
-export const EXPENSE_CATEGORIES = [
-  { value: 'Travel', label: 'Travel & Lodging' },
-  { value: 'Meals & Entertainment', label: 'Meals & Entertainment' },
-  { value: 'Office Supplies', label: 'Office Supplies' },
-  { value: 'Software & SaaS', label: 'Software & SaaS' },
-  { value: 'Hardware', label: 'Hardware & Equipment' },
-  { value: 'Marketing', label: 'Marketing & Advertising' },
-  { value: 'Professional Services', label: 'Professional Services' },
-  { value: 'Utilities', label: 'Utilities & Telecom' },
-  { value: 'Other', label: 'Other' },
-];
+/**
+ * One shared list with the budget screen, which previously offered different
+ * values for the same categories — so no claim ever matched the budget set to
+ * guard it. Value and label are now the same string on both sides.
+ */
+export const EXPENSE_CATEGORIES = SHARED_EXPENSE_CATEGORIES.map((category) => ({
+  value: category,
+  label: category,
+}));
 
-export const CURRENCY_OPTIONS = [
-  { value: 'USD', label: 'USD ($)' },
-  { value: 'EUR', label: 'EUR (€)' },
-  { value: 'GBP', label: 'GBP (£)' },
-  { value: 'CAD', label: 'CAD ($)' },
-  { value: 'AUD', label: 'AUD ($)' },
-];
+/** One shared list, so a claim can be filed in any currency the books hold. */
+export const CURRENCY_OPTIONS = SHARED_CURRENCIES.map((currency) => ({
+  value: currency.code,
+  label: currencyLabel(currency.code),
+}));
 
 interface FormLineItem extends ExpenseItemDto {
   id: string;
@@ -249,10 +251,11 @@ export function SubmitExpenseModal({
       if (result.expenseDate) setExpenseDate(result.expenseDate.split('T')[0]);
       if (result.category) {
         // match category or fallback
+        const suggested = normaliseExpenseCategory(result.category);
         const matched = EXPENSE_CATEGORIES.find(
-          (c) => c.value.toLowerCase() === result.category.toLowerCase(),
+          (c) => c.value.toLowerCase() === suggested.toLowerCase(),
         );
-        setCategory(matched ? matched.value : result.category);
+        setCategory(matched ? matched.value : suggested);
       }
 
       if (result.items && result.items.length > 0) {

@@ -18,6 +18,7 @@ import { Input, Select } from '@/components/ui/field';
 import { Badge } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 import type { CreateFinanceAccountPayload, AccountType } from '@saas/shared';
+import { CURRENCY_OPTIONS, currencyLongLabel } from '@saas/shared';
 import { getAccountTypeMetadata, formatAccountNumber } from '../dashboard/account-balance-grid';
 import { formatFinanceCurrency } from '../dashboard/treasury-stat-cards';
 
@@ -61,16 +62,17 @@ export const ACCOUNT_TYPE_OPTIONS: {
   },
 ];
 
-export const ACCOUNT_CURRENCIES = [
-  { value: 'USD', label: 'USD ($) - US Dollar' },
-  { value: 'EUR', label: 'EUR (€) - Euro' },
-  { value: 'GBP', label: 'GBP (£) - British Pound' },
-  { value: 'CAD', label: 'CAD ($) - Canadian Dollar' },
-  { value: 'AUD', label: 'AUD ($) - Australian Dollar' },
-  { value: 'SGD', label: 'SGD ($) - Singapore Dollar' },
-  { value: 'JPY', label: 'JPY (¥) - Japanese Yen' },
-  { value: 'CHF', label: 'CHF (Fr) - Swiss Franc' },
-];
+/**
+ * Built from the one shared list rather than a local copy.
+ *
+ * This screen used to offer eight currencies, the quote editor a different
+ * seven and the base-currency screen thirteen — so SGD could be held but not
+ * quoted, and SAR quoted but not held.
+ */
+export const ACCOUNT_CURRENCIES = CURRENCY_OPTIONS.map((currency) => ({
+  value: currency.code,
+  label: currencyLongLabel(currency.code),
+}));
 
 export function CreateAccountModal({
   open,

@@ -57,7 +57,11 @@ export function Dialog({ open, onClose, title, description, children, footer, si
         if (event.target === ref.current) onClose();
       }}
       className={cn(
-        'w-[calc(100vw-2rem)] rounded-2xl border border-border/30 bg-surface/95 backdrop-blur-md p-0 text-ink shadow-[0_10px_40px_rgba(0,0,0,0.06)]',
+        // `m-auto` is load-bearing. A modal <dialog> is centred by the user
+        // agent's own `margin: auto`, which Tailwind's preflight resets to
+        // `margin: 0` along with every other element's — which is why every
+        // modal in the app opened pinned to the top-left corner.
+        'm-auto w-[calc(100vw-2rem)] rounded-2xl border border-border/30 bg-surface/95 backdrop-blur-md p-0 text-ink shadow-[0_10px_40px_rgba(0,0,0,0.06)]',
         'backdrop:bg-black/25 backdrop:backdrop-blur-xs',
         SIZES[size],
       )}

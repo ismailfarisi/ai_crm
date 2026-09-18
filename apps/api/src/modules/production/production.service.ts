@@ -9,6 +9,7 @@ import {
   DataSource,
   EntityManager,
   In,
+  Not,
   QueryFailedError,
   Repository,
 } from 'typeorm';
@@ -163,6 +164,20 @@ export class ProductionService {
    * by hand or sold from the catalog has no routing to follow, so it is
    * skipped with a reason rather than given an empty job.
    */
+  /**
+   * Work orders on this sales order that are still alive.
+   *
+   * Used to decide whether "start production" is claiming something true: an
+   * order already being made does not need to plan again, and one with nothing
+   * planned and nothing plannable should not be able to say it is in
+   * production at all.
+   */
+  async countLive(tenantId: string, salesOrderId: string): Promise<number> {
+    return this.workOrders.count({
+      where: { tenantId, salesOrderId, status: Not('CANCELLED') },
+    });
+  }
+
   async createFromSalesOrder(
     tenantId: string,
     actorId: string,

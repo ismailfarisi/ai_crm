@@ -212,12 +212,16 @@ vi.mock('@/components/platform/activity-timeline', () => ({
   ActivityTimeline: () => null,
 }));
 
+/** Moving the default flag onto an account. */
+const mockUpdateAccount = vi.fn();
+
 vi.mock('@/hooks/use-finance', () => ({
   useFinanceOverview: () => ({ data: mockOverview, isLoading: false }),
   useFinanceAccounts: () => ({ data: mockAccounts, isLoading: false }),
   useCategoryBudgets: () => ({ data: mockBudgets, isLoading: false }),
   useRecurringExpenses: () => ({ data: mockSubscriptions, isLoading: false }),
   useCreateFinanceAccount: () => ({ mutateAsync: mockCreateAccount, isPending: false }),
+  useUpdateFinanceAccount: () => ({ mutate: mockUpdateAccount, isPending: false }),
   useTransferFunds: () => ({ mutateAsync: mockTransferFunds, isPending: false }),
   useCreateCategoryBudget: () => ({ mutateAsync: mockCreateBudget, isPending: false }),
   useCreateRecurringExpense: () => ({ mutateAsync: mockCreateSub, isPending: false }),

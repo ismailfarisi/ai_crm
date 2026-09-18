@@ -868,6 +868,8 @@ export class InventoryService {
       locationId?: string;
       qtyDelta: number;
       note: string;
+      /** Opening counts only; see `adjustStockSchema`. */
+      unitCost?: number | null;
     },
   ): Promise<StockMovement> {
     if (!input.qtyDelta) {
@@ -891,9 +893,12 @@ export class InventoryService {
         locationId: location.id,
         type: 'ADJUSTMENT',
         qtyDelta: input.qtyDelta,
-        // An adjustment up is valued at the standing average, not a new price;
-        // it is a correction to a count, not a purchase.
-        unitCost: 0,
+        // An adjustment up is valued at the standing average, not a new price:
+        // it is a correction to a count, not a purchase. The exception is an
+        // opening count, where the caller says what the stock is worth —
+        // otherwise a business that already held stock would carry it at zero
+        // and report a 100% margin on everything made from it.
+        unitCost: input.qtyDelta > 0 ? (input.unitCost ?? 0) : 0,
         referenceType: 'MANUAL',
         actorId,
         note: input.note.trim(),

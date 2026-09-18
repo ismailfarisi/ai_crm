@@ -41,6 +41,19 @@ export function ActivityRow({ entry }: { entry: AuditLogDto }) {
       <div className="min-w-0">
         <p className="text-sm text-ink">
           <span className="font-medium">{describeAction(entry.action)}</span>
+          {/*
+            Which record. Without it the trail reads "Created by …", "Status by
+            …" over and over, and you have to open a row to find out what it
+            was about.
+          */}
+          {entry.summary ? (
+            <>
+              {' '}
+              <span className="font-medium text-ink">{entry.summary}</span>
+            </>
+          ) : (
+            ` ${entry.subjectType.replace(/_/g, ' ').toLowerCase()}`
+          )}
           {entry.actorName ? ` by ${entry.actorName}` : ''}
           {byModel && (
             <span className="ml-1.5 rounded bg-info-soft px-1.5 py-0.5 text-xs text-info">

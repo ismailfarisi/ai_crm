@@ -20,6 +20,7 @@ import { LedgerService } from './ledger.service';
 import { cashAccountAmount } from './fx';
 import {
   CreateFinanceAccountDto,
+  UpdateFinanceAccountDto,
   CreateCategoryBudgetDto,
   CreateRecurringExpenseDto,
   TransferFundsDto,
@@ -181,7 +182,18 @@ export class FinanceService {
     tenantId: string,
     dto: CreateFinanceAccountDto,
   ): Promise<FinanceAccount> {
-    if (dto.isDefault) {
+    /*
+     * The first account a tenant opens becomes the default whether or not the
+     * box was ticked. Nothing else can be the default, and "DEFAULT ACCOUNT:
+     * None set" beside a tenant's only account is never the answer anyone
+     * wants — it also leaves expense reimbursement with no account to pay
+     * from, which is the point at which it starts costing money rather than
+     * looking odd.
+     */
+    const existing = await this.accountRepository.count({ where: { tenantId } });
+    const isDefault = dto.isDefault === true || existing === 0;
+
+    if (isDefault) {
       await this.accountRepository.update(
         { tenantId, isDefault: true },
         { isDefault: false },
@@ -197,7 +209,7 @@ export class FinanceService {
       currency: dto.currency || 'USD',
       balance: openingBalance,
       accountNumber: dto.accountNumber || null,
-      isDefault: dto.isDefault ?? false,
+      isDefault,
     });
 
     const saved = await this.accountRepository.save(account);
@@ -207,6 +219,44 @@ export class FinanceService {
     }
 
     return saved;
+  }
+
+  /**
+   * Renames an account, or moves the default flag onto it.
+   *
+   * There was no way to change either after creation, so a tenant who missed
+   * the checkbox had no route back to a default account at all. The balance is
+   * deliberately not editable here: it is the ledger's to move, through a
+   * posting, not a form.
+   */
+  async updateAccount(
+    tenantId: string,
+    id: string,
+    dto: UpdateFinanceAccountDto,
+  ): Promise<FinanceAccount> {
+    const account = await this.accountRepository.findOne({
+      where: { id, tenantId },
+    });
+    if (!account) {
+      throw new NotFoundException(`Finance account ${id} not found`);
+    }
+
+    if (dto.isDefault === true) {
+      await this.accountRepository.update(
+        { tenantId, isDefault: true },
+        { isDefault: false },
+      );
+      account.isDefault = true;
+    } else if (dto.isDefault === false) {
+      account.isDefault = false;
+    }
+
+    if (dto.name !== undefined) account.name = dto.name;
+    if (dto.accountNumber !== undefined) {
+      account.accountNumber = dto.accountNumber || null;
+    }
+
+    return this.accountRepository.save(account);
   }
 
   /**

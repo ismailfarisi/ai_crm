@@ -10,6 +10,7 @@ import type {
   JournalLineDto,
   TreasuryOverviewDto,
   CreateFinanceAccountPayload,
+  UpdateFinanceAccountPayload,
   TransferFundsPayload,
   TransferFundsResult,
   CreateCategoryBudgetPayload,
@@ -29,6 +30,7 @@ export type {
   JournalLineDto,
   TreasuryOverviewDto,
   CreateFinanceAccountPayload,
+  UpdateFinanceAccountPayload,
   TransferFundsPayload,
   TransferFundsResult,
   CreateCategoryBudgetPayload,
@@ -97,6 +99,30 @@ export function useCreateFinanceAccount() {
       toast.success(`Account "${account.name}" created`);
     },
     onError: (error) => toast.error(describe(error, 'Could not create finance account')),
+  });
+}
+
+/**
+ * Renames an account, or moves the default onto it.
+ *
+ * The default account is what expense reimbursement pays from when the claim
+ * does not name one, so leaving it unset is not cosmetic.
+ */
+export function useUpdateFinanceAccount() {
+  const { invalidateAccounts } = useInvalidateFinance();
+
+  return useMutation({
+    mutationFn: ({ id, ...payload }: UpdateFinanceAccountPayload & { id: string }) =>
+      api.finance.updateAccount(id, payload),
+    onSuccess: async (account) => {
+      await invalidateAccounts();
+      toast.success(
+        account.isDefault
+          ? `"${account.name}" is now the default account`
+          : `Account "${account.name}" updated`,
+      );
+    },
+    onError: (error) => toast.error(describe(error, 'Could not update the account')),
   });
 }
 

@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
-import { MailPlus, UserPlus } from 'lucide-react';
+import { Check, Copy, MailPlus, UserPlus } from 'lucide-react';
 import {
   PERMISSIONS,
   inviteUserSchema,
@@ -28,6 +28,7 @@ export function TeamView() {
   const queryClient = useQueryClient();
   const { session, can } = useSession();
   const [inviting, setInviting] = useState(false);
+  const [inviteLinks, setInviteLinks] = useState<Record<string, string>>({});
 
   const { data: members, isPending } = useQuery({
     queryKey: queryKeys.users,
@@ -60,6 +61,24 @@ export function TeamView() {
     },
     onError: (error) =>
       toast.error(error instanceof ApiError ? error.message : 'Could not cancel the invite'),
+  });
+
+  /**
+   * Re-sends the invite and keeps the link it returns.
+   *
+   * If the mail never arrives — a misconfigured provider, a spam filter — the
+   * owner's only option used to be to cancel, re-invite and hope. The link is
+   * held in component state only, and only for the invite just re-sent.
+   */
+  const resendInvite = useMutation({
+    mutationFn: (id: string) => api.invitations.resend(id),
+    onSuccess: async (invitation) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.invitations });
+      setInviteLinks((links) => ({ ...links, [invitation.id]: invitation.acceptUrl }));
+      toast.success(`Invite re-sent to ${invitation.email}`);
+    },
+    onError: (error) =>
+      toast.error(error instanceof ApiError ? error.message : 'Could not re-send the invite'),
   });
 
   const setActive = useMutation({
@@ -152,6 +171,9 @@ export function TeamView() {
               <PendingInviteRow
                 key={invitation.id}
                 invitation={invitation}
+                inviteLink={inviteLinks[invitation.id]}
+                isResending={resendInvite.isPending && resendInvite.variables === invitation.id}
+                onResend={() => resendInvite.mutate(invitation.id)}
                 onCancel={() => cancelInvite.mutate(invitation.id)}
               />
             ))}
@@ -164,11 +186,31 @@ export function TeamView() {
 
 function PendingInviteRow({
   invitation,
+  inviteLink,
+  isResending,
+  onResend,
   onCancel,
 }: {
   invitation: InvitationDto;
+  /** Present once this invite has been re-sent in this session. */
+  inviteLink?: string;
+  isResending: boolean;
+  onResend: () => void;
   onCancel: () => void;
 }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    if (!inviteLink) return;
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error('Could not copy the link — select and copy it by hand.');
+    }
+  };
+
   return (
     <li className="flex flex-wrap items-center gap-4 px-4 py-3">
       <span className="grid size-9 shrink-0 place-items-center rounded-full bg-brand-soft text-xs font-semibold text-brand">
@@ -180,11 +222,32 @@ function PendingInviteRow({
           {invitation.firstName} {invitation.lastName}
         </p>
         <p className="text-xs text-ink-subtle">{invitation.email}</p>
+        {inviteLink && (
+          <div className="mt-1.5 flex items-center gap-2">
+            <code className="truncate rounded bg-surface-muted px-1.5 py-0.5 font-mono text-[11px] text-ink-muted">
+              {inviteLink}
+            </code>
+            <button
+              type="button"
+              onClick={copy}
+              className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-brand hover:underline cursor-pointer"
+            >
+              {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+              {copied ? 'Copied' : 'Copy link'}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="hidden text-xs text-ink-subtle sm:block">
         Expires {formatRelative(invitation.expiresAt)}
       </div>
+
+      <Can permission={PERMISSIONS.USER_CREATE}>
+        <Button variant="ghost" size="sm" onClick={onResend} loading={isResending}>
+          Resend
+        </Button>
+      </Can>
 
       <Can permission={PERMISSIONS.USER_UPDATE}>
         <Button variant="ghost" size="sm" onClick={onCancel}>

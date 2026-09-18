@@ -24,6 +24,10 @@ const ownerRole = {
 
 const configStub = {
   get: jest.fn((key: string) => {
+    // `publicWebUrl` is the one origin customers and invitees are linked to.
+    // `webOrigin` stays a CORS allow-list, whose first entry on staging is a
+    // `staging.` host that has no business appearing in an invite email.
+    if (key === 'publicWebUrl') return 'http://localhost:3000';
     if (key === 'webOrigin') return ['http://localhost:3000'];
     return undefined;
   }),

@@ -12,6 +12,7 @@ import {
   PERMISSIONS,
   inviteUserSchema,
   type InvitationDto,
+  type ResentInvitationDto,
   type InviteUserInput,
 } from '@saas/shared';
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
@@ -47,11 +48,15 @@ export class InvitationsController {
 
   @Post(':id/resend')
   @RequirePermissions(PERMISSIONS.USER_CREATE)
-  @ApiOperation({ summary: 'Re-send a pending invite with a fresh token' })
+  @ApiOperation({
+    summary: 'Re-send a pending invite with a fresh token',
+    description:
+      'Also returns the link the email carries, so an owner can pass it on by hand when mail does not arrive.',
+  })
   resend(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<InvitationDto> {
+  ): Promise<ResentInvitationDto> {
     return this.invitations.resendInvitation(
       user.organizationId,
       id,

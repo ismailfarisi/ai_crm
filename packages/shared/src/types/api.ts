@@ -140,3 +140,17 @@ export interface InvitationDto {
   expiresAt: string;
   createdAt: string;
 }
+
+/**
+ * A re-sent invitation, with the link the email carries.
+ *
+ * Returned only from the resend route, and only to someone who holds
+ * `user:create` — who can invite whoever they like anyway. It exists because
+ * the email is the single point of failure in the invite flow: a misconfigured
+ * provider or a spam filter left the owner with nothing to do but cancel and
+ * hope. The link is never included in the pending-invitation list, which is
+ * read far more widely.
+ */
+export interface ResentInvitationDto extends InvitationDto {
+  acceptUrl: string;
+}

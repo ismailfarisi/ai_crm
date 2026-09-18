@@ -83,7 +83,7 @@ export class OrdersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body(zodBody(setSalesOrderStatusSchema)) body: SetSalesOrderStatusPayload,
   ): Promise<SalesOrderDto> {
-    return this.orders.setStatus(user.organizationId, id, body.status);
+    return this.orders.setStatus(user.organizationId, id, body.status, user.id);
   }
 
   @Post('sales-orders/:id/cancel')

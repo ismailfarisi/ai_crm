@@ -6,6 +6,7 @@ import type {
   CreateRoleInput,
   CreateTeamInput,
   InvitationDto,
+  ResentInvitationDto,
   InviteUserInput,
   Permission,
   RoleDto,
@@ -46,7 +47,7 @@ export const rbacEndpoints = {
     invite: (input: InviteUserInput) =>
       apiFetch<InvitationDto>('/invitations', { method: 'POST', body: input }),
     resend: (id: string) =>
-      apiFetch<InvitationDto>(`/invitations/${id}/resend`, { method: 'POST' }),
+      apiFetch<ResentInvitationDto>(`/invitations/${id}/resend`, { method: 'POST' }),
     cancel: (id: string) =>
       apiFetch<{ success: true }>(`/invitations/${id}`, { method: 'DELETE' }),
   },

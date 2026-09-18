@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { FinanceModule } from '../finance/finance.module';
+import { ProductionModule } from '../production/production.module';
 import { AutomationsModule } from '../automations/automations.module';
 import { Invoice } from '../quotes/entities/invoice.entity';
 import { Quote } from '../quotes/entities/quote.entity';
@@ -42,6 +43,8 @@ import {
     FinanceModule,
     AutomationsModule,
     InventoryModule,
+    // Moving an order to IN_PRODUCTION raises the work orders it claims exist.
+    ProductionModule,
   ],
   controllers: [OrdersController, DeliveryNotesController],
   providers: [OrdersService, DeliveryNotesService, PackingSlipPdfService],

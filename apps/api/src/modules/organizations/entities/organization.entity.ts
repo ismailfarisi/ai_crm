@@ -97,4 +97,23 @@ export class Organization extends BaseEntity {
   /** Printed under the totals: payment instructions, bank details, terms. */
   @Column({ name: 'document_footer', type: 'text', nullable: true })
   documentFooter: string | null;
+
+  /**
+   * The logo printed on documents, as stored bytes.
+   *
+   * Held on the row rather than in the attachment store because it is the one
+   * file served *inline*, to anyone holding a quote link, with no session to
+   * check — so it needs a route of its own rather than a signed, expiring
+   * download. Raster only and capped at 2 MB (`LOGO_CONTENT_TYPES`,
+   * `LOGO_MAX_BYTES`): an inline SVG is a script on the origin serving it.
+   */
+  @Column({ name: 'logo_data', type: 'bytea', nullable: true })
+  logoData: Buffer | null;
+
+  @Column({ name: 'logo_content_type', type: 'varchar', length: 40, nullable: true })
+  logoContentType: string | null;
+
+  /** Cache-busts the public logo URL when the logo is replaced. */
+  @Column({ name: 'logo_updated_at', type: 'timestamptz', nullable: true })
+  logoUpdatedAt: Date | null;
 }

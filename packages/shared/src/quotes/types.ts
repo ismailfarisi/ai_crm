@@ -188,6 +188,8 @@ export interface InvoiceDto {
   id: string;
   tenantId: string;
   quoteId: string;
+  /** The quote's document number, so lists need never print a raw UUID. */
+  quoteNumber?: string | null;
   salesOrderId?: string | null;
   billingScheduleLineId?: string | null;
   /** "30% deposit" on a part invoice; null when the invoice bills the whole quote. */

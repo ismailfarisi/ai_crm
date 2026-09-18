@@ -7,9 +7,11 @@ import {
   useCatalogItems,
   useDeleteCatalogItem,
   useDeleteMaterial,
+  useDeleteTemplate,
   useDeleteTooling,
   useDeleteWorkCenter,
   useMaterials,
+  useTemplates,
   useTooling,
   useWorkCenters,
 } from '@/hooks/use-catalog-admin';
@@ -19,10 +21,12 @@ vi.mock('@/hooks/use-catalog-admin', () => ({
   useMaterials: vi.fn(),
   useWorkCenters: vi.fn(),
   useTooling: vi.fn(),
+  useTemplates: vi.fn(),
   useDeleteCatalogItem: vi.fn(),
   useDeleteMaterial: vi.fn(),
   useDeleteWorkCenter: vi.fn(),
   useDeleteTooling: vi.fn(),
+  useDeleteTemplate: vi.fn(),
 }));
 
 // The "New …" button is gated on catalog:manage, which PageGuard already
@@ -90,12 +94,14 @@ describe('CatalogView', () => {
     vi.mocked(useMaterials).mockReturnValue(listResult([material]));
     vi.mocked(useWorkCenters).mockReturnValue(listResult([]));
     vi.mocked(useTooling).mockReturnValue(listResult([]));
+    vi.mocked(useTemplates).mockReturnValue(listResult([]));
 
     for (const hook of [
       useDeleteCatalogItem,
       useDeleteMaterial,
       useDeleteWorkCenter,
       useDeleteTooling,
+      useDeleteTemplate,
     ]) {
       vi.mocked(hook).mockReturnValue({
         mutateAsync: vi.fn().mockResolvedValue(undefined),
@@ -136,5 +142,71 @@ describe('CatalogView', () => {
     fireEvent.click(screen.getByRole('button', { name: /work centres/i }));
 
     expect(screen.getByText('No work centres yet')).toBeInTheDocument();
+  });
+
+  /*
+   * The parametric cost model is what the product is sold on, and the API has
+   * always had it — nothing in the front end ever wrote to it, so a template
+   * could only be created by POSTing JSON by hand.
+   */
+  describe('templates', () => {
+    it('says what a template is for when there are none', () => {
+      render(<CatalogView />);
+
+      fireEvent.click(screen.getByRole('button', { name: /templates/i }));
+
+      expect(screen.getByText('No product templates yet')).toBeInTheDocument();
+    });
+
+    // Six repeating sections and a formula in most of them: too much for a
+    // dialog, so "New template" is a link rather than a button that opens one.
+    it('sends you to the editor page rather than opening a dialog', () => {
+      render(<CatalogView />);
+
+      fireEvent.click(screen.getByRole('button', { name: /templates/i }));
+
+      expect(screen.getByRole('link', { name: /new template/i })).toHaveAttribute(
+        'href',
+        '/catalog/templates/new',
+      );
+      expect(screen.queryByTestId('item-dialog')).not.toBeInTheDocument();
+    });
+
+    it('lists a template by what its model contains', () => {
+      vi.mocked(useTemplates).mockReturnValue(
+        listResult([
+          {
+            id: 't1',
+            templateKey: 'rigid-box',
+            version: 3,
+            isCurrent: true,
+            name: 'Rigid gift box',
+            description: null,
+            currency: 'USD',
+            parameters: [{ key: 'length_mm' }, { key: 'width_mm' }],
+            derived: [],
+            materials: [{ key: 'board' }],
+            operations: [{ key: 'print' }, { key: 'diecut' }, { key: 'wrap' }],
+            tooling: [],
+            pricing: { method: 'MARGIN', rate: 0.35 },
+            createdAt: '2026-09-01T00:00:00.000Z',
+            updatedAt: '2026-09-01T00:00:00.000Z',
+          },
+        ] as never),
+      );
+
+      render(<CatalogView />);
+      fireEvent.click(screen.getByRole('button', { name: /templates/i }));
+
+      expect(screen.getByRole('link', { name: 'Rigid gift box' })).toHaveAttribute(
+        'href',
+        '/catalog/templates/t1',
+      );
+      expect(screen.getByText('v3')).toBeInTheDocument();
+      expect(
+        screen.getByText(/2 parameters · 1 materials · 3 operations/),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/Margin 35%/)).toBeInTheDocument();
+    });
   });
 });

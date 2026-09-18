@@ -12,6 +12,7 @@ import {
   AUDIT_BODYLESS_PREFIXES,
   AUDIT_SKIPPED_PREFIXES,
   AUDIT_SUBJECTS,
+  labelForRecord,
   subjectForSegment,
 } from './audit-subjects';
 import { AuditService } from './audit.service';
@@ -107,6 +108,10 @@ export class AuditInterceptor implements NestInterceptor {
       action,
       subjectType: subjectForSegment(head),
       subjectId,
+      // Which record this was. Taken from `after` first: a rename should be
+      // filed under the name the record now has. Falls back to `before` so a
+      // delete still says what was deleted.
+      summary: labelForRecord(after) ?? labelForRecord(before),
       before,
       // With no mapped entity there is still something worth keeping: what was
       // asked for. Bodies from credential routes are dropped entirely.

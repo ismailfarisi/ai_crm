@@ -4,6 +4,7 @@
 import type {
   CreateCustomerPayload,
   CustomerDto,
+  CustomerOverviewDto,
   PaginatedResult,
   UpdateCustomerPayload,
 } from '@saas/shared';
@@ -22,6 +23,9 @@ export const customersEndpoints = {
     list: (params: CustomerListParams = {}) =>
       apiFetch<PaginatedResult<CustomerDto>>('/customers', { query: params }),
     get: (id: string) => apiFetch<CustomerDto>(`/customers/${id}`),
+    /** Their quotes, orders, invoices and balance, shaped by the API. */
+    overview: (id: string) =>
+      apiFetch<CustomerOverviewDto>(`/customers/${id}/overview`),
     create: (input: CreateCustomerPayload) =>
       apiFetch<CustomerDto>('/customers', { method: 'POST', body: input }),
     update: (id: string, input: UpdateCustomerPayload) =>
@@ -31,4 +35,4 @@ export const customersEndpoints = {
 };
 
 export const customersKeys = {
-  customers: (params: CustomerListParams = {}) => ['customers', params] as const,  customer: (id: string) => ['customers', id] as const,};
+  customers: (params: CustomerListParams = {}) => ['customers', params] as const,  customer: (id: string) => ['customers', id] as const,  customerOverview: (id: string) => ['customers', id, 'overview'] as const,};

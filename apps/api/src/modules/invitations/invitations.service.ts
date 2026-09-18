@@ -8,7 +8,11 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { createHash, randomBytes } from 'node:crypto';
-import type { InvitationDto, InviteUserInput } from '@saas/shared';
+import type {
+  InvitationDto,
+  InviteUserInput,
+  ResentInvitationDto,
+} from '@saas/shared';
 import type { AppConfig } from '@/config/configuration';
 import { MailService } from '@/modules/mail/mail.service';
 import { Organization } from '@/modules/organizations/entities/organization.entity';
@@ -106,12 +110,16 @@ export class InvitationsService {
     return this.toDto(invitation);
   }
 
-  /** Re-sends an existing pending invitation's email with a fresh token. */
+  /**
+   * Re-sends an existing pending invitation's email with a fresh token, and
+   * hands the caller the same link so they can pass it on by hand when the
+   * mail does not arrive.
+   */
   async resendInvitation(
     organizationId: string,
     invitationId: string,
     actorName: string,
-  ): Promise<InvitationDto> {
+  ): Promise<ResentInvitationDto> {
     const invitation = await this.findPending(organizationId, invitationId);
 
     const rawToken = randomBytes(32).toString('hex');
@@ -121,15 +129,16 @@ export class InvitationsService {
     await this.invitations.save(invitation);
 
     const organization = await this.organizationName(organizationId);
+    const acceptUrl = this.acceptUrl(rawToken);
     await this.mail.sendInvite({
       to: invitation.email,
       organizationName: organization,
       inviterName: actorName,
-      acceptUrl: this.acceptUrl(rawToken),
+      acceptUrl,
       expiresAt,
     });
 
-    return this.toDto(invitation);
+    return { ...this.toDto(invitation), acceptUrl };
   }
 
   async listPending(organizationId: string): Promise<InvitationDto[]> {
@@ -212,7 +221,7 @@ export class InvitationsService {
   }
 
   private acceptUrl(rawToken: string): string {
-    const origin = this.config.get('webOrigin', { infer: true })[0];
+    const origin = this.config.get('publicWebUrl', { infer: true });
     return `${origin}/accept-invite?token=${encodeURIComponent(rawToken)}`;
   }
 

@@ -96,11 +96,27 @@ export function PublicQuoteView({ token }: { token: string }) {
       <article className="mx-auto max-w-3xl rounded-2xl border border-line bg-surface shadow-2xs">
         <header className="border-b border-line p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium text-ink">{quote.organizationName}</p>
-              {quote.seller?.legalName && quote.seller.legalName !== quote.organizationName ? (
-                <p className="text-xs text-ink-subtle">{quote.seller.legalName}</p>
+            <div className="flex items-start gap-3">
+              {/*
+                Plain <img>, not next/image: this is served by the API on
+                another origin, at whatever size the sender uploaded, and
+                optimising it would mean routing a customer-facing document
+                through the web app's image pipeline for no benefit.
+              */}
+              {quote.seller?.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={quote.seller.logoUrl}
+                  alt={`${quote.organizationName} logo`}
+                  className="max-h-14 max-w-[180px] object-contain"
+                />
               ) : null}
+              <div>
+                <p className="text-sm font-medium text-ink">{quote.organizationName}</p>
+                {quote.seller?.legalName && quote.seller.legalName !== quote.organizationName ? (
+                  <p className="text-xs text-ink-subtle">{quote.seller.legalName}</p>
+                ) : null}
+              </div>
             </div>
 
             {/* Who the quote is from. Blank until the sender fills in Company

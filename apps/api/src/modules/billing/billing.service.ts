@@ -46,7 +46,7 @@ export class BillingService {
     private readonly dataSource: DataSource,
   ) {
     const billing = this.config.get('billing', { infer: true });
-    const origin = this.config.get('webOrigin', { infer: true })[0];
+    const origin = this.config.get('publicWebUrl', { infer: true });
     this.provider =
       billing.provider === 'stripe'
         ? new StripeBillingProvider(
@@ -153,7 +153,7 @@ export class BillingService {
       );
     }
     const seats = Math.max(1, await this.activeUsers(tenantId));
-    const origin = this.config.get('webOrigin', { infer: true })[0];
+    const origin = this.config.get('publicWebUrl', { infer: true });
     const session = await this.provider.createCheckout({
       tenantId,
       planCode: plan.code,

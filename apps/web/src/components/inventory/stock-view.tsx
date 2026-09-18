@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
-import { AlertTriangle, BellRing, Boxes, Scale } from 'lucide-react';
+import { AlertTriangle, BellRing, Boxes, Plus, Scale } from 'lucide-react';
 import { PERMISSIONS, needsReorder } from '@saas/shared';
 import { useReorderSuggestions, useStock } from '@/hooks/use-inventory';
 import type { StockItemDto } from '@/lib/api/endpoints';
@@ -12,6 +12,7 @@ import { EmptyState, PageHeader } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/data-table';
 import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
 import { StockActionsDialog } from './stock-actions-dialog';
+import { OpeningStockDialog } from './opening-stock-dialog';
 
 /**
  * Stock on hand.
@@ -23,6 +24,7 @@ import { StockActionsDialog } from './stock-actions-dialog';
 export function StockView() {
   const { data: stock = [], isPending, isError, error } = useStock();
   const { data: suggestions = [] } = useReorderSuggestions();
+  const [enteringOpening, setEnteringOpening] = useState(false);
   const [acting, setActing] = useState<{ item: StockItemDto; mode: 'adjust' | 'reorder' } | null>(
     null,
   );
@@ -140,6 +142,25 @@ export function StockView() {
             ? `${stock.length} material${stock.length === 1 ? '' : 's'} on hand, valued at ${totalValue.toFixed(2)} at moving-average cost.`
             : 'What is on the shelf, valued at moving-average cost.'
         }
+        actions={
+          /*
+           * Available with an empty table, which is the point: adjusting a row
+           * only works once a row exists, so a business holding stock on the
+           * day it arrives here had no way to enter it except by raising a
+           * purchase order for goods it had already bought elsewhere.
+           */
+          <Can permission={PERMISSIONS.INVENTORY_ADJUST}>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={() => setEnteringOpening(true)}
+            >
+              <Plus className="size-3.5" />
+              Enter opening stock
+            </Button>
+          </Can>
+        }
       />
 
       {suggestions.length > 0 && (
@@ -175,10 +196,12 @@ export function StockView() {
           getRowId={(row) => row.id}
           searchPlaceholder="Search material…"
           emptyTitle="Nothing in stock yet"
-          emptyDescription="Stock appears here once a delivery is booked in against a purchase order."
+          emptyDescription="Stock arrives when a delivery is booked in against a purchase order. If you already hold stock, enter an opening count."
           emptyIcon={<Boxes className="size-8 text-ink-muted" />}
         />
       )}
+
+      <OpeningStockDialog open={enteringOpening} onClose={() => setEnteringOpening(false)} />
 
       <StockActionsDialog
         open={acting !== null}

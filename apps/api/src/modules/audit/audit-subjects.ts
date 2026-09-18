@@ -65,3 +65,53 @@ export function subjectForSegment(segment: string): string {
   if (mapped) return mapped.subject;
   return segment.replace(/s$/, '').replace(/-/g, '_').toUpperCase();
 }
+
+/**
+ * Fields that name a record, best first.
+ *
+ * The trail used to read "Created by Daniel Whitfield", "Decision recorded
+ * by…", "Status by…" with nothing saying *which* quote or invoice — so the
+ * only way to tell one row from another was to open it. The snapshots the
+ * interceptor already takes carry the document number; this picks it out.
+ *
+ * Ordered so a document number beats a human name: `QT-2026-0001` identifies
+ * the record, "Rigid gift boxes" only describes it.
+ */
+const LABEL_FIELDS = [
+  'quoteNumber',
+  'invoiceNumber',
+  'orderNumber',
+  'poNumber',
+  'billNumber',
+  'claimNumber',
+  'noteNumber',
+  'workOrderNumber',
+  'entryNumber',
+  'number',
+  'sku',
+  'code',
+  'name',
+  'companyName',
+  'fullName',
+  'title',
+  'email',
+] as const;
+
+/**
+ * A short human label for the record a snapshot describes, or null.
+ *
+ * Truncated to fit `audit_logs.summary`, which is 200 characters.
+ */
+export function labelForRecord(
+  snapshot: Record<string, unknown> | null | undefined,
+): string | null {
+  if (!snapshot) return null;
+
+  for (const field of LABEL_FIELDS) {
+    const value = snapshot[field];
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim().slice(0, 200);
+    }
+  }
+  return null;
+}

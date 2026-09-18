@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { countryCodeField } from './country';
 
 /**
  * Deliberately the same shape as `customer.ts`, field for field where the two
@@ -54,7 +55,7 @@ export const createSupplierSchema = z.object({
   addressLine2: optionalText(160),
   city: optionalText(80),
   postalCode: optionalText(20),
-  country: optionalText(80),
+  country: countryCodeField,
   taxId: optionalText(40),
   currency: currency.default('USD'),
   paymentTermsDays: days(365).default(30),
@@ -78,7 +79,7 @@ export const updateSupplierSchema = z.object({
   addressLine2: optionalText(160).optional(),
   city: optionalText(80).optional(),
   postalCode: optionalText(20).optional(),
-  country: optionalText(80).optional(),
+  country: countryCodeField.optional(),
   taxId: optionalText(40).optional(),
   currency: currency.optional(),
   paymentTermsDays: days(365).optional(),

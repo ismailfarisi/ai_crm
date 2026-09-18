@@ -128,6 +128,13 @@ export interface CreateFinanceAccountPayload {
   isDefault?: boolean;
 }
 
+/** Renaming an account, or moving the default flag onto it. */
+export interface UpdateFinanceAccountPayload {
+  name?: string;
+  accountNumber?: string | null;
+  isDefault?: boolean;
+}
+
 export interface TransferFundsPayload {
   fromAccountId: string;
   toAccountId: string;

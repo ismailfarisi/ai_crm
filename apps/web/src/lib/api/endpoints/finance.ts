@@ -19,6 +19,7 @@ import type {
   ScannedReceiptResult,
   SignalExpenseClaimPayload,
   ExpenseListParams,
+  UpdateFinanceAccountPayload,
 } from '@saas/shared';
 import { apiFetch } from '../client';
 
@@ -28,6 +29,8 @@ export const financeEndpoints = {
     listAccounts: () => apiFetch<FinanceAccountDto[]>('/finance/accounts'),
     createAccount: (payload: CreateFinanceAccountPayload) =>
       apiFetch<FinanceAccountDto>('/finance/accounts', { method: 'POST', body: payload }),
+    updateAccount: (id: string, payload: UpdateFinanceAccountPayload) =>
+      apiFetch<FinanceAccountDto>(`/finance/accounts/${id}`, { method: 'PATCH', body: payload }),
     transferFunds: (payload: TransferFundsPayload) =>
       apiFetch<TransferFundsResult>('/finance/accounts/transfer', { method: 'POST', body: payload }),
     listBudgets: () => apiFetch<CategoryBudgetDto[]>('/finance/budgets'),

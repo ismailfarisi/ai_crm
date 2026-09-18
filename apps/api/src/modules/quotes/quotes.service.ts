@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import {
   calculateQuoteTotals,
   CreateQuotePayload,
@@ -626,10 +626,36 @@ export class QuotesService {
   }
 
   async findAllInvoices(tenantId: string): Promise<Invoice[]> {
-    return this.invoiceRepository.find({
+    const invoices = await this.invoiceRepository.find({
       where: { tenantId },
       order: { issuedAt: 'DESC' },
     });
+    return this.withQuoteNumbers(tenantId, invoices);
+  }
+
+  /**
+   * Fills in each invoice's `quoteNumber` from the quote it was raised off.
+   *
+   * One query for the whole page rather than a relation on the entity, which
+   * would drag the quote's line items and cost model into every invoice list.
+   */
+  private async withQuoteNumbers(
+    tenantId: string,
+    invoices: Invoice[],
+  ): Promise<Invoice[]> {
+    const quoteIds = [...new Set(invoices.map((i) => i.quoteId).filter(Boolean))];
+    if (quoteIds.length === 0) return invoices;
+
+    const quotes = await this.quoteRepository.find({
+      where: { tenantId, id: In(quoteIds) },
+      select: { id: true, quoteNumber: true },
+    });
+    const numbers = new Map(quotes.map((q) => [q.id, q.quoteNumber]));
+
+    for (const invoice of invoices) {
+      invoice.quoteNumber = numbers.get(invoice.quoteId) ?? null;
+    }
+    return invoices;
   }
 }
 

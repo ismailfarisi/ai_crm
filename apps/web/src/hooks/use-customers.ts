@@ -16,6 +16,21 @@ export function useCustomers(params: CustomerListParams) {
   });
 }
 
+export function useCustomer(id: string) {
+  return useQuery({
+    queryKey: queryKeys.customer(id),
+    queryFn: () => api.customers.get(id),
+  });
+}
+
+/** Everything this customer has quoted, ordered, been invoiced and still owes. */
+export function useCustomerOverview(id: string) {
+  return useQuery({
+    queryKey: queryKeys.customerOverview(id),
+    queryFn: () => api.customers.overview(id),
+  });
+}
+
 /** Invalidating the `customers` prefix covers every filter/page combination. */
 function useInvalidateCustomers() {
   const queryClient = useQueryClient();

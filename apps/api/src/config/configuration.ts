@@ -51,6 +51,15 @@ const envSchema = z.object({
   COOKIE_SAME_SITE: z.enum(['lax', 'strict', 'none']).default('lax'),
   WEB_ORIGIN: z.string().default('http://localhost:3000'),
 
+  // The one origin customers and invitees are sent to.
+  //
+  // WEB_ORIGIN is a CORS allow-list and holds several hosts — in staging the
+  // first of them is `staging.switeaz.com`, which is what every acceptance
+  // link a customer received said, rather than the domain the business
+  // actually trades under. Set this to the canonical public URL; it falls back
+  // to the first WEB_ORIGIN entry, so nothing changes where it is unset.
+  PUBLIC_WEB_URL: z.string().optional(),
+
   // Public URL the API is reachable at — used to build webhook URLs (e.g. for
   // Telegram's setWebhook). Point this at your ngrok/tunnel URL in local dev,
   // or your real API domain in production. Falls back to localhost, which
@@ -201,6 +210,9 @@ export function configuration() {
       env.PUBLIC_API_URL?.replace(/\/$/, '') ??
       `http://localhost:${env.PORT}/${env.API_PREFIX}`,
     webOrigin: env.WEB_ORIGIN.split(',').map((o) => o.trim()),
+    publicWebUrl: (
+      env.PUBLIC_WEB_URL ?? env.WEB_ORIGIN.split(',')[0].trim()
+    ).replace(/\/$/, ''),
     database: {
       host: env.DB_HOST,
       port: env.DB_PORT,

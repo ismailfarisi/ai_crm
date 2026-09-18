@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { countryCodeField } from './country';
 
 /** Normalise first, then validate — otherwise " Me@Example.com " fails on whitespace. */
 export const emailSchema = z
@@ -30,6 +31,22 @@ export const registerSchema = z.object({
   lastName: z.string().trim().min(1, 'Last name is required').max(80),
   email: emailSchema,
   password: passwordSchema,
+  /*
+   * Asked at sign-up because this is the last moment it is free.
+   *
+   * The base currency was silently set to USD and can never be changed once
+   * anything has been posted, so a UK or EU business that traded for a week
+   * before finding Finance → Currencies was permanently on the wrong ledger
+   * currency. The country is asked for at the same time because tax rules
+   * match on it and nothing else ever asks.
+   */
+  baseCurrency: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-Z]{3}$/, 'Pick a currency')
+    .default('USD'),
+  country: countryCodeField,
 });
 
 export const changePasswordSchema = z

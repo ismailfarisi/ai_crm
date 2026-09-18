@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { FileDown, Receipt, Truck } from 'lucide-react';
+import { AlertTriangle, FileDown, Receipt, Truck } from 'lucide-react';
 import { PERMISSIONS, type SalesOrderDto } from '@saas/shared';
 import { downloadPackingSlip, useDeliveryNoteAction, useDeliveryNotes } from '@/hooks/use-credits';
 import { useCan } from '@/lib/session-context';
@@ -15,6 +15,18 @@ import { Input } from '@/components/ui/field';
  * Quantities left to ship count draft deliveries too, so two people cannot
  * both prepare the whole order.
  */
+/**
+ * Lines with no catalog material behind them.
+ *
+ * A quote line typed by hand carries no `stockMaterialId`, so dispatching it
+ * moves nothing off the shelf. That is legitimate for a service or for goods
+ * bought straight to the job — it just has to be visible, rather than looking
+ * like stock that quietly failed to move.
+ */
+function untrackedLines(note: { lines: { stockMaterialId: string | null }[] }): number {
+  return note.lines.filter((line) => line.stockMaterialId === null).length;
+}
+
 export function OrderDeliveries({ order }: { order: SalesOrderDto }) {
   const canRead = useCan({ permission: PERMISSIONS.DELIVERY_NOTE_READ });
   const canCreate = useCan({ permission: PERMISSIONS.DELIVERY_NOTE_CREATE });
@@ -87,6 +99,21 @@ export function OrderDeliveries({ order }: { order: SalesOrderDto }) {
                   {note.lines.map((l) => `${l.qty} × ${l.description}`).join(', ')}
                   {note.invoiceNumber ? ` · invoiced on ${note.invoiceNumber}` : ''}
                 </p>
+                {/*
+                  Dispatching a line with no material behind it moves no stock
+                  and used to say nothing at all, so 500 units could go out
+                  against an empty shelf and the stock figure never flinched.
+                  A line sold from stock is checked against what is on hand and
+                  refused if it is short; these are the ones that are not.
+                */}
+                {untrackedLines(note) > 0 && (
+                  <p className="mt-0.5 flex items-center gap-1 text-xs text-warning">
+                    <AlertTriangle className="size-3 shrink-0" />
+                    {untrackedLines(note) === note.lines.length
+                      ? 'Not from stock — dispatching this will not move any stock.'
+                      : `${untrackedLines(note)} of ${note.lines.length} lines are not from stock and will not move any.`}
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="ghost" onClick={() => downloadPackingSlip(note.id, note.deliveryNoteNumber)}>

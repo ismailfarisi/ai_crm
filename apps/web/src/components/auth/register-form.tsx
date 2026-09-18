@@ -4,12 +4,19 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
+import type { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { registerSchema, type RegisterInput } from '@saas/shared';
+import {
+  CURRENCY_OPTIONS,
+  currencyLongLabel,
+  registerSchema,
+  type RegisterInput,
+} from '@saas/shared';
 import { api } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/field';
+import { Input, Select } from '@/components/ui/field';
+import { CountrySelect } from '@/components/ui/country-select';
 import { Alert } from '@/components/ui/primitives';
 
 export function RegisterForm() {
@@ -20,10 +27,19 @@ export function RegisterForm() {
     register,
     handleSubmit,
     setError,
+    watch,
     formState: { errors, isSubmitting },
-  } = useForm<RegisterInput>({
+  } = useForm<z.input<typeof registerSchema>, unknown, RegisterInput>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { organizationName: '', firstName: '', lastName: '', email: '', password: '' },
+    defaultValues: {
+      organizationName: '',
+      firstName: '',
+      lastName: '',
+      email: '',
+      password: '',
+      baseCurrency: 'USD',
+      country: '',
+    },
   });
 
   const onSubmit = handleSubmit(async (values) => {
@@ -34,7 +50,7 @@ export function RegisterForm() {
     } catch (error) {
       if (error instanceof ApiError) {
         for (const [field, message] of Object.entries(error.fieldErrors)) {
-          setError(field as keyof RegisterInput, { message });
+          setError(field as keyof z.input<typeof registerSchema>, { message });
         }
         setFormError(error.message);
       } else {
@@ -92,6 +108,32 @@ export function RegisterForm() {
           error={errors.password?.message}
           {...register('password')}
         />
+
+        {/*
+          Asked here because this is the last moment either is free. The base
+          currency can never be changed once anything has been posted, and it
+          used to be set to USD without anyone being told; the country is what
+          tax rules match on, and nothing else ever asked for it.
+        */}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Select
+            label="Base currency"
+            hint="The currency your books are kept in. It cannot be changed later."
+            options={CURRENCY_OPTIONS.map((currency) => ({
+              value: currency.code,
+              label: currencyLongLabel(currency.code),
+            }))}
+            error={errors.baseCurrency?.message}
+            {...register('baseCurrency')}
+          />
+          <CountrySelect
+            label="Country"
+            hint="Used to work out the tax on what you sell."
+            value={watch('country') ?? ''}
+            error={errors.country?.message}
+            {...register('country')}
+          />
+        </div>
 
         <Button type="submit" className="w-full" size="lg" loading={isSubmitting}>
           Create workspace

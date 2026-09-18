@@ -31,6 +31,9 @@ describe('OrganizationsService', () => {
       postalCode: null,
       country: null,
       documentFooter: null,
+      logoData: null,
+      logoContentType: null,
+      logoUpdatedAt: null,
       ...overrides,
     } as Organization;
   }
@@ -101,5 +104,97 @@ describe('OrganizationsService', () => {
     expect(() => updateOrganizationSchema.parse({ country: 'United States' })).toThrow(
       /two-letter code/i,
     );
+  });
+
+  /**
+   * The logo is the one stored file served back inline, to a customer with no
+   * session, so what may be stored is narrower than for an attachment.
+   */
+  describe('logo', () => {
+    const png = (size = 1024) => ({
+      buffer: Buffer.alloc(size, 1),
+      mimetype: 'image/png',
+      size,
+    });
+
+    it('stores a raster logo and gives it a cache-busting URL', async () => {
+      const result = await service.setLogo(tenantId, png());
+
+      expect(result.logoUrl).toMatch(/^\/organization\/org-1\/logo\?v=\d+$/);
+    });
+
+    // An inline SVG is a script running on the origin that served it.
+    it('refuses an SVG, whatever the upload claims', async () => {
+      await expect(
+        service.setLogo(tenantId, {
+          buffer: Buffer.from('<svg onload="alert(1)"/>'),
+          mimetype: 'image/svg+xml',
+          size: 24,
+        }),
+      ).rejects.toThrow(/PNG, JPEG or WebP/);
+    });
+
+    it('refuses a PDF, which is an allowed attachment but not a logo', async () => {
+      await expect(
+        service.setLogo(tenantId, {
+          buffer: Buffer.alloc(16),
+          mimetype: 'application/pdf',
+          size: 16,
+        }),
+      ).rejects.toThrow(/PNG, JPEG or WebP/);
+    });
+
+    it('refuses an image over the size cap', async () => {
+      await expect(
+        service.setLogo(tenantId, {
+          buffer: Buffer.alloc(8),
+          mimetype: 'image/png',
+          size: 3 * 1024 * 1024,
+        }),
+      ).rejects.toThrow(/under 2 MB/);
+    });
+
+    it('refuses an empty upload rather than storing nothing', async () => {
+      await expect(service.setLogo(tenantId, undefined)).rejects.toThrow(
+        /No image was uploaded/,
+      );
+    });
+
+    it('reports no logo when none has been set', async () => {
+      const result = await service.get(tenantId);
+      expect(result.logoUrl).toBeNull();
+    });
+
+    it('404s the public route for a tenant with no logo', async () => {
+      await expect(service.logo(tenantId)).rejects.toThrow(NotFoundException);
+    });
+
+    it('serves the bytes and the stored content type', async () => {
+      repo.findOne.mockResolvedValue(
+        organizationFixture({
+          logoData: Buffer.from([1, 2, 3]),
+          logoContentType: 'image/webp',
+        }),
+      );
+
+      const result = await service.logo(tenantId);
+
+      expect(result.contentType).toBe('image/webp');
+      expect(result.body).toEqual(Buffer.from([1, 2, 3]));
+    });
+
+    it('clears both the bytes and the type, so no URL is advertised', async () => {
+      repo.findOne.mockResolvedValue(
+        organizationFixture({
+          logoData: Buffer.from([1]),
+          logoContentType: 'image/png',
+          logoUpdatedAt: new Date(),
+        }),
+      );
+
+      const result = await service.clearLogo(tenantId);
+
+      expect(result.logoUrl).toBeNull();
+    });
   });
 });

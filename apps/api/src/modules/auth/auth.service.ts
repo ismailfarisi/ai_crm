@@ -5,7 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import {
   SYSTEM_ROLES,
   type ChangePasswordInput,
@@ -67,6 +67,11 @@ export class AuthService {
             input.organizationName,
             manager.getRepository(Organization),
           ),
+          // Both asked for at sign-up. The base currency can never be changed
+          // once anything has been posted, and a country is what tax rules
+          // match on, so neither is a decision to make on someone's behalf.
+          baseCurrency: input.baseCurrency ?? 'USD',
+          country: input.country ?? null,
         }),
       );
 
@@ -104,6 +109,8 @@ export class AuthService {
         manager,
       );
 
+      await this.provisionStarterTaxCodes(organization.id, manager);
+
       this.logger.log(
         `Provisioned organization "${organization.name}" (${organization.id})`,
       );
@@ -118,6 +125,32 @@ export class AuthService {
     await this.users.recordLogin(user.id);
     const tokens = await this.tokens.issue(user, context);
     return { ...tokens, userId: user.id };
+  }
+
+  /**
+   * Gives a new tenant a tax code to quote against.
+   *
+   * `/tax/codes` returned 404 on a fresh account, so the quote editor had
+   * nothing real to offer and the tax report had nothing to group by — a sale
+   * landed with no code at all, and a return could not be filed from it.
+   *
+   * Zero-rated, deliberately. Guessing a country's VAT rate would put a number
+   * in front of a customer that nobody chose and that changes without us; a
+   * code of 0% is true everywhere and gives the report something to group by.
+   * The real rates are added on Finance → Tax, which the setup checklist
+   * points at.
+   */
+  private async provisionStarterTaxCodes(
+    tenantId: string,
+    manager: EntityManager,
+  ): Promise<void> {
+    await manager.query(
+      `INSERT INTO "tax_codes" ("tenant_id", "code", "name", "rate", "kind", "is_reverse_charge", "is_active")
+       VALUES ($1, 'ZERO', 'No tax (0%)', 0, 'SALES', false, true),
+              ($1, 'ZERO', 'No tax (0%)', 0, 'PURCHASE', false, true)
+       ON CONFLICT DO NOTHING`,
+      [tenantId],
+    );
   }
 
   async login(

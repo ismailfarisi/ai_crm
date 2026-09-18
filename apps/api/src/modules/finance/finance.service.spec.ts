@@ -30,6 +30,10 @@ describe('FinanceService', () => {
     accountRepo = {
       find: jest.fn().mockResolvedValue([]),
       findOne: jest.fn().mockResolvedValue(null),
+      // How many accounts the tenant already has — `createAccount` makes the
+      // first one the default whether or not the box was ticked. Each test
+      // that cares sets its own count.
+      count: jest.fn().mockResolvedValue(1),
       create: jest.fn().mockImplementation((dto) => ({ id: 'acc-1', ...dto })),
       save: jest
         .fn()
@@ -270,6 +274,69 @@ describe('FinanceService', () => {
           ]),
         }),
       );
+    });
+
+    /*
+     * "DEFAULT ACCOUNT: None set" beside a tenant's only account is never what
+     * anyone wants, and it leaves expense reimbursement with no account to pay
+     * from — which is the point at which it costs money rather than looking odd.
+     */
+    it('makes the first account the default even when the box was not ticked', async () => {
+      (accountRepo.count as jest.Mock).mockResolvedValue(0);
+
+      await service.createAccount(tenantId, {
+        name: 'Only Account',
+        accountType: 'BANK',
+        currency: 'USD',
+      } as CreateFinanceAccountDto);
+
+      expect(accountRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Only Account', isDefault: true }),
+      );
+    });
+
+    it('leaves a later account undefaulted unless it asks to be', async () => {
+      (accountRepo.count as jest.Mock).mockResolvedValue(2);
+
+      await service.createAccount(tenantId, {
+        name: 'Second Account',
+        accountType: 'CASH',
+        currency: 'USD',
+      } as CreateFinanceAccountDto);
+
+      expect(accountRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Second Account', isDefault: false }),
+      );
+      expect(accountRepo.update).not.toHaveBeenCalled();
+    });
+
+    // There was no way to change the default after creation at all, so a
+    // tenant who missed the checkbox had no route back to one.
+    it('moves the default onto an existing account', async () => {
+      (accountRepo.findOne as jest.Mock).mockResolvedValue({
+        id: 'acc-2',
+        tenantId,
+        name: 'Petty Cash',
+        isDefault: false,
+      } as FinanceAccount);
+
+      const result = await service.updateAccount(tenantId, 'acc-2', {
+        isDefault: true,
+      });
+
+      expect(accountRepo.update).toHaveBeenCalledWith(
+        { tenantId, isDefault: true },
+        { isDefault: false },
+      );
+      expect(result.isDefault).toBe(true);
+    });
+
+    it('refuses to update an account belonging to another tenant', async () => {
+      (accountRepo.findOne as jest.Mock).mockResolvedValue(null);
+
+      await expect(
+        service.updateAccount(tenantId, 'acc-9', { name: 'Theirs' }),
+      ).rejects.toThrow('not found');
     });
 
     it('posts nothing when an account opens at zero', async () => {

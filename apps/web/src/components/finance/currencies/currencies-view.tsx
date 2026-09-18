@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Trash2 } from 'lucide-react';
-import { COMMON_CURRENCIES, PERMISSIONS } from '@saas/shared';
+import { CURRENCY_OPTIONS, currencyLongLabel, PERMISSIONS } from '@saas/shared';
 import { useCurrencyAction, useCurrencySettings, useFxRates } from '@/hooks/use-platform';
 import { useCan } from '@/lib/session-context';
 import { Button } from '@/components/ui/button';
@@ -58,8 +58,10 @@ export function CurrenciesView() {
               >
                 <select value={base} onChange={(e) => setBase(e.target.value)} aria-label="Base currency" className="rounded border border-line bg-surface px-2 py-1 text-sm">
                   <option value="">Change to…</option>
-                  {COMMON_CURRENCIES.map((c) => (
-                    <option key={c}>{c}</option>
+                  {CURRENCY_OPTIONS.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {currencyLongLabel(c.code)}
+                    </option>
                   ))}
                 </select>
                 <Button type="submit" size="sm" disabled={!base} loading={act.isPending}>

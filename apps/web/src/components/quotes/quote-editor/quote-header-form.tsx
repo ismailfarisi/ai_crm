@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Building2, Mail, Calendar, DollarSign, CreditCard, Tag } from 'lucide-react';
 import type { CustomerDto } from '@saas/shared';
+import { CURRENCY_OPTIONS, currencyLabel } from '@saas/shared';
 import { api } from '@/lib/api/endpoints';
 import { Input, Select } from '@/components/ui/field';
 import { Badge } from '@/components/ui/primitives';
@@ -32,15 +33,11 @@ const PAYMENT_TERMS_OPTIONS = [
   { value: 'end_of_month', label: 'End of Current Month' },
 ];
 
-const CURRENCY_OPTIONS = [
-  { value: 'USD', label: 'USD ($)' },
-  { value: 'EUR', label: 'EUR (€)' },
-  { value: 'GBP', label: 'GBP (£)' },
-  { value: 'AED', label: 'AED (د.إ)' },
-  { value: 'SAR', label: 'SAR (﷼)' },
-  { value: 'CAD', label: 'CAD ($)' },
-  { value: 'AUD', label: 'AUD ($)' },
-];
+/** One shared list, so a currency that can be quoted can also be banked. */
+const DOCUMENT_CURRENCIES = CURRENCY_OPTIONS.map((currency) => ({
+  value: currency.code,
+  label: currencyLabel(currency.code),
+}));
 
 export function QuoteHeaderForm({
   data,
@@ -261,7 +258,7 @@ export function QuoteHeaderForm({
                 onChange={(e) => onChange({ currency: e.target.value })}
                 className="w-full h-10 rounded-xl border border-border/40 bg-surface-muted/40 px-2.5 text-xs font-semibold text-ink focus:bg-surface focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden transition-colors"
               >
-                {CURRENCY_OPTIONS.map((opt) => (
+                {DOCUMENT_CURRENCIES.map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label}
                   </option>

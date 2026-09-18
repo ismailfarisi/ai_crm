@@ -17,6 +17,8 @@ import type {
   ToolingDto,
   CreateToolingPayload,
   UpdateToolingPayload,
+  CreateProductTemplatePayload,
+  UpdateProductTemplatePayload,
   ProductTemplateDto,
   CostingPolicy,
   UpdateCostingPolicyPayload,
@@ -105,6 +107,22 @@ export const salesEndpoints = {
 
     listTemplates: () => apiFetch<ProductTemplateDto[]>('/catalog/templates'),
     getTemplate: (id: string) => apiFetch<ProductTemplateDto>(`/catalog/templates/${id}`),
+    /*
+     * The write half of the template API, which the client never called — so
+     * the parametric cost model the landing page advertises could only be set
+     * up by POSTing to the API by hand. Templates are immutable once
+     * published: an edit inserts version + 1 and leaves quotes pointing at the
+     * old one untouched, which is why there is no `updateTemplate`.
+     */
+    createTemplate: (payload: CreateProductTemplatePayload) =>
+      apiFetch<ProductTemplateDto>('/catalog/templates', { method: 'POST', body: payload }),
+    publishTemplateVersion: (id: string, payload: UpdateProductTemplatePayload) =>
+      apiFetch<ProductTemplateDto>(`/catalog/templates/${id}/versions`, {
+        method: 'POST',
+        body: payload,
+      }),
+    deleteTemplate: (id: string) =>
+      apiFetch<{ success: true }>(`/catalog/templates/${id}`, { method: 'DELETE' }),
     /**
      * Prices are decided server-side. The browser sends ids, quantities and
      * template parameters and gets finished lines back — it never computes a

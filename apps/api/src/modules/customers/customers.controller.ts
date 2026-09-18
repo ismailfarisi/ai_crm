@@ -19,6 +19,7 @@ import {
   updateCustomerSchema,
   type CreateCustomerInput,
   type CustomerDto,
+  type CustomerOverviewDto,
   type PaginatedResult,
   type UpdateCustomerInput,
 } from '@saas/shared';
@@ -53,6 +54,23 @@ export class CustomersController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<CustomerDto> {
     return this.customers.findOne(user, id);
+  }
+
+  /*
+   * Declared after `:id` but matched before it would be: Nest routes in
+   * declaration order, and `:id` would otherwise swallow nothing here since
+   * the path has an extra segment. Kept adjacent to `findOne` for the reader.
+   */
+  @Get(':id/overview')
+  @RequirePermissions(PERMISSIONS.CUSTOMER_READ)
+  @ApiOperation({
+    summary: 'One customer’s quotes, orders, invoices and balance',
+  })
+  overview(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<CustomerOverviewDto> {
+    return this.customers.overview(user, id);
   }
 
   @Post()

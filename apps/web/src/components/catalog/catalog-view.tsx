@@ -1,12 +1,14 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
-import { Boxes, Package, Pencil, Plus, Trash2, Wrench, Factory } from 'lucide-react';
+import { Boxes, Package, Pencil, Plus, Ruler, Trash2, Wrench, Factory } from 'lucide-react';
 import {
   PERMISSIONS,
   type CatalogItemDto,
   type MaterialDto,
+  type ProductTemplateDto,
   type ToolingDto,
   type WorkCenterDto,
 } from '@saas/shared';
@@ -16,7 +18,9 @@ import {
   useDeleteMaterial,
   useDeleteTooling,
   useDeleteWorkCenter,
+  useDeleteTemplate,
   useMaterials,
+  useTemplates,
   useTooling,
   useWorkCenters,
 } from '@/hooks/use-catalog-admin';
@@ -32,10 +36,11 @@ import { MaterialFormDialog } from './material-form-dialog';
 import { WorkCenterFormDialog } from './work-center-form-dialog';
 import { ToolingFormDialog } from './tooling-form-dialog';
 
-type Tab = 'products' | 'materials' | 'work-centers' | 'tooling';
+type Tab = 'products' | 'templates' | 'materials' | 'work-centers' | 'tooling';
 
 const TABS: Array<{ id: Tab; label: string; icon: typeof Package }> = [
   { id: 'products', label: 'Products', icon: Package },
+  { id: 'templates', label: 'Templates', icon: Ruler },
   { id: 'materials', label: 'Materials', icon: Boxes },
   { id: 'work-centers', label: 'Work centres', icon: Factory },
   { id: 'tooling', label: 'Tooling', icon: Wrench },
@@ -86,6 +91,7 @@ export function CatalogView() {
   const materials = useMaterials();
   const workCenters = useWorkCenters();
   const tooling = useTooling();
+  const templates = useTemplates();
 
   const [editingItem, setEditingItem] = useState<CatalogItemDto | null>(null);
   const [editingMaterial, setEditingMaterial] = useState<MaterialDto | null>(null);
@@ -101,12 +107,14 @@ export function CatalogView() {
   const deleteMaterial = useDeleteMaterial();
   const deleteWorkCenter = useDeleteWorkCenter();
   const deleteTooling = useDeleteTooling();
+  const deleteTemplate = useDeleteTemplate();
 
   const removing =
     deleteItem.isPending ||
     deleteMaterial.isPending ||
     deleteWorkCenter.isPending ||
-    deleteTooling.isPending;
+    deleteTooling.isPending ||
+    deleteTemplate.isPending;
 
   async function confirmDelete() {
     if (!pendingDelete) return;
@@ -115,6 +123,7 @@ export function CatalogView() {
     if (kind === 'materials') await deleteMaterial.mutateAsync(id);
     if (kind === 'work-centers') await deleteWorkCenter.mutateAsync(id);
     if (kind === 'tooling') await deleteTooling.mutateAsync(id);
+    if (kind === 'templates') await deleteTemplate.mutateAsync(id);
     setPendingDelete(null);
   }
 
@@ -351,15 +360,96 @@ export function CatalogView() {
     [],
   );
 
+  /*
+   * Templates are edited on their own page rather than in a dialog — there are
+   * six repeating sections and a formula in most of them — so the row links
+   * instead of opening something.
+   */
+  const templateColumns = useMemo<ColumnDef<ProductTemplateDto, any>[]>(
+    () => [
+      {
+        accessorKey: 'name',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Template" />,
+        cell: ({ row }) => (
+          <div>
+            <Link
+              href={`/catalog/templates/${row.original.id}`}
+              className="font-medium text-ink hover:text-brand hover:underline"
+            >
+              {row.original.name}
+            </Link>
+            <p className="font-mono text-xs text-ink-subtle">{row.original.templateKey}</p>
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'version',
+        header: 'Version',
+        cell: ({ row }) => (
+          <span className="tabular-nums text-ink-muted">v{row.original.version}</span>
+        ),
+      },
+      {
+        id: 'shape',
+        header: 'Model',
+        cell: ({ row }) => (
+          <span className="text-ink-muted">
+            {row.original.parameters.length} parameters · {row.original.materials.length}{' '}
+            materials · {row.original.operations.length} operations
+          </span>
+        ),
+      },
+      {
+        id: 'pricing',
+        header: 'Pricing',
+        cell: ({ row }) => (
+          <span className="text-ink-muted">
+            {row.original.pricing.method === 'MARGIN' ? 'Margin' : 'Markup'}{' '}
+            {percent(row.original.pricing.rate)}
+          </span>
+        ),
+      },
+      {
+        id: 'actions',
+        cell: ({ row }) => (
+          <div className="flex justify-end gap-1">
+            <Link href={`/catalog/templates/${row.original.id}`}>
+              <Button variant="ghost" size="icon" aria-label={`Edit ${row.original.name}`}>
+                <Pencil className="size-4" />
+              </Button>
+            </Link>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`Delete ${row.original.name}`}
+              onClick={() =>
+                setPendingDelete({
+                  kind: 'templates',
+                  id: row.original.id,
+                  name: row.original.name,
+                })
+              }
+            >
+              <Trash2 className="size-4 text-danger" />
+            </Button>
+          </div>
+        ),
+      },
+    ],
+    [],
+  );
+
   const active = TABS.find((t) => t.id === tab)!;
   const query =
     tab === 'products'
       ? items
-      : tab === 'materials'
-        ? materials
-        : tab === 'work-centers'
-          ? workCenters
-          : tooling;
+      : tab === 'templates'
+        ? templates
+        : tab === 'materials'
+          ? materials
+          : tab === 'work-centers'
+            ? workCenters
+            : tooling;
 
   return (
     <>
@@ -368,10 +458,20 @@ export function CatalogView() {
         description="What you sell, what you make it from, and what it costs to make."
         actions={
           <Can permission={PERMISSIONS.CATALOG_MANAGE}>
-            <Button onClick={() => setCreating(tab)}>
-              <Plus className="size-4" />
-              New {active.label.replace(/s$/, '').toLowerCase()}
-            </Button>
+            {/* A template is too big for a dialog, so it has a page of its own. */}
+            {tab === 'templates' ? (
+              <Link href="/catalog/templates/new">
+                <Button>
+                  <Plus className="size-4" />
+                  New template
+                </Button>
+              </Link>
+            ) : (
+              <Button onClick={() => setCreating(tab)}>
+                <Plus className="size-4" />
+                New {active.label.replace(/s$/, '').toLowerCase()}
+              </Button>
+            )}
           </Can>
         }
       />
@@ -417,6 +517,19 @@ export function CatalogView() {
           emptyTitle="No products yet"
           emptyDescription="Add something you sell at a standing price. Products appear in the quote editor's catalog picker, and their cost is what makes the margin on a quote real."
           emptyIcon={<Package className="size-8 text-ink-muted" />}
+        />
+      ) : tab === 'templates' ? (
+        <DataTable
+          columns={templateColumns}
+          data={templates.data ?? []}
+          isLoading={templates.isPending}
+          getRowId={(row) => row.id}
+          cardTitleKey="name"
+          cardSubtitleKey="templateKey"
+          searchPlaceholder="Search templates…"
+          emptyTitle="No product templates yet"
+          emptyDescription="A template prices made-to-order work from what it takes to make: parameters in, material yield and machine time costed, a price out. It is also what unlocks quantity price breaks and production planning."
+          emptyIcon={<Ruler className="size-8 text-ink-muted" />}
         />
       ) : tab === 'materials' ? (
         <DataTable

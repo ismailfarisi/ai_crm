@@ -26,6 +26,8 @@ export interface AccountBalanceGridProps {
   onTransfer?: (fromAccountId?: string) => void;
   onNewAccount?: () => void;
   onSelectAccount?: (account: FinanceAccountDto) => void;
+  /** Moves the default flag onto an account. Omitted where the viewer cannot. */
+  onMakeDefault?: (accountId: string) => void;
   title?: string;
   description?: string;
   className?: string;
@@ -84,6 +86,7 @@ export function AccountBalanceGrid({
   onTransfer,
   onNewAccount,
   onSelectAccount,
+  onMakeDefault,
   title = 'Treasury & Bank Accounts',
   description = 'Real-time balances across connected corporate banks, petty cash reserves, and clearing gateways.',
   className,
@@ -272,20 +275,37 @@ export function AccountBalanceGrid({
                 {/* Footer Quick Action */}
                 <div className="mt-4 flex items-center justify-between border-t border-border/30 pt-3 text-xs text-ink-muted">
                   <span className="text-[11px] text-ink-subtle">{meta.label}</span>
-                  {onTransfer && (
-                    <button
-                      type="button"
-                      data-testid={`account-transfer-btn-${account.id}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onTransfer(account.id);
-                      }}
-                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink cursor-pointer"
-                    >
-                      <ArrowLeftRight className="size-3" />
-                      Transfer
-                    </button>
-                  )}
+                  <div className="flex items-center gap-1">
+                    {onMakeDefault && !account.isDefault && (
+                      <button
+                        type="button"
+                        data-testid={`account-make-default-btn-${account.id}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onMakeDefault(account.id);
+                        }}
+                        title="Expense reimbursements pay from the default account"
+                        className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink cursor-pointer"
+                      >
+                        <Star className="size-3" />
+                        Make default
+                      </button>
+                    )}
+                    {onTransfer && (
+                      <button
+                        type="button"
+                        data-testid={`account-transfer-btn-${account.id}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onTransfer(account.id);
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink cursor-pointer"
+                      >
+                        <ArrowLeftRight className="size-3" />
+                        Transfer
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             );
