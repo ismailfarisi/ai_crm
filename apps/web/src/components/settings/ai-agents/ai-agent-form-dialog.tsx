@@ -53,6 +53,7 @@ const EMPTY: FormValues = {
   confidenceThreshold: 0.75,
   eligibleProviders: ['EMAIL_SMTP', 'EMAIL_RESEND'],
   isEnabled: true,
+  model: '',
 };
 
 export function AiAgentFormDialog({ open, onClose, agent }: AiAgentFormDialogProps) {
@@ -86,6 +87,9 @@ export function AiAgentFormDialog({ open, onClose, agent }: AiAgentFormDialogPro
             confidenceThreshold: agent.confidenceThreshold,
             eligibleProviders: agent.eligibleProviders as FormValues['eligibleProviders'],
             isEnabled: agent.isEnabled,
+            // Blank in the form means "use the provider's model"; the schema
+            // turns it back into null on the way out.
+            model: agent.model ?? '',
           }
         : EMPTY,
     );
@@ -183,6 +187,14 @@ export function AiAgentFormDialog({ open, onClose, agent }: AiAgentFormDialogPro
             Enabled
           </label>
         </div>
+
+        <Input
+          label="Model"
+          placeholder="Leave blank to use the provider's model"
+          hint="Only set this to run this agent on a different model from the rest of the organisation. Changing the provider's model moves everything left blank."
+          error={errors.model?.message}
+          {...register('model')}
+        />
 
         <fieldset>
           <legend className="mb-2 text-sm font-medium text-ink">Eligible channels</legend>

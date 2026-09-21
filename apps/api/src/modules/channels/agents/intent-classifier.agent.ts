@@ -41,6 +41,7 @@ export class IntentClassifierAgent {
     organizationId: string,
     transcript: ChannelTranscriptTurn[],
     systemPromptOverride?: string,
+    modelOverride?: string,
   ): Promise<ClassifyResult> {
     try {
       const result = await this.aiService.generateStructured<unknown>(
@@ -53,6 +54,9 @@ export class IntentClassifierAgent {
           })),
           jsonSchema: channelIntentJsonSchema,
           schemaName: 'channel_intent',
+          // Left undefined when the agent names no model, so the provider's
+          // own default applies — `options.model || this.defaultModel`.
+          model: modelOverride,
         },
         { organizationId },
       );

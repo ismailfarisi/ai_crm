@@ -107,7 +107,7 @@ export async function channelAiWorkflow(
  * Only used for providers an org has enabled auto-chat for via IntentAgentConfig
  * (defaults to WhatsApp/Telegram) — email always uses the one-shot
  * `channelAiWorkflow` above instead. `maxTurns`/`replyTimeoutMinutes`/
- * `systemPrompt` are resolved once by the caller and carried in `input` for
+ * `systemPrompt`/`model` are resolved once by the caller and carried in `input` for
  * this conversation's whole lifetime, even if the org's settings change mid-chat.
  */
 export async function channelConversationWorkflow(
@@ -141,6 +141,7 @@ export async function channelConversationWorkflow(
         organizationId: input.organizationId,
         transcript,
         systemPromptOverride: input.systemPrompt ?? undefined,
+        modelOverride: input.model ?? undefined,
       });
     } catch {
       // Exhausted retries — mark it FAILED instead of leaving the message

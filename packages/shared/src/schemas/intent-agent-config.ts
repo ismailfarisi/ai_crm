@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ChannelProviderEnum } from './channel';
+import { agentModelField } from './ai-model';
 
 export const upsertIntentAgentConfigSchema = z.object({
   isEnabled: z.boolean().default(true),
@@ -9,6 +10,8 @@ export const upsertIntentAgentConfigSchema = z.object({
   eligibleProviders: z
     .array(ChannelProviderEnum)
     .default(['TELEGRAM', 'WHATSAPP_META']),
+  /** Null uses the provider's configured model; see `agentModelField`. */
+  model: agentModelField,
 });
 export type UpsertIntentAgentConfigPayload = z.infer<
   typeof upsertIntentAgentConfigSchema
@@ -23,6 +26,8 @@ export interface IntentAgentConfigDto {
   replyTimeoutMinutes: number;
   systemPrompt: string | null;
   eligibleProviders: string[];
+  /** Null means the organisation's provider default. */
+  model: string | null;
   createdAt?: string;
   updatedAt?: string;
 }

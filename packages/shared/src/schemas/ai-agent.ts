@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ChannelProviderEnum } from './channel';
+import { agentModelField } from './ai-model';
 
 /**
  * Hand-synced with `MessageAiIntent` in
@@ -31,6 +32,8 @@ export const createAiAgentSchema = z.object({
   confidenceThreshold: z.number().min(0).max(1).default(0.75),
   eligibleProviders: z.array(ChannelProviderEnum).default(['EMAIL_SMTP', 'EMAIL_RESEND']),
   isEnabled: z.boolean().default(true),
+  /** Null uses the provider's configured model; see `agentModelField`. */
+  model: agentModelField,
 });
 export type CreateAiAgentPayload = z.infer<typeof createAiAgentSchema>;
 
@@ -47,6 +50,8 @@ export interface AiAgentDto {
   confidenceThreshold: number;
   eligibleProviders: string[];
   isEnabled: boolean;
+  /** Null means the organisation's provider default. */
+  model: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -28,6 +28,7 @@ export function IntentAgentConfigView() {
   const [maxTurns, setMaxTurns] = useState(5);
   const [replyTimeoutMinutes, setReplyTimeoutMinutes] = useState(15);
   const [systemPrompt, setSystemPrompt] = useState('');
+  const [model, setModel] = useState('');
   const [eligibleProviders, setEligibleProviders] = useState<string[]>([
     'TELEGRAM',
     'WHATSAPP_META',
@@ -42,6 +43,7 @@ export function IntentAgentConfigView() {
     setMaxTurns(config.maxTurns);
     setReplyTimeoutMinutes(config.replyTimeoutMinutes);
     setSystemPrompt(config.systemPrompt ?? '');
+    setModel(config.model ?? '');
     setEligibleProviders(config.eligibleProviders);
   }
 
@@ -58,6 +60,8 @@ export function IntentAgentConfigView() {
       maxTurns,
       replyTimeoutMinutes,
       systemPrompt: systemPrompt.trim() || null,
+      // Blank means "use the provider's model", which is what null encodes.
+      model: model.trim() || null,
       eligibleProviders:
         eligibleProviders as UpsertIntentAgentConfigPayload['eligibleProviders'],
     });
@@ -138,6 +142,14 @@ export function IntentAgentConfigView() {
             placeholder="You are classifying what a customer wants..."
             value={systemPrompt}
             onChange={(e) => setSystemPrompt(e.target.value)}
+          />
+
+          <Input
+            label="Model"
+            placeholder="Leave blank to use the provider's model"
+            hint="Only set this to run the conversational agent on a different model from the rest of the organisation."
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
           />
 
           <fieldset>

@@ -44,6 +44,7 @@ export function createChannelAiActivities(deps: {
         params.organizationId,
         params.transcript,
         params.systemPromptOverride,
+        params.modelOverride,
       );
       if (result.skipped) {
         return { skipped: true };

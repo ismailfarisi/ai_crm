@@ -38,6 +38,15 @@ export class IntentAgentConfig {
   @Column({ type: 'jsonb', default: ['TELEGRAM', 'WHATSAPP_META'] })
   eligibleProviders: ChannelProviderType[];
 
+  /**
+   * The model this agent runs on, or null for the provider's default.
+   *
+   * Nullable rather than defaulted: a default here would be a second opinion
+   * about which model is current, and the provider already holds that one.
+   */
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  model: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 

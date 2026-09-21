@@ -23,6 +23,8 @@ export interface ClassifyMessageParams {
   transcript: ChannelTranscriptTurn[];
   /** Overrides IntentClassifierAgent's built-in system prompt when set — sourced from IntentAgentConfig. */
   systemPromptOverride?: string;
+  /** Overrides the provider's configured model when set — sourced from IntentAgentConfig. */
+  modelOverride?: string;
 }
 
 export interface ClassifyMessageResult {
@@ -86,6 +88,8 @@ export interface ChannelConversationWorkflowInput {
   maxTurns: number;
   replyTimeoutMinutes: number;
   systemPrompt: string | null;
+  /** Null runs on the provider's configured model. */
+  model: string | null;
 }
 
 export interface NewInboundMessagePayload {

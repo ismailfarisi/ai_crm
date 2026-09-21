@@ -531,6 +531,7 @@ export class ChannelsService {
               maxTurns: intentConfig.maxTurns,
               replyTimeoutMinutes: intentConfig.replyTimeoutMinutes,
               systemPrompt: intentConfig.systemPrompt,
+              model: intentConfig.model,
             },
           ],
           signal: newInboundMessageSignal,
