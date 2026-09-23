@@ -1,6 +1,7 @@
 import { PERMISSIONS } from '@saas/shared';
 import { SalesOrderFromDocumentSkill } from './sales-order-from-document.skill';
 import { ChannelProviderType } from '../entities/channel-config.entity';
+import { QuoteCreatedBy } from '../../quotes/entities/quote.entity';
 import type { QuotesService } from '../../quotes/quotes.service';
 import type { OrdersService } from '../../orders/orders.service';
 import type { SkillContext } from './skill.types';
@@ -448,6 +449,37 @@ describe('SalesOrderFromDocumentSkill', () => {
       'org-1',
       expect.objectContaining({
         customerEmail: undefined,
+      }),
+    );
+  });
+
+  it('uses customerEmail from validated slots and sets createdBy to QuoteCreatedBy.AI', async () => {
+    quotesService.findAllQuotes = jest.fn().mockResolvedValue([]);
+    quotesService.createQuote = jest.fn().mockResolvedValue({
+      id: 'q-4',
+      quoteNumber: 'QT-2026-0012',
+      status: 'DRAFT',
+      customerName: 'New Corp',
+      totalAmount: 800,
+      currency: 'USD',
+      items: [],
+    } as any);
+
+    await skill.resolve(
+      {
+        customerName: 'New Corp',
+        customerPoNumber: 'PO-9900',
+        customerEmail: 'billing@newcorp.com',
+        description: 'supplies',
+      },
+      { ...ctx, message: 'PO-9900 from New Corp for supplies' },
+    );
+
+    expect(quotesService.createQuote).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({
+        customerEmail: 'billing@newcorp.com',
+        createdBy: QuoteCreatedBy.AI,
       }),
     );
   });

@@ -7,7 +7,7 @@ import {
 } from '@saas/shared';
 import { QuotesService } from '../../quotes/quotes.service';
 import { OrdersService } from '../../orders/orders.service';
-import { Quote, QuoteStatus } from '../../quotes/entities/quote.entity';
+import { Quote, QuoteCreatedBy, QuoteStatus } from '../../quotes/entities/quote.entity';
 import type { ChannelSkill, SkillContext } from './skill.types';
 
 const QUOTE_NUMBER_PATTERN = /QT-\d{4}-\d+/i;
@@ -18,6 +18,7 @@ const slotSchema = z.object({
   customerPoNumber: z.string().optional(),
   quoteNumber: z.string().optional(),
   customerName: z.string().optional(),
+  customerEmail: z.string().optional(),
   description: z.string().optional(),
   totalAmount: z.number().positive().optional(),
 });
@@ -49,6 +50,10 @@ const jsonSchema = {
     customerName: {
       type: 'string',
       description: 'The customer or company name placing the purchase order.',
+    },
+    customerEmail: {
+      type: 'string',
+      description: 'Customer email address if stated in the message',
     },
     description: {
       type: 'string',
@@ -165,9 +170,7 @@ export class SalesOrderFromDocumentSkill
       }
 
       const customerEmail =
-        ((slots as Record<string, unknown>).customerEmail as
-          | string
-          | undefined) ||
+        data.customerEmail ||
         (ctx.senderIdentifier.includes('@') ? ctx.senderIdentifier : undefined);
 
       const created = await this.quotes.createQuote(ctx.organizationId, {
@@ -176,7 +179,7 @@ export class SalesOrderFromDocumentSkill
         customerEmail,
         prompt: `Customer PO: ${customerPo}\nOrder: ${data.description || 'Customer order from chat'}\nAmount: ${data.totalAmount || 0}`,
         notes: `Customer PO: ${customerPo}`,
-        createdBy: 'AI' as any,
+        createdBy: QuoteCreatedBy.AI,
         totalAmount: data.totalAmount,
       });
 
