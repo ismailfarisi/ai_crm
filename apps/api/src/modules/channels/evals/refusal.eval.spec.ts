@@ -17,6 +17,8 @@ const registry = new SkillRegistry(
   null as never,
   null as never,
   null as never,
+  null as never,
+  null as never,
 );
 
 const ACTOR = { organizationId: 'org-1', userId: 'user-1' };
@@ -38,6 +40,32 @@ describe('eval: refusal', () => {
       PERMISSIONS.PURCHASE_ORDER_CREATE,
     ]);
     expect(permitted.map((s) => s.name)).toEqual(['purchase_order.create']);
+  });
+
+  it('hides delivery.dispatch from someone without DELIVERY_NOTE_DISPATCH permission', () => {
+    const permitted = registry.permittedFor([PERMISSIONS.QUOTE_READ]);
+    expect(permitted.map((s) => s.name)).not.toContain('delivery.dispatch');
+  });
+
+  it('shows delivery.dispatch when caller has DELIVERY_NOTE_DISPATCH', () => {
+    const permitted = registry.permittedFor([
+      PERMISSIONS.DELIVERY_NOTE_DISPATCH,
+    ]);
+    expect(permitted.map((s) => s.name)).toEqual(['delivery.dispatch']);
+  });
+
+  it('hides sales_order.from_document from someone without SALES_ORDER_UPDATE permission', () => {
+    const permitted = registry.permittedFor([PERMISSIONS.QUOTE_READ]);
+    expect(permitted.map((s) => s.name)).not.toContain(
+      'sales_order.from_document',
+    );
+  });
+
+  it('shows sales_order.from_document when caller has SALES_ORDER_UPDATE', () => {
+    const permitted = registry.permittedFor([
+      PERMISSIONS.SALES_ORDER_UPDATE,
+    ]);
+    expect(permitted.map((s) => s.name)).toEqual(['sales_order.from_document']);
   });
 
   it('routes nowhere when no skill is permitted, without asking the model', async () => {

@@ -38,6 +38,24 @@ const CANDIDATES: ChannelSkill<never>[] = [
     'Record time spent on an operation of a work order.',
     ['log 2 hours on WO-2026-0004', 'spent 90 minutes on the Henderson job'],
   ),
+  skill(
+    'delivery.dispatch',
+    'Dispatch a delivery note or ship remaining items on a sales order, taking stocked goods off the shelf and recording what shipped.',
+    [
+      'dispatch DN-2026-0001',
+      'ship delivery note 0002',
+      'ship the remaining items on SO-2026-0005',
+    ],
+  ),
+  skill(
+    'sales_order.from_document',
+    'Convert a customer purchase order document or message into a confirmed sales order, matching an existing open quote or provisioning a new order.',
+    [
+      'customer sent PO-9912 for quote QT-2026-0004',
+      'customer PO-1029 approving our quote QT-2026-0010',
+      'turn customer PO-8831 into an order',
+    ],
+  ),
 ];
 
 function skill(

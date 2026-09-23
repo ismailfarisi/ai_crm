@@ -24,6 +24,8 @@ export interface RoutingCase {
 const PO = CHANNEL_SKILLS.PURCHASE_ORDER_CREATE;
 const APPROVE = CHANNEL_SKILLS.QUOTE_APPROVE;
 const LOG = CHANNEL_SKILLS.WORK_ORDER_LOG_TIME;
+const DISPATCH = CHANNEL_SKILLS.DELIVERY_DISPATCH;
+const SO_FROM_DOC = CHANNEL_SKILLS.SALES_ORDER_FROM_DOCUMENT;
 
 export const ROUTING_CASES: RoutingCase[] = [
   /* ---- purchase orders ---- */
@@ -61,6 +63,51 @@ export const ROUTING_CASES: RoutingCase[] = [
   },
   { message: 'book 45 mins to the guillotine job', expect: LOG },
   { message: 'I did 6 hours on the mailer box run today', expect: LOG },
+
+  /* ---- delivery dispatch ---- */
+  {
+    message: 'dispatch DN-2026-0001',
+    expect: DISPATCH,
+    recorded: { skill: DISPATCH, confidence: 0.95 },
+  },
+  {
+    message: 'ship delivery note 0002',
+    expect: DISPATCH,
+    recorded: { skill: DISPATCH, confidence: 0.9 },
+  },
+  {
+    message: 'ship the remaining items on SO-2026-0005',
+    expect: DISPATCH,
+    recorded: { skill: DISPATCH, confidence: 0.92 },
+  },
+  {
+    message: 'dispatch order SO-2026-0003 for Acme',
+    expect: DISPATCH,
+    recorded: { skill: DISPATCH, confidence: 0.9 },
+  },
+
+  /* ---- sales order from document ---- */
+  {
+    message: 'customer sent PO-9912 for quote QT-2026-0004',
+    expect: SO_FROM_DOC,
+    recorded: { skill: SO_FROM_DOC, confidence: 0.95 },
+  },
+  {
+    message: 'customer PO-1029 approving our quote QT-2026-0010',
+    expect: SO_FROM_DOC,
+    recorded: { skill: SO_FROM_DOC, confidence: 0.93 },
+  },
+  {
+    message: 'turn customer PO-8831 into an order',
+    expect: SO_FROM_DOC,
+    recorded: { skill: SO_FROM_DOC, confidence: 0.9 },
+  },
+  {
+    message:
+      'create sales order from customer PO-4551 for Acme Corp: 500 units of custom boxes',
+    expect: SO_FROM_DOC,
+    recorded: { skill: SO_FROM_DOC, confidence: 0.92 },
+  },
 
   /* ---- nothing: greetings and chatter ---- */
   { message: 'morning', expect: null, note: 'greeting' },
