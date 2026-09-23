@@ -21,7 +21,13 @@ export type ChannelConversationStatus =
   | 'EXPIRED';
 
 /** What a completed skill produced, so the conversation can refer back to it. */
-export type ChannelResultType = 'QUOTE' | 'INVOICE' | 'PURCHASE_ORDER' | 'WORK_ORDER';
+export type ChannelResultType =
+  | 'QUOTE'
+  | 'INVOICE'
+  | 'PURCHASE_ORDER'
+  | 'WORK_ORDER'
+  | 'DELIVERY_NOTE'
+  | 'SALES_ORDER';
 
 /**
  * The registered skills, as a closed union.
@@ -34,6 +40,8 @@ export const CHANNEL_SKILLS = {
   QUOTE_APPROVE: 'quote.approve',
   PURCHASE_ORDER_CREATE: 'purchase_order.create',
   WORK_ORDER_LOG_TIME: 'work_order.log_time',
+  DELIVERY_DISPATCH: 'delivery.dispatch',
+  SALES_ORDER_FROM_DOCUMENT: 'sales_order.from_document',
 } as const;
 
 export type ChannelSkillName = (typeof CHANNEL_SKILLS)[keyof typeof CHANNEL_SKILLS];
