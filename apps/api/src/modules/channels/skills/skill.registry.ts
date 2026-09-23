@@ -3,11 +3,15 @@ import type { ChannelSkillName, Permission } from '@saas/shared';
 import { QuotesService } from '../../quotes/quotes.service';
 import { InvoicesService } from '../../quotes/invoices.service';
 import { PurchasingService } from '../../purchasing/purchasing.service';
+import { ProductionService } from '../../production/production.service';
+import { DeliveryNotesService } from '../../orders/delivery-notes.service';
+import { OrdersService } from '../../orders/orders.service';
 import type { ChannelSkill } from './skill.types';
 import { QuoteApproveSkill } from './quote-approve.skill';
 import { PurchaseOrderCreateSkill } from './purchase-order-create.skill';
 import { WorkOrderLogTimeSkill } from './work-order-log-time.skill';
-import { ProductionService } from '../../production/production.service';
+import { DeliveryDispatchSkill } from './delivery-dispatch.skill';
+import { SalesOrderFromDocumentSkill } from './sales-order-from-document.skill';
 
 /**
  * The one file to touch when adding a staff chat capability.
@@ -26,6 +30,8 @@ export class SkillRegistry {
     invoices: InvoicesService,
     purchasing: PurchasingService,
     production: ProductionService,
+    deliveryNotes: DeliveryNotesService,
+    orders: OrdersService,
   ) {
     this.skills = [
       new QuoteApproveSkill(quotes, invoices) as unknown as ChannelSkill<never>,
@@ -33,6 +39,14 @@ export class SkillRegistry {
         purchasing,
       ) as unknown as ChannelSkill<never>,
       new WorkOrderLogTimeSkill(production) as unknown as ChannelSkill<never>,
+      new DeliveryDispatchSkill(
+        deliveryNotes,
+        orders,
+      ) as unknown as ChannelSkill<never>,
+      new SalesOrderFromDocumentSkill(
+        quotes,
+        orders,
+      ) as unknown as ChannelSkill<never>,
     ];
   }
 

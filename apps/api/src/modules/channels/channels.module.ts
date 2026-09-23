@@ -10,6 +10,7 @@ import { ChannelLinkCode } from './entities/channel-link-code.entity';
 import { ChannelConversation } from './entities/channel-conversation.entity';
 import { PurchasingModule } from '../purchasing/purchasing.module';
 import { ProductionModule } from '../production/production.module';
+import { OrdersModule } from '../orders/orders.module';
 import { SkillRegistry } from './skills/skill.registry';
 import { SkillRouterService } from './skills/skill-router.service';
 import { AiAgent } from './entities/ai-agent.entity';
@@ -38,6 +39,7 @@ import { ChannelsWebhookController } from './channels-webhook.controller';
     AiModule,
     PurchasingModule,
     ProductionModule,
+    OrdersModule,
   ],
   controllers: [ChannelsController, ChannelsWebhookController],
   providers: [

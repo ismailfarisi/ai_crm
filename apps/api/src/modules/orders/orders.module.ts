@@ -48,6 +48,6 @@ import {
   ],
   controllers: [OrdersController, DeliveryNotesController],
   providers: [OrdersService, DeliveryNotesService, PackingSlipPdfService],
-  exports: [OrdersService],
+  exports: [OrdersService, DeliveryNotesService],
 })
 export class OrdersModule {}
