@@ -7,7 +7,11 @@ import {
 } from '@saas/shared';
 import { QuotesService } from '../../quotes/quotes.service';
 import { OrdersService } from '../../orders/orders.service';
-import { Quote, QuoteCreatedBy, QuoteStatus } from '../../quotes/entities/quote.entity';
+import {
+  Quote,
+  QuoteCreatedBy,
+  QuoteStatus,
+} from '../../quotes/entities/quote.entity';
 import type { ChannelSkill, SkillContext } from './skill.types';
 
 const QUOTE_NUMBER_PATTERN = /QT-\d{4}-\d+/i;
@@ -18,7 +22,7 @@ const slotSchema = z.object({
   customerPoNumber: z.string().optional(),
   quoteNumber: z.string().optional(),
   customerName: z.string().optional(),
-  customerEmail: z.string().optional(),
+  customerEmail: z.string().email('Invalid email address').optional(),
   description: z.string().optional(),
   totalAmount: z.number().positive().optional(),
 });
@@ -68,9 +72,7 @@ const jsonSchema = {
   additionalProperties: false,
 } as const;
 
-export class SalesOrderFromDocumentSkill
-  implements ChannelSkill<ResolvedSalesOrderFromDocument>
-{
+export class SalesOrderFromDocumentSkill implements ChannelSkill<ResolvedSalesOrderFromDocument> {
   readonly name = CHANNEL_SKILLS.SALES_ORDER_FROM_DOCUMENT;
   readonly description =
     'Convert a customer purchase order document or message into a confirmed sales order, matching an existing open quote or provisioning a new order.';
@@ -110,14 +112,16 @@ export class SalesOrderFromDocumentSkill
         : null);
     const customerPo = poMatch
       ? poMatch[0].trim()
-      : (data.customerPoNumber?.trim() || 'Customer-PO');
+      : data.customerPoNumber?.trim() || 'Customer-PO';
 
     const quoteMatch =
       QUOTE_NUMBER_PATTERN.exec(ctx.message) ??
       (data.quoteNumber ? QUOTE_NUMBER_PATTERN.exec(data.quoteNumber) : null);
     const rawQuoteNumber = quoteMatch
       ? quoteMatch[0].toUpperCase()
-      : (data.quoteNumber ? data.quoteNumber.trim().toUpperCase() : null);
+      : data.quoteNumber
+        ? data.quoteNumber.trim().toUpperCase()
+        : null;
 
     const allQuotes = await this.quotes.findAllQuotes(ctx.organizationId);
 

@@ -56,9 +56,7 @@ const jsonSchema = {
   additionalProperties: false,
 } as const;
 
-export class DeliveryDispatchSkill
-  implements ChannelSkill<ResolvedDeliveryDispatch>
-{
+export class DeliveryDispatchSkill implements ChannelSkill<ResolvedDeliveryDispatch> {
   readonly name = CHANNEL_SKILLS.DELIVERY_DISPATCH;
   readonly description =
     'Dispatch a delivery note or ship remaining items on a sales order, taking stocked goods off the shelf and recording what shipped.';
@@ -118,10 +116,8 @@ export class DeliveryDispatchSkill
         const allOrders = (await this.orders.list(ctx.organizationId)) || [];
         for (const o of allOrders) {
           const notes =
-            (await this.deliveryNotes.listForOrder(
-              ctx.organizationId,
-              o.id,
-            )) || [];
+            (await this.deliveryNotes.listForOrder(ctx.organizationId, o.id)) ||
+            [];
           const match = notes.find((n) => {
             const num = n.deliveryNoteNumber?.toUpperCase();
             const target = dnTarget.toUpperCase();
@@ -170,8 +166,7 @@ export class DeliveryDispatchSkill
           deliveryNoteId: foundNote.id,
           deliveryNoteNumber: foundNote.deliveryNoteNumber,
           salesOrderId: foundNote.salesOrderId,
-          salesOrderNumber:
-            order?.orderNumber || (foundNote as any).orderNumber || '',
+          salesOrderNumber: order?.orderNumber || foundNote.orderNumber || '',
           customerName: foundNote.customerName || order?.customerName || '',
           lines: (foundNote.lines || []).map((l: any) => ({
             salesOrderLineId: l.salesOrderLineId,
@@ -200,7 +195,9 @@ export class DeliveryDispatchSkill
       const targetUpper = soTarget.toUpperCase();
       targetOrder = allOrders.find(
         (o) =>
-          o.orderNumber?.toUpperCase() === targetUpper || o.id === soTarget,
+          o.orderNumber?.toUpperCase() === targetUpper ||
+          o.orderNumber?.toUpperCase().endsWith(targetUpper) ||
+          o.id === soTarget,
       );
       if (!targetOrder) {
         return {
@@ -244,10 +241,7 @@ export class DeliveryDispatchSkill
       };
     }
 
-    const fullOrder = await this.orders.get(
-      ctx.organizationId,
-      targetOrder.id,
-    );
+    const fullOrder = await this.orders.get(ctx.organizationId, targetOrder.id);
     if (
       fullOrder.status === 'CANCELLED' ||
       fullOrder.status === 'CLOSED' ||
@@ -302,6 +296,14 @@ export class DeliveryDispatchSkill
       };
     }
 
+    if (!ctx.permissions.includes(PERMISSIONS.DELIVERY_NOTE_CREATE)) {
+      return {
+        kind: 'refused',
+        reason:
+          'Creating a delivery note from an order requires permission to create delivery notes.',
+      };
+    }
+
     return {
       kind: 'resolved',
       value: {
@@ -322,10 +324,15 @@ export class DeliveryDispatchSkill
     const linesSummary = resolved.lines
       .map((l) => `- ${l.qty}x ${l.description}`)
       .join('\n');
+    const orderClause = resolved.salesOrderNumber
+      ? ` for order ${resolved.salesOrderNumber}${resolved.customerName ? ` (${resolved.customerName})` : ''}`
+      : resolved.customerName
+        ? ` for ${resolved.customerName}`
+        : '';
     const modeDesc =
       resolved.mode === 'EXISTING_NOTE'
-        ? `Dispatch delivery note ${resolved.deliveryNoteNumber} for order ${resolved.salesOrderNumber} (${resolved.customerName})?`
-        : `Create and dispatch delivery note for order ${resolved.salesOrderNumber} (${resolved.customerName})?`;
+        ? `Dispatch delivery note ${resolved.deliveryNoteNumber}${orderClause}?`
+        : `Create and dispatch delivery note${orderClause}?`;
 
     return (
       `${modeDesc}\n\n` +

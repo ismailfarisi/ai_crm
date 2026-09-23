@@ -14,7 +14,10 @@ describe('DeliveryDispatchSkill', () => {
     userId: 'user-1',
     provider: 'META_WHATSAPP' as any,
     senderIdentifier: '+1234567890',
-    permissions: [PERMISSIONS.DELIVERY_NOTE_DISPATCH, PERMISSIONS.DELIVERY_NOTE_CREATE],
+    permissions: [
+      PERMISSIONS.DELIVERY_NOTE_DISPATCH,
+      PERMISSIONS.DELIVERY_NOTE_CREATE,
+    ],
     message: 'dispatch DN-2026-0001',
   };
 
@@ -42,10 +45,20 @@ describe('DeliveryDispatchSkill', () => {
       status: 'DRAFT',
       salesOrderId: 'so-1',
       customerName: 'Acme Corp',
-      lines: [{ salesOrderLineId: 'sol-1', description: '350gsm board', qty: 100, uom: 'pcs' }],
+      lines: [
+        {
+          salesOrderLineId: 'sol-1',
+          description: '350gsm board',
+          qty: 100,
+          uom: 'pcs',
+        },
+      ],
     } as any);
 
-    const res = await skill.resolve({ deliveryNoteNumber: 'DN-2026-0001' }, ctx);
+    const res = await skill.resolve(
+      { deliveryNoteNumber: 'DN-2026-0001' },
+      ctx,
+    );
     expect(res.kind).toBe('resolved');
     if (res.kind === 'resolved') {
       expect(res.value.mode).toBe('EXISTING_NOTE');
@@ -65,7 +78,10 @@ describe('DeliveryDispatchSkill', () => {
       lines: [],
     } as any);
 
-    const res = await skill.resolve({ deliveryNoteNumber: 'DN-2026-0001' }, ctx);
+    const res = await skill.resolve(
+      { deliveryNoteNumber: 'DN-2026-0001' },
+      ctx,
+    );
     expect(res.kind).toBe('refused');
     if (res.kind === 'refused') {
       expect(res.reason).toContain('already dispatched');
@@ -82,7 +98,10 @@ describe('DeliveryDispatchSkill', () => {
       lines: [],
     } as any);
 
-    const res = await skill.resolve({ deliveryNoteNumber: 'DN-2026-0001' }, ctx);
+    const res = await skill.resolve(
+      { deliveryNoteNumber: 'DN-2026-0001' },
+      ctx,
+    );
     expect(res.kind).toBe('refused');
     if (res.kind === 'refused') {
       expect(res.reason).toContain('already cancelled');
@@ -90,10 +109,15 @@ describe('DeliveryDispatchSkill', () => {
   });
 
   it('refuses if the delivery note cannot be found', async () => {
-    deliveryNotesService.get = jest.fn().mockRejectedValue(new Error('Not found'));
+    deliveryNotesService.get = jest
+      .fn()
+      .mockRejectedValue(new Error('Not found'));
     ordersService.list = jest.fn().mockResolvedValue([]);
 
-    const res = await skill.resolve({ deliveryNoteNumber: 'DN-2026-9999' }, { ...ctx, message: 'dispatch DN-2026-9999' });
+    const res = await skill.resolve(
+      { deliveryNoteNumber: 'DN-2026-9999' },
+      { ...ctx, message: 'dispatch DN-2026-9999' },
+    );
     expect(res.kind).toBe('refused');
     if (res.kind === 'refused') {
       expect(res.reason).toContain("couldn't find delivery note DN-2026-9999");
@@ -107,7 +131,15 @@ describe('DeliveryDispatchSkill', () => {
         orderNumber: 'SO-2026-0005',
         status: 'OPEN',
         customerName: 'Starlight Corp',
-        lines: [{ id: 'sol-1', description: 'Brochures', qtyOrdered: 50, qtyFulfilled: 0, uom: 'pcs' }],
+        lines: [
+          {
+            id: 'sol-1',
+            description: 'Brochures',
+            qtyOrdered: 50,
+            qtyFulfilled: 0,
+            uom: 'pcs',
+          },
+        ],
       } as any,
     ]);
     ordersService.get = jest.fn().mockResolvedValue({
@@ -115,7 +147,15 @@ describe('DeliveryDispatchSkill', () => {
       orderNumber: 'SO-2026-0005',
       status: 'OPEN',
       customerName: 'Starlight Corp',
-      lines: [{ id: 'sol-1', description: 'Brochures', qtyOrdered: 50, qtyFulfilled: 0, uom: 'pcs' }],
+      lines: [
+        {
+          id: 'sol-1',
+          description: 'Brochures',
+          qtyOrdered: 50,
+          qtyFulfilled: 0,
+          uom: 'pcs',
+        },
+      ],
     } as any);
     deliveryNotesService.listForOrder = jest.fn().mockResolvedValue([]);
 
@@ -174,7 +214,15 @@ describe('DeliveryDispatchSkill', () => {
       orderNumber: 'SO-2026-0005',
       status: 'OPEN',
       customerName: 'Starlight Corp',
-      lines: [{ id: 'sol-1', description: 'Brochures', qtyOrdered: 50, qtyFulfilled: 50, uom: 'pcs' }],
+      lines: [
+        {
+          id: 'sol-1',
+          description: 'Brochures',
+          qtyOrdered: 50,
+          qtyFulfilled: 50,
+          uom: 'pcs',
+        },
+      ],
     } as any);
     deliveryNotesService.listForOrder = jest.fn().mockResolvedValue([]);
 
@@ -202,7 +250,15 @@ describe('DeliveryDispatchSkill', () => {
       orderNumber: 'SO-2026-0007',
       status: 'OPEN',
       customerName: 'Acme Special Products',
-      lines: [{ id: 'sol-1', description: 'Labels', qtyOrdered: 100, qtyFulfilled: 0, uom: 'pcs' }],
+      lines: [
+        {
+          id: 'sol-1',
+          description: 'Labels',
+          qtyOrdered: 100,
+          qtyFulfilled: 0,
+          uom: 'pcs',
+        },
+      ],
     } as any);
     deliveryNotesService.listForOrder = jest.fn().mockResolvedValue([]);
 
@@ -219,8 +275,18 @@ describe('DeliveryDispatchSkill', () => {
 
   it('asks which order if multiple orders match customer name', async () => {
     ordersService.list = jest.fn().mockResolvedValue([
-      { id: 'so-1', orderNumber: 'SO-2026-0001', status: 'OPEN', customerName: 'Acme One' } as any,
-      { id: 'so-2', orderNumber: 'SO-2026-0002', status: 'OPEN', customerName: 'Acme Two' } as any,
+      {
+        id: 'so-1',
+        orderNumber: 'SO-2026-0001',
+        status: 'OPEN',
+        customerName: 'Acme One',
+      } as any,
+      {
+        id: 'so-2',
+        orderNumber: 'SO-2026-0002',
+        status: 'OPEN',
+        customerName: 'Acme Two',
+      } as any,
     ]);
 
     const res = await skill.resolve(
@@ -253,7 +319,15 @@ describe('DeliveryDispatchSkill', () => {
       salesOrderId: 'so-1',
       salesOrderNumber: 'SO-2026-0005',
       customerName: 'Acme Corp',
-      lines: [{ salesOrderLineId: 'sol-1', description: '350gsm board', qty: 100, uom: 'pcs', hasStockMaterial: true }],
+      lines: [
+        {
+          salesOrderLineId: 'sol-1',
+          description: '350gsm board',
+          qty: 100,
+          uom: 'pcs',
+          hasStockMaterial: true,
+        },
+      ],
     };
 
     const preview = await skill.preview(resolved, ctx);
@@ -271,7 +345,11 @@ describe('DeliveryDispatchSkill', () => {
     const outcome = await skill.execute(resolved, ctx);
     expect(outcome.resultType).toBe('DELIVERY_NOTE');
     expect(outcome.resultId).toBe('dn-1');
-    expect(deliveryNotesService.dispatch).toHaveBeenCalledWith('org-1', 'dn-1', 'user-1');
+    expect(deliveryNotesService.dispatch).toHaveBeenCalledWith(
+      'org-1',
+      'dn-1',
+      'user-1',
+    );
   });
 
   it('generates a clear preview and creates then dispatches for FROM_ORDER', async () => {
@@ -280,7 +358,15 @@ describe('DeliveryDispatchSkill', () => {
       salesOrderId: 'so-1',
       salesOrderNumber: 'SO-2026-0005',
       customerName: 'Starlight Corp',
-      lines: [{ salesOrderLineId: 'sol-1', description: 'Brochures', qty: 50, uom: 'pcs', hasStockMaterial: false }],
+      lines: [
+        {
+          salesOrderLineId: 'sol-1',
+          description: 'Brochures',
+          qty: 50,
+          uom: 'pcs',
+          hasStockMaterial: false,
+        },
+      ],
     };
 
     const preview = await skill.preview(resolved, ctx);
@@ -302,13 +388,150 @@ describe('DeliveryDispatchSkill', () => {
     const outcome = await skill.execute(resolved, ctx);
     expect(outcome.resultType).toBe('DELIVERY_NOTE');
     expect(outcome.resultId).toBe('dn-new');
-    expect(deliveryNotesService.create).toHaveBeenCalledWith('org-1', 'user-1', 'so-1', {
-      lines: [{ salesOrderLineId: 'sol-1', qty: 50 }],
-      shipTo: null,
-      carrier: null,
-      trackingReference: null,
-      notes: null,
-    });
-    expect(deliveryNotesService.dispatch).toHaveBeenCalledWith('org-1', 'dn-new', 'user-1');
+    expect(deliveryNotesService.create).toHaveBeenCalledWith(
+      'org-1',
+      'user-1',
+      'so-1',
+      {
+        lines: [{ salesOrderLineId: 'sol-1', qty: 50 }],
+        shipTo: null,
+        carrier: null,
+        trackingReference: null,
+        notes: null,
+      },
+    );
+    expect(deliveryNotesService.dispatch).toHaveBeenCalledWith(
+      'org-1',
+      'dn-new',
+      'user-1',
+    );
+  });
+
+  it('refuses FROM_ORDER dispatch if caller lacks DELIVERY_NOTE_CREATE permission', async () => {
+    ordersService.list = jest.fn().mockResolvedValue([
+      {
+        id: 'so-1',
+        orderNumber: 'SO-2026-0005',
+        status: 'OPEN',
+        customerName: 'Starlight Corp',
+        lines: [
+          {
+            id: 'sol-1',
+            description: 'Brochures',
+            qtyOrdered: 50,
+            qtyFulfilled: 0,
+            uom: 'pcs',
+          },
+        ],
+      } as any,
+    ]);
+    ordersService.get = jest.fn().mockResolvedValue({
+      id: 'so-1',
+      orderNumber: 'SO-2026-0005',
+      status: 'OPEN',
+      customerName: 'Starlight Corp',
+      lines: [
+        {
+          id: 'sol-1',
+          description: 'Brochures',
+          qtyOrdered: 50,
+          qtyFulfilled: 0,
+          uom: 'pcs',
+        },
+      ],
+    } as any);
+    deliveryNotesService.listForOrder = jest.fn().mockResolvedValue([]);
+
+    const unpermittedCtx: SkillContext = {
+      ...ctx,
+      permissions: [PERMISSIONS.DELIVERY_NOTE_DISPATCH], // lacks DELIVERY_NOTE_CREATE
+      message: 'ship order SO-2026-0005',
+    };
+
+    const res = await skill.resolve(
+      { salesOrderNumber: 'SO-2026-0005' },
+      unpermittedCtx,
+    );
+
+    expect(res.kind).toBe('refused');
+    if (res.kind === 'refused') {
+      expect(res.reason).toBe(
+        'Creating a delivery note from an order requires permission to create delivery notes.',
+      );
+    }
+  });
+
+  it('matches sales order by suffix number', async () => {
+    ordersService.list = jest.fn().mockResolvedValue([
+      {
+        id: 'so-1',
+        orderNumber: 'SO-2026-0005',
+        status: 'OPEN',
+        customerName: 'Starlight Corp',
+        lines: [
+          {
+            id: 'sol-1',
+            description: 'Brochures',
+            qtyOrdered: 50,
+            qtyFulfilled: 0,
+            uom: 'pcs',
+          },
+        ],
+      } as any,
+    ]);
+    ordersService.get = jest.fn().mockResolvedValue({
+      id: 'so-1',
+      orderNumber: 'SO-2026-0005',
+      status: 'OPEN',
+      customerName: 'Starlight Corp',
+      lines: [
+        {
+          id: 'sol-1',
+          description: 'Brochures',
+          qtyOrdered: 50,
+          qtyFulfilled: 0,
+          uom: 'pcs',
+        },
+      ],
+    } as any);
+    deliveryNotesService.listForOrder = jest.fn().mockResolvedValue([]);
+
+    const res = await skill.resolve(
+      { salesOrderNumber: '0005' },
+      { ...ctx, message: 'ship order 0005' },
+    );
+
+    expect(res.kind).toBe('resolved');
+    if (res.kind === 'resolved') {
+      expect(res.value.mode).toBe('FROM_ORDER');
+      expect(res.value.salesOrderNumber).toBe('SO-2026-0005');
+      expect(res.value.customerName).toBe('Starlight Corp');
+    }
+  });
+
+  it('formats preview cleanly when salesOrderNumber is empty', async () => {
+    const resolved = {
+      mode: 'EXISTING_NOTE' as const,
+      deliveryNoteId: 'dn-1',
+      deliveryNoteNumber: 'DN-2026-0001',
+      salesOrderId: '',
+      salesOrderNumber: '',
+      customerName: 'Acme Corp',
+      lines: [
+        {
+          salesOrderLineId: 'sol-1',
+          description: '350gsm board',
+          qty: 100,
+          uom: 'pcs',
+          hasStockMaterial: true,
+        },
+      ],
+    };
+
+    const preview = await skill.preview(resolved, ctx);
+    expect(preview).toContain(
+      'Dispatch delivery note DN-2026-0001 for Acme Corp?',
+    );
+    expect(preview).not.toContain('for order');
   });
 });

@@ -49,7 +49,14 @@ describe('SalesOrderFromDocumentSkill', () => {
         customerName: 'Acme Corp',
         totalAmount: 3500,
         currency: 'USD',
-        items: [{ id: 'item-1', description: 'Packaging', quantity: 500, unitPrice: 7 }],
+        items: [
+          {
+            id: 'item-1',
+            description: 'Packaging',
+            quantity: 500,
+            unitPrice: 7,
+          },
+        ],
       } as any,
     ]);
     ordersService.findByQuote = jest.fn().mockResolvedValue(null);
@@ -194,7 +201,14 @@ describe('SalesOrderFromDocumentSkill', () => {
       customerName: 'Brightline Ltd',
       totalAmount: 1200,
       currency: 'USD',
-      items: [{ id: 'item-2', description: '100x Custom Folders', quantity: 100, unitPrice: 12 }],
+      items: [
+        {
+          id: 'item-2',
+          description: '100x Custom Folders',
+          quantity: 100,
+          unitPrice: 12,
+        },
+      ],
     } as any);
     ordersService.findByQuote = jest.fn().mockResolvedValue(null);
 
@@ -234,7 +248,11 @@ describe('SalesOrderFromDocumentSkill', () => {
     };
 
     const res = await skill.resolve(
-      { customerName: 'New Client', customerPoNumber: 'PO-3001', description: 'Sample items' },
+      {
+        customerName: 'New Client',
+        customerPoNumber: 'PO-3001',
+        description: 'Sample items',
+      },
       unpermittedCtx,
     );
 
@@ -249,7 +267,10 @@ describe('SalesOrderFromDocumentSkill', () => {
   it('asks question when neither quote nor customer can be identified', async () => {
     quotesService.findAllQuotes = jest.fn().mockResolvedValue([]);
 
-    const res = await skill.resolve({}, { ...ctx, message: 'here is a document' });
+    const res = await skill.resolve(
+      {},
+      { ...ctx, message: 'here is a document' },
+    );
     expect(res.kind).toBe('question');
     if (res.kind === 'question') {
       expect(res.question).toContain('quote number');
@@ -258,10 +279,7 @@ describe('SalesOrderFromDocumentSkill', () => {
   });
 
   it('refuses if slot data is invalid', async () => {
-    const res = await skill.resolve(
-      { totalAmount: -500 },
-      ctx,
-    );
+    const res = await skill.resolve({ totalAmount: -500 }, ctx);
     expect(res.kind).toBe('refused');
     if (res.kind === 'refused') {
       expect(res.reason).toContain('could not make sense');
@@ -287,14 +305,22 @@ describe('SalesOrderFromDocumentSkill', () => {
     expect(preview).toContain('3500 USD');
     expect(preview).toContain('Reply YES to confirm or NO to cancel.');
 
-    quotesService.sendSignal = jest.fn().mockResolvedValue({ id: 'q-1', quoteNumber: 'QT-2026-0004' } as any);
-    ordersService.findByQuote = jest.fn().mockResolvedValue({ id: 'so-1', orderNumber: 'SO-2026-0009' } as any);
+    quotesService.sendSignal = jest
+      .fn()
+      .mockResolvedValue({ id: 'q-1', quoteNumber: 'QT-2026-0004' } as any);
+    ordersService.findByQuote = jest
+      .fn()
+      .mockResolvedValue({ id: 'so-1', orderNumber: 'SO-2026-0009' } as any);
 
     const outcome = await skill.execute(resolved, ctx);
     expect(outcome.resultType).toBe('SALES_ORDER');
     expect(outcome.resultId).toBe('so-1');
     expect(outcome.reply).toContain('SO-2026-0009');
-    expect(quotesService.sendSignal).toHaveBeenCalledWith('org-1', 'q-1', 'APPROVE');
+    expect(quotesService.sendSignal).toHaveBeenCalledWith(
+      'org-1',
+      'q-1',
+      'APPROVE',
+    );
     expect(ordersService.findByQuote).toHaveBeenCalledWith('org-1', 'q-1');
   });
 
@@ -310,7 +336,9 @@ describe('SalesOrderFromDocumentSkill', () => {
       itemsCount: 2,
     };
 
-    quotesService.sendSignal = jest.fn().mockResolvedValue({ id: 'q-2', quoteNumber: 'QT-2026-0010' } as any);
+    quotesService.sendSignal = jest
+      .fn()
+      .mockResolvedValue({ id: 'q-2', quoteNumber: 'QT-2026-0010' } as any);
     ordersService.findByQuote = jest.fn().mockResolvedValue(null);
 
     const outcome = await skill.execute(resolved, ctx);
@@ -441,7 +469,11 @@ describe('SalesOrderFromDocumentSkill', () => {
     };
 
     await skill.resolve(
-      { customerName: 'WhatsApp Client', customerPoNumber: 'PO-7700', description: 'widgets' },
+      {
+        customerName: 'WhatsApp Client',
+        customerPoNumber: 'PO-7700',
+        description: 'widgets',
+      },
       whatsappCtx,
     );
 
@@ -483,5 +515,19 @@ describe('SalesOrderFromDocumentSkill', () => {
       }),
     );
   });
-});
 
+  it('refuses if customerEmail format is invalid', async () => {
+    const res = await skill.resolve(
+      {
+        customerName: 'Acme Corp',
+        customerPoNumber: 'PO-9912',
+        customerEmail: 'not-an-email',
+      },
+      ctx,
+    );
+    expect(res.kind).toBe('refused');
+    if (res.kind === 'refused') {
+      expect(res.reason).toBe('I could not make sense of the purchase order.');
+    }
+  });
+});
