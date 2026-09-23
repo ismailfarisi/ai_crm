@@ -210,12 +210,13 @@ provinces) cannot be modelled.
 
 ## Chat command layer
 
-### Two planned skills are missing — open
+### Two planned skills were missing — resolved (2026-09-23)
 
-The command-layer plan lists one skill per sprint. `delivery.dispatch` (S7) and
+The command-layer plan listed one skill per sprint. `delivery.dispatch` (S7) and
 `sales_order.from_document` (S5 — a customer emails a purchase order and it
-becomes a draft sales order) were never built. Everything they need exists: the
-skill registry, the conversation model, and the services they would call.
+becomes a draft sales order) are now implemented with full RBAC gating, slot
+extraction, preview confirmation, domain service execution, unit tests, and eval
+regression cases. Both are registered in `SkillRegistry`.
 
 ### The live-provider eval reports accuracy, it does not gate — by design
 
