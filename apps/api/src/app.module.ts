@@ -7,6 +7,7 @@ import { AllExceptionsFilter } from '@/common/filters/all-exceptions.filter';
 import type { AppConfig } from '@/config/configuration';
 import { buildConfigModule, buildTypeOrmModule } from '@/config/root-imports';
 import { FEATURE_MODULES } from '@/feature-modules';
+import { DocumentTemplatesModule } from '@/modules/document-templates/document-templates.module';
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '@/modules/rbac/guards/permissions.guard';
 import { BillingGuard } from '@/modules/billing/billing.guard';
@@ -46,6 +47,7 @@ import { BillingGuard } from '@/modules/billing/billing.guard';
     }),
 
     ...FEATURE_MODULES,
+    DocumentTemplatesModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
