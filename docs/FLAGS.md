@@ -226,6 +226,22 @@ that should block a merge.
 
 ---
 
+## Document generation and templates
+
+### AI-powered universal document templates and statements — resolved (2026-09-30)
+
+Quotes and customer statements previously lacked native printable/downloadable vector PDF generation, and document layout and styling were fragmented across document types.
+
+This is now resolved platform-wide:
+- **Universal Document Templates System**: Full multi-tenant schema, domain service (`DocumentTemplatesService`), REST API (`DocumentTemplatesController` via `DocumentTemplatesModule`), React hook (`useDocumentTemplates`), and Web UI Studio (`/settings/document-templates` and editor at `/settings/document-templates/[id]`) with live rendering, layout presets (`MODERN`, `CLASSIC`, `MINIMAL`, `ENTERPRISE`), and customizable typography/palette/section visibility.
+- **Unified Vector PDF Engine**: High-performance `DocumentPdfRendererService` powered by PDFKit renders crisp, print-ready vector documents across all 5 document types: `INVOICE`, `QUOTE`, `STATEMENT`, `DELIVERY_NOTE`, and `PURCHASE_ORDER`. Automatically falls back to deterministic defaults if a custom template is absent or inactive.
+- **Native PDF Downloads for Quotes & Statements**:
+  - Quotes: `GET /quotes/:id/pdf` generates branded quote PDFs with itemized breakdown, discounts, totals, and notes.
+  - Customer Statements: `GET /customers/:id/statement` and `GET /customers/:id/statement/pdf` provide chronological date-range ledger reconciliations, aging summaries (Current, 1-30, 31-60, 61-90, 90+), opening/closing balances, and direct vector PDF downloads.
+- **AI Template Assistant**: `DocumentTemplateAiService` enables natural-language generation and contextual refinement of template configuration, color palettes, and section layouts via OpenAI and Anthropic providers, backed by Zod schema validation and graceful fallback.
+
+---
+
 ## Smaller things found on the way
 
 - **A malformed quote body returns 500, not 400.** `POST /quotes` with a badly
