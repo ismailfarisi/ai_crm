@@ -33,6 +33,11 @@ describe('Channel Permissions & Schemas', () => {
     expect(PERMISSIONS.EXPENSE_APPROVE).toBe('expense:approve');
   });
 
+  it('should include template permissions in PERMISSIONS catalog', () => {
+    expect(PERMISSIONS.DOCUMENT_TEMPLATE_READ).toBe('template:read');
+    expect(PERMISSIONS.DOCUMENT_TEMPLATE_MANAGE).toBe('template:manage');
+  });
+
   it('should validate Meta WhatsApp credentials payload', () => {
     const valid = metaWhatsAppConfigSchema.safeParse({
       phoneNumberId: '123456789',

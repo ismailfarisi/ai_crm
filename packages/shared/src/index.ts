@@ -48,3 +48,4 @@ export * from './platform/audit';
 export * from './platform/attachments';
 export * from './platform/countries';
 export * from './schemas/platform';
+export * from './templates';

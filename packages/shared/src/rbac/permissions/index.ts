@@ -42,6 +42,7 @@ import {
   TAX_PERMISSIONS,
 } from './credits';
 import { auditDomain, AUDIT_PERMISSIONS } from './platform';
+import { templateDomain, TEMPLATE_PERMISSIONS } from './template';
 
 export type { PermissionDomain, PermissionValues } from './domain';
 
@@ -77,6 +78,8 @@ export {
   deliveryNotesDomain,
   taxDomain,
   auditDomain,
+  templateDomain,
+  TEMPLATE_PERMISSIONS,
 };
 
 export const PERMISSION_ACTIONS = ['create', 'read', 'update', 'delete', 'manage'] as const;
@@ -113,6 +116,7 @@ export const PERMISSION_DOMAINS: PermissionDomain[] = [
   deliveryNotesDomain,
   taxDomain,
   auditDomain,
+  templateDomain,
 ];
 
 /**
@@ -144,6 +148,7 @@ export const PERMISSIONS = {
   ...DELIVERY_NOTE_PERMISSIONS,
   ...TAX_PERMISSIONS,
   ...AUDIT_PERMISSIONS,
+  ...TEMPLATE_PERMISSIONS,
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
