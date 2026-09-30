@@ -48,9 +48,7 @@ describe('OrdersService.setStatus — starting production', () => {
     );
 
     // The read either side of the write is not what these tests are about.
-    jest
-      .spyOn(service as never as { findOrder: () => unknown }, 'findOrder')
-      .mockResolvedValue(order as never);
+    jest.spyOn(service as never, 'findOrder').mockResolvedValue(order as never);
     jest
       .spyOn(service, 'get')
       .mockResolvedValue({ ...order, status: 'IN_PRODUCTION' } as never);
@@ -70,10 +68,15 @@ describe('OrdersService.setStatus — starting production', () => {
 
     await service.setStatus(tenantId, order.id, 'IN_PRODUCTION', actorId);
 
-    expect(createFromSalesOrder).toHaveBeenCalledWith(tenantId, actorId, order.id, {
-      salesOrderLineIds: null,
-      dueDate: null,
-    });
+    expect(createFromSalesOrder).toHaveBeenCalledWith(
+      tenantId,
+      actorId,
+      order.id,
+      {
+        salesOrderLineIds: null,
+        dueDate: null,
+      },
+    );
   });
 
   it('refuses the move when nothing can be planned, and says why', async () => {
@@ -84,7 +87,8 @@ describe('OrdersService.setStatus — starting production', () => {
           {
             salesOrderLineId: 'l1',
             description: 'Rigid gift boxes',
-            reason: 'Not priced from a product template, so there is no routing to follow',
+            reason:
+              'Not priced from a product template, so there is no routing to follow',
           },
         ],
       }),
@@ -106,7 +110,13 @@ describe('OrdersService.setStatus — starting production', () => {
     const service = build({
       createFromSalesOrder: jest.fn().mockResolvedValue({
         created: [],
-        skipped: [{ salesOrderLineId: 'l1', description: 'x', reason: 'Already has a work order' }],
+        skipped: [
+          {
+            salesOrderLineId: 'l1',
+            description: 'x',
+            reason: 'Already has a work order',
+          },
+        ],
       }),
       countLive: jest.fn().mockResolvedValue(2),
     });
@@ -123,7 +133,7 @@ describe('OrdersService.setStatus — starting production', () => {
       countLive: jest.fn().mockResolvedValue(0),
     });
     jest
-      .spyOn(service as never as { countDeliveries: () => unknown }, 'countDeliveries')
+      .spyOn(service as never, 'countDeliveries')
       .mockResolvedValue(0 as never);
 
     await service.setStatus(tenantId, order.id, 'FULFILLED', actorId);

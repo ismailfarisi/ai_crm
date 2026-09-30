@@ -12,7 +12,9 @@ describe('OrganizationsService', () => {
   };
   let service: OrganizationsService;
 
-  function organizationFixture(overrides: Partial<Organization> = {}): Organization {
+  function organizationFixture(
+    overrides: Partial<Organization> = {},
+  ): Organization {
     return {
       id: tenantId,
       name: 'Meridian Packaging Co',
@@ -101,9 +103,9 @@ describe('OrganizationsService', () => {
   });
 
   it('rejects a country that is not a two-letter code', () => {
-    expect(() => updateOrganizationSchema.parse({ country: 'United States' })).toThrow(
-      /two-letter code/i,
-    );
+    expect(() =>
+      updateOrganizationSchema.parse({ country: 'United States' }),
+    ).toThrow(/two-letter code/i);
   });
 
   /**

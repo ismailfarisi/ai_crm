@@ -259,7 +259,7 @@ describe('FinanceService', () => {
         accountType: 'BANK',
         currency: 'USD',
         balance: 15000,
-      } as CreateFinanceAccountDto);
+      });
 
       expect(journalRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -288,7 +288,7 @@ describe('FinanceService', () => {
         name: 'Only Account',
         accountType: 'BANK',
         currency: 'USD',
-      } as CreateFinanceAccountDto);
+      });
 
       expect(accountRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'Only Account', isDefault: true }),
@@ -302,7 +302,7 @@ describe('FinanceService', () => {
         name: 'Second Account',
         accountType: 'CASH',
         currency: 'USD',
-      } as CreateFinanceAccountDto);
+      });
 
       expect(accountRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'Second Account', isDefault: false }),
@@ -318,7 +318,7 @@ describe('FinanceService', () => {
         tenantId,
         name: 'Petty Cash',
         isDefault: false,
-      } as FinanceAccount);
+      });
 
       const result = await service.updateAccount(tenantId, 'acc-2', {
         isDefault: true,
@@ -345,7 +345,7 @@ describe('FinanceService', () => {
         accountType: 'BANK',
         currency: 'USD',
         balance: 0,
-      } as CreateFinanceAccountDto);
+      });
 
       expect(journalRepo.save).not.toHaveBeenCalled();
     });

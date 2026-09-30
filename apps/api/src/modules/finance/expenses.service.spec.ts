@@ -102,7 +102,9 @@ describe('ExpensesService', () => {
     // entry has to be resolvable here. Echoing the lines back is enough: the
     // service's own arithmetic is what these tests are about.
     ledgerService = {
-      resolveLines: jest.fn().mockImplementation(async (_tenantId, lines) => lines),
+      resolveLines: jest
+        .fn()
+        .mockImplementation(async (_tenantId, lines) => lines),
       provisionChartOfAccounts: jest.fn().mockResolvedValue([]),
     };
 
@@ -329,12 +331,12 @@ describe('ExpensesService', () => {
         claimNumber: 'EXP-2026-0001',
         status: 'SUBMITTED',
         temporalWorkflowId: `expense-${expenseId}`,
-      } as ExpenseClaim);
+      });
 
       await service.sendSignal(tenantId, expenseId, {
         action: 'APPROVE',
         approvedBy: 'manager-1',
-      } as SignalExpenseDto);
+      });
 
       expect(journalRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -357,13 +359,13 @@ describe('ExpensesService', () => {
         claimNumber: 'EXP-2026-0001',
         status: 'APPROVED',
         temporalWorkflowId: `expense-${expenseId}`,
-      } as ExpenseClaim);
+      });
 
       await service.sendSignal(tenantId, expenseId, {
         action: 'REIMBURSE',
         accountId: 'acc-1',
         reimbursedBy: 'finance-admin',
-      } as SignalExpenseDto);
+      });
 
       expect(journalRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -390,14 +392,14 @@ describe('ExpensesService', () => {
         amount: 4200,
         status: 'APPROVED',
         temporalWorkflowId: `expense-${expenseId}`,
-      } as ExpenseClaim);
+      });
       accountRepo.find = jest.fn().mockResolvedValue([]);
 
       await expect(
         service.sendSignal(tenantId, expenseId, {
           action: 'REIMBURSE',
           reimbursedBy: 'finance-admin',
-        } as SignalExpenseDto),
+        }),
       ).rejects.toThrow(/no bank or cash account/i);
     });
 
@@ -408,13 +410,13 @@ describe('ExpensesService', () => {
         amount: 4200,
         status: 'SUBMITTED',
         temporalWorkflowId: `expense-${expenseId}`,
-      } as ExpenseClaim);
+      });
       journalRepo.findOne = jest.fn().mockResolvedValue({ id: 'je-existing' });
 
       await service.sendSignal(tenantId, expenseId, {
         action: 'APPROVE',
         approvedBy: 'manager-1',
-      } as SignalExpenseDto);
+      });
 
       expect(journalRepo.save).not.toHaveBeenCalled();
     });

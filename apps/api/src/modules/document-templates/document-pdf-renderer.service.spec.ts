@@ -36,7 +36,8 @@ describe('DocumentPdfRendererService', () => {
     items: [
       {
         code: 'SVC-001',
-        description: 'Cloud Infrastructure Consulting - Initial Architecture Assessment and Setup',
+        description:
+          'Cloud Infrastructure Consulting - Initial Architecture Assessment and Setup',
         quantity: 40,
         unitPrice: 150,
         amount: 6000,
@@ -59,7 +60,10 @@ describe('DocumentPdfRendererService', () => {
   };
 
   it('should render a valid PDF buffer for an Invoice', async () => {
-    const buffer = await renderer.render(baseDoc, DEFAULT_DOCUMENT_TEMPLATE_CONFIG);
+    const buffer = await renderer.render(
+      baseDoc,
+      DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+    );
     expect(buffer).toBeInstanceOf(Buffer);
     expect(buffer.length).toBeGreaterThan(1000);
     // PDF Magic bytes: %PDF-
@@ -85,7 +89,12 @@ describe('DocumentPdfRendererService', () => {
                 closingBalance: 11280,
                 periodFrom: new Date('2026-09-01'),
                 periodTo: new Date('2026-09-30'),
-                aging: { current: 10080, days30: 1200, days60: 0, days90Plus: 0 },
+                aging: {
+                  current: 10080,
+                  days30: 1200,
+                  days60: 0,
+                  days90Plus: 0,
+                },
               }
             : undefined,
         secondaryParty:
@@ -98,7 +107,10 @@ describe('DocumentPdfRendererService', () => {
               }
             : undefined,
       };
-      const buffer = await renderer.render(doc, DEFAULT_DOCUMENT_TEMPLATE_CONFIG);
+      const buffer = await renderer.render(
+        doc,
+        DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+      );
       expect(buffer).toBeInstanceOf(Buffer);
       expect(buffer.subarray(0, 5).toString('ascii')).toBe('%PDF-');
       expect(buffer.length).toBeGreaterThan(1000);
@@ -123,7 +135,10 @@ describe('DocumentPdfRendererService', () => {
       },
     };
 
-    const buffer = await renderer.render(longDoc, DEFAULT_DOCUMENT_TEMPLATE_CONFIG);
+    const buffer = await renderer.render(
+      longDoc,
+      DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+    );
     expect(buffer).toBeInstanceOf(Buffer);
     expect(buffer.length).toBeGreaterThan(5000);
     expect(buffer.subarray(0, 5).toString('ascii')).toBe('%PDF-');

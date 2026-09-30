@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -89,10 +90,25 @@ export class CustomersController {
     @Query('to') toStr?: string,
     @Res() res?: Response,
   ): Promise<void> {
-    const from = fromStr
-      ? new Date(fromStr)
-      : new Date(Date.now() - 30 * 86400000);
-    const to = toStr ? new Date(toStr) : new Date();
+    const from = this.parseDateParam(
+      fromStr,
+      () => new Date(Date.now() - 30 * 86400000),
+      'from',
+      false,
+    );
+    const to = this.parseDateParam(
+      toStr,
+      () => new Date(),
+      'to',
+      true,
+    );
+
+    if (from.getTime() > to.getTime()) {
+      throw new BadRequestException(
+        '"from" date must be before or equal to "to" date',
+      );
+    }
+
     const { buffer, filename } = await this.statementService.getStatementPdf(
       user.organizationId,
       id,
@@ -104,6 +120,27 @@ export class CustomersController {
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.end(buffer);
     }
+  }
+
+  private parseDateParam(
+    val: string | undefined,
+    defaultFn: () => Date,
+    paramName: string,
+    isEndBoundary: boolean,
+  ): Date {
+    if (!val) {
+      return defaultFn();
+    }
+    const d = new Date(val);
+    if (isNaN(d.getTime())) {
+      throw new BadRequestException(
+        `Invalid "${paramName}" date parameter: ${val}`,
+      );
+    }
+    if (isEndBoundary && val.trim().length <= 10) {
+      d.setUTCHours(23, 59, 59, 999);
+    }
+    return d;
   }
 
   @Post()

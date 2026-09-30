@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, Optional } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Customer } from './entities/customer.entity';
@@ -10,6 +15,31 @@ import type { UniversalDocumentData } from '@saas/shared';
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
+function normalizeStatementDate(
+  val: Date | string,
+  paramName: string,
+  isEndBoundary = false,
+): Date {
+  let d: Date;
+  if (typeof val === 'string') {
+    d = new Date(val);
+    if (isNaN(d.getTime())) {
+      throw new BadRequestException(`Invalid "${paramName}" date: ${val}`);
+    }
+    if (isEndBoundary && val.trim().length <= 10) {
+      d.setUTCHours(23, 59, 59, 999);
+    }
+  } else if (val instanceof Date) {
+    if (isNaN(val.getTime())) {
+      throw new BadRequestException(`Invalid "${paramName}" date`);
+    }
+    d = new Date(val.getTime());
+  } else {
+    throw new BadRequestException(`Invalid "${paramName}" date`);
+  }
+  return d;
+}
+
 function calculateDaysOverdue(dueDate: Date | string, asOf: Date): number {
   const due = new Date(dueDate);
   const a = Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth(), asOf.getUTCDate());
@@ -18,7 +48,7 @@ function calculateDaysOverdue(dueDate: Date | string, asOf: Date): number {
 }
 
 function getPaymentDate(payment: InvoicePayment): Date {
-  const d = (payment as any).paymentDate || payment.paidAt || payment.createdAt;
+  const d = payment.paidAt || (payment as any).paymentDate || payment.createdAt;
   return d instanceof Date ? d : new Date(d);
 }
 
@@ -46,9 +76,18 @@ export class CustomerStatementService {
   async generateStatementData(
     tenantId: string,
     customerId: string,
-    from: Date,
-    to: Date,
+    from: Date | string,
+    to: Date | string,
   ): Promise<UniversalDocumentData> {
+    const fromDate = normalizeStatementDate(from, 'from', false);
+    const toDate = normalizeStatementDate(to, 'to', true);
+
+    if (fromDate.getTime() > toDate.getTime()) {
+      throw new BadRequestException(
+        '"from" date must be before or equal to "to" date',
+      );
+    }
+
     const customer = await this.customerRepo.findOne({
       where: { id: customerId, organizationId: tenantId },
     });
@@ -77,8 +116,8 @@ export class CustomerStatementService {
       order: { paidAt: 'ASC' },
     });
 
-    const fromTime = from.getTime();
-    const toTime = to.getTime();
+    const fromTime = fromDate.getTime();
+    const toTime = toDate.getTime();
 
     // 1. Opening balance from transactions strictly prior to 'from' date
     const priorInvoices = invoices.filter((inv) => {
@@ -154,12 +193,13 @@ export class CustomerStatementService {
     }
 
     for (const pay of periodPayments) {
-      const ref = (pay as any).reference || (pay as any).notes || 'Payment';
+      const ref = (pay as any).reference || pay.notes || 'Payment';
+      const code = (pay as any).reference || pay.notes || 'PAYMENT';
       ledgerItems.push({
         date: getPaymentDate(pay),
         isInvoice: false,
         item: {
-          code: (pay as any).reference || 'PAYMENT',
+          code,
           description: `Payment ${ref !== 'Payment' ? `(${ref})` : 'Received'}`,
           quantity: 1,
           unitPrice: -round2(Number(pay.amount)),
@@ -198,7 +238,7 @@ export class CustomerStatementService {
         (sum, p) => sum + Number(p.amount || 0),
         0,
       );
-      const totalPaid = Math.max(paidOnInv, Number(inv.paidAmount || 0));
+      const totalPaid = paidOnInv;
       const credited = Number(inv.creditedAmount || 0);
       const refunded = Number(inv.refundedAmount || 0);
       const outstanding = round2(
@@ -206,7 +246,7 @@ export class CustomerStatementService {
       );
 
       if (outstanding > 0) {
-        const days = inv.dueDate ? calculateDaysOverdue(inv.dueDate, to) : 0;
+        const days = inv.dueDate ? calculateDaysOverdue(inv.dueDate, toDate) : 0;
         if (days <= 0) {
           aging.current = round2(aging.current + outstanding);
         } else if (days <= 30) {
@@ -250,13 +290,13 @@ export class CustomerStatementService {
           .join(', ') || undefined
       : undefined;
 
-    const docNumber = `STM-${customerName.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()}-${to.toISOString().slice(0, 10).replace(/-/g, '')}`;
+    const docNumber = `STM-${customerName.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()}-${toDate.toISOString().slice(0, 10).replace(/-/g, '')}`;
 
     return {
       type: 'STATEMENT',
       number: docNumber,
       status: 'ISSUED',
-      issuedAt: to,
+      issuedAt: toDate,
       currency: customer.currency || invoices[0]?.currency || 'USD',
       organization: {
         name: organization?.name || 'Relay CRM',
@@ -284,8 +324,8 @@ export class CustomerStatementService {
       statementSummary: {
         openingBalance,
         closingBalance,
-        periodFrom: from,
-        periodTo: to,
+        periodFrom: fromDate,
+        periodTo: toDate,
         aging,
       },
       notes: customer.notes || undefined,
@@ -295,8 +335,8 @@ export class CustomerStatementService {
   async getStatementPdf(
     tenantId: string,
     customerId: string,
-    from: Date,
-    to: Date,
+    from: Date | string,
+    to: Date | string,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const docData = await this.generateStatementData(
       tenantId,
@@ -321,7 +361,10 @@ export class CustomerStatementService {
     const customerName =
       docData.party.companyName || docData.party.name || 'Customer';
     const safeName = customerName.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const dateStr = to.toISOString().slice(0, 10);
+    const periodTo = docData.statementSummary?.periodTo
+      ? new Date(docData.statementSummary.periodTo)
+      : new Date();
+    const dateStr = periodTo.toISOString().slice(0, 10);
     const filename = `Statement-${safeName}-${dateStr}.pdf`;
 
     return { buffer, filename };

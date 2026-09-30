@@ -62,9 +62,7 @@ describe('eval: refusal', () => {
   });
 
   it('shows sales_order.from_document when caller has SALES_ORDER_UPDATE', () => {
-    const permitted = registry.permittedFor([
-      PERMISSIONS.SALES_ORDER_UPDATE,
-    ]);
+    const permitted = registry.permittedFor([PERMISSIONS.SALES_ORDER_UPDATE]);
     expect(permitted.map((s) => s.name)).toEqual(['sales_order.from_document']);
   });
 

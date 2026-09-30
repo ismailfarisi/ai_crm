@@ -16,7 +16,10 @@ function getFont(fontFamily: string, bold = false): string {
   return bold ? 'Helvetica-Bold' : 'Helvetica';
 }
 
-function formatMoney(amount: number | undefined | null, currency = 'USD'): string {
+function formatMoney(
+  amount: number | undefined | null,
+  currency = 'USD',
+): string {
   if (amount == null) return '—';
   try {
     return new Intl.NumberFormat('en-US', {
@@ -198,10 +201,15 @@ export class DocumentPdfRendererService {
         const boldFont = getFont(fontFamily, true);
 
         const density = config.branding.layoutDensity || 'normal';
-        const rowPadding = density === 'compact' ? 3 : density === 'relaxed' ? 7 : 5;
-        const tableFontSize = density === 'compact' ? 8.5 : density === 'relaxed' ? 9.5 : 9;
+        const rowPadding =
+          density === 'compact' ? 3 : density === 'relaxed' ? 7 : 5;
+        const tableFontSize =
+          density === 'compact' ? 8.5 : density === 'relaxed' ? 9.5 : 9;
 
-        const docTitle = getDocumentTitle(docData.type, config.header.customLabels);
+        const docTitle = getDocumentTitle(
+          docData.type,
+          config.header.customLabels,
+        );
 
         let y = margins.top;
 
@@ -249,35 +257,69 @@ export class DocumentPdfRendererService {
 
           const metaStartY = y;
           doc.font(regularFont).fontSize(8.5).fillColor('#475569');
-          if (config.header.showCompanyAddress && docData.organization.address) {
-            doc.text(docData.organization.address, margins.left, doc.y, { width: leftW });
+          if (
+            config.header.showCompanyAddress &&
+            docData.organization.address
+          ) {
+            doc.text(docData.organization.address, margins.left, doc.y, {
+              width: leftW,
+            });
           }
           if (config.header.showCompanyPhone && docData.organization.phone) {
-            doc.text(`Phone: ${docData.organization.phone}`, margins.left, doc.y, { width: leftW });
+            doc.text(
+              `Phone: ${docData.organization.phone}`,
+              margins.left,
+              doc.y,
+              { width: leftW },
+            );
           }
           if (config.header.showCompanyEmail && docData.organization.email) {
-            doc.text(`Email: ${docData.organization.email}`, margins.left, doc.y, { width: leftW });
+            doc.text(
+              `Email: ${docData.organization.email}`,
+              margins.left,
+              doc.y,
+              { width: leftW },
+            );
           }
           if (config.header.showCompanyTaxId && docData.organization.taxId) {
-            doc.text(`Tax ID: ${docData.organization.taxId}`, margins.left, doc.y, { width: leftW });
+            doc.text(
+              `Tax ID: ${docData.organization.taxId}`,
+              margins.left,
+              doc.y,
+              { width: leftW },
+            );
           }
           const leftEndY = doc.y;
 
           let rY = metaStartY;
           doc.font(boldFont).fontSize(10).fillColor('#1e293b');
-          doc.text(docData.number, rightX, rY, { width: rightW, align: 'right' });
+          doc.text(docData.number, rightX, rY, {
+            width: rightW,
+            align: 'right',
+          });
           rY = doc.y + 2;
 
           doc.font(regularFont).fontSize(8.5).fillColor(secondaryColor);
-          doc.text(`Issued: ${formatDate(docData.issuedAt)}`, rightX, rY, { width: rightW, align: 'right' });
+          doc.text(`Issued: ${formatDate(docData.issuedAt)}`, rightX, rY, {
+            width: rightW,
+            align: 'right',
+          });
           rY = doc.y + 2;
 
           if (docData.dueDate) {
-            doc.text(`Due: ${formatDate(docData.dueDate)}`, rightX, rY, { width: rightW, align: 'right' });
+            doc.text(`Due: ${formatDate(docData.dueDate)}`, rightX, rY, {
+              width: rightW,
+              align: 'right',
+            });
             rY = doc.y + 2;
           }
           if (docData.validUntil) {
-            doc.text(`Valid Until: ${formatDate(docData.validUntil)}`, rightX, rY, { width: rightW, align: 'right' });
+            doc.text(
+              `Valid Until: ${formatDate(docData.validUntil)}`,
+              rightX,
+              rY,
+              { width: rightW, align: 'right' },
+            );
             rY = doc.y + 2;
           }
 
@@ -288,12 +330,17 @@ export class DocumentPdfRendererService {
           const badgeHeight = 15;
           const badgeX = margins.left + contentWidth - badgeWidth;
           const statusCol = getStatusColor(docData.status);
-          doc.roundedRect(badgeX, rY + 3, badgeWidth, badgeHeight, 3).fill(statusCol);
+          doc
+            .roundedRect(badgeX, rY + 3, badgeWidth, badgeHeight, 3)
+            .fill(statusCol);
           doc
             .font(boldFont)
             .fontSize(8)
             .fillColor('#ffffff')
-            .text(statusText, badgeX, rY + 6.5, { width: badgeWidth, align: 'center' });
+            .text(statusText, badgeX, rY + 6.5, {
+              width: badgeWidth,
+              align: 'center',
+            });
 
           y = Math.max(leftEndY, rY + badgeHeight + 10) + 14;
         } else if (config.header.layout === 'centered') {
@@ -324,42 +371,69 @@ export class DocumentPdfRendererService {
 
           doc.font(regularFont).fontSize(8.5).fillColor('#475569');
           const compLines: string[] = [];
-          if (config.header.showCompanyAddress && docData.organization.address) compLines.push(docData.organization.address);
+          if (config.header.showCompanyAddress && docData.organization.address)
+            compLines.push(docData.organization.address);
           const contactParts: string[] = [];
-          if (config.header.showCompanyPhone && docData.organization.phone) contactParts.push(`Phone: ${docData.organization.phone}`);
-          if (config.header.showCompanyEmail && docData.organization.email) contactParts.push(`Email: ${docData.organization.email}`);
+          if (config.header.showCompanyPhone && docData.organization.phone)
+            contactParts.push(`Phone: ${docData.organization.phone}`);
+          if (config.header.showCompanyEmail && docData.organization.email)
+            contactParts.push(`Email: ${docData.organization.email}`);
           if (contactParts.length) compLines.push(contactParts.join(' | '));
-          if (config.header.showCompanyTaxId && docData.organization.taxId) compLines.push(`Tax ID: ${docData.organization.taxId}`);
+          if (config.header.showCompanyTaxId && docData.organization.taxId)
+            compLines.push(`Tax ID: ${docData.organization.taxId}`);
 
           for (const line of compLines) {
-            doc.text(line, margins.left, y, { width: contentWidth, align: 'center' });
+            doc.text(line, margins.left, y, {
+              width: contentWidth,
+              align: 'center',
+            });
             y = doc.y + 2;
           }
 
           y += 6;
-          doc.moveTo(margins.left, y).lineTo(margins.left + contentWidth, y).strokeColor('#e2e8f0').stroke();
+          doc
+            .moveTo(margins.left, y)
+            .lineTo(margins.left + contentWidth, y)
+            .strokeColor('#e2e8f0')
+            .stroke();
           y += 10;
 
           // Title & Doc number centered
-          doc.font(boldFont).fontSize(16).fillColor(primaryColor).text(docTitle, margins.left, y, {
-            width: contentWidth,
-            align: 'center',
-          });
+          doc
+            .font(boldFont)
+            .fontSize(16)
+            .fillColor(primaryColor)
+            .text(docTitle, margins.left, y, {
+              width: contentWidth,
+              align: 'center',
+            });
           y = doc.y + 2;
 
-          doc.font(boldFont).fontSize(10).fillColor('#1e293b').text(docData.number, margins.left, y, {
-            width: contentWidth,
-            align: 'center',
-          });
+          doc
+            .font(boldFont)
+            .fontSize(10)
+            .fillColor('#1e293b')
+            .text(docData.number, margins.left, y, {
+              width: contentWidth,
+              align: 'center',
+            });
           y = doc.y + 3;
 
-          const dateParts: string[] = [`Issued: ${formatDate(docData.issuedAt)}`];
-          if (docData.dueDate) dateParts.push(`Due: ${formatDate(docData.dueDate)}`);
-          if (docData.validUntil) dateParts.push(`Valid Until: ${formatDate(docData.validUntil)}`);
-          doc.font(regularFont).fontSize(8.5).fillColor(secondaryColor).text(dateParts.join('  •  '), margins.left, y, {
-            width: contentWidth,
-            align: 'center',
-          });
+          const dateParts: string[] = [
+            `Issued: ${formatDate(docData.issuedAt)}`,
+          ];
+          if (docData.dueDate)
+            dateParts.push(`Due: ${formatDate(docData.dueDate)}`);
+          if (docData.validUntil)
+            dateParts.push(`Valid Until: ${formatDate(docData.validUntil)}`);
+          doc
+            .font(regularFont)
+            .fontSize(8.5)
+            .fillColor(secondaryColor)
+            .text(dateParts.join('  •  '), margins.left, y, {
+              width: contentWidth,
+              align: 'center',
+            });
           y = doc.y + 4;
 
           // Status Badge centered
@@ -369,12 +443,17 @@ export class DocumentPdfRendererService {
           const badgeHeight = 15;
           const badgeX = margins.left + (contentWidth - badgeWidth) / 2;
           const statusCol = getStatusColor(docData.status);
-          doc.roundedRect(badgeX, y, badgeWidth, badgeHeight, 3).fill(statusCol);
+          doc
+            .roundedRect(badgeX, y, badgeWidth, badgeHeight, 3)
+            .fill(statusCol);
           doc
             .font(boldFont)
             .fontSize(8)
             .fillColor('#ffffff')
-            .text(statusText, badgeX, y + 3.5, { width: badgeWidth, align: 'center' });
+            .text(statusText, badgeX, y + 3.5, {
+              width: badgeWidth,
+              align: 'center',
+            });
           y += badgeHeight + 14;
         } else {
           // Default: 'split' layout
@@ -399,25 +478,38 @@ export class DocumentPdfRendererService {
               .font(boldFont)
               .fontSize(16)
               .fillColor(primaryColor)
-              .text(docData.organization.name, margins.left, y, { width: leftW });
+              .text(docData.organization.name, margins.left, y, {
+                width: leftW,
+              });
             y = doc.y + 3;
           }
 
           doc.font(regularFont).fontSize(8.5).fillColor('#475569');
-          if (config.header.showCompanyAddress && docData.organization.address) {
-            doc.text(docData.organization.address, margins.left, y, { width: leftW });
+          if (
+            config.header.showCompanyAddress &&
+            docData.organization.address
+          ) {
+            doc.text(docData.organization.address, margins.left, y, {
+              width: leftW,
+            });
             y = doc.y + 2;
           }
           if (config.header.showCompanyPhone && docData.organization.phone) {
-            doc.text(`Phone: ${docData.organization.phone}`, margins.left, y, { width: leftW });
+            doc.text(`Phone: ${docData.organization.phone}`, margins.left, y, {
+              width: leftW,
+            });
             y = doc.y + 2;
           }
           if (config.header.showCompanyEmail && docData.organization.email) {
-            doc.text(`Email: ${docData.organization.email}`, margins.left, y, { width: leftW });
+            doc.text(`Email: ${docData.organization.email}`, margins.left, y, {
+              width: leftW,
+            });
             y = doc.y + 2;
           }
           if (config.header.showCompanyTaxId && docData.organization.taxId) {
-            doc.text(`Tax ID: ${docData.organization.taxId}`, margins.left, y, { width: leftW });
+            doc.text(`Tax ID: ${docData.organization.taxId}`, margins.left, y, {
+              width: leftW,
+            });
             y = doc.y + 2;
           }
           const leftEndY = y;
@@ -428,19 +520,33 @@ export class DocumentPdfRendererService {
           rY = doc.y + 2;
 
           doc.font(boldFont).fontSize(10).fillColor('#1e293b');
-          doc.text(docData.number, rightX, rY, { width: rightW, align: 'right' });
+          doc.text(docData.number, rightX, rY, {
+            width: rightW,
+            align: 'right',
+          });
           rY = doc.y + 3;
 
           doc.font(regularFont).fontSize(8.5).fillColor(secondaryColor);
-          doc.text(`Issued: ${formatDate(docData.issuedAt)}`, rightX, rY, { width: rightW, align: 'right' });
+          doc.text(`Issued: ${formatDate(docData.issuedAt)}`, rightX, rY, {
+            width: rightW,
+            align: 'right',
+          });
           rY = doc.y + 2;
 
           if (docData.dueDate) {
-            doc.text(`Due: ${formatDate(docData.dueDate)}`, rightX, rY, { width: rightW, align: 'right' });
+            doc.text(`Due: ${formatDate(docData.dueDate)}`, rightX, rY, {
+              width: rightW,
+              align: 'right',
+            });
             rY = doc.y + 2;
           }
           if (docData.validUntil) {
-            doc.text(`Valid Until: ${formatDate(docData.validUntil)}`, rightX, rY, { width: rightW, align: 'right' });
+            doc.text(
+              `Valid Until: ${formatDate(docData.validUntil)}`,
+              rightX,
+              rY,
+              { width: rightW, align: 'right' },
+            );
             rY = doc.y + 2;
           }
 
@@ -451,12 +557,17 @@ export class DocumentPdfRendererService {
           const badgeHeight = 15;
           const badgeX = margins.left + contentWidth - badgeWidth;
           const statusCol = getStatusColor(docData.status);
-          doc.roundedRect(badgeX, rY + 3, badgeWidth, badgeHeight, 3).fill(statusCol);
+          doc
+            .roundedRect(badgeX, rY + 3, badgeWidth, badgeHeight, 3)
+            .fill(statusCol);
           doc
             .font(boldFont)
             .fontSize(8)
             .fillColor('#ffffff')
-            .text(statusText, badgeX, rY + 6.5, { width: badgeWidth, align: 'center' });
+            .text(statusText, badgeX, rY + 6.5, {
+              width: badgeWidth,
+              align: 'center',
+            });
 
           y = Math.max(leftEndY, rY + badgeHeight + 10) + 14;
         }
@@ -472,30 +583,63 @@ export class DocumentPdfRendererService {
           partyLabel = config.parties.shipToLabel;
         }
 
-        doc.font(boldFont).fontSize(8.5).fillColor(secondaryColor).text(partyLabel.toUpperCase(), margins.left, partiesY);
+        doc
+          .font(boldFont)
+          .fontSize(8.5)
+          .fillColor(secondaryColor)
+          .text(partyLabel.toUpperCase(), margins.left, partiesY);
         let pY = partiesY + 12;
 
-        doc.font(boldFont).fontSize(9.5).fillColor('#0f172a').text(docData.party.name, margins.left, pY, { width: colW });
+        doc
+          .font(boldFont)
+          .fontSize(9.5)
+          .fillColor('#0f172a')
+          .text(docData.party.name, margins.left, pY, { width: colW });
         pY = doc.y + 2;
 
-        if (docData.party.companyName && docData.party.companyName !== docData.party.name) {
-          doc.font(regularFont).fontSize(8.5).fillColor('#334155').text(docData.party.companyName, margins.left, pY, { width: colW });
+        if (
+          docData.party.companyName &&
+          docData.party.companyName !== docData.party.name
+        ) {
+          doc
+            .font(regularFont)
+            .fontSize(8.5)
+            .fillColor('#334155')
+            .text(docData.party.companyName, margins.left, pY, { width: colW });
           pY = doc.y + 2;
         }
         if (config.parties.showAddress && docData.party.address) {
-          doc.font(regularFont).fontSize(8.5).fillColor('#475569').text(docData.party.address, margins.left, pY, { width: colW });
+          doc
+            .font(regularFont)
+            .fontSize(8.5)
+            .fillColor('#475569')
+            .text(docData.party.address, margins.left, pY, { width: colW });
           pY = doc.y + 2;
         }
         if (config.parties.showEmail && docData.party.email) {
-          doc.font(regularFont).fontSize(8.5).fillColor('#475569').text(docData.party.email, margins.left, pY, { width: colW });
+          doc
+            .font(regularFont)
+            .fontSize(8.5)
+            .fillColor('#475569')
+            .text(docData.party.email, margins.left, pY, { width: colW });
           pY = doc.y + 2;
         }
         if (config.parties.showPhone && docData.party.phone) {
-          doc.font(regularFont).fontSize(8.5).fillColor('#475569').text(docData.party.phone, margins.left, pY, { width: colW });
+          doc
+            .font(regularFont)
+            .fontSize(8.5)
+            .fillColor('#475569')
+            .text(docData.party.phone, margins.left, pY, { width: colW });
           pY = doc.y + 2;
         }
         if (config.parties.showTaxId && docData.party.taxId) {
-          doc.font(regularFont).fontSize(8.5).fillColor('#475569').text(`Tax ID: ${docData.party.taxId}`, margins.left, pY, { width: colW });
+          doc
+            .font(regularFont)
+            .fontSize(8.5)
+            .fillColor('#475569')
+            .text(`Tax ID: ${docData.party.taxId}`, margins.left, pY, {
+              width: colW,
+            });
           pY = doc.y + 2;
         }
 
@@ -506,22 +650,51 @@ export class DocumentPdfRendererService {
             .font(boldFont)
             .fontSize(8.5)
             .fillColor(secondaryColor)
-            .text((docData.secondaryParty.label || config.parties.shipToLabel).toUpperCase(), secX, partiesY);
+            .text(
+              (
+                docData.secondaryParty.label || config.parties.shipToLabel
+              ).toUpperCase(),
+              secX,
+              partiesY,
+            );
           let sY = partiesY + 12;
 
-          doc.font(boldFont).fontSize(9.5).fillColor('#0f172a').text(docData.secondaryParty.name, secX, sY, { width: colW });
+          doc
+            .font(boldFont)
+            .fontSize(9.5)
+            .fillColor('#0f172a')
+            .text(docData.secondaryParty.name, secX, sY, { width: colW });
           sY = doc.y + 2;
 
           if (docData.secondaryParty.address) {
-            doc.font(regularFont).fontSize(8.5).fillColor('#475569').text(docData.secondaryParty.address, secX, sY, { width: colW });
+            doc
+              .font(regularFont)
+              .fontSize(8.5)
+              .fillColor('#475569')
+              .text(docData.secondaryParty.address, secX, sY, { width: colW });
             sY = doc.y + 2;
           }
           if (docData.secondaryParty.carrier) {
-            doc.font(regularFont).fontSize(8.5).fillColor('#475569').text(`Carrier: ${docData.secondaryParty.carrier}`, secX, sY, { width: colW });
+            doc
+              .font(regularFont)
+              .fontSize(8.5)
+              .fillColor('#475569')
+              .text(`Carrier: ${docData.secondaryParty.carrier}`, secX, sY, {
+                width: colW,
+              });
             sY = doc.y + 2;
           }
           if (docData.secondaryParty.trackingReference) {
-            doc.font(regularFont).fontSize(8.5).fillColor('#475569').text(`Tracking: ${docData.secondaryParty.trackingReference}`, secX, sY, { width: colW });
+            doc
+              .font(regularFont)
+              .fontSize(8.5)
+              .fillColor('#475569')
+              .text(
+                `Tracking: ${docData.secondaryParty.trackingReference}`,
+                secX,
+                sY,
+                { width: colW },
+              );
             sY = doc.y + 2;
           }
           secEndY = sY;
@@ -540,29 +713,77 @@ export class DocumentPdfRendererService {
         const taxWidth = t.showTaxRate ? 45 : 0;
         const totalColWidth = t.showLineTotal ? 70 : 0;
 
-        const fixedSum = codeWidth + qtyWidth + priceWidth + discountWidth + taxWidth + totalColWidth;
+        const fixedSum =
+          codeWidth +
+          qtyWidth +
+          priceWidth +
+          discountWidth +
+          taxWidth +
+          totalColWidth;
         const descWidth = Math.max(100, contentWidth - fixedSum);
 
         if (t.showItemCode) {
-          columns.push({ id: 'code', label: 'Item / Code', width: codeWidth, align: 'left', x: 0 });
+          columns.push({
+            id: 'code',
+            label: 'Item / Code',
+            width: codeWidth,
+            align: 'left',
+            x: 0,
+          });
         }
         if (t.showDescription) {
-          columns.push({ id: 'description', label: 'Description', width: descWidth, align: 'left', x: 0 });
+          columns.push({
+            id: 'description',
+            label: 'Description',
+            width: descWidth,
+            align: 'left',
+            x: 0,
+          });
         }
         if (t.showQuantity) {
-          columns.push({ id: 'quantity', label: 'Qty', width: qtyWidth, align: 'right', x: 0 });
+          columns.push({
+            id: 'quantity',
+            label: 'Qty',
+            width: qtyWidth,
+            align: 'right',
+            x: 0,
+          });
         }
         if (t.showUnitPrice) {
-          columns.push({ id: 'unitPrice', label: 'Unit Price', width: priceWidth, align: 'right', x: 0 });
+          columns.push({
+            id: 'unitPrice',
+            label: 'Unit Price',
+            width: priceWidth,
+            align: 'right',
+            x: 0,
+          });
         }
         if (t.showDiscount) {
-          columns.push({ id: 'discount', label: 'Disc %', width: discountWidth, align: 'right', x: 0 });
+          columns.push({
+            id: 'discount',
+            label: 'Disc %',
+            width: discountWidth,
+            align: 'right',
+            x: 0,
+          });
         }
         if (t.showTaxRate) {
-          columns.push({ id: 'taxRate', label: 'Tax %', width: taxWidth, align: 'right', x: 0 });
+          columns.push({
+            id: 'taxRate',
+            label: 'Tax %',
+            width: taxWidth,
+            align: 'right',
+            x: 0,
+          });
         }
         if (t.showLineTotal) {
-          columns.push({ id: 'lineTotal', label: 'Total', width: totalColWidth, align: 'right', x: 0 });
+          columns.push({
+            id: 'lineTotal',
+            label: 'Total',
+            width: totalColWidth,
+            align: 'right',
+            x: 0,
+          });
         }
 
         // Calculate column X coordinates
@@ -575,14 +796,20 @@ export class DocumentPdfRendererService {
         const renderTableHeader = (headerY: number): number => {
           const headerHeight = 20;
           if (config.itemsTable.headerBackgroundColor) {
-            doc.rect(margins.left, headerY, contentWidth, headerHeight).fill(config.itemsTable.headerBackgroundColor);
+            doc
+              .rect(margins.left, headerY, contentWidth, headerHeight)
+              .fill(config.itemsTable.headerBackgroundColor);
           } else {
-            doc.rect(margins.left, headerY, contentWidth, headerHeight).fill('#f1f5f9');
+            doc
+              .rect(margins.left, headerY, contentWidth, headerHeight)
+              .fill('#f1f5f9');
           }
 
           const headerTextColor =
             config.itemsTable.headerTextColor ||
-            (config.itemsTable.headerBackgroundColor ? '#ffffff' : primaryColor);
+            (config.itemsTable.headerBackgroundColor
+              ? '#ffffff'
+              : primaryColor);
 
           doc.font(boldFont).fontSize(8.5).fillColor(headerTextColor);
 
@@ -590,11 +817,18 @@ export class DocumentPdfRendererService {
             const pad = col.align === 'right' ? 4 : 4;
             const x = col.align === 'right' ? col.x : col.x + pad;
             const w = col.width - 8;
-            doc.text(col.label, x, headerY + 5.5, { width: w, align: col.align });
+            doc.text(col.label, x, headerY + 5.5, {
+              width: w,
+              align: col.align,
+            });
           }
 
           const afterHeaderY = headerY + headerHeight;
-          doc.moveTo(margins.left, afterHeaderY).lineTo(margins.left + contentWidth, afterHeaderY).strokeColor('#cbd5e1').stroke();
+          doc
+            .moveTo(margins.left, afterHeaderY)
+            .lineTo(margins.left + contentWidth, afterHeaderY)
+            .strokeColor('#cbd5e1')
+            .stroke();
           return afterHeaderY + 2;
         };
 
@@ -627,7 +861,9 @@ export class DocumentPdfRendererService {
 
             // Zebra striping
             if (config.itemsTable.zebraStriping && i % 2 === 1) {
-              doc.rect(margins.left, y, contentWidth, rowHeight).fill('#f8fafc');
+              doc
+                .rect(margins.left, y, contentWidth, rowHeight)
+                .fill('#f8fafc');
             }
 
             doc.font(regularFont).fontSize(tableFontSize).fillColor('#1e293b');
@@ -647,10 +883,14 @@ export class DocumentPdfRendererService {
                   cellText = item.description || '';
                   break;
                 case 'quantity':
-                  cellText = item.quantity != null ? String(item.quantity) : '—';
+                  cellText =
+                    item.quantity != null ? String(item.quantity) : '—';
                   break;
                 case 'unitPrice':
-                  cellText = item.unitPrice != null ? formatMoney(item.unitPrice, docData.currency) : '—';
+                  cellText =
+                    item.unitPrice != null
+                      ? formatMoney(item.unitPrice, docData.currency)
+                      : '—';
                   break;
                 case 'discount':
                   cellText = item.discount != null ? `${item.discount}%` : '—';
@@ -659,7 +899,10 @@ export class DocumentPdfRendererService {
                   cellText = item.taxRate != null ? `${item.taxRate}%` : '—';
                   break;
                 case 'lineTotal':
-                  cellText = item.amount != null ? formatMoney(item.amount, docData.currency) : '—';
+                  cellText =
+                    item.amount != null
+                      ? formatMoney(item.amount, docData.currency)
+                      : '—';
                   break;
               }
 
@@ -672,7 +915,11 @@ export class DocumentPdfRendererService {
             y += rowHeight;
 
             // Row separator
-            doc.moveTo(margins.left, y).lineTo(margins.left + contentWidth, y).strokeColor('#f1f5f9').stroke();
+            doc
+              .moveTo(margins.left, y)
+              .lineTo(margins.left + contentWidth, y)
+              .strokeColor('#f1f5f9')
+              .stroke();
           }
         } else {
           doc
@@ -692,26 +939,55 @@ export class DocumentPdfRendererService {
           }
 
           y += 12;
-          doc.font(boldFont).fontSize(9).fillColor(primaryColor).text('ACCOUNT SUMMARY', margins.left, y);
+          doc
+            .font(boldFont)
+            .fontSize(9)
+            .fillColor(primaryColor)
+            .text('ACCOUNT SUMMARY', margins.left, y);
           y += 13;
 
           const summaryBoxW = contentWidth / 3;
           doc.rect(margins.left, y, contentWidth, 34).fill('#f8fafc');
-          doc.rect(margins.left, y, contentWidth, 34).strokeColor('#e2e8f0').stroke();
+          doc
+            .rect(margins.left, y, contentWidth, 34)
+            .strokeColor('#e2e8f0')
+            .stroke();
 
           doc.font(boldFont).fontSize(7.5).fillColor(secondaryColor);
           doc.text('STATEMENT PERIOD', margins.left + 8, y + 5);
           doc.text('OPENING BALANCE', margins.left + summaryBoxW + 8, y + 5);
-          doc.text('CLOSING BALANCE', margins.left + summaryBoxW * 2 + 8, y + 5);
+          doc.text(
+            'CLOSING BALANCE',
+            margins.left + summaryBoxW * 2 + 8,
+            y + 5,
+          );
 
           doc.font(regularFont).fontSize(8.5).fillColor('#0f172a');
-          doc.text(`${formatDate(summary.periodFrom)} - ${formatDate(summary.periodTo)}`, margins.left + 8, y + 17);
-          doc.text(formatMoney(summary.openingBalance, docData.currency), margins.left + summaryBoxW + 8, y + 17);
-          doc.font(boldFont).text(formatMoney(summary.closingBalance, docData.currency), margins.left + summaryBoxW * 2 + 8, y + 17);
+          doc.text(
+            `${formatDate(summary.periodFrom)} - ${formatDate(summary.periodTo)}`,
+            margins.left + 8,
+            y + 17,
+          );
+          doc.text(
+            formatMoney(summary.openingBalance, docData.currency),
+            margins.left + summaryBoxW + 8,
+            y + 17,
+          );
+          doc
+            .font(boldFont)
+            .text(
+              formatMoney(summary.closingBalance, docData.currency),
+              margins.left + summaryBoxW * 2 + 8,
+              y + 17,
+            );
 
           y += 42;
 
-          doc.font(boldFont).fontSize(9).fillColor(primaryColor).text('AGING BREAKDOWN', margins.left, y);
+          doc
+            .font(boldFont)
+            .fontSize(9)
+            .fillColor(primaryColor)
+            .text('AGING BREAKDOWN', margins.left, y);
           y += 13;
 
           const agingCols = [
@@ -724,13 +1000,27 @@ export class DocumentPdfRendererService {
 
           const agingColW = contentWidth / agingCols.length;
           doc.rect(margins.left, y, contentWidth, 34).fill('#f1f5f9');
-          doc.rect(margins.left, y, contentWidth, 34).strokeColor('#cbd5e1').stroke();
+          doc
+            .rect(margins.left, y, contentWidth, 34)
+            .strokeColor('#cbd5e1')
+            .stroke();
 
           for (let j = 0; j < agingCols.length; j++) {
             const ac = agingCols[j];
             const ax = margins.left + j * agingColW;
-            doc.font(boldFont).fontSize(7.5).fillColor(secondaryColor).text(ac.label, ax, y + 5, { width: agingColW, align: 'center' });
-            doc.font(boldFont).fontSize(8.5).fillColor('#0f172a').text(formatMoney(ac.value, docData.currency), ax, y + 17, { width: agingColW, align: 'center' });
+            doc
+              .font(boldFont)
+              .fontSize(7.5)
+              .fillColor(secondaryColor)
+              .text(ac.label, ax, y + 5, { width: agingColW, align: 'center' });
+            doc
+              .font(boldFont)
+              .fontSize(8.5)
+              .fillColor('#0f172a')
+              .text(formatMoney(ac.value, docData.currency), ax, y + 17, {
+                width: agingColW,
+                align: 'center',
+              });
           }
 
           y += 44;
@@ -749,44 +1039,97 @@ export class DocumentPdfRendererService {
           const labelWidth = 115;
           const valueWidth = 115;
 
-          const renderTotalLine = (label: string, valueStr: string, isHighlighted = false) => {
+          const renderTotalLine = (
+            label: string,
+            valueStr: string,
+            isHighlighted = false,
+          ) => {
             doc
               .font(isHighlighted ? boldFont : regularFont)
               .fontSize(isHighlighted ? 11 : 9)
               .fillColor(isHighlighted ? primaryColor : '#334155')
               .text(label, totalsX, y, { width: labelWidth, align: 'left' })
-              .text(valueStr, totalsX + labelWidth, y, { width: valueWidth, align: 'right' });
+              .text(valueStr, totalsX + labelWidth, y, {
+                width: valueWidth,
+                align: 'right',
+              });
             y += isHighlighted ? 16 : 14;
           };
 
           if (config.totals.showSubtotal && docData.totals.subtotal != null) {
-            renderTotalLine('Subtotal:', formatMoney(docData.totals.subtotal, docData.currency));
+            renderTotalLine(
+              'Subtotal:',
+              formatMoney(docData.totals.subtotal, docData.currency),
+            );
           }
-          if (config.totals.showDiscountTotal && docData.totals.discounts != null && docData.totals.discounts > 0) {
-            renderTotalLine('Discount:', `-${formatMoney(docData.totals.discounts, docData.currency)}`);
+          if (
+            config.totals.showDiscountTotal &&
+            docData.totals.discounts != null &&
+            docData.totals.discounts > 0
+          ) {
+            renderTotalLine(
+              'Discount:',
+              `-${formatMoney(docData.totals.discounts, docData.currency)}`,
+            );
           }
-          if (config.totals.showTaxSummary && docData.totals.taxes && docData.totals.taxes.length > 0) {
+          if (
+            config.totals.showTaxSummary &&
+            docData.totals.taxes &&
+            docData.totals.taxes.length > 0
+          ) {
             for (const tax of docData.totals.taxes) {
-              renderTotalLine(`${tax.label} (${tax.rate}%):`, formatMoney(tax.amount, docData.currency));
+              renderTotalLine(
+                `${tax.label} (${tax.rate}%):`,
+                formatMoney(tax.amount, docData.currency),
+              );
             }
           }
 
-          doc.moveTo(totalsX, y + 2).lineTo(totalsX + totalsWidth, y + 2).strokeColor('#cbd5e1').stroke();
+          doc
+            .moveTo(totalsX, y + 2)
+            .lineTo(totalsX + totalsWidth, y + 2)
+            .strokeColor('#cbd5e1')
+            .stroke();
           y += 6;
 
           if (config.totals.highlightTotal) {
-            renderTotalLine('Total:', formatMoney(docData.totals.total, docData.currency), true);
+            renderTotalLine(
+              'Total:',
+              formatMoney(docData.totals.total, docData.currency),
+              true,
+            );
           } else {
-            renderTotalLine('Total:', formatMoney(docData.totals.total, docData.currency), false);
+            renderTotalLine(
+              'Total:',
+              formatMoney(docData.totals.total, docData.currency),
+              false,
+            );
           }
 
-          if (config.totals.showAmountPaid && docData.totals.amountPaid != null) {
-            renderTotalLine('Amount Paid:', formatMoney(docData.totals.amountPaid, docData.currency));
+          if (
+            config.totals.showAmountPaid &&
+            docData.totals.amountPaid != null
+          ) {
+            renderTotalLine(
+              'Amount Paid:',
+              formatMoney(docData.totals.amountPaid, docData.currency),
+            );
           }
-          if (config.totals.showBalanceDue && docData.totals.balanceDue != null) {
-            doc.moveTo(totalsX, y + 2).lineTo(totalsX + totalsWidth, y + 2).strokeColor('#cbd5e1').stroke();
+          if (
+            config.totals.showBalanceDue &&
+            docData.totals.balanceDue != null
+          ) {
+            doc
+              .moveTo(totalsX, y + 2)
+              .lineTo(totalsX + totalsWidth, y + 2)
+              .strokeColor('#cbd5e1')
+              .stroke();
             y += 4;
-            renderTotalLine('Balance Due:', formatMoney(docData.totals.balanceDue, docData.currency), true);
+            renderTotalLine(
+              'Balance Due:',
+              formatMoney(docData.totals.balanceDue, docData.currency),
+              true,
+            );
           }
         }
 
@@ -800,24 +1143,40 @@ export class DocumentPdfRendererService {
 
         const terms = docData.paymentTerms || config.footer.paymentTerms;
         if (terms) {
-          doc.font(boldFont).fontSize(8.5).fillColor('#1e293b').text('Payment Terms: ', margins.left, y, { continued: true });
+          doc
+            .font(boldFont)
+            .fontSize(8.5)
+            .fillColor('#1e293b')
+            .text('Payment Terms: ', margins.left, y, { continued: true });
           doc.font(regularFont).fillColor('#475569').text(terms);
           y = doc.y + 4;
         }
 
         const notes = docData.notes || config.footer.notes;
         if (notes) {
-          doc.font(boldFont).fontSize(8.5).fillColor('#1e293b').text('Notes: ', margins.left, y, { continued: true });
+          doc
+            .font(boldFont)
+            .fontSize(8.5)
+            .fillColor('#1e293b')
+            .text('Notes: ', margins.left, y, { continued: true });
           doc.font(regularFont).fillColor('#475569').text(notes);
           y = doc.y + 4;
         }
 
         const bank = config.footer.bankDetails;
         const hasBankDetails =
-          bank && (bank.bankName || bank.accountNumber || bank.routingOrIban || bank.swiftBic);
+          bank &&
+          (bank.bankName ||
+            bank.accountNumber ||
+            bank.routingOrIban ||
+            bank.swiftBic);
         if (hasBankDetails) {
           y += 6;
-          doc.font(boldFont).fontSize(8.5).fillColor(primaryColor).text('BANK DETAILS', margins.left, y);
+          doc
+            .font(boldFont)
+            .fontSize(8.5)
+            .fillColor(primaryColor)
+            .text('BANK DETAILS', margins.left, y);
           y += 11;
           doc.font(regularFont).fontSize(8).fillColor('#475569');
           if (bank.bankName) {
@@ -850,22 +1209,35 @@ export class DocumentPdfRendererService {
           y += 18;
           const sigW = 180;
           const sigX = margins.left + contentWidth - sigW;
-          doc.moveTo(sigX, y + 22).lineTo(sigX + sigW, y + 22).strokeColor('#94a3b8').stroke();
+          doc
+            .moveTo(sigX, y + 22)
+            .lineTo(sigX + sigW, y + 22)
+            .strokeColor('#94a3b8')
+            .stroke();
           doc
             .font(regularFont)
             .fontSize(8)
             .fillColor('#64748b')
-            .text(config.footer.signatureLabel || 'Authorized Signature', sigX, y + 26, {
-              width: sigW,
-              align: 'center',
-            });
+            .text(
+              config.footer.signatureLabel || 'Authorized Signature',
+              sigX,
+              y + 26,
+              {
+                width: sigW,
+                align: 'center',
+              },
+            );
           y += 40;
         }
 
         // --- 7. TWO-PASS PAGE NUMBERING ---
         if (config.footer.showPageNumbers) {
           const pageRange = doc.bufferedPageRange();
-          for (let i = pageRange.start; i < pageRange.start + pageRange.count; i++) {
+          for (
+            let i = pageRange.start;
+            i < pageRange.start + pageRange.count;
+            i++
+          ) {
             doc.switchToPage(i);
             const pageNum = i - pageRange.start + 1;
             const totalPages = pageRange.count;

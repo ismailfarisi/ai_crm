@@ -6,7 +6,7 @@ import { InvoicePayment } from '../quotes/entities/invoice-payment.entity';
 import { DocumentPdfRendererService } from '../document-templates/document-pdf-renderer.service';
 import { Organization } from '../organizations/entities/organization.entity';
 import { universalDocumentDataSchema } from '@saas/shared';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 describe('CustomerStatementService', () => {
   let service: CustomerStatementService;
@@ -58,8 +58,8 @@ describe('CustomerStatementService', () => {
           id: 'pay-1',
           invoiceId: 'inv-1',
           amount: 400,
-          paymentDate: new Date('2026-09-15'),
-          reference: 'WIRE-9921',
+          paidAt: new Date('2026-09-15'),
+          notes: 'WIRE-9921',
         },
       ]),
     };
@@ -95,6 +95,8 @@ describe('CustomerStatementService', () => {
       expect(data.statementSummary?.openingBalance).toBe(0);
       expect(data.statementSummary?.closingBalance).toBe(600); // 1000 invoice - 400 payment
       expect(data.items.length).toBe(2); // 1 invoice + 1 payment row
+      expect(data.items[1].code).toBe('WIRE-9921');
+      expect(data.items[1].description).toBe('Payment (WIRE-9921)');
       expect(data.totals.total).toBe(600);
       expect(data.totals.balanceDue).toBe(600);
 
@@ -130,14 +132,14 @@ describe('CustomerStatementService', () => {
           invoiceId: 'inv-prior',
           amount: 200,
           paidAt: new Date('2026-08-20'),
-          reference: 'WIRE-8800',
+          notes: 'WIRE-8800',
         },
         {
           id: 'pay-current',
           invoiceId: 'inv-current',
           amount: 400,
           paidAt: new Date('2026-09-15'),
-          reference: 'WIRE-9921',
+          notes: 'WIRE-9921',
         },
       ]);
 
@@ -217,6 +219,122 @@ describe('CustomerStatementService', () => {
       expect(aging?.days60).toBe(300);
       expect(aging?.days90).toBe(400);
       expect(aging?.days90Plus).toBe(500);
+    });
+
+    it('should not leak future payments into historical aging calculation', async () => {
+      // Invoice created in June for $1,000, due 2026-07-01.
+      // In DB, inv.paidAmount is 1,000 because it was paid in August.
+      mockInvoiceRepo.find = jest.fn().mockResolvedValue([
+        {
+          id: 'inv-june',
+          invoiceNumber: 'INV-JUNE',
+          amount: 1000,
+          paidAmount: 1000,
+          currency: 'USD',
+          issuedAt: new Date('2026-06-15'),
+          dueDate: new Date('2026-07-01'),
+        },
+      ]);
+
+      // Payment was posted on August 15 (after statement end date June 30)
+      mockPaymentRepo.find = jest.fn().mockResolvedValue([
+        {
+          id: 'pay-future',
+          invoiceId: 'inv-june',
+          amount: 1000,
+          paidAt: new Date('2026-08-15'),
+          notes: 'Full payment in August',
+        },
+      ]);
+
+      // Generating statement as of June 30
+      const data = await service.generateStatementData(
+        'org-1',
+        'cust-1',
+        new Date('2026-06-01'),
+        new Date('2026-06-30'),
+      );
+
+      // As of June 30, payment has not occurred, so $1,000 is still outstanding
+      const aging = data.statementSummary?.aging;
+      expect(aging?.current).toBe(1000);
+      expect(data.totals.balanceDue).toBe(1000);
+    });
+
+    it('should support payment without notes or reference (defaults to PAYMENT / Payment Received)', async () => {
+      mockInvoiceRepo.find = jest.fn().mockResolvedValue([
+        {
+          id: 'inv-1',
+          invoiceNumber: 'INV-1',
+          amount: 500,
+          currency: 'USD',
+          issuedAt: new Date('2026-09-10'),
+          dueDate: new Date('2026-10-10'),
+        },
+      ]);
+      mockPaymentRepo.find = jest.fn().mockResolvedValue([
+        {
+          id: 'pay-no-notes',
+          invoiceId: 'inv-1',
+          amount: 250,
+          paidAt: new Date('2026-09-15'),
+          notes: null,
+        },
+      ]);
+
+      const data = await service.generateStatementData(
+        'org-1',
+        'cust-1',
+        new Date('2026-09-01'),
+        new Date('2026-09-30'),
+      );
+
+      expect(data.items[1].code).toBe('PAYMENT');
+      expect(data.items[1].description).toBe('Payment Received');
+    });
+
+    it('should throw BadRequestException if dates are invalid or from > to', async () => {
+      await expect(
+        service.generateStatementData(
+          'org-1',
+          'cust-1',
+          'not-a-date',
+          new Date('2026-09-30'),
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      await expect(
+        service.generateStatementData(
+          'org-1',
+          'cust-1',
+          new Date('2026-09-01'),
+          'not-a-date',
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      await expect(
+        service.generateStatementData(
+          'org-1',
+          'cust-1',
+          new Date('2026-10-01'),
+          new Date('2026-09-01'),
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should parse string dates and set to date to end-of-day', async () => {
+      const data = await service.generateStatementData(
+        'org-1',
+        'cust-1',
+        '2026-09-01',
+        '2026-09-30',
+      );
+
+      const periodTo = data.statementSummary?.periodTo as Date;
+      expect(periodTo.getUTCHours()).toBe(23);
+      expect(periodTo.getUTCMinutes()).toBe(59);
+      expect(periodTo.getUTCSeconds()).toBe(59);
+      expect(periodTo.getUTCMilliseconds()).toBe(999);
     });
 
     it('should throw NotFoundException if customer does not exist', async () => {

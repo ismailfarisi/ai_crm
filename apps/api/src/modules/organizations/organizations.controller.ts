@@ -36,7 +36,8 @@ export class OrganizationsController {
   @RequirePermissions(PERMISSIONS.ORG_READ)
   @ApiOperation({
     summary: 'The organization',
-    description: 'Name, registration details and address, as printed on documents',
+    description:
+      'Name, registration details and address, as printed on documents',
   })
   get(@CurrentUser() user: AuthenticatedUser): Promise<OrganizationProfileDto> {
     return this.organizations.get(user.organizationId);
@@ -63,7 +64,9 @@ export class OrganizationsController {
     summary: 'Upload the logo printed on documents',
     description: 'PNG, JPEG or WebP, under 2 MB. Replaces any previous logo.',
   })
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: LOGO_MAX_BYTES } }))
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: LOGO_MAX_BYTES } }),
+  )
   uploadLogo(
     @CurrentUser() user: AuthenticatedUser,
     @UploadedFile() file: UploadedFileLike | undefined,

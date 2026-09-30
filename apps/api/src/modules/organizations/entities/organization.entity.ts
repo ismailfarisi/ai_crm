@@ -74,10 +74,20 @@ export class Organization extends BaseEntity {
   @Column({ type: 'varchar', length: 200, nullable: true })
   website: string | null;
 
-  @Column({ name: 'address_line1', type: 'varchar', length: 200, nullable: true })
+  @Column({
+    name: 'address_line1',
+    type: 'varchar',
+    length: 200,
+    nullable: true,
+  })
   addressLine1: string | null;
 
-  @Column({ name: 'address_line2', type: 'varchar', length: 200, nullable: true })
+  @Column({
+    name: 'address_line2',
+    type: 'varchar',
+    length: 200,
+    nullable: true,
+  })
   addressLine2: string | null;
 
   @Column({ type: 'varchar', length: 120, nullable: true })
@@ -110,7 +120,12 @@ export class Organization extends BaseEntity {
   @Column({ name: 'logo_data', type: 'bytea', nullable: true })
   logoData: Buffer | null;
 
-  @Column({ name: 'logo_content_type', type: 'varchar', length: 40, nullable: true })
+  @Column({
+    name: 'logo_content_type',
+    type: 'varchar',
+    length: 40,
+    nullable: true,
+  })
   logoContentType: string | null;
 
   /** Cache-busts the public logo URL when the logo is replaced. */

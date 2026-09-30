@@ -91,7 +91,10 @@ export class FinanceService {
       where: { tenantId, entryDate: MoreThanOrEqual(windowStart) },
     });
 
-    const movementByDay = new Map<string, { inflow: number; outflow: number }>();
+    const movementByDay = new Map<
+      string,
+      { inflow: number; outflow: number }
+    >();
     for (const entry of cashMovements) {
       if (entry.referenceType === 'TRANSFER') continue;
       if (
@@ -119,7 +122,8 @@ export class FinanceService {
       ) / 100;
     const observedOutflow =
       Math.round(
-        [...movementByDay.values()].reduce((sum, d) => sum + d.outflow, 0) * 100,
+        [...movementByDay.values()].reduce((sum, d) => sum + d.outflow, 0) *
+          100,
       ) / 100;
 
     // Recurring commitments are a forward-looking obligation, so they stay in
@@ -190,7 +194,9 @@ export class FinanceService {
      * from, which is the point at which it starts costing money rather than
      * looking odd.
      */
-    const existing = await this.accountRepository.count({ where: { tenantId } });
+    const existing = await this.accountRepository.count({
+      where: { tenantId },
+    });
     const isDefault = dto.isDefault === true || existing === 0;
 
     if (isDefault) {

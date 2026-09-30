@@ -6,7 +6,10 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { LOGO_CONTENT_TYPES, LOGO_MAX_BYTES } from '@saas/shared';
-import type { OrganizationProfileDto, UpdateOrganizationPayload } from '@saas/shared';
+import type {
+  OrganizationProfileDto,
+  UpdateOrganizationPayload,
+} from '@saas/shared';
 import { Organization } from './entities/organization.entity';
 
 /**
@@ -51,7 +54,9 @@ export class OrganizationsService {
       (organization as unknown as Record<string, unknown>)[key] = value;
     }
 
-    return OrganizationsService.toDto(await this.organizations.save(organization));
+    return OrganizationsService.toDto(
+      await this.organizations.save(organization),
+    );
   }
 
   /** Relations are never wanted here; the tenant record is what is asked for. */
@@ -106,7 +111,11 @@ export class OrganizationsService {
     if (!file?.buffer?.length) {
       throw new BadRequestException('No image was uploaded');
     }
-    if (!LOGO_CONTENT_TYPES.includes(file.mimetype as (typeof LOGO_CONTENT_TYPES)[number])) {
+    if (
+      !LOGO_CONTENT_TYPES.includes(
+        file.mimetype as (typeof LOGO_CONTENT_TYPES)[number],
+      )
+    ) {
       throw new BadRequestException(
         `A logo must be a PNG, JPEG or WebP image. ${file.mimetype} cannot be used.`,
       );
@@ -122,7 +131,9 @@ export class OrganizationsService {
     organization.logoContentType = file.mimetype;
     organization.logoUpdatedAt = new Date();
 
-    return OrganizationsService.toDto(await this.organizations.save(organization));
+    return OrganizationsService.toDto(
+      await this.organizations.save(organization),
+    );
   }
 
   async clearLogo(tenantId: string): Promise<OrganizationProfileDto> {
@@ -131,7 +142,9 @@ export class OrganizationsService {
     organization.logoContentType = null;
     organization.logoUpdatedAt = null;
 
-    return OrganizationsService.toDto(await this.organizations.save(organization));
+    return OrganizationsService.toDto(
+      await this.organizations.save(organization),
+    );
   }
 
   /**
@@ -142,9 +155,7 @@ export class OrganizationsService {
    * it is not a secret; the id in the URL is one the holder of the link
    * already has.
    */
-  async logo(
-    tenantId: string,
-  ): Promise<{ body: Buffer; contentType: string }> {
+  async logo(tenantId: string): Promise<{ body: Buffer; contentType: string }> {
     const organization = await this.organizations.findOne({
       where: { id: tenantId },
     });

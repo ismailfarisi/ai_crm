@@ -29,7 +29,10 @@ const hashToken = (token: string) =>
   createHash('sha256').update(token).digest('hex');
 
 /** The logo URL the DTO carries, resolved against the API's public origin. */
-function absoluteLogoUrl(apiOrigin: string, path: string | null): string | null {
+function absoluteLogoUrl(
+  apiOrigin: string,
+  path: string | null,
+): string | null {
   return path ? `${apiOrigin}${path}` : null;
 }
 
@@ -319,7 +322,9 @@ export class QuoteAcceptanceService {
         email: organization?.email ?? null,
         phone: organization?.phone ?? null,
         website: organization?.website ?? null,
-        addressLines: organization ? formatOrganizationAddress(organization) : [],
+        addressLines: organization
+          ? formatOrganizationAddress(organization)
+          : [],
         documentFooter: organization?.documentFooter ?? null,
         // Absolute: the customer's browser is on the web app's origin, and the
         // logo is served by the API.

@@ -87,9 +87,7 @@ describe('SkillRegistry', () => {
     });
 
     it('returns only SalesOrderFromDocumentSkill when user has SALES_ORDER_UPDATE permission', () => {
-      const permitted = registry.permittedFor([
-        PERMISSIONS.SALES_ORDER_UPDATE,
-      ]);
+      const permitted = registry.permittedFor([PERMISSIONS.SALES_ORDER_UPDATE]);
       expect(permitted).toHaveLength(1);
       expect(permitted[0]).toBeInstanceOf(SalesOrderFromDocumentSkill);
       expect(permitted[0].name).toBe(CHANNEL_SKILLS.SALES_ORDER_FROM_DOCUMENT);

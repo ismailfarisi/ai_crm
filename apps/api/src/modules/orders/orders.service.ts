@@ -229,7 +229,10 @@ export class OrdersService {
         { salesOrderLineIds: null, dueDate: null },
       );
 
-      const alreadyRunning = await this.production.countLive(tenantId, order.id);
+      const alreadyRunning = await this.production.countLive(
+        tenantId,
+        order.id,
+      );
 
       if (planned.created.length === 0 && alreadyRunning === 0) {
         const reasons = [...new Set(planned.skipped.map((s) => s.reason))];

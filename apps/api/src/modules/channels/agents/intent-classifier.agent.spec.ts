@@ -12,7 +12,9 @@ import type { AiService } from '../../ai/ai.service';
  */
 describe('IntentClassifierAgent — which model it asks for', () => {
   const organizationId = '11111111-1111-1111-1111-111111111111';
-  const transcript = [{ role: 'customer' as const, body: 'Where is my order?' }];
+  const transcript = [
+    { role: 'customer' as const, body: 'Where is my order?' },
+  ];
 
   function build() {
     const generateStructured = jest.fn().mockResolvedValue({
@@ -42,7 +44,12 @@ describe('IntentClassifierAgent — which model it asks for', () => {
   it('asks for the model the agent names', async () => {
     const { agent, generateStructured } = build();
 
-    await agent.classify(organizationId, transcript, undefined, 'claude-opus-5');
+    await agent.classify(
+      organizationId,
+      transcript,
+      undefined,
+      'claude-opus-5',
+    );
 
     expect(generateStructured).toHaveBeenCalledWith(
       'channels.classify_intent',
@@ -65,11 +72,19 @@ describe('IntentClassifierAgent — which model it asks for', () => {
   it('still honours the system prompt override alongside the model', async () => {
     const { agent, generateStructured } = build();
 
-    await agent.classify(organizationId, transcript, 'Custom prompt', 'claude-opus-5');
+    await agent.classify(
+      organizationId,
+      transcript,
+      'Custom prompt',
+      'claude-opus-5',
+    );
 
     expect(generateStructured).toHaveBeenCalledWith(
       'channels.classify_intent',
-      expect.objectContaining({ system: 'Custom prompt', model: 'claude-opus-5' }),
+      expect.objectContaining({
+        system: 'Custom prompt',
+        model: 'claude-opus-5',
+      }),
       { organizationId },
     );
   });

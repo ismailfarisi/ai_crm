@@ -2,6 +2,7 @@ import { CustomersController } from './customers.controller';
 import { CustomersService } from './customers.service';
 import { CustomerStatementService } from './customer-statement.service';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
+import { BadRequestException } from '@nestjs/common';
 
 describe('CustomersController', () => {
   let controller: CustomersController;
@@ -52,11 +53,14 @@ describe('CustomersController', () => {
         mockRes,
       );
 
+      const expectedTo = new Date('2026-09-30');
+      expectedTo.setUTCHours(23, 59, 59, 999);
+
       expect(mockStatementService.getStatementPdf).toHaveBeenCalledWith(
         'org-1',
         'cust-1',
         new Date('2026-09-01'),
-        new Date('2026-09-30'),
+        expectedTo,
       );
       expect(mockRes.setHeader).toHaveBeenCalledWith(
         'Content-Type',
@@ -85,6 +89,52 @@ describe('CustomersController', () => {
       expect(callArgs[1]).toBe('cust-1');
       expect(callArgs[2]).toBeInstanceOf(Date);
       expect(callArgs[3]).toBeInstanceOf(Date);
+    });
+
+    it('should preserve time if to date includes time component', async () => {
+      const mockRes = {
+        setHeader: jest.fn(),
+        end: jest.fn(),
+      } as any;
+
+      await controller.getStatementPdf(
+        actor,
+        'cust-1',
+        '2026-09-01T08:00:00.000Z',
+        '2026-09-30T12:00:00.000Z',
+        mockRes,
+      );
+
+      expect(mockStatementService.getStatementPdf).toHaveBeenCalledWith(
+        'org-1',
+        'cust-1',
+        new Date('2026-09-01T08:00:00.000Z'),
+        new Date('2026-09-30T12:00:00.000Z'),
+      );
+    });
+
+    it('should throw BadRequestException if from date string is invalid', async () => {
+      const mockRes = { setHeader: jest.fn(), end: jest.fn() } as any;
+
+      await expect(
+        controller.getStatementPdf(actor, 'cust-1', 'invalid-date', '2026-09-30', mockRes),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException if to date string is invalid', async () => {
+      const mockRes = { setHeader: jest.fn(), end: jest.fn() } as any;
+
+      await expect(
+        controller.getStatementPdf(actor, 'cust-1', '2026-09-01', 'invalid-date', mockRes),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException if from date is after to date', async () => {
+      const mockRes = { setHeader: jest.fn(), end: jest.fn() } as any;
+
+      await expect(
+        controller.getStatementPdf(actor, 'cust-1', '2026-10-01', '2026-09-01', mockRes),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

@@ -643,7 +643,9 @@ export class QuotesService {
     tenantId: string,
     invoices: Invoice[],
   ): Promise<Invoice[]> {
-    const quoteIds = [...new Set(invoices.map((i) => i.quoteId).filter(Boolean))];
+    const quoteIds = [
+      ...new Set(invoices.map((i) => i.quoteId).filter(Boolean)),
+    ];
     if (quoteIds.length === 0) return invoices;
 
     const quotes = await this.quoteRepository.find({

@@ -37,7 +37,9 @@ export class AddOrganizationLogo1787300000000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    for (const [column] of [...AddOrganizationLogo1787300000000.COLUMNS].reverse()) {
+    for (const [column] of [
+      ...AddOrganizationLogo1787300000000.COLUMNS,
+    ].reverse()) {
       await queryRunner.query(
         `ALTER TABLE "organizations" DROP COLUMN IF EXISTS "${column}"`,
       );
