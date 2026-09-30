@@ -4,6 +4,7 @@ import { Customer } from './entities/customer.entity';
 import { Invoice } from '../quotes/entities/invoice.entity';
 import { InvoicePayment } from '../quotes/entities/invoice-payment.entity';
 import { DocumentPdfRendererService } from '../document-templates/document-pdf-renderer.service';
+import { DocumentTemplatesService } from '../document-templates/document-templates.service';
 import { Organization } from '../organizations/entities/organization.entity';
 import { universalDocumentDataSchema } from '@saas/shared';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
@@ -15,7 +16,7 @@ describe('CustomerStatementService', () => {
   let mockPaymentRepo: Partial<Repository<InvoicePayment>>;
   let mockOrgRepo: Partial<Repository<Organization>>;
   let mockRenderer: Partial<DocumentPdfRendererService>;
-  let mockTemplatesService: { resolveForDocumentType: jest.Mock };
+  let mockTemplatesService: Partial<DocumentTemplatesService>;
 
   beforeEach(() => {
     mockCustomerRepo = {
@@ -349,6 +350,23 @@ describe('CustomerStatementService', () => {
         ),
       ).rejects.toThrow(NotFoundException);
     });
+
+    it('should short-circuit payments lookup when customer has no invoices', async () => {
+      mockInvoiceRepo.find = jest.fn().mockResolvedValue([]);
+      mockPaymentRepo.find = jest.fn();
+
+      const data = await service.generateStatementData(
+        'org-1',
+        'cust-1',
+        new Date('2026-09-01'),
+        new Date('2026-09-30'),
+      );
+
+      expect(mockPaymentRepo.find).not.toHaveBeenCalled();
+      expect(data.statementSummary?.openingBalance).toBe(0);
+      expect(data.statementSummary?.closingBalance).toBe(0);
+      expect(data.items).toEqual([]);
+    });
   });
 
   describe('getStatementPdf', () => {
@@ -364,6 +382,52 @@ describe('CustomerStatementService', () => {
       expect(result.filename).toContain('Statement-Acme_Industries');
       expect(result.filename.endsWith('.pdf')).toBe(true);
       expect(mockRenderer.render).toHaveBeenCalled();
+    });
+
+    it('should resolve template and pass template config to renderer', async () => {
+      mockTemplatesService.resolveForDocumentType = jest.fn().mockResolvedValue({
+        id: 'tpl-stmt-1',
+        config: { primaryColor: '#2563eb', showWatermark: false },
+      });
+
+      await service.getStatementPdf(
+        'org-1',
+        'cust-1',
+        new Date('2026-09-01'),
+        new Date('2026-09-30'),
+      );
+
+      expect(mockTemplatesService.resolveForDocumentType).toHaveBeenCalledWith(
+        'org-1',
+        'STATEMENT',
+      );
+      expect(mockRenderer.render).toHaveBeenCalledWith(
+        expect.any(Object),
+        { primaryColor: '#2563eb', showWatermark: false },
+      );
+    });
+
+    it('should render successfully when templatesService is not provided', async () => {
+      const serviceWithoutTemplates = new CustomerStatementService(
+        mockCustomerRepo as any,
+        mockInvoiceRepo as any,
+        mockPaymentRepo as any,
+        mockOrgRepo as any,
+        mockRenderer as any,
+      );
+
+      const result = await serviceWithoutTemplates.getStatementPdf(
+        'org-1',
+        'cust-1',
+        new Date('2026-09-01'),
+        new Date('2026-09-30'),
+      );
+
+      expect(result.buffer).toBeInstanceOf(Buffer);
+      expect(mockRenderer.render).toHaveBeenCalledWith(
+        expect.any(Object),
+        undefined,
+      );
     });
   });
 });

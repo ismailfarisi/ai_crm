@@ -11,7 +11,7 @@ import { Invoice } from '../quotes/entities/invoice.entity';
 import { InvoicePayment } from '../quotes/entities/invoice-payment.entity';
 import { SalesOrder } from '../orders/entities/sales-order.entity';
 import { Organization } from '../organizations/entities/organization.entity';
-import { DocumentPdfRendererService } from '../document-templates/document-pdf-renderer.service';
+import { DocumentTemplatesModule } from '../document-templates/document-templates.module';
 
 @Module({
   imports: [
@@ -23,12 +23,12 @@ import { DocumentPdfRendererService } from '../document-templates/document-pdf-r
       SalesOrder,
       Organization,
     ]),
+    DocumentTemplatesModule,
   ],
   controllers: [CustomersController],
   providers: [
     CustomersService,
     CustomerStatementService,
-    DocumentPdfRendererService,
   ],
   exports: [CustomersService, CustomerStatementService],
 })

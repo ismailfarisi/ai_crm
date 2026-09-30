@@ -11,6 +11,7 @@ import { Invoice, InvoiceStatus } from '../quotes/entities/invoice.entity';
 import { InvoicePayment } from '../quotes/entities/invoice-payment.entity';
 import { Organization } from '../organizations/entities/organization.entity';
 import { DocumentPdfRendererService } from '../document-templates/document-pdf-renderer.service';
+import { DocumentTemplatesService } from '../document-templates/document-templates.service';
 import type { UniversalDocumentData } from '@saas/shared';
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -70,7 +71,7 @@ export class CustomerStatementService {
     private readonly orgRepo: Repository<Organization>,
     private readonly pdfRenderer: DocumentPdfRendererService,
     @Optional()
-    private readonly templatesService?: any,
+    private readonly templatesService?: DocumentTemplatesService,
   ) {}
 
   async generateStatementData(
@@ -100,21 +101,23 @@ export class CustomerStatementService {
       where: { id: tenantId },
     });
 
+    // Note: Invoice and InvoicePayment entities declare tenantId (mapped to column tenant_id), unlike Customer which declares organizationId.
     const invoices = await this.invoiceRepo.find({
       where: { tenantId, customerId },
       order: { issuedAt: 'ASC' },
     });
 
     const invoiceIds = invoices.map((inv) => inv.id).filter(Boolean);
-    const payments = await this.paymentRepo.find({
-      where: {
-        tenantId,
-        invoiceId: In(
-          invoiceIds.length > 0 ? invoiceIds : ['00000000-0000-0000-0000-000000000000'],
-        ),
-      },
-      order: { paidAt: 'ASC' },
-    });
+    const payments =
+      invoiceIds.length > 0
+        ? await this.paymentRepo.find({
+            where: {
+              tenantId,
+              invoiceId: In(invoiceIds),
+            },
+            order: { paidAt: 'ASC' },
+          })
+        : [];
 
     const fromTime = fromDate.getTime();
     const toTime = toDate.getTime();
@@ -345,19 +348,12 @@ export class CustomerStatementService {
       to,
     );
 
-    let templateConfig;
-    if (
-      this.templatesService &&
-      typeof this.templatesService.resolveForDocumentType === 'function'
-    ) {
-      const template = await this.templatesService.resolveForDocumentType(
-        tenantId,
-        'STATEMENT',
-      );
-      templateConfig = template?.config;
-    }
+    const template = await this.templatesService?.resolveForDocumentType(
+      tenantId,
+      'STATEMENT',
+    );
 
-    const buffer = await this.pdfRenderer.render(docData, templateConfig);
+    const buffer = await this.pdfRenderer.render(docData, template?.config);
     const customerName =
       docData.party.companyName || docData.party.name || 'Customer';
     const safeName = customerName.replace(/[^a-zA-Z0-9_-]/g, '_');
