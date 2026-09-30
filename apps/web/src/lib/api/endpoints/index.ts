@@ -21,6 +21,7 @@ import { ordersEndpoints, ordersKeys } from './orders';
 import { productionEndpoints, productionKeys } from './production';
 import { creditsEndpoints, creditsKeys } from './credits';
 import { platformEndpoints, platformKeys } from './platform';
+import { documentTemplatesEndpoints, documentTemplatesKeys } from './document-templates';
 
 export * from './auth';
 export * from './contacts';
@@ -38,6 +39,7 @@ export * from './orders';
 export * from './production';
 export * from './credits';
 export * from './platform';
+export * from './document-templates';
 
 export const api = {
   ...authEndpoints,
@@ -56,6 +58,7 @@ export const api = {
   ...productionEndpoints,
   ...creditsEndpoints,
   ...platformEndpoints,
+  ...documentTemplatesEndpoints,
 };
 
 export const queryKeys = {
@@ -75,4 +78,5 @@ export const queryKeys = {
   ...productionKeys,
   ...creditsKeys,
   ...platformKeys,
+  ...documentTemplatesKeys,
 };
