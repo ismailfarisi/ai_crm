@@ -218,6 +218,7 @@ export const universalDocumentDataSchema = z.object({
         current: z.number(),
         days30: z.number(),
         days60: z.number(),
+        days90: z.number().optional(),
         days90Plus: z.number(),
       }),
     })

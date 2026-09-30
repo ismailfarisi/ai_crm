@@ -10,7 +10,9 @@ import {
   Patch,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   PERMISSIONS,
@@ -27,12 +29,16 @@ import { CurrentUser, RequirePermissions } from '@/common/decorators';
 import { zodBody, zodQuery } from '@/common/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { CustomersService } from './customers.service';
+import { CustomerStatementService } from './customer-statement.service';
 import type { CustomerQueryDto } from './dto/customer-query.dto';
 
 @ApiTags('customers')
 @Controller('customers')
 export class CustomersController {
-  constructor(private readonly customers: CustomersService) {}
+  constructor(
+    private readonly customers: CustomersService,
+    private readonly statementService: CustomerStatementService,
+  ) {}
 
   @Get()
   @RequirePermissions(PERMISSIONS.CUSTOMER_READ)
@@ -71,6 +77,33 @@ export class CustomersController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<CustomerOverviewDto> {
     return this.customers.overview(user, id);
+  }
+
+  @Get(':id/statement/pdf')
+  @RequirePermissions(PERMISSIONS.CUSTOMER_READ)
+  @ApiOperation({ summary: 'Download customer statement of account PDF' })
+  async getStatementPdf(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('from') fromStr?: string,
+    @Query('to') toStr?: string,
+    @Res() res?: Response,
+  ): Promise<void> {
+    const from = fromStr
+      ? new Date(fromStr)
+      : new Date(Date.now() - 30 * 86400000);
+    const to = toStr ? new Date(toStr) : new Date();
+    const { buffer, filename } = await this.statementService.getStatementPdf(
+      user.organizationId,
+      id,
+      from,
+      to,
+    );
+    if (res) {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.end(buffer);
+    }
   }
 
   @Post()

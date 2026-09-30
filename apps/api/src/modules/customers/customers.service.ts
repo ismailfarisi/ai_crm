@@ -145,7 +145,8 @@ export class CustomersService {
       })),
       totals: {
         quotesSent: quotes.length,
-        quotesAccepted: quotes.filter((quote) => quote.acceptedAt !== null).length,
+        quotesAccepted: quotes.filter((quote) => quote.acceptedAt !== null)
+          .length,
         ordersPlaced: orders.length,
         invoicedTotal,
         outstandingTotal,
