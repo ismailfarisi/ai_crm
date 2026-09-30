@@ -23,6 +23,7 @@ import { CatalogModule } from '../catalog/catalog.module';
 import { RbacModule } from '../rbac/rbac.module';
 import { TaxModule } from '../tax/tax.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { DocumentTemplatesModule } from '../document-templates/document-templates.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     RbacModule,
     TaxModule,
     NotificationsModule,
+    DocumentTemplatesModule,
   ],
   controllers: [QuotesController, PublicQuotesController],
   providers: [

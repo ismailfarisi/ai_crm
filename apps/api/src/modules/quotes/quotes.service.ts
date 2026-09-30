@@ -10,7 +10,9 @@ import { In, Repository } from 'typeorm';
 import {
   calculateQuoteTotals,
   CreateQuotePayload,
+  DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
   PERMISSIONS,
+  UniversalDocumentData,
   validateBillingSchedule,
   type BillingStage,
   UpdateQuotePayload,
@@ -20,6 +22,7 @@ import {
 } from '@saas/shared';
 import { Quote, QuoteCreatedBy, QuoteStatus } from './entities/quote.entity';
 import { Invoice } from './entities/invoice.entity';
+import { Organization } from '../organizations/entities/organization.entity';
 import { InvoicesService } from './invoices.service';
 import { TemporalService } from '../temporal/temporal.service';
 import { quoteWorkflow } from './workflows/quote.workflow';
@@ -34,6 +37,8 @@ import { RbacService } from '../rbac/rbac.service';
 import { TaxService } from '../tax/tax.service';
 import { fxRateFor } from '../finance/fx';
 import { NotificationsService } from '../notifications/notifications.service';
+import { DocumentTemplatesService } from '../document-templates/document-templates.service';
+import { DocumentPdfRendererService } from '../document-templates/document-pdf-renderer.service';
 import {
   allocateNextSequenceValue,
   formatSequenceNumber,
@@ -56,6 +61,10 @@ export class QuotesService {
     private readonly rbacService: RbacService,
     private readonly taxService: TaxService,
     private readonly notifications: NotificationsService,
+    @InjectRepository(Organization)
+    private readonly organizationRepository?: Repository<Organization>,
+    private readonly documentTemplatesService?: DocumentTemplatesService,
+    private readonly pdfRenderer?: DocumentPdfRendererService,
   ) {}
 
   /**
@@ -623,6 +632,88 @@ export class QuotesService {
     }
 
     return quote;
+  }
+
+  async getPdf(
+    tenantId: string,
+    id: string,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const quote = await this.findQuoteById(tenantId, id);
+    const organization = await this.organizationRepository?.findOne({
+      where: { id: tenantId },
+    });
+    const template =
+      await this.documentTemplatesService?.resolveForDocumentType(
+        tenantId,
+        'QUOTE',
+      );
+
+    const address =
+      [
+        organization?.addressLine1,
+        organization?.addressLine2,
+        [organization?.city, organization?.region, organization?.postalCode]
+          .filter(Boolean)
+          .join(' '),
+        organization?.country,
+      ]
+        .filter(Boolean)
+        .join(', ') || undefined;
+
+    const docData: UniversalDocumentData = {
+      type: 'QUOTE',
+      number: quote.quoteNumber || quote.id,
+      status: quote.status,
+      issuedAt: quote.createdAt,
+      validUntil: quote.validUntil || undefined,
+      currency: quote.currency || 'USD',
+      organization: {
+        name: organization?.name || 'Your Company',
+        address,
+        taxId: organization?.taxId || undefined,
+        phone: organization?.phone || undefined,
+        email: organization?.email || undefined,
+        website: organization?.website || undefined,
+      },
+      party: {
+        name: quote.customerName || 'Customer',
+        email: quote.customerEmail || undefined,
+      },
+      items: (quote.items || []).map((item) => ({
+        code: (item as any).sku || (item as any).code || undefined,
+        description: item.description || '',
+        quantity: item.quantity != null ? Number(item.quantity) : undefined,
+        unitPrice: item.unitPrice != null ? Number(item.unitPrice) : undefined,
+        discount: item.discount != null ? Number(item.discount) : undefined,
+        taxRate: item.taxRate != null ? Number(item.taxRate) : undefined,
+        amount:
+          item.subtotal != null
+            ? Number(item.subtotal)
+            : item.quantity != null && item.unitPrice != null
+              ? Number(item.quantity) * Number(item.unitPrice)
+              : undefined,
+      })),
+      totals: {
+        subtotal: Number(quote.subtotalAmount || 0),
+        discounts: Number(quote.discountAmount || 0),
+        taxes: quote.taxAmount
+          ? [{ rate: 0, label: 'Tax', amount: Number(quote.taxAmount) }]
+          : undefined,
+        total: Number(quote.totalAmount || 0),
+      },
+      notes: quote.notes || undefined,
+      paymentTerms: quote.paymentTerms || undefined,
+    };
+
+    const config = template?.config ?? DEFAULT_DOCUMENT_TEMPLATE_CONFIG;
+    const buffer = this.pdfRenderer
+      ? await this.pdfRenderer.render(docData, config)
+      : Buffer.from('');
+
+    return {
+      buffer,
+      filename: `${quote.quoteNumber || `quote-${quote.id}`}.pdf`,
+    };
   }
 
   async findAllInvoices(tenantId: string): Promise<Invoice[]> {

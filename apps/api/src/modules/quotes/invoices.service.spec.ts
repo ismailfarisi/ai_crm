@@ -1,5 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { DataSource, Repository } from 'typeorm';
+import { DEFAULT_DOCUMENT_TEMPLATE_CONFIG } from '@saas/shared';
 import { LedgerService } from '../finance/ledger.service';
 import { InvoicesService } from './invoices.service';
 import { Invoice, InvoiceStatus } from './entities/invoice.entity';
@@ -9,6 +10,8 @@ import { FinanceService } from '../finance/finance.service';
 import { MailService } from '../mail/mail.service';
 import { InvoicePdfService } from './invoice-pdf.service';
 import { AutomationEventBridgeService } from '../automations/services/automation-event-bridge.service';
+import { DocumentTemplatesService } from '../document-templates/document-templates.service';
+import { DocumentPdfRendererService } from '../document-templates/document-pdf-renderer.service';
 
 describe('InvoicesService', () => {
   let service: InvoicesService;
@@ -18,6 +21,8 @@ describe('InvoicesService', () => {
   let financeService: jest.Mocked<Partial<FinanceService>>;
   let mailService: jest.Mocked<Partial<MailService>>;
   let pdfService: jest.Mocked<Partial<InvoicePdfService>>;
+  let documentTemplatesService: jest.Mocked<Partial<DocumentTemplatesService>>;
+  let pdfRenderer: jest.Mocked<Partial<DocumentPdfRendererService>>;
   let automationEventBridgeService: jest.Mocked<
     Partial<AutomationEventBridgeService>
   >;
@@ -149,6 +154,22 @@ describe('InvoicesService', () => {
     };
     const dataSource = {
       transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)),
+      getRepository: jest.fn(() => ({
+        findOne: jest.fn().mockResolvedValue({ id: quoteId, quoteNumber: 'QT-2026-0001' }),
+      })),
+    };
+
+    documentTemplatesService = {
+      resolveForDocumentType: jest.fn().mockResolvedValue({
+        id: 'tmpl-inv-1',
+        name: 'Standard Invoice Template',
+        config: DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+      } as any),
+    };
+    pdfRenderer = {
+      render: jest
+        .fn()
+        .mockResolvedValue(Buffer.from('%PDF-1.4 mock invoice pdf')),
     };
 
     service = new InvoicesService(
@@ -161,6 +182,8 @@ describe('InvoicesService', () => {
       automationEventBridgeService as unknown as AutomationEventBridgeService,
       {} as LedgerService,
       dataSource as unknown as DataSource,
+      documentTemplatesService as unknown as DocumentTemplatesService,
+      pdfRenderer as unknown as DocumentPdfRendererService,
     );
   });
 
@@ -367,4 +390,75 @@ describe('InvoicesService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
+
+  describe('getPdf', () => {
+    it('resolves template and calls DocumentPdfRendererService.render()', async () => {
+      const invoice = baseInvoice();
+      invoiceRepo.findOne = jest.fn().mockResolvedValue(invoice);
+
+      const result = await service.getPdf(tenantId, invoiceId);
+
+      expect(
+        documentTemplatesService.resolveForDocumentType,
+      ).toHaveBeenCalledWith(tenantId, 'INVOICE');
+      expect(pdfRenderer.render).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'INVOICE',
+          number: invoice.invoiceNumber,
+          party: expect.objectContaining({
+            name: invoice.customerName,
+            email: invoice.customerEmail,
+          }),
+        }),
+        DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+      );
+      expect(result).toEqual({
+        buffer: Buffer.from('%PDF-1.4 mock invoice pdf'),
+        filename: `${invoice.invoiceNumber}.pdf`,
+      });
+    });
+
+    it('falls back to DEFAULT_DOCUMENT_TEMPLATE_CONFIG when no custom template is resolved', async () => {
+      const invoice = baseInvoice();
+      invoiceRepo.findOne = jest.fn().mockResolvedValue(invoice);
+      documentTemplatesService.resolveForDocumentType = jest
+        .fn()
+        .mockResolvedValue(null);
+
+      const result = await service.getPdf(tenantId, invoiceId);
+
+      expect(pdfRenderer.render).toHaveBeenCalledWith(
+        expect.anything(),
+        DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+      );
+      expect(result.filename).toBe(`${invoice.invoiceNumber}.pdf`);
+    });
+  });
+
+  describe('sendToCustomer', () => {
+    it('renders PDF with active template and emails customer', async () => {
+      const invoice = baseInvoice();
+      invoiceRepo.findOne = jest.fn().mockResolvedValue(invoice);
+
+      await service.sendToCustomer(tenantId, invoiceId);
+
+      expect(
+        documentTemplatesService.resolveForDocumentType,
+      ).toHaveBeenCalledWith(tenantId, 'INVOICE');
+      expect(pdfRenderer.render).toHaveBeenCalled();
+      expect(mailService.sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: invoice.customerEmail,
+          attachments: [
+            expect.objectContaining({
+              filename: `${invoice.invoiceNumber}.pdf`,
+              content: Buffer.from('%PDF-1.4 mock invoice pdf'),
+              contentType: 'application/pdf',
+            }),
+          ],
+        }),
+      );
+    });
+  });
 });
+

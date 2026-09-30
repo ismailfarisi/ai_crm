@@ -360,6 +360,28 @@ export class QuotesController {
     return this.invoicesService.sendToCustomer(user.organizationId, id);
   }
 
+  @Get('quotes/:id/pdf')
+  @RequirePermissions(PERMISSIONS.QUOTE_READ)
+  @ApiOperation({
+    summary: 'Download quote PDF',
+    description: 'Returns the quote as a PDF file',
+  })
+  async downloadQuotePdf(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const { buffer, filename } = await this.quotesService.getPdf(
+      user.organizationId,
+      id,
+    );
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    return new StreamableFile(buffer);
+  }
+
   @Get('invoices/:id/pdf')
   @RequirePermissions(PERMISSIONS.INVOICE_READ)
   @ApiOperation({

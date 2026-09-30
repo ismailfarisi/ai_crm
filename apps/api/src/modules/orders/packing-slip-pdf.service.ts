@@ -1,10 +1,20 @@
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import PDFDocument from 'pdfkit';
+import {
+  DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+  DocumentTemplateConfig,
+  UniversalDocumentData,
+} from '@saas/shared';
 import type {
   DeliveryNote,
   DeliveryNoteLine,
 } from '../credits/entities/credit-note.entity';
 import type { SalesOrder } from './entities/sales-order.entity';
+import { Organization } from '../organizations/entities/organization.entity';
+import { DocumentTemplatesService } from '../document-templates/document-templates.service';
+import { DocumentPdfRendererService } from '../document-templates/document-pdf-renderer.service';
 
 /**
  * The packing slip that goes in the box. Quantities only — no prices, because
@@ -12,7 +22,128 @@ import type { SalesOrder } from './entities/sales-order.entity';
  */
 @Injectable()
 export class PackingSlipPdfService {
-  generate(
+  constructor(
+    private readonly pdfRenderer?: DocumentPdfRendererService,
+    private readonly documentTemplatesService?: DocumentTemplatesService,
+    @InjectRepository(Organization)
+    private readonly organizationRepository?: Repository<Organization>,
+  ) {}
+
+  async generate(
+    note: DeliveryNote,
+    lines: DeliveryNoteLine[],
+    order: SalesOrder | null,
+    organizationName: string,
+  ): Promise<Buffer> {
+    if (this.pdfRenderer && this.documentTemplatesService) {
+      const template =
+        await this.documentTemplatesService.resolveForDocumentType(
+          note.tenantId,
+          'DELIVERY_NOTE',
+        );
+
+      const org =
+        note.tenantId && this.organizationRepository
+          ? await this.organizationRepository.findOne({
+              where: { id: note.tenantId },
+            })
+          : null;
+
+      const address =
+        [
+          org?.addressLine1,
+          org?.addressLine2,
+          [org?.city, org?.region, org?.postalCode].filter(Boolean).join(' '),
+          org?.country,
+        ]
+          .filter(Boolean)
+          .join(', ') || undefined;
+
+      const docData: UniversalDocumentData = {
+        type: 'DELIVERY_NOTE',
+        number: note.deliveryNoteNumber,
+        status: note.status,
+        issuedAt: note.dispatchedAt || (note as any).createdAt || new Date(),
+        currency: 'USD',
+        organization: {
+          name: org?.name || organizationName || 'Your Company',
+          address,
+          taxId: org?.taxId || undefined,
+          phone: org?.phone || undefined,
+          email: org?.email || undefined,
+          website: org?.website || undefined,
+        },
+        party: {
+          name: note.customerName || 'Customer',
+          address: note.shipTo || undefined,
+        },
+        secondaryParty: {
+          label: 'Ship To',
+          name: note.customerName || 'Customer',
+          address: note.shipTo || undefined,
+          carrier: note.carrier || undefined,
+          trackingReference: note.trackingReference || undefined,
+        },
+        items: lines.map((line) => ({
+          code: line.salesOrderLineId || undefined,
+          description: line.description + (line.uom ? ` (${line.uom})` : ''),
+          quantity: Number(line.qty || 0),
+        })),
+        totals: {
+          total: 0,
+        },
+        notes: [
+          order ? `Order: ${order.orderNumber}` : null,
+          note.notes,
+        ]
+          .filter(Boolean)
+          .join('\n') || undefined,
+      };
+
+      const baseConfig = template?.config ?? DEFAULT_DOCUMENT_TEMPLATE_CONFIG;
+      const config: DocumentTemplateConfig = {
+        ...baseConfig,
+        itemsTable: {
+          ...baseConfig.itemsTable,
+          showUnitPrice: template?.config
+            ? baseConfig.itemsTable.showUnitPrice
+            : false,
+          showDiscount: template?.config
+            ? baseConfig.itemsTable.showDiscount
+            : false,
+          showTaxRate: template?.config
+            ? baseConfig.itemsTable.showTaxRate
+            : false,
+          showLineTotal: template?.config
+            ? baseConfig.itemsTable.showLineTotal
+            : false,
+        },
+        totals: {
+          ...baseConfig.totals,
+          showSubtotal: template?.config
+            ? baseConfig.totals.showSubtotal
+            : false,
+          showDiscountTotal: template?.config
+            ? baseConfig.totals.showDiscountTotal
+            : false,
+          showTaxSummary: template?.config
+            ? baseConfig.totals.showTaxSummary
+            : false,
+          showAmountPaid: false,
+          showBalanceDue: false,
+          highlightTotal: template?.config
+            ? baseConfig.totals.highlightTotal
+            : false,
+        },
+      };
+
+      return this.pdfRenderer.render(docData, config);
+    }
+
+    return this.legacyGenerate(note, lines, order, organizationName);
+  }
+
+  private legacyGenerate(
     note: DeliveryNote,
     lines: DeliveryNoteLine[],
     order: SalesOrder | null,

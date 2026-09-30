@@ -11,15 +11,22 @@ import { RbacService } from '../rbac/rbac.service';
 import {
   calculateQuoteTotals,
   CreateQuotePayload,
+  DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
   PERMISSIONS,
   QuoteLineItem,
   UpdateQuotePayload,
 } from '@saas/shared';
+import { Organization } from '../organizations/entities/organization.entity';
+import { DocumentTemplatesService } from '../document-templates/document-templates.service';
+import { DocumentPdfRendererService } from '../document-templates/document-pdf-renderer.service';
 
 describe('QuotesService', () => {
   let service: QuotesService;
   let quoteRepo: jest.Mocked<Partial<Repository<Quote>>>;
   let invoiceRepo: jest.Mocked<Partial<Repository<Invoice>>>;
+  let orgRepo: jest.Mocked<Partial<Repository<Organization>>>;
+  let documentTemplatesService: jest.Mocked<Partial<DocumentTemplatesService>>;
+  let pdfRenderer: jest.Mocked<Partial<DocumentPdfRendererService>>;
   let temporalService: jest.Mocked<Partial<TemporalService>>;
   let invoicesService: jest.Mocked<Partial<InvoicesService>>;
   let automationEventBridgeService: jest.Mocked<
@@ -111,6 +118,31 @@ describe('QuotesService', () => {
       }),
     };
 
+    orgRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: tenantId,
+        name: 'Acme Packaging Ltd',
+        taxId: 'US-999888',
+        email: 'billing@acme.example.com',
+        phone: '+1 555-0100',
+        addressLine1: '123 Test Street',
+        city: 'New York',
+        country: 'US',
+      }),
+    };
+    documentTemplatesService = {
+      resolveForDocumentType: jest.fn().mockResolvedValue({
+        id: 'tmpl-quote-1',
+        name: 'Standard Quote Template',
+        config: DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+      } as any),
+    };
+    pdfRenderer = {
+      render: jest
+        .fn()
+        .mockResolvedValue(Buffer.from('%PDF-1.4 mock quote pdf')),
+    };
+
     service = new QuotesService(
       quoteRepo as unknown as Repository<Quote>,
       invoiceRepo as unknown as Repository<Invoice>,
@@ -126,6 +158,9 @@ describe('QuotesService', () => {
         notifyHolders: jest.fn(async () => 0),
         resolve: jest.fn(async () => undefined),
       } as any,
+      orgRepo as unknown as Repository<Organization>,
+      documentTemplatesService as unknown as DocumentTemplatesService,
+      pdfRenderer as unknown as DocumentPdfRendererService,
     );
   });
 
@@ -462,4 +497,118 @@ describe('QuotesService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
+
+  describe('getPdf', () => {
+    it('resolves quote, builds UniversalDocumentData, calls DocumentPdfRendererService.render(), and returns buffer & filename', async () => {
+      const quote = {
+        id: quoteId,
+        tenantId,
+        quoteNumber: 'QT-2026-0042',
+        customerName: 'Wayne Enterprises',
+        customerEmail: 'bruce@wayne.com',
+        status: QuoteStatus.APPROVED,
+        items: [
+          {
+            description: 'Custom Corrugated Box',
+            quantity: 100,
+            unitPrice: 5.5,
+            discount: 10,
+            taxRate: 5,
+            subtotal: 495,
+          },
+        ],
+        subtotalAmount: 550,
+        discountAmount: 55,
+        taxAmount: 24.75,
+        totalAmount: 519.75,
+        currency: 'USD',
+        notes: 'Delivery in 2 weeks',
+        paymentTerms: 'net_30',
+        validUntil: new Date('2026-12-31'),
+        createdAt: new Date('2026-01-01'),
+      } as unknown as Quote;
+
+      quoteRepo.findOne = jest.fn().mockResolvedValue(quote);
+
+      const result = await service.getPdf(tenantId, quoteId);
+
+      expect(quoteRepo.findOne).toHaveBeenCalledWith({
+        where: { id: quoteId, tenantId },
+      });
+      expect(
+        documentTemplatesService.resolveForDocumentType,
+      ).toHaveBeenCalledWith(tenantId, 'QUOTE');
+      expect(pdfRenderer.render).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'QUOTE',
+          number: 'QT-2026-0042',
+          status: QuoteStatus.APPROVED,
+          currency: 'USD',
+          organization: expect.objectContaining({
+            name: 'Acme Packaging Ltd',
+          }),
+          party: expect.objectContaining({
+            name: 'Wayne Enterprises',
+            email: 'bruce@wayne.com',
+          }),
+          items: expect.arrayContaining([
+            expect.objectContaining({
+              description: 'Custom Corrugated Box',
+              quantity: 100,
+              unitPrice: 5.5,
+            }),
+          ]),
+          totals: expect.objectContaining({
+            subtotal: 550,
+            discounts: 55,
+            total: 519.75,
+          }),
+        }),
+        DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+      );
+      expect(result).toEqual({
+        buffer: Buffer.from('%PDF-1.4 mock quote pdf'),
+        filename: 'QT-2026-0042.pdf',
+      });
+    });
+
+    it('falls back to DEFAULT_DOCUMENT_TEMPLATE_CONFIG when no custom template is resolved', async () => {
+      const quote = {
+        id: quoteId,
+        tenantId,
+        quoteNumber: 'QT-2026-0001',
+        customerName: 'Wayne Enterprises',
+        status: QuoteStatus.DRAFT,
+        items: [],
+        subtotalAmount: 0,
+        discountAmount: 0,
+        taxAmount: 0,
+        totalAmount: 0,
+        currency: 'USD',
+        createdAt: new Date('2026-01-01'),
+      } as unknown as Quote;
+
+      quoteRepo.findOne = jest.fn().mockResolvedValue(quote);
+      documentTemplatesService.resolveForDocumentType = jest
+        .fn()
+        .mockResolvedValue(null);
+
+      const result = await service.getPdf(tenantId, quoteId);
+
+      expect(pdfRenderer.render).toHaveBeenCalledWith(
+        expect.anything(),
+        DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+      );
+      expect(result.filename).toBe('QT-2026-0001.pdf');
+    });
+
+    it('throws NotFoundException if quote does not exist', async () => {
+      quoteRepo.findOne = jest.fn().mockResolvedValue(null);
+
+      await expect(service.getPdf(tenantId, 'non-existent-id')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
 });
+

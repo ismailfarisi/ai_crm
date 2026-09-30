@@ -1,7 +1,16 @@
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import PDFDocument from 'pdfkit';
+import {
+  DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+  UniversalDocumentData,
+} from '@saas/shared';
 import { PurchaseOrder } from './entities/purchase-order.entity';
 import { Supplier } from './entities/supplier.entity';
+import { Organization } from '../organizations/entities/organization.entity';
+import { DocumentTemplatesService } from '../document-templates/document-templates.service';
+import { DocumentPdfRendererService } from '../document-templates/document-pdf-renderer.service';
 
 const CURRENCY_LOCALE = undefined;
 
@@ -22,13 +31,108 @@ function formatDate(value: Date | null): string {
 /**
  * Renders a purchase order for the supplier.
  *
- * Mirrors `InvoicePdfService` — same pdfkit setup, same A4 margin, same
- * buffer-collecting promise — so that the two documents a tenant sends out
- * look like they came from the same company.
+ * Uses the unified `DocumentPdfRendererService` and `DocumentTemplatesService`,
+ * with fallback to the legacy pdfkit renderer.
  */
 @Injectable()
 export class PurchaseOrderPdfService {
-  generate(
+  constructor(
+    private readonly pdfRenderer?: DocumentPdfRendererService,
+    private readonly documentTemplatesService?: DocumentTemplatesService,
+    @InjectRepository(Organization)
+    private readonly organizationRepository?: Repository<Organization>,
+  ) {}
+
+  async generate(
+    order: PurchaseOrder,
+    supplier: Supplier | null,
+    organizationName: string,
+  ): Promise<Buffer> {
+    if (this.pdfRenderer && this.documentTemplatesService) {
+      const template =
+        await this.documentTemplatesService.resolveForDocumentType(
+          order.tenantId,
+          'PURCHASE_ORDER',
+        );
+
+      const org =
+        order.tenantId && this.organizationRepository
+          ? await this.organizationRepository.findOne({
+              where: { id: order.tenantId },
+            })
+          : null;
+
+      const orgAddress =
+        [
+          org?.addressLine1,
+          org?.addressLine2,
+          [org?.city, org?.region, org?.postalCode].filter(Boolean).join(' '),
+          org?.country,
+        ]
+          .filter(Boolean)
+          .join(', ') || undefined;
+
+      const supplierAddress =
+        [
+          supplier?.addressLine1,
+          supplier?.addressLine2,
+          [supplier?.city, supplier?.postalCode].filter(Boolean).join(' '),
+          supplier?.country,
+        ]
+          .filter(Boolean)
+          .join(', ') || undefined;
+
+      const docData: UniversalDocumentData = {
+        type: 'PURCHASE_ORDER',
+        number: order.poNumber,
+        status: order.status,
+        issuedAt: order.orderDate || (order as any).createdAt || new Date(),
+        dueDate: order.expectedDate || undefined,
+        currency: order.currency || 'USD',
+        organization: {
+          name: org?.name || organizationName || 'Your Company',
+          address: orgAddress,
+          taxId: org?.taxId || undefined,
+          phone: org?.phone || undefined,
+          email: org?.email || undefined,
+          website: org?.website || undefined,
+        },
+        party: {
+          name: supplier?.companyName || order.supplierName || 'Supplier',
+          companyName: supplier?.companyName || order.supplierName || undefined,
+          address: supplierAddress,
+          email: supplier?.email || undefined,
+          phone: supplier?.phone || undefined,
+          taxId: supplier?.taxId || undefined,
+        },
+        items: (order.lines || []).map((l) => ({
+          code: l.materialId || undefined,
+          description: l.description + (l.uom ? ` (${l.uom})` : ''),
+          quantity: Number(l.qtyOrdered || 0),
+          unitPrice: Number(l.unitCost || 0),
+          amount: Number(
+            l.lineTotal != null
+              ? l.lineTotal
+              : Number(l.qtyOrdered || 0) * Number(l.unitCost || 0),
+          ),
+        })),
+        totals: {
+          subtotal: Number(order.subtotalAmount || 0),
+          total: Number(order.totalAmount || 0),
+        },
+        notes: order.notes || undefined,
+      };
+
+      return this.pdfRenderer.render(
+        docData,
+        template?.config ?? DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+      );
+    }
+
+    return this.legacyGenerate(order, supplier, organizationName);
+  }
+
+  private legacyGenerate(
     order: PurchaseOrder,
     supplier: Supplier | null,
     organizationName: string,
@@ -40,12 +144,12 @@ export class PurchaseOrderPdfService {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      this.render(doc, order, supplier, organizationName);
+      this.legacyRender(doc, order, supplier, organizationName);
       doc.end();
     });
   }
 
-  private render(
+  private legacyRender(
     doc: PDFKit.PDFDocument,
     order: PurchaseOrder,
     supplier: Supplier | null,
@@ -103,59 +207,63 @@ export class PurchaseOrderPdfService {
       .fontSize(10)
       .text(formatDate(order.expectedDate), 450, detailsTop + 14);
 
-    // Table
-    let tableY = Math.max(y, detailsTop + 70) + 20;
-    doc.fontSize(9).font('Helvetica-Bold');
-    doc.text('DESCRIPTION', 50, tableY);
-    doc.text('QTY', 330, tableY, { width: 50, align: 'right' });
-    doc.text('UNIT', 385, tableY, { width: 60, align: 'right' });
-    doc.text('TOTAL', 450, tableY, { width: 95, align: 'right' });
-    tableY += 14;
-    doc.moveTo(50, tableY).lineTo(545, tableY).stroke();
-    tableY += 8;
+    const tableTop = Math.max(y + 20, 230);
+    const columns = {
+      description: 50,
+      qty: 300,
+      uom: 360,
+      unitCost: 410,
+      total: 480,
+    };
 
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(10)
+      .text('Description', columns.description, tableTop)
+      .text('Qty', columns.qty, tableTop)
+      .text('Unit', columns.uom, tableTop)
+      .text('Unit Cost', columns.unitCost, tableTop)
+      .text('Total', columns.total, tableTop);
+
+    doc
+      .moveTo(50, tableTop + 15)
+      .lineTo(545, tableTop + 15)
+      .stroke();
+
+    y = tableTop + 25;
     doc.font('Helvetica').fontSize(10);
     for (const line of order.lines ?? []) {
-      doc.text(line.description, 50, tableY, { width: 270 });
-      doc.text(String(line.qtyOrdered), 330, tableY, {
-        width: 50,
-        align: 'right',
-      });
-      doc.text(line.unitCost.toFixed(4), 385, tableY, {
-        width: 60,
-        align: 'right',
-      });
-      doc.text(formatMoney(line.lineTotal, order.currency), 450, tableY, {
-        width: 95,
-        align: 'right',
-      });
-      tableY += Math.max(
-        18,
-        doc.heightOfString(line.description, { width: 270 }) + 4,
-      );
-
-      if (tableY > 720) {
-        doc.addPage();
-        tableY = 60;
-      }
+      doc
+        .text(line.description, columns.description, y, { width: 240 })
+        .text(String(line.qtyOrdered), columns.qty, y)
+        .text(line.uom, columns.uom, y)
+        .text(
+          formatMoney(line.unitCost, order.currency),
+          columns.unitCost,
+          y,
+        )
+        .text(formatMoney(line.lineTotal, order.currency), columns.total, y);
+      y += 20;
     }
 
-    doc.moveTo(330, tableY).lineTo(545, tableY).stroke();
-    tableY += 10;
-    doc.font('Helvetica-Bold').fontSize(11);
-    doc.text('Total', 330, tableY, { width: 110, align: 'right' });
-    doc.text(formatMoney(order.totalAmount, order.currency), 450, tableY, {
-      width: 95,
-      align: 'right',
-    });
+    y += 15;
+    doc.moveTo(350, y).lineTo(545, y).stroke();
+    y += 10;
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(12)
+      .text('Total', 350, y)
+      .text(formatMoney(order.totalAmount, order.currency), columns.total, y);
 
     if (order.notes) {
-      tableY += 30;
-      doc.font('Helvetica-Bold').fontSize(9).text('NOTES', 50, tableY);
+      y += 30;
       doc
+        .font('Helvetica-Bold')
+        .fontSize(10)
+        .text('Notes', 50, y)
         .font('Helvetica')
         .fontSize(9)
-        .text(order.notes, 50, tableY + 12, { width: 495 });
+        .text(order.notes, 50, y + 14, { width: 495 });
     }
   }
 }

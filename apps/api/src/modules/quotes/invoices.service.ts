@@ -7,8 +7,10 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import {
+  DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
   invoicePosition,
   RecordInvoicePaymentPayload,
+  UniversalDocumentData,
   VoidInvoicePayload,
 } from '@saas/shared';
 import { Invoice, InvoiceStatus } from './entities/invoice.entity';
@@ -30,6 +32,8 @@ import {
   issueEntryNumber,
   provisionOrderForQuote,
 } from '../orders/order-provisioning';
+import { DocumentTemplatesService } from '../document-templates/document-templates.service';
+import { DocumentPdfRendererService } from '../document-templates/document-pdf-renderer.service';
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -50,6 +54,8 @@ export class InvoicesService {
     private readonly automationEventBridgeService: AutomationEventBridgeService,
     private readonly ledger: LedgerService,
     private readonly dataSource: DataSource,
+    private readonly documentTemplatesService?: DocumentTemplatesService,
+    private readonly pdfRenderer?: DocumentPdfRendererService,
   ) {}
 
   /**
@@ -394,10 +400,7 @@ export class InvoicesService {
     });
     const organizationName = organization?.name || 'Relay CRM';
 
-    const pdf = await this.invoicePdfService.generate(
-      invoice,
-      organizationName,
-    );
+    const { buffer: pdf } = await this.getPdf(tenantId, id);
 
     await this.mailService.sendMail({
       to: invoice.customerEmail,
@@ -419,6 +422,10 @@ export class InvoicesService {
     return saved;
   }
 
+  async sendPdf(tenantId: string, id: string): Promise<Invoice> {
+    return this.sendToCustomer(tenantId, id);
+  }
+
   async getPdf(
     tenantId: string,
     id: string,
@@ -427,10 +434,82 @@ export class InvoicesService {
     const organization = await this.organizationRepository.findOne({
       where: { id: tenantId },
     });
-    const buffer = await this.invoicePdfService.generate(
-      invoice,
-      organization?.name || 'Relay CRM',
-    );
+    const template =
+      await this.documentTemplatesService?.resolveForDocumentType(
+        tenantId,
+        'INVOICE',
+      );
+
+    const address =
+      [
+        organization?.addressLine1,
+        organization?.addressLine2,
+        [organization?.city, organization?.region, organization?.postalCode]
+          .filter(Boolean)
+          .join(' '),
+        organization?.country,
+      ]
+        .filter(Boolean)
+        .join(', ') || undefined;
+
+    const docData: UniversalDocumentData = {
+      type: 'INVOICE',
+      number: invoice.invoiceNumber,
+      status: invoice.status,
+      issuedAt: invoice.issuedAt,
+      dueDate: invoice.dueDate || undefined,
+      currency: invoice.currency || 'USD',
+      organization: {
+        name: organization?.name || 'Your Company',
+        address,
+        taxId: organization?.taxId || undefined,
+        phone: organization?.phone || undefined,
+        email: organization?.email || undefined,
+        website: organization?.website || undefined,
+      },
+      party: {
+        name: invoice.customerName || 'Customer',
+        email: invoice.customerEmail || undefined,
+      },
+      items: (invoice.items || []).map((item) => ({
+        code: (item as any).sku || (item as any).code || undefined,
+        description: item.description || '',
+        quantity: item.quantity != null ? Number(item.quantity) : undefined,
+        unitPrice: item.unitPrice != null ? Number(item.unitPrice) : undefined,
+        discount: item.discount != null ? Number(item.discount) : undefined,
+        taxRate: item.taxRate != null ? Number(item.taxRate) : undefined,
+        amount:
+          item.subtotal != null
+            ? Number(item.subtotal)
+            : item.quantity != null && item.unitPrice != null
+              ? Number(item.quantity) * Number(item.unitPrice)
+              : undefined,
+      })),
+      totals: {
+        subtotal: Number(invoice.subtotalAmount || 0),
+        discounts: Number(invoice.discountAmount || 0),
+        taxes: invoice.taxAmount
+          ? [{ rate: 0, label: 'Tax', amount: Number(invoice.taxAmount) }]
+          : undefined,
+        total: Number(invoice.amount || 0),
+        amountPaid: Number(invoice.paidAmount || 0),
+        balanceDue: Math.max(
+          0,
+          Number(invoice.amount || 0) - Number(invoice.paidAmount || 0),
+        ),
+      },
+      notes: invoice.notes || undefined,
+      paymentTerms: invoice.paymentTerms || undefined,
+    };
+
+    const config = template?.config ?? DEFAULT_DOCUMENT_TEMPLATE_CONFIG;
+    const buffer = this.pdfRenderer
+      ? await this.pdfRenderer.render(docData, config)
+      : await this.invoicePdfService.generate(
+          invoice,
+          organization?.name || 'Relay CRM',
+        );
+
     return { buffer, filename: `${invoice.invoiceNumber}.pdf` };
   }
 

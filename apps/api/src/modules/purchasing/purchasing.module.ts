@@ -9,6 +9,7 @@ import { MailModule } from '../mail/mail.module';
 import { CatalogModule } from '../catalog/catalog.module';
 import { QuotesModule } from '../quotes/quotes.module';
 import { InventoryModule } from '../inventory/inventory.module';
+import { DocumentTemplatesModule } from '../document-templates/document-templates.module';
 import { PurchaseOrder } from './entities/purchase-order.entity';
 import { PurchaseOrderLine } from './entities/purchase-order-line.entity';
 import { Supplier } from './entities/supplier.entity';
@@ -31,6 +32,7 @@ import { PurchasingController } from './purchasing.controller';
     CatalogModule,
     QuotesModule,
     InventoryModule,
+    DocumentTemplatesModule,
   ],
   controllers: [PurchasingController],
   providers: [
