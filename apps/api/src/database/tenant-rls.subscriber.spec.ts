@@ -21,6 +21,10 @@ describe('TenantRlsSubscriber', () => {
     data: Record<string, any>;
   };
 
+  const VALID_TENANT_ID_1 = '11111111-1111-1111-1111-111111111111';
+  const VALID_TENANT_ID_2 = '22222222-2222-2222-2222-222222222222';
+  const VALID_TENANT_ID_3 = '33333333-3333-3333-3333-333333333333';
+
   beforeEach(() => {
     mockTenantContext = {
       getTenantId: jest.fn().mockReturnValue(null),
@@ -76,10 +80,8 @@ describe('TenantRlsSubscriber', () => {
       mockQueryRunner.isTransactionActive = true;
     });
 
-    it('sets app.current_tenant_id using SET LOCAL when tenantId is present on afterTransactionStart', async () => {
-      mockTenantContext.getTenantId.mockReturnValue(
-        '11111111-1111-1111-1111-111111111111',
-      );
+    it('sets app.current_tenant_id and disables bypass_rls using SET LOCAL when tenantId is present on afterTransactionStart', async () => {
+      mockTenantContext.getTenantId.mockReturnValue(VALID_TENANT_ID_1);
       mockTenantContext.isSystem.mockReturnValue(false);
 
       await subscriber.afterTransactionStart({
@@ -87,11 +89,11 @@ describe('TenantRlsSubscriber', () => {
       } as unknown as TransactionStartEvent);
 
       expect(mockQueryRunner.query).toHaveBeenCalledWith(
-        "SET LOCAL app.current_tenant_id = '11111111-1111-1111-1111-111111111111';",
+        `SET LOCAL app.current_tenant_id = '${VALID_TENANT_ID_1}'; SET LOCAL app.bypass_rls = 'off';`,
       );
     });
 
-    it('sets app.bypass_rls to on using SET LOCAL when isSystem is true on afterTransactionStart', async () => {
+    it('sets app.bypass_rls to on and clears current_tenant_id using SET LOCAL when isSystem is true on afterTransactionStart', async () => {
       mockTenantContext.getTenantId.mockReturnValue(null);
       mockTenantContext.isSystem.mockReturnValue(true);
 
@@ -100,7 +102,7 @@ describe('TenantRlsSubscriber', () => {
       } as unknown as TransactionStartEvent);
 
       expect(mockQueryRunner.query).toHaveBeenCalledWith(
-        "SET LOCAL app.bypass_rls = 'on';",
+        "SET LOCAL app.bypass_rls = 'on'; SET LOCAL app.current_tenant_id = '';",
       );
     });
 
@@ -113,14 +115,12 @@ describe('TenantRlsSubscriber', () => {
       } as unknown as TransactionStartEvent);
 
       expect(mockQueryRunner.query).toHaveBeenCalledWith(
-        'RESET app.current_tenant_id; RESET app.bypass_rls;',
+        "SET LOCAL app.current_tenant_id = ''; SET LOCAL app.bypass_rls = 'off';",
       );
     });
 
     it('sets SET LOCAL on beforeQuery if query is run inside active transaction', async () => {
-      mockTenantContext.getTenantId.mockReturnValue(
-        '22222222-2222-2222-2222-222222222222',
-      );
+      mockTenantContext.getTenantId.mockReturnValue(VALID_TENANT_ID_2);
       mockTenantContext.isSystem.mockReturnValue(false);
 
       await subscriber.beforeQuery({
@@ -129,7 +129,7 @@ describe('TenantRlsSubscriber', () => {
       } as unknown as BeforeQueryEvent);
 
       expect(mockQueryRunner.query).toHaveBeenCalledWith(
-        "SET LOCAL app.current_tenant_id = '22222222-2222-2222-2222-222222222222';",
+        `SET LOCAL app.current_tenant_id = '${VALID_TENANT_ID_2}'; SET LOCAL app.bypass_rls = 'off';`,
       );
     });
   });
@@ -139,10 +139,8 @@ describe('TenantRlsSubscriber', () => {
       mockQueryRunner.isTransactionActive = false;
     });
 
-    it('sets app.current_tenant_id using SET when tenantId is present on beforeQuery', async () => {
-      mockTenantContext.getTenantId.mockReturnValue(
-        '33333333-3333-3333-3333-333333333333',
-      );
+    it('sets app.current_tenant_id and disables bypass_rls using SET when tenantId is present on beforeQuery', async () => {
+      mockTenantContext.getTenantId.mockReturnValue(VALID_TENANT_ID_3);
       mockTenantContext.isSystem.mockReturnValue(false);
 
       await subscriber.beforeQuery({
@@ -151,11 +149,11 @@ describe('TenantRlsSubscriber', () => {
       } as unknown as BeforeQueryEvent);
 
       expect(mockQueryRunner.query).toHaveBeenCalledWith(
-        "SET app.current_tenant_id = '33333333-3333-3333-3333-333333333333';",
+        `SET app.current_tenant_id = '${VALID_TENANT_ID_3}'; SET app.bypass_rls = 'off';`,
       );
     });
 
-    it('sets app.bypass_rls to on using SET when isSystem is true on beforeQuery', async () => {
+    it('sets app.bypass_rls to on and clears current_tenant_id using SET when isSystem is true on beforeQuery', async () => {
       mockTenantContext.getTenantId.mockReturnValue(null);
       mockTenantContext.isSystem.mockReturnValue(true);
 
@@ -165,7 +163,7 @@ describe('TenantRlsSubscriber', () => {
       } as unknown as BeforeQueryEvent);
 
       expect(mockQueryRunner.query).toHaveBeenCalledWith(
-        "SET app.bypass_rls = 'on';",
+        "SET app.bypass_rls = 'on'; SET app.current_tenant_id = '';",
       );
     });
 
@@ -179,14 +177,117 @@ describe('TenantRlsSubscriber', () => {
       } as unknown as BeforeQueryEvent);
 
       expect(mockQueryRunner.query).toHaveBeenCalledWith(
-        'RESET app.current_tenant_id; RESET app.bypass_rls;',
+        "SET app.current_tenant_id = ''; SET app.bypass_rls = 'off';",
+      );
+    });
+  });
+
+  describe('Context transitions (prevent bypass_rls leakage)', () => {
+    it('switches from system context to tenant context and turns bypass_rls off', async () => {
+      // Step 1: Run as system
+      mockTenantContext.isSystem.mockReturnValue(true);
+      mockTenantContext.getTenantId.mockReturnValue(null);
+
+      await subscriber.beforeQuery({
+        query: 'SELECT * FROM global_config;',
+        queryRunner: mockQueryRunner as unknown as QueryRunner,
+      } as unknown as BeforeQueryEvent);
+
+      expect(mockQueryRunner.query).toHaveBeenCalledWith(
+        "SET app.bypass_rls = 'on'; SET app.current_tenant_id = '';",
+      );
+
+      mockQueryRunner.query.mockClear();
+
+      // Step 2: Same queryRunner executes tenant query
+      mockTenantContext.isSystem.mockReturnValue(false);
+      mockTenantContext.getTenantId.mockReturnValue(VALID_TENANT_ID_1);
+
+      await subscriber.beforeQuery({
+        query: 'SELECT * FROM tenant_data;',
+        queryRunner: mockQueryRunner as unknown as QueryRunner,
+      } as unknown as BeforeQueryEvent);
+
+      expect(mockQueryRunner.query).toHaveBeenCalledWith(
+        `SET app.current_tenant_id = '${VALID_TENANT_ID_1}'; SET app.bypass_rls = 'off';`,
+      );
+    });
+
+    it('switches from system context to unset context and turns bypass_rls off', async () => {
+      // Step 1: Run as system
+      mockTenantContext.isSystem.mockReturnValue(true);
+      mockTenantContext.getTenantId.mockReturnValue(null);
+
+      await subscriber.beforeQuery({
+        query: 'SELECT * FROM global_config;',
+        queryRunner: mockQueryRunner as unknown as QueryRunner,
+      } as unknown as BeforeQueryEvent);
+
+      mockQueryRunner.query.mockClear();
+
+      // Step 2: Unset context
+      mockTenantContext.isSystem.mockReturnValue(false);
+      mockTenantContext.getTenantId.mockReturnValue(null);
+
+      await subscriber.beforeQuery({
+        query: 'SELECT * FROM some_table;',
+        queryRunner: mockQueryRunner as unknown as QueryRunner,
+      } as unknown as BeforeQueryEvent);
+
+      expect(mockQueryRunner.query).toHaveBeenCalledWith(
+        "SET app.current_tenant_id = ''; SET app.bypass_rls = 'off';",
+      );
+    });
+  });
+
+  describe('UUID validation & fail-closed', () => {
+    it('fails closed when tenantId is malformed (SQL injection attempt)', async () => {
+      mockTenantContext.getTenantId.mockReturnValue("malicious' OR 1=1; --");
+      mockTenantContext.isSystem.mockReturnValue(false);
+
+      await subscriber.beforeQuery({
+        query: 'SELECT * FROM table1;',
+        queryRunner: mockQueryRunner as unknown as QueryRunner,
+      } as unknown as BeforeQueryEvent);
+
+      expect(mockQueryRunner.query).toHaveBeenCalledWith(
+        "SET app.current_tenant_id = ''; SET app.bypass_rls = 'off';",
+      );
+    });
+
+    it('fails closed when tenantId is non-UUID string', async () => {
+      mockTenantContext.getTenantId.mockReturnValue('not-a-valid-uuid');
+      mockTenantContext.isSystem.mockReturnValue(false);
+
+      await subscriber.beforeQuery({
+        query: 'SELECT * FROM table1;',
+        queryRunner: mockQueryRunner as unknown as QueryRunner,
+      } as unknown as BeforeQueryEvent);
+
+      expect(mockQueryRunner.query).toHaveBeenCalledWith(
+        "SET app.current_tenant_id = ''; SET app.bypass_rls = 'off';",
+      );
+    });
+
+    it('accepts valid uppercase UUID', async () => {
+      const upperUuid = 'A0EEBC99-9C0B-4EF8-BB6D-6BB9BD380A11';
+      mockTenantContext.getTenantId.mockReturnValue(upperUuid);
+      mockTenantContext.isSystem.mockReturnValue(false);
+
+      await subscriber.beforeQuery({
+        query: 'SELECT * FROM table1;',
+        queryRunner: mockQueryRunner as unknown as QueryRunner,
+      } as unknown as BeforeQueryEvent);
+
+      expect(mockQueryRunner.query).toHaveBeenCalledWith(
+        `SET app.current_tenant_id = '${upperUuid}'; SET app.bypass_rls = 'off';`,
       );
     });
   });
 
   describe('QueryRunner release wrapping', () => {
     it('wraps queryRunner.release and runs RESET statements before returning to pool', async () => {
-      mockTenantContext.getTenantId.mockReturnValue('tenant-abc');
+      mockTenantContext.getTenantId.mockReturnValue(VALID_TENANT_ID_1);
       const originalRelease = mockQueryRunner.release;
 
       await subscriber.beforeQuery({
@@ -243,12 +344,12 @@ describe('TenantRlsSubscriber', () => {
     });
   });
 
-  describe('Recursion prevention', () => {
+  describe('Recursion and transaction control queries prevention', () => {
     it('does not intercept SET queries in beforeQuery', async () => {
-      mockTenantContext.getTenantId.mockReturnValue('tenant-abc');
+      mockTenantContext.getTenantId.mockReturnValue(VALID_TENANT_ID_1);
 
       await subscriber.beforeQuery({
-        query: "SET LOCAL app.current_tenant_id = 'tenant-abc';",
+        query: `SET LOCAL app.current_tenant_id = '${VALID_TENANT_ID_1}';`,
         queryRunner: mockQueryRunner as unknown as QueryRunner,
       } as unknown as BeforeQueryEvent);
 
@@ -256,7 +357,7 @@ describe('TenantRlsSubscriber', () => {
     });
 
     it('does not intercept RESET queries in beforeQuery', async () => {
-      mockTenantContext.getTenantId.mockReturnValue('tenant-abc');
+      mockTenantContext.getTenantId.mockReturnValue(VALID_TENANT_ID_1);
 
       await subscriber.beforeQuery({
         query: 'RESET app.current_tenant_id; RESET app.bypass_rls;',
@@ -267,7 +368,7 @@ describe('TenantRlsSubscriber', () => {
     });
 
     it('does not intercept lowercase or whitespace-prefixed set/reset queries', async () => {
-      mockTenantContext.getTenantId.mockReturnValue('tenant-abc');
+      mockTenantContext.getTenantId.mockReturnValue(VALID_TENANT_ID_1);
 
       await subscriber.beforeQuery({
         query: "  \n\t set app.bypass_rls = 'on';",
@@ -281,12 +382,39 @@ describe('TenantRlsSubscriber', () => {
 
       expect(mockQueryRunner.query).not.toHaveBeenCalled();
     });
+
+    it('does not intercept START TRANSACTION, BEGIN, COMMIT, or ROLLBACK queries', async () => {
+      mockTenantContext.getTenantId.mockReturnValue(VALID_TENANT_ID_1);
+
+      const controlQueries = [
+        'START TRANSACTION;',
+        'START   TRANSACTION READ ONLY;',
+        'BEGIN',
+        'BEGIN TRANSACTION;',
+        'COMMIT;',
+        'COMMIT AND CHAIN;',
+        'ROLLBACK;',
+        'ROLLBACK TO SAVEPOINT sp1;',
+        'SAVEPOINT my_savepoint;',
+        'RELEASE SAVEPOINT my_savepoint;',
+        '  \n\t rollback ;',
+      ];
+
+      for (const query of controlQueries) {
+        await subscriber.beforeQuery({
+          query,
+          queryRunner: mockQueryRunner as unknown as QueryRunner,
+        } as unknown as BeforeQueryEvent);
+      }
+
+      expect(mockQueryRunner.query).not.toHaveBeenCalled();
+    });
   });
 
   describe('Redundant execution avoidance', () => {
     it('does not re-execute SET query if context has not changed on the same query runner in a transaction', async () => {
       mockQueryRunner.isTransactionActive = true;
-      mockTenantContext.getTenantId.mockReturnValue('tenant-123');
+      mockTenantContext.getTenantId.mockReturnValue(VALID_TENANT_ID_1);
 
       // First query in transaction: afterTransactionStart fires
       await subscriber.afterTransactionStart({
@@ -307,21 +435,6 @@ describe('TenantRlsSubscriber', () => {
         queryRunner: mockQueryRunner as unknown as QueryRunner,
       } as unknown as BeforeQueryEvent);
       expect(mockQueryRunner.query).toHaveBeenCalledTimes(1); // still not called again!
-    });
-  });
-
-  describe('SQL escaping / safety', () => {
-    it('escapes single quotes in tenantId to prevent SQL injection', async () => {
-      mockTenantContext.getTenantId.mockReturnValue("malicious' OR 1=1; --");
-
-      await subscriber.beforeQuery({
-        query: 'SELECT * FROM table1;',
-        queryRunner: mockQueryRunner as unknown as QueryRunner,
-      } as unknown as BeforeQueryEvent);
-
-      expect(mockQueryRunner.query).toHaveBeenCalledWith(
-        "SET app.current_tenant_id = 'malicious'' OR 1=1; --';",
-      );
     });
   });
 });

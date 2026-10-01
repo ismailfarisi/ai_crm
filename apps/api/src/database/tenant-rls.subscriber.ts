@@ -16,6 +16,9 @@ type TransactionStartEvent = Parameters<
   NonNullable<EntitySubscriberInterface['afterTransactionStart']>
 >[0];
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 @Injectable()
 @EventSubscriber()
 export class TenantRlsSubscriber implements EntitySubscriberInterface {
@@ -100,7 +103,9 @@ export class TenantRlsSubscriber implements EntitySubscriberInterface {
 
     const isTx = Boolean(queryRunner.isTransactionActive);
     const isSystem = this.tenantContext.isSystem();
-    const tenantId = this.tenantContext.getTenantId();
+    const rawTenantId = this.tenantContext.getTenantId();
+    const tenantId =
+      rawTenantId && UUID_REGEX.test(rawTenantId) ? rawTenantId : null;
 
     const contextKey = `${isTx ? 'tx' : 'notx'}:${isSystem ? 'system' : (tenantId ?? 'none')}`;
     if (queryRunner.data.__rlsContextKey === contextKey) {
@@ -111,16 +116,18 @@ export class TenantRlsSubscriber implements EntitySubscriberInterface {
     try {
       const prefix = isTx ? 'SET LOCAL' : 'SET';
       if (isSystem) {
-        await queryRunner.query(`${prefix} app.bypass_rls = 'on';`);
+        await queryRunner.query(
+          `${prefix} app.bypass_rls = 'on'; ${prefix} app.current_tenant_id = '';`,
+        );
       } else if (tenantId) {
         const safeTenantId = tenantId.replace(/'/g, "''");
         await queryRunner.query(
-          `${prefix} app.current_tenant_id = '${safeTenantId}';`,
+          `${prefix} app.current_tenant_id = '${safeTenantId}'; ${prefix} app.bypass_rls = 'off';`,
         );
       } else {
         // Fail-closed: clear session variables so RLS blocks access
         await queryRunner.query(
-          'RESET app.current_tenant_id; RESET app.bypass_rls;',
+          `${prefix} app.current_tenant_id = ''; ${prefix} app.bypass_rls = 'off';`,
         );
       }
       queryRunner.data.__rlsContextKey = contextKey;
@@ -141,8 +148,12 @@ export class TenantRlsSubscriber implements EntitySubscriberInterface {
       return;
     }
 
-    // Guard against recursion: do not intercept SET or RESET queries
-    if (/^\s*(SET|RESET)\b/i.test(event.query)) {
+    // Guard against recursion and transaction control queries
+    if (
+      /^\s*(SET|RESET|BEGIN|START\s+TRANSACTION|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)\b/i.test(
+        event.query,
+      )
+    ) {
       return;
     }
 
