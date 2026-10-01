@@ -436,5 +436,48 @@ describe('TenantRlsSubscriber', () => {
       } as unknown as BeforeQueryEvent);
       expect(mockQueryRunner.query).toHaveBeenCalledTimes(1); // still not called again!
     });
+
+    it('clears context cache on transaction commit so next transaction applies context fresh', async () => {
+      mockQueryRunner.isTransactionActive = true;
+      mockTenantContext.getTenantId.mockReturnValue(VALID_TENANT_ID_1);
+
+      await subscriber.afterTransactionStart({
+        queryRunner: mockQueryRunner as unknown as QueryRunner,
+      } as unknown as TransactionStartEvent);
+      expect(mockQueryRunner.query).toHaveBeenCalledTimes(1);
+      expect(mockQueryRunner.data.__rlsContextKey).toBeDefined();
+
+      await subscriber.afterTransactionCommit({
+        queryRunner: mockQueryRunner as unknown as QueryRunner,
+      } as never);
+      expect(mockQueryRunner.data.__rlsContextKey).toBeUndefined();
+
+      // Next transaction starts
+      await subscriber.afterTransactionStart({
+        queryRunner: mockQueryRunner as unknown as QueryRunner,
+      } as unknown as TransactionStartEvent);
+      expect(mockQueryRunner.query).toHaveBeenCalledTimes(2);
+    });
+
+    it('clears context cache on transaction rollback so next transaction applies context fresh', async () => {
+      mockQueryRunner.isTransactionActive = true;
+      mockTenantContext.getTenantId.mockReturnValue(VALID_TENANT_ID_1);
+
+      await subscriber.afterTransactionStart({
+        queryRunner: mockQueryRunner as unknown as QueryRunner,
+      } as unknown as TransactionStartEvent);
+      expect(mockQueryRunner.query).toHaveBeenCalledTimes(1);
+
+      await subscriber.afterTransactionRollback({
+        queryRunner: mockQueryRunner as unknown as QueryRunner,
+      } as never);
+      expect(mockQueryRunner.data.__rlsContextKey).toBeUndefined();
+
+      // Next transaction starts
+      await subscriber.afterTransactionStart({
+        queryRunner: mockQueryRunner as unknown as QueryRunner,
+      } as unknown as TransactionStartEvent);
+      expect(mockQueryRunner.query).toHaveBeenCalledTimes(2);
+    });
   });
 });

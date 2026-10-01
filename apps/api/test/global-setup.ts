@@ -12,11 +12,17 @@ import { AppDataSource } from '../src/database/data-source';
 export default async function globalSetup(): Promise<void> {
   loadEnv();
 
+  const adminUser = process.env.DB_ADMIN_USERNAME ?? 'crm';
+  const adminPassword =
+    process.env.DB_ADMIN_PASSWORD ??
+    process.env.DB_PASSWORD ??
+    'crm_dev_password';
+
   const adminClient = new Client({
     host: process.env.DB_HOST ?? 'localhost',
     port: Number(process.env.DB_PORT ?? 5433),
-    user: process.env.DB_USERNAME ?? 'crm',
-    password: process.env.DB_PASSWORD ?? 'crm_dev_password',
+    user: adminUser,
+    password: adminPassword,
     database: 'postgres',
   });
 
@@ -56,8 +62,8 @@ export default async function globalSetup(): Promise<void> {
   const testDbClient = new Client({
     host: process.env.DB_HOST ?? 'localhost',
     port: Number(process.env.DB_PORT ?? 5433),
-    user: process.env.DB_USERNAME ?? 'crm',
-    password: process.env.DB_PASSWORD ?? 'crm_dev_password',
+    user: adminUser,
+    password: adminPassword,
     database: testDb,
   });
   await testDbClient.connect();

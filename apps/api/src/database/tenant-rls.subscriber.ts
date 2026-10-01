@@ -15,6 +15,12 @@ type BeforeQueryEvent = Parameters<
 type TransactionStartEvent = Parameters<
   NonNullable<EntitySubscriberInterface['afterTransactionStart']>
 >[0];
+type TransactionCommitEvent = Parameters<
+  NonNullable<EntitySubscriberInterface['afterTransactionCommit']>
+>[0];
+type TransactionRollbackEvent = Parameters<
+  NonNullable<EntitySubscriberInterface['afterTransactionRollback']>
+>[0];
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -141,6 +147,20 @@ export class TenantRlsSubscriber implements EntitySubscriberInterface {
       return;
     }
     await this.applyRlsContext(event.queryRunner);
+  }
+
+  async afterTransactionCommit(event: TransactionCommitEvent): Promise<void> {
+    if (event?.queryRunner?.data) {
+      delete event.queryRunner.data.__rlsContextKey;
+    }
+  }
+
+  async afterTransactionRollback(
+    event: TransactionRollbackEvent,
+  ): Promise<void> {
+    if (event?.queryRunner?.data) {
+      delete event.queryRunner.data.__rlsContextKey;
+    }
   }
 
   async beforeQuery(event: BeforeQueryEvent): Promise<void> {
