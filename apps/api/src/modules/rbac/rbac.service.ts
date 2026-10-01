@@ -24,6 +24,7 @@ import {
 import { Permission as PermissionEntity } from './entities/permission.entity';
 import { Role } from './entities/role.entity';
 import { Organization } from '@/modules/organizations/entities/organization.entity';
+import { TenantContextService } from '@/common/context/tenant-context.service';
 
 interface ResolvedAccess {
   permissions: Permission[];
@@ -60,12 +61,15 @@ export class RbacService implements OnModuleInit {
     @InjectRepository(PermissionEntity)
     private readonly permissions: Repository<PermissionEntity>,
     private readonly dataSource: DataSource,
+    private readonly tenantContext: TenantContextService,
   ) {}
 
   /** Keep the permission catalog in sync with the code on every boot. */
   async onModuleInit(): Promise<void> {
-    await this.syncPermissionCatalog();
-    await this.syncSystemRolesForAllOrganizations();
+    await this.tenantContext.runAsSystem(async () => {
+      await this.syncPermissionCatalog();
+      await this.syncSystemRolesForAllOrganizations();
+    });
   }
 
   async syncPermissionCatalog(): Promise<void> {

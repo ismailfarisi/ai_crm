@@ -19,6 +19,7 @@ import {
 import type { AppConfig } from '@/config/configuration';
 import { NotificationsService } from '../notifications/notifications.service';
 import { User } from '../users/entities/user.entity';
+import { TenantContextService } from '@/common/context/tenant-context.service';
 import {
   FakeBillingProvider,
   StripeBillingProvider,
@@ -44,6 +45,7 @@ export class BillingService {
     private readonly notifications: NotificationsService,
     private readonly config: ConfigService<AppConfig, true>,
     private readonly dataSource: DataSource,
+    private readonly tenantContext: TenantContextService,
   ) {
     const billing = this.config.get('billing', { infer: true });
     const origin = this.config.get('publicWebUrl', { infer: true });
@@ -216,46 +218,57 @@ export class BillingService {
 
   @Cron(CronExpression.EVERY_HOUR)
   async syncAllSeats(): Promise<void> {
-    const subs = await this.subscriptions.find({
-      where: { status: In(['ACTIVE', 'TRIALING', 'PAST_DUE']) },
+    await this.tenantContext.runAsSystem(async () => {
+      const subs = await this.subscriptions.find({
+        where: { status: In(['ACTIVE', 'TRIALING', 'PAST_DUE']) },
+      });
+      for (const sub of subs) await this.syncSeats(sub.tenantId);
     });
-    for (const sub of subs) await this.syncSeats(sub.tenantId);
   }
 
   /** Three days before a trial ends, the people who can pay are told. */
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
   async warnEndingTrials(): Promise<void> {
-    const rows: { tenant_id: string; id: string; trial_ends_at: Date }[] =
-      await this.dataSource.query(
-        `SELECT "tenant_id", "id", "trial_ends_at" FROM "subscriptions"
-       WHERE "status" = 'TRIALING' AND "trial_ends_at" BETWEEN now() AND now() + interval '3 days'`,
-      );
-    for (const row of rows) {
-      await this.notifications.notifyHolders(
-        row.tenant_id,
-        PERMISSIONS.ORG_MANAGE_BILLING,
-        {
-          type: 'TRIAL_ENDING',
-          title: `Your trial ends on ${new Date(row.trial_ends_at).toDateString()}`,
-          body: 'Choose a plan to keep making changes after it ends.',
-          link: '/settings/billing',
-          entityType: 'SUBSCRIPTION',
-          entityId: row.id,
-        },
-      );
-    }
+    await this.tenantContext.runAsSystem(async () => {
+      const rows: { tenant_id: string; id: string; trial_ends_at: Date }[] =
+        await this.dataSource.query(
+          `SELECT "tenant_id", "id", "trial_ends_at" FROM "subscriptions"
+         WHERE "status" = 'TRIALING' AND "trial_ends_at" BETWEEN now() AND now() + interval '3 days'`,
+        );
+      for (const row of rows) {
+        await this.notifications.notifyHolders(
+          row.tenant_id,
+          PERMISSIONS.ORG_MANAGE_BILLING,
+          {
+            type: 'TRIAL_ENDING',
+            title: `Your trial ends on ${new Date(row.trial_ends_at).toDateString()}`,
+            body: 'Choose a plan to keep making changes after it ends.',
+            link: '/settings/billing',
+            entityType: 'SUBSCRIPTION',
+            entityId: row.id,
+          },
+        );
+      }
+    });
   }
 
   /* ------------------------------------------------------------------ *
    * Provider events
    * ------------------------------------------------------------------ */
 
-  handleWebhook(
+  async handleWebhook(
     rawBody: Buffer,
     headers: Record<string, string | string[] | undefined>,
   ): Promise<{ received: true }> {
     const event = this.provider.parseWebhook(rawBody, headers);
-    return this.apply(event).then(() => ({ received: true as const }));
+    await this.handleWebhookEvent(event);
+    return { received: true };
+  }
+
+  async handleWebhookEvent(event: ProviderEvent): Promise<void> {
+    await this.tenantContext.runAsSystem(async () => {
+      await this.apply(event);
+    });
   }
 
   /**
@@ -274,7 +287,7 @@ export class BillingService {
       );
     }
     const now = Date.now();
-    await this.apply({
+    await this.handleWebhookEvent({
       id: `fake_evt_${checkoutId}`,
       type: 'checkout.completed',
       tenantId,
@@ -293,7 +306,7 @@ export class BillingService {
   async failFakePayment(tenantId: string): Promise<SubscriptionDto> {
     this.assertFake();
     const sub = await this.ensure(tenantId);
-    await this.apply({
+    await this.handleWebhookEvent({
       id: `fake_evt_fail_${Date.now()}`,
       type: 'payment.failed',
       tenantId,
