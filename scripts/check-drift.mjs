@@ -25,7 +25,7 @@
  * elsewhere (which is also how this script is tested without a database).
  */
 import { execFileSync } from 'node:child_process';
-import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const OUT = join(process.cwd(), 'apps', 'api', 'DriftCheck');
@@ -88,9 +88,29 @@ function generate() {
   }
   if (verbose) console.log(output);
 
+  const apiDir = join(process.cwd(), 'apps', 'api');
+  let candidatePath = null;
   try {
-    const generated = readFileSync(`${OUT}.ts`, 'utf8');
-    rmSync(`${OUT}.ts`, { force: true });
+    const files = readdirSync(apiDir).filter((f) => f.endsWith('DriftCheck.ts'));
+    if (files.length > 0) {
+      candidatePath = join(apiDir, files[0]);
+    }
+  } catch {}
+
+  if (!candidatePath) {
+    const cleanOutput = output.replace(/\u001b\[[0-9;]*m/g, '');
+    const match = cleanOutput.match(/Migration (.*) has been generated successfully/i);
+    candidatePath = match ? match[1].trim() : `${OUT}.ts`;
+  }
+
+  try {
+    const generated = readFileSync(candidatePath, 'utf8');
+    rmSync(candidatePath, { force: true });
+    try {
+      for (const f of readdirSync(apiDir).filter((f) => f.endsWith('DriftCheck.ts'))) {
+        rmSync(join(apiDir, f), { force: true });
+      }
+    } catch {}
     return generated;
   } catch {
     if (output.includes(NO_CHANGES)) {

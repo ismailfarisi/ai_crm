@@ -15,9 +15,8 @@ import { User } from '@/modules/users/entities/user.entity';
  * (`manager` role) see the contacts owned by their team's members.
  */
 @Entity('teams')
+@Index('idx_teams_tenant_name', ['tenantId', 'name'], { unique: true })
 export class Team extends TenantSoftDeletableEntity {
-  @Index('idx_teams_tenant_name', ['tenantId', 'name'], { unique: true })
-
   @ManyToOne(() => Organization, (org) => org.users, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'tenant_id' })
   organization: Organization;
