@@ -1,14 +1,12 @@
 # Subagent-Driven Development Progress Ledger
-Branch: feat/document-templates-ai
-Plan: docs/superpowers/plans/2026-09-30-document-templates-ai.md
+Branch: feat/postgres-rls-multitenancy
+Plan: docs/superpowers/plans/2026-10-01-postgresql-rls-multitenancy.md
 
 ## Tasks
-- [x] Task 1: complete (commits bfac6b0..df0f6f0, review clean): Shared Package — Document Template Schema, Permissions & Types
-- [x] Task 2: complete (commits df0f6f0..7688b37, review clean): Database Migration & Entity in apps/api
-- [x] Task 3: complete (commit aff559f): Unified High-Performance Vector PDF Renderer (DocumentPdfRendererService)
-- [x] Task 4: complete (commits aff559f..b585870, review clean): AI Template Assistant Service (DocumentTemplateAiService)
-- [x] Task 5: complete (commits b585870..9b71f0a, review clean): Customer Statement Engine (CustomerStatementService)
-- [x] Task 6: complete (commits 9b71f0a..6189f6a, review clean): Document Templates Module, Service & Controller
-- [x] Task 7: complete (commits 6189f6a..59763e9, review clean): Document Service Integrations (Invoices, Quotes, Orders, Purchasing)
-- [x] Task 8: complete (commits 59763e9..c28ae67, review clean): Web UI Studio & Pages (apps/web)
-- [x] Task 9: complete (commits c28ae67..48a0762, review clean): Full Workspace Verification & Documentation
+- [x] Task 1: complete (commits dcf1b3a..abaed66, review clean): Install nestjs-cls and Implement TenantContextModule
+- [x] Task 2: complete (commit 7e3a355, migration verified up/down): Database Migration for Column Standardization (organization_id -> tenant_id)
+- [x] Task 3: complete (commit 9d9b26d, build & tests passing): Update Entities & Services for Standardized tenantId
+- [ ] Task 4: Database Migration for PostgreSQL Row-Level Security (RLS)
+- [ ] Task 5: Implement TypeORM RLS Connection Subscriber
+- [ ] Task 6: Wrap System Boot Jobs and Webhooks with runAsSystem
+- [ ] Task 7: End-to-End Verification & Multi-Tenancy RLS Tests
