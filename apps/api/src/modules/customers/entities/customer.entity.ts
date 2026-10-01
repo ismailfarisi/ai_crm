@@ -1,5 +1,5 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
-import { SoftDeletableEntity } from '@/common/entities/base.entity';
+import { TenantSoftDeletableEntity } from '@/common/entities/base.entity';
 import { Organization } from '@/modules/organizations/entities/organization.entity';
 
 /**
@@ -8,18 +8,15 @@ import { Organization } from '@/modules/organizations/entities/organization.enti
  * will hang off this table in a later change.
  */
 @Entity('customers')
-@Index('idx_customers_org_created', ['organizationId', 'createdAt'])
-@Index('uq_customers_org_company', ['organizationId', 'companyName'], {
+@Index('idx_customers_tenant_created', ['tenantId', 'createdAt'])
+@Index('uq_customers_tenant_company', ['tenantId', 'companyName'], {
   unique: true,
 })
-export class Customer extends SoftDeletableEntity {
-  @Column({ type: 'uuid' })
-  organizationId: string;
-
+export class Customer extends TenantSoftDeletableEntity {
   @ManyToOne(() => Organization, (org) => org.customers, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'organizationId' })
+  @JoinColumn({ name: 'tenant_id' })
   organization: Organization;
 
   @Column({ type: 'varchar', length: 120 })

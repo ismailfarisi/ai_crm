@@ -94,7 +94,7 @@ export class UsersService {
     const repo = manager ? manager.getRepository(User) : this.users;
 
     const user = repo.create({
-      organizationId: params.organizationId,
+      tenantId: params.organizationId,
       email: params.email.toLowerCase(),
       passwordHash: await this.hashPassword(params.password),
       firstName: params.firstName,
@@ -110,7 +110,7 @@ export class UsersService {
 
   async listMembers(organizationId: string): Promise<UserDto[]> {
     const members = await this.users.find({
-      where: { organizationId },
+      where: { tenantId: organizationId },
       relations: { roles: true },
       order: { createdAt: 'ASC' },
     });
@@ -249,7 +249,7 @@ export class UsersService {
 
   async findMember(organizationId: string, userId: string): Promise<User> {
     const user = await this.users.findOne({
-      where: { id: userId, organizationId },
+      where: { id: userId, tenantId: organizationId },
       relations: { roles: true },
     });
     if (!user) {
@@ -304,7 +304,7 @@ export class UsersService {
     teamId: string,
   ): Promise<Team> {
     const team = await this.teams.findOne({
-      where: { id: teamId, organizationId },
+      where: { id: teamId, tenantId: organizationId },
     });
     if (!team) {
       throw new NotFoundException('Team not found');
@@ -322,7 +322,7 @@ export class UsersService {
     const otherActiveOwners = await this.users
       .createQueryBuilder('user')
       .innerJoin('user.roles', 'role')
-      .where('user.organizationId = :organizationId', { organizationId })
+      .where('user.tenantId = :organizationId', { organizationId })
       .andWhere('user.isActive = true')
       .andWhere('role.grantsAllPermissions = true')
       .andWhere('user.id != :userId', { userId: user.id })

@@ -22,7 +22,7 @@ describe('DocumentTemplatesService', () => {
 
   const sampleTemplate: DocumentTemplate = {
     id: 'tmpl-1',
-    organizationId: orgId,
+    tenantId: orgId,
     name: 'Modern Blue Invoice',
     description: 'Clean modern invoice template',
     isDefault: true,
@@ -51,7 +51,9 @@ describe('DocumentTemplatesService', () => {
       find: jest.fn(),
       findOne: jest.fn(),
       create: jest.fn((entity) => ({ ...entity })),
-      save: jest.fn((entity) => Promise.resolve({ id: entity.id || 'tmpl-new', ...entity })),
+      save: jest.fn((entity) =>
+        Promise.resolve({ id: entity.id || 'tmpl-new', ...entity }),
+      ),
       remove: jest.fn((entity) => Promise.resolve(entity)),
     };
 
@@ -76,8 +78,8 @@ describe('DocumentTemplatesService', () => {
     service = new DocumentTemplatesService(
       mockTemplateRepo,
       mockOrgRepo,
-      mockAiService as unknown as DocumentTemplateAiService,
-      mockPdfRenderer as unknown as DocumentPdfRendererService,
+      mockAiService,
+      mockPdfRenderer,
     );
   });
 
@@ -88,7 +90,7 @@ describe('DocumentTemplatesService', () => {
       const result = await service.findAll(orgId);
 
       expect(mockTemplateRepo.find).toHaveBeenCalledWith({
-        where: { organizationId: orgId },
+        where: { tenantId: orgId },
         order: { isDefault: 'DESC', createdAt: 'DESC' },
       });
       expect(result).toEqual([sampleTemplate]);
@@ -102,7 +104,7 @@ describe('DocumentTemplatesService', () => {
       const result = await service.findById(orgId, 'tmpl-1');
 
       expect(mockTemplateRepo.findOne).toHaveBeenCalledWith({
-        where: { id: 'tmpl-1', organizationId: orgId },
+        where: { id: 'tmpl-1', tenantId: orgId },
       });
       expect(result).toEqual(sampleTemplate);
     });
@@ -130,7 +132,7 @@ describe('DocumentTemplatesService', () => {
 
       expect(mockTemplateRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          organizationId: orgId,
+          tenantId: orgId,
           createdById: userId,
           name: 'Classic Delivery Slip',
           isDefault: false,
@@ -289,7 +291,10 @@ describe('DocumentTemplatesService', () => {
       };
 
       mockTemplateRepo.findOne.mockResolvedValue(defaultInvoiceAndQuote);
-      mockTemplateRepo.find.mockResolvedValue([defaultInvoiceAndQuote, otherDefault]);
+      mockTemplateRepo.find.mockResolvedValue([
+        defaultInvoiceAndQuote,
+        otherDefault,
+      ]);
 
       await expect(service.delete(orgId, 'tmpl-1')).rejects.toThrow(
         BadRequestException,
@@ -423,7 +428,10 @@ describe('DocumentTemplatesService', () => {
 
       mockTemplateRepo.find.mockResolvedValue([generalDefault]);
 
-      const result = await service.resolveForDocumentType(orgId, 'PURCHASE_ORDER');
+      const result = await service.resolveForDocumentType(
+        orgId,
+        'PURCHASE_ORDER',
+      );
 
       expect(result).toEqual(generalDefault);
     });
@@ -457,9 +465,16 @@ describe('DocumentTemplatesService', () => {
       const prompt = 'Navy blue corporate layout with compact density';
       const baseConfig = DEFAULT_DOCUMENT_TEMPLATE_CONFIG;
 
-      const result = await service.generateAi(orgId, userId, prompt, baseConfig);
+      const result = await service.generateAi(
+        orgId,
+        userId,
+        prompt,
+        baseConfig,
+      );
 
-      expect(mockOrgRepo.findOne).toHaveBeenCalledWith({ where: { id: orgId } });
+      expect(mockOrgRepo.findOne).toHaveBeenCalledWith({
+        where: { id: orgId },
+      });
       expect(mockAiService.generateOrRefine).toHaveBeenCalledWith({
         organizationId: orgId,
         userId,

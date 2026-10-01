@@ -438,7 +438,7 @@ export class BillingService {
 
   private activeUsers(tenantId: string): Promise<number> {
     return this.users.count({
-      where: { organizationId: tenantId, isActive: true },
+      where: { tenantId, isActive: true },
     });
   }
 }

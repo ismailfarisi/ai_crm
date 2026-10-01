@@ -163,7 +163,7 @@ describe('InvitationsService', () => {
       lastName: 'Person',
       roleIds: [adminRole.id],
       teamId: null,
-      organizationId: ORG_ID,
+      tenantId: ORG_ID,
       expiresAt: new Date(Date.now() + 60_000),
       tokenHash: 'hash',
     };

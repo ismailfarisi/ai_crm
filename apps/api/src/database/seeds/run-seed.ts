@@ -92,7 +92,7 @@ async function seed(): Promise<void> {
 
     const owner = await users.findByIdForAuth(ownerId);
     if (!owner) throw new Error('Owner vanished after registration');
-    const organizationId = owner.organizationId;
+    const organizationId = owner.tenantId;
 
     const teammates: {
       email: string;

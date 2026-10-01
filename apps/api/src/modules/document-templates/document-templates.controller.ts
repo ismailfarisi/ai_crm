@@ -38,13 +38,13 @@ import {
 @ApiTags('document-templates')
 @Controller('settings/document-templates')
 export class DocumentTemplatesController {
-  constructor(
-    private readonly templatesService: DocumentTemplatesService,
-  ) {}
+  constructor(private readonly templatesService: DocumentTemplatesService) {}
 
   @Get()
   @RequirePermissions(PERMISSIONS.DOCUMENT_TEMPLATE_READ)
-  @ApiOperation({ summary: 'List all document templates for current organization' })
+  @ApiOperation({
+    summary: 'List all document templates for current organization',
+  })
   async findAll(
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<DocumentTemplate[]> {
@@ -53,7 +53,9 @@ export class DocumentTemplatesController {
 
   @Post('generate-ai')
   @RequirePermissions(PERMISSIONS.DOCUMENT_TEMPLATE_MANAGE)
-  @ApiOperation({ summary: 'Generate or refine template configuration using AI' })
+  @ApiOperation({
+    summary: 'Generate or refine template configuration using AI',
+  })
   async generateAi(
     @CurrentUser() user: AuthenticatedUser,
     @Body(zodBody(generateTemplateAiSchema)) body: GenerateTemplateAiInput,
@@ -68,7 +70,9 @@ export class DocumentTemplatesController {
 
   @Post('preview-pdf')
   @RequirePermissions(PERMISSIONS.DOCUMENT_TEMPLATE_READ)
-  @ApiOperation({ summary: 'Generate sample PDF preview for template configuration' })
+  @ApiOperation({
+    summary: 'Generate sample PDF preview for template configuration',
+  })
   async previewPdf(
     @CurrentUser() user: AuthenticatedUser,
     @Body(zodBody(previewTemplatePdfSchema)) body: PreviewTemplatePdfDto,
@@ -104,7 +108,8 @@ export class DocumentTemplatesController {
   @ApiOperation({ summary: 'Create a new document template' })
   async create(
     @CurrentUser() user: AuthenticatedUser,
-    @Body(zodBody(createDocumentTemplateSchema)) body: CreateDocumentTemplateDto,
+    @Body(zodBody(createDocumentTemplateSchema))
+    body: CreateDocumentTemplateDto,
   ): Promise<DocumentTemplate> {
     return this.templatesService.create(user.organizationId, user.id, body);
   }
@@ -115,7 +120,8 @@ export class DocumentTemplatesController {
   async update(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body(zodBody(updateDocumentTemplateSchema)) body: UpdateDocumentTemplateDto,
+    @Body(zodBody(updateDocumentTemplateSchema))
+    body: UpdateDocumentTemplateDto,
   ): Promise<DocumentTemplate> {
     return this.templatesService.update(user.organizationId, id, body);
   }

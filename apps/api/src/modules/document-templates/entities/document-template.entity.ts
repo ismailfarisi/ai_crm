@@ -9,13 +9,13 @@ import {
 import type { DocumentTemplateConfig, DocumentType } from '@saas/shared';
 
 @Entity('document_templates')
-@Index('idx_document_templates_org', ['organizationId'])
+@Index('idx_document_templates_tenant', ['tenantId'])
 export class DocumentTemplate {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'organization_id', type: 'uuid' })
-  organizationId: string;
+  @Column({ name: 'tenant_id', type: 'uuid' })
+  tenantId: string;
 
   @Column({ type: 'varchar', length: 120 })
   name: string;

@@ -178,7 +178,7 @@ export class AuthService {
     // it to, and who signed in from where is the first thing anyone asks
     // after an account is misused.
     await this.audit.record({
-      tenantId: user.organizationId,
+      tenantId: user.tenantId,
       actorId: user.id,
       actorName: [user.firstName, user.lastName].filter(Boolean).join(' '),
       action: 'auth.login',
@@ -258,7 +258,7 @@ export class AuthService {
     // Every other device is signed out; the caller gets a fresh pair.
     await this.tokens.revokeAllForUser(userId);
     await this.audit.record({
-      tenantId: user.organizationId,
+      tenantId: user.tenantId,
       actorId: user.id,
       actorName: [user.firstName, user.lastName].filter(Boolean).join(' '),
       action: 'auth.change_password',
@@ -300,7 +300,7 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('Account no longer exists');
     }
-    return this.getSession(user.id, user.organizationId);
+    return this.getSession(user.id, user.tenantId);
   }
 
   /** Used after a password change so the acting device is not signed out. */

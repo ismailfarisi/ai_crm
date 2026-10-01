@@ -26,11 +26,7 @@ import { DocumentTemplatesModule } from '../document-templates/document-template
     DocumentTemplatesModule,
   ],
   controllers: [CustomersController],
-  providers: [
-    CustomersService,
-    CustomerStatementService,
-  ],
+  providers: [CustomersService, CustomerStatementService],
   exports: [CustomersService, CustomerStatementService],
 })
 export class CustomersModule {}
-

@@ -46,7 +46,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
         'Account is inactive or no longer exists',
       );
     }
-    if (user.organizationId !== payload.org) {
+    if (user.tenantId !== payload.org) {
       throw new UnauthorizedException(
         'Token does not match the account organization',
       );
@@ -60,11 +60,11 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       throw new UnauthorizedException('Session expired, please sign in again');
     }
 
-    const access = await this.rbac.resolveAccess(user.id, user.organizationId);
+    const access = await this.rbac.resolveAccess(user.id, user.tenantId);
 
     return {
       id: user.id,
-      organizationId: user.organizationId,
+      organizationId: user.tenantId,
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,

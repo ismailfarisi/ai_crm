@@ -135,7 +135,7 @@ export class RbacService implements OnModuleInit {
     let updated = 0;
     for (const org of orgs) {
       const roles = await this.roles.find({
-        where: { organizationId: org.id },
+        where: { tenantId: org.id },
         relations: { permissions: true },
       });
 
@@ -189,7 +189,7 @@ export class RbacService implements OnModuleInit {
     const created: Role[] = [];
     for (const definition of SYSTEM_ROLE_DEFINITIONS) {
       const role = roleRepo.create({
-        organizationId,
+        tenantId: organizationId,
         name: definition.name,
         slug: definition.slug,
         description: definition.description,
@@ -224,7 +224,7 @@ export class RbacService implements OnModuleInit {
       .createQueryBuilder('role')
       .innerJoin('role.users', 'user', 'user.id = :userId', { userId })
       .leftJoinAndSelect('role.permissions', 'permission')
-      .where('role.organizationId = :organizationId', { organizationId })
+      .where('role.tenantId = :organizationId', { organizationId })
       .getMany();
 
     const grantsEverything = roles.some((role) => role.grantsAllPermissions);
@@ -271,7 +271,7 @@ export class RbacService implements OnModuleInit {
 
   async listRoles(organizationId: string): Promise<RoleDto[]> {
     const roles = await this.roles.find({
-      where: { organizationId },
+      where: { tenantId: organizationId },
       relations: { permissions: true, users: true },
       order: { level: 'ASC', name: 'ASC' },
     });
@@ -281,7 +281,7 @@ export class RbacService implements OnModuleInit {
 
   async findRole(organizationId: string, roleId: string): Promise<Role> {
     const role = await this.roles.findOne({
-      where: { id: roleId, organizationId },
+      where: { id: roleId, tenantId: organizationId },
       relations: { permissions: true, users: true },
     });
     if (!role) {
@@ -300,7 +300,7 @@ export class RbacService implements OnModuleInit {
     input: CreateRoleInput,
   ): Promise<RoleDto> {
     const slug = this.slugify(input.name);
-    const clash = await this.roles.findOne({ where: { organizationId, slug } });
+    const clash = await this.roles.findOne({ where: { tenantId: organizationId, slug } });
     if (clash) {
       throw new BadRequestException(
         `A role named "${input.name}" already exists`,
@@ -311,7 +311,7 @@ export class RbacService implements OnModuleInit {
     this.assertActorCanGrant(actor, requested);
 
     const role = this.roles.create({
-      organizationId,
+      tenantId: organizationId,
       name: input.name,
       slug,
       description: input.description ?? '',
@@ -396,7 +396,7 @@ export class RbacService implements OnModuleInit {
     if (!roleIds.length) return [];
 
     const roles = await this.roles.find({
-      where: { organizationId, id: In(roleIds) },
+      where: { tenantId: organizationId, id: In(roleIds) },
       relations: { permissions: true },
     });
 
@@ -409,7 +409,7 @@ export class RbacService implements OnModuleInit {
   }
 
   async findRoleBySlug(organizationId: string, slug: string): Promise<Role> {
-    const role = await this.roles.findOne({ where: { organizationId, slug } });
+    const role = await this.roles.findOne({ where: { tenantId: organizationId, slug } });
     if (!role) {
       throw new NotFoundException(`Role "${slug}" not found`);
     }

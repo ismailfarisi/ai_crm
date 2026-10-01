@@ -17,7 +17,9 @@ describe('PurchaseOrderPdfService', () => {
 
   beforeEach(() => {
     pdfRenderer = {
-      render: jest.fn().mockResolvedValue(Buffer.from('%PDF-1.4 mock purchase order')),
+      render: jest
+        .fn()
+        .mockResolvedValue(Buffer.from('%PDF-1.4 mock purchase order')),
     };
     documentTemplatesService = {
       resolveForDocumentType: jest.fn().mockResolvedValue({
@@ -72,10 +74,9 @@ describe('PurchaseOrderPdfService', () => {
 
     const buffer = await service.generate(order, supplier, 'Acme Packaging');
 
-    expect(documentTemplatesService.resolveForDocumentType).toHaveBeenCalledWith(
-      tenantId,
-      'PURCHASE_ORDER',
-    );
+    expect(
+      documentTemplatesService.resolveForDocumentType,
+    ).toHaveBeenCalledWith(tenantId, 'PURCHASE_ORDER');
     expect(pdfRenderer.render).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'PURCHASE_ORDER',

@@ -43,7 +43,11 @@ function normalizeStatementDate(
 
 function calculateDaysOverdue(dueDate: Date | string, asOf: Date): number {
   const due = new Date(dueDate);
-  const a = Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth(), asOf.getUTCDate());
+  const a = Date.UTC(
+    asOf.getUTCFullYear(),
+    asOf.getUTCMonth(),
+    asOf.getUTCDate(),
+  );
   const d = Date.UTC(due.getUTCFullYear(), due.getUTCMonth(), due.getUTCDate());
   return Math.floor((a - d) / 86_400_000);
 }
@@ -90,7 +94,7 @@ export class CustomerStatementService {
     }
 
     const customer = await this.customerRepo.findOne({
-      where: { id: customerId, organizationId: tenantId },
+      where: { id: customerId, tenantId },
     });
 
     if (!customer) {
@@ -101,7 +105,6 @@ export class CustomerStatementService {
       where: { id: tenantId },
     });
 
-    // Note: Invoice and InvoicePayment entities declare tenantId (mapped to column tenant_id), unlike Customer which declares organizationId.
     const invoices = await this.invoiceRepo.find({
       where: { tenantId, customerId },
       order: { issuedAt: 'ASC' },
@@ -249,7 +252,9 @@ export class CustomerStatementService {
       );
 
       if (outstanding > 0) {
-        const days = inv.dueDate ? calculateDaysOverdue(inv.dueDate, toDate) : 0;
+        const days = inv.dueDate
+          ? calculateDaysOverdue(inv.dueDate, toDate)
+          : 0;
         if (days <= 0) {
           aging.current = round2(aging.current + outstanding);
         } else if (days <= 30) {
@@ -270,15 +275,16 @@ export class CustomerStatementService {
       customer.contactName ||
       'Customer';
 
-    const customerAddress = [
-      customer.addressLine1,
-      customer.addressLine2,
-      customer.city,
-      customer.postalCode,
-      customer.country,
-    ]
-      .filter(Boolean)
-      .join(', ') || undefined;
+    const customerAddress =
+      [
+        customer.addressLine1,
+        customer.addressLine2,
+        customer.city,
+        customer.postalCode,
+        customer.country,
+      ]
+        .filter(Boolean)
+        .join(', ') || undefined;
 
     const orgAddress = organization
       ? [

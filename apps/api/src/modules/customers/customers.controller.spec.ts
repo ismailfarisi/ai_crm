@@ -81,10 +81,17 @@ describe('CustomersController', () => {
         end: jest.fn(),
       } as any;
 
-      await controller.getStatementPdf(actor, 'cust-1', undefined, undefined, mockRes);
+      await controller.getStatementPdf(
+        actor,
+        'cust-1',
+        undefined,
+        undefined,
+        mockRes,
+      );
 
       expect(mockStatementService.getStatementPdf).toHaveBeenCalled();
-      const callArgs = (mockStatementService.getStatementPdf as jest.Mock).mock.calls[0];
+      const callArgs = (mockStatementService.getStatementPdf as jest.Mock).mock
+        .calls[0];
       expect(callArgs[0]).toBe('org-1');
       expect(callArgs[1]).toBe('cust-1');
       expect(callArgs[2]).toBeInstanceOf(Date);
@@ -117,7 +124,13 @@ describe('CustomersController', () => {
       const mockRes = { setHeader: jest.fn(), end: jest.fn() } as any;
 
       await expect(
-        controller.getStatementPdf(actor, 'cust-1', 'invalid-date', '2026-09-30', mockRes),
+        controller.getStatementPdf(
+          actor,
+          'cust-1',
+          'invalid-date',
+          '2026-09-30',
+          mockRes,
+        ),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -125,7 +138,13 @@ describe('CustomersController', () => {
       const mockRes = { setHeader: jest.fn(), end: jest.fn() } as any;
 
       await expect(
-        controller.getStatementPdf(actor, 'cust-1', '2026-09-01', 'invalid-date', mockRes),
+        controller.getStatementPdf(
+          actor,
+          'cust-1',
+          '2026-09-01',
+          'invalid-date',
+          mockRes,
+        ),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -133,7 +152,13 @@ describe('CustomersController', () => {
       const mockRes = { setHeader: jest.fn(), end: jest.fn() } as any;
 
       await expect(
-        controller.getStatementPdf(actor, 'cust-1', '2026-10-01', '2026-09-01', mockRes),
+        controller.getStatementPdf(
+          actor,
+          'cust-1',
+          '2026-10-01',
+          '2026-09-01',
+          mockRes,
+        ),
       ).rejects.toThrow(BadRequestException);
     });
   });

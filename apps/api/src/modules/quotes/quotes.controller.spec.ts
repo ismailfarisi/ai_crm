@@ -42,7 +42,7 @@ describe('QuotesController', () => {
         filename: 'INV-2026-0001.pdf',
       }),
     };
-    acceptanceService = {} as any;
+    acceptanceService = {};
 
     controller = new QuotesController(
       quotesService as QuotesService,
@@ -65,7 +65,11 @@ describe('QuotesController', () => {
         set: jest.fn(),
       } as any;
 
-      const file = await controller.downloadQuotePdf(user, 'quote-123', mockRes);
+      const file = await controller.downloadQuotePdf(
+        user,
+        'quote-123',
+        mockRes,
+      );
 
       expect(quotesService.getPdf).toHaveBeenCalledWith('org-111', 'quote-123');
       expect(mockRes.set).toHaveBeenCalledWith({

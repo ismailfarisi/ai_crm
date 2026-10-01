@@ -237,11 +237,7 @@ export class PurchaseOrderPdfService {
         .text(line.description, columns.description, y, { width: 240 })
         .text(String(line.qtyOrdered), columns.qty, y)
         .text(line.uom, columns.uom, y)
-        .text(
-          formatMoney(line.unitCost, order.currency),
-          columns.unitCost,
-          y,
-        )
+        .text(formatMoney(line.unitCost, order.currency), columns.unitCost, y)
         .text(formatMoney(line.lineTotal, order.currency), columns.total, y);
       y += 20;
     }

@@ -5,19 +5,16 @@ import {
   type ContactSource,
   type ContactStatus,
 } from '@saas/shared';
-import { SoftDeletableEntity } from '@/common/entities/base.entity';
+import { TenantSoftDeletableEntity } from '@/common/entities/base.entity';
 import { Organization } from '@/modules/organizations/entities/organization.entity';
 import { User } from '@/modules/users/entities/user.entity';
 
 @Entity('contacts')
-@Index('idx_contacts_org_created', ['organizationId', 'createdAt'])
-@Index('idx_contacts_org_owner', ['organizationId', 'ownerId'])
-export class Contact extends SoftDeletableEntity {
-  @Column({ type: 'uuid' })
-  organizationId: string;
-
+@Index('idx_contacts_org_created', ['tenantId', 'createdAt'])
+@Index('idx_contacts_org_owner', ['tenantId', 'ownerId'])
+export class Contact extends TenantSoftDeletableEntity {
   @ManyToOne(() => Organization, (org) => org.contacts, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'organizationId' })
+  @JoinColumn({ name: 'tenant_id' })
   organization: Organization;
 
   @Column({ type: 'varchar', length: 80 })

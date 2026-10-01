@@ -8,7 +8,7 @@ import {
   ManyToOne,
 } from 'typeorm';
 import { CUSTOM_ROLE_LEVEL } from '@saas/shared';
-import { BaseEntity } from '@/common/entities/base.entity';
+import { TenantBaseEntity } from '@/common/entities/base.entity';
 import { Organization } from '@/modules/organizations/entities/organization.entity';
 import { User } from '@/modules/users/entities/user.entity';
 import { Permission } from './permission.entity';
@@ -18,13 +18,10 @@ import { Permission } from './permission.entity';
  * at signup, so an admin can retune `member` without affecting anyone else.
  */
 @Entity('roles')
-@Index('uq_roles_org_slug', ['organizationId', 'slug'], { unique: true })
-export class Role extends BaseEntity {
-  @Column({ type: 'uuid' })
-  organizationId: string;
-
+@Index('uq_roles_tenant_slug', ['tenantId', 'slug'], { unique: true })
+export class Role extends TenantBaseEntity {
   @ManyToOne(() => Organization, (org) => org.roles, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'organizationId' })
+  @JoinColumn({ name: 'tenant_id' })
   organization: Organization;
 
   @Column({ type: 'varchar', length: 60 })

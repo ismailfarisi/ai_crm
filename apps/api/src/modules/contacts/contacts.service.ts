@@ -39,18 +39,18 @@ export class ContactsService {
     let contact = await this.contacts.findOne({
       where: isEmail
         ? [
-            { organizationId, email: emailValue! },
-            { organizationId, phone: cleanIdentifier },
+            { tenantId: organizationId, email: emailValue! },
+            { tenantId: organizationId, phone: cleanIdentifier },
           ]
         : [
-            { organizationId, phone: cleanIdentifier },
-            { organizationId, email: cleanIdentifier },
+            { tenantId: organizationId, phone: cleanIdentifier },
+            { tenantId: organizationId, email: cleanIdentifier },
           ],
     });
 
     if (!contact) {
       contact = this.contacts.create({
-        organizationId,
+        tenantId: organizationId,
         firstName: cleanIdentifier || 'Channel Contact',
         lastName: '',
         email: isEmail ? emailValue : null,
@@ -158,7 +158,7 @@ export class ContactsService {
 
     const contact = this.contacts.create({
       ...(parsed as object),
-      organizationId: actor.organizationId,
+      tenantId: actor.organizationId,
       ownerId,
     } as Partial<Contact>);
 
@@ -244,8 +244,8 @@ export class ContactsService {
   private scoped(actor: AuthenticatedUser): SelectQueryBuilder<Contact> {
     const qb = this.contacts
       .createQueryBuilder('contact')
-      .where('contact.organizationId = :organizationId', {
-        organizationId: actor.organizationId,
+      .where('contact.tenantId = :tenantId', {
+        tenantId: actor.organizationId,
       });
 
     if (!this.canSeeEverything(actor)) {

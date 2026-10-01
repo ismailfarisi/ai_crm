@@ -155,7 +155,9 @@ describe('InvoicesService', () => {
     const dataSource = {
       transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)),
       getRepository: jest.fn(() => ({
-        findOne: jest.fn().mockResolvedValue({ id: quoteId, quoteNumber: 'QT-2026-0001' }),
+        findOne: jest
+          .fn()
+          .mockResolvedValue({ id: quoteId, quoteNumber: 'QT-2026-0001' }),
       })),
     };
 
@@ -461,4 +463,3 @@ describe('InvoicesService', () => {
     });
   });
 });
-

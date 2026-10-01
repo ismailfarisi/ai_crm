@@ -12,7 +12,9 @@ export const createDocumentTemplateSchema = z.object({
   description: z.string().trim().max(1000).nullable().optional(),
   isDefault: z.boolean().optional().default(false),
   appliesTo: z.array(documentTypeSchema).optional().default([]),
-  config: documentTemplateConfigSchema.optional().default(DEFAULT_DOCUMENT_TEMPLATE_CONFIG),
+  config: documentTemplateConfigSchema
+    .optional()
+    .default(DEFAULT_DOCUMENT_TEMPLATE_CONFIG),
 });
 export type CreateDocumentTemplateDto = {
   name: string;
@@ -29,7 +31,9 @@ export const updateDocumentTemplateSchema = z.object({
   appliesTo: z.array(documentTypeSchema).optional(),
   config: documentTemplateConfigSchema.optional(),
 });
-export type UpdateDocumentTemplateDto = z.infer<typeof updateDocumentTemplateSchema>;
+export type UpdateDocumentTemplateDto = z.infer<
+  typeof updateDocumentTemplateSchema
+>;
 
 export const setDefaultTemplateSchema = z.object({
   documentTypes: z.array(documentTypeSchema).optional(),
