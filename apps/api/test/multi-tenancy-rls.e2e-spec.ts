@@ -53,7 +53,9 @@ describe('Multi-Tenancy PostgreSQL Row-Level Security (e2e)', () => {
       FROM pg_roles
       WHERE rolname = current_user;
     `);
-    expect(roleCheck[0].current_user).toBe('crm_test_app');
+    expect(roleCheck[0].current_user).toBe(
+      process.env.DB_APP_USERNAME ?? 'crm_test_app',
+    );
     expect(roleCheck[0].rolsuper).toBe(false);
     expect(roleCheck[0].rolbypassrls).toBe(false);
 
@@ -121,6 +123,47 @@ describe('Multi-Tenancy PostgreSQL Row-Level Security (e2e)', () => {
         },
       ]);
     });
+  }, 30_000);
+
+  it('forces RLS on every table carrying a tenant or organization key', async () => {
+    const tables: {
+      relname: string;
+      relrowsecurity: boolean;
+      relforcerowsecurity: boolean;
+      has_policy: boolean;
+    }[] = await dataSource.query(`
+      SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity,
+        EXISTS (
+          SELECT 1
+          FROM pg_policies p
+          WHERE p.schemaname = n.nspname
+            AND p.tablename = c.relname
+            AND p.policyname = 'tenant_isolation_policy'
+        ) AS has_policy
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relkind = 'r'
+        AND EXISTS (
+          SELECT 1
+          FROM information_schema.columns col
+          WHERE col.table_schema = n.nspname
+            AND col.table_name = c.relname
+            AND col.column_name IN (
+              'tenant_id', 'tenantId', 'organization_id', 'organizationId'
+            )
+        )
+    `);
+
+    expect(tables.length).toBeGreaterThan(0);
+    expect(
+      tables.filter(
+        (table) =>
+          !table.relrowsecurity ||
+          !table.relforcerowsecurity ||
+          !table.has_policy,
+      ),
+    ).toEqual([]);
   }, 30_000);
 
   afterAll(async () => {

@@ -3,7 +3,7 @@ import 'reflect-metadata';
 import 'tsconfig-paths/register';
 import { config as loadEnv } from 'dotenv';
 import { Client } from 'pg';
-import { AppDataSource } from '../src/database/data-source';
+import { MigrationDataSource } from '../src/database/migration-data-source';
 
 /**
  * E2E setup: ensure a dedicated `crm_test` database exists and is migrated.
@@ -54,9 +54,9 @@ export default async function globalSetup(): Promise<void> {
   await adminClient.end();
 
   // Migrate the test DB so it matches the entity schema exactly.
-  await AppDataSource.initialize();
-  await AppDataSource.runMigrations();
-  await AppDataSource.destroy();
+  await MigrationDataSource.initialize();
+  await MigrationDataSource.runMigrations();
+  await MigrationDataSource.destroy();
 
   // Grant permissions to the application role on all migrated tables and sequences
   const testDbClient = new Client({

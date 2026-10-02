@@ -10,6 +10,7 @@ import { AiService } from './modules/ai/ai.service';
 import { ChannelsService } from './modules/channels/channels.service';
 import { QuotesService } from './modules/quotes/quotes.service';
 import { AiAgentService } from './modules/channels/services/ai-agent.service';
+import { TenantContextService } from './common/context/tenant-context.service';
 
 /**
  * Standalone Temporal worker process — separate from the NestJS API server.
@@ -34,6 +35,7 @@ async function run(): Promise<void> {
       channelsService: appContext.get(ChannelsService),
       quotesService: appContext.get(QuotesService),
       aiAgentService: appContext.get(AiAgentService),
+      tenantContext: appContext.get(TenantContextService),
     });
 
     const workers = await Promise.all([

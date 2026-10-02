@@ -24,8 +24,9 @@ export class StandardizeTenantIdColumns1787500000000 implements MigrationInterfa
     await queryRunner.query(
       `ALTER TABLE "teams" RENAME COLUMN "organizationId" TO "tenant_id"`,
     );
+    await queryRunner.query(`DROP INDEX IF EXISTS "idx_teams_org_name"`);
     await queryRunner.query(
-      `ALTER INDEX IF EXISTS "idx_teams_org_name" RENAME TO "idx_teams_tenant_name"`,
+      `CREATE UNIQUE INDEX "idx_teams_tenant_name" ON "teams" ("tenant_id", "name")`,
     );
 
     // 4. users
@@ -79,10 +80,10 @@ export class StandardizeTenantIdColumns1787500000000 implements MigrationInterfa
     );
 
     await queryRunner.query(
-      `ALTER INDEX IF EXISTS "idx_teams_tenant_name" RENAME TO "idx_teams_org_name"`,
+      `ALTER TABLE "teams" RENAME COLUMN "tenant_id" TO "organizationId"`,
     );
     await queryRunner.query(
-      `ALTER TABLE "teams" RENAME COLUMN "tenant_id" TO "organizationId"`,
+      `CREATE UNIQUE INDEX "idx_teams_org_name" ON "teams" ("organizationId")`,
     );
 
     await queryRunner.query(

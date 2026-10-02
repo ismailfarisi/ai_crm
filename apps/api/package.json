@@ -18,7 +18,7 @@
     "test:evals": "jest src/modules/channels/evals",
     "test:cov": "jest --coverage",
     "test:e2e": "cross-env NODE_ENV=test DB_NAME=crm_test jest --config ./test/jest-e2e.json --runInBand",
-    "typeorm": "node -r ts-node/register -r tsconfig-paths/register ./node_modules/typeorm/cli.js -d src/database/data-source.ts",
+    "typeorm": "node -r ts-node/register -r tsconfig-paths/register ./node_modules/typeorm/cli.js -d src/database/migration-data-source.ts",
     "migration:generate": "pnpm typeorm migration:generate",
     "migration:run": "pnpm typeorm migration:run",
     "migration:revert": "pnpm typeorm migration:revert",

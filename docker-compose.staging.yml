@@ -4,13 +4,16 @@ services:
     container_name: crm_staging_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${DB_USERNAME}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DB_ADMIN_USERNAME:?DB_ADMIN_USERNAME must be set}
+      POSTGRES_PASSWORD: ${DB_ADMIN_PASSWORD:?DB_ADMIN_PASSWORD must be set}
       POSTGRES_DB: ${DB_NAME}
+      DB_USERNAME: ${DB_USERNAME:?DB_USERNAME must be set}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
     volumes:
       - postgres_staging_data:/var/lib/postgresql
+      - ./scripts/create-db-app-role.sql:/docker-entrypoint-initdb.d/10-create-db-app-role.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_ADMIN_USERNAME} -d ${DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -37,8 +40,8 @@ services:
     environment:
       DB: postgres12
       DB_PORT: 5432
-      POSTGRES_USER: ${DB_USERNAME}
-      POSTGRES_PWD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DB_ADMIN_USERNAME}
+      POSTGRES_PWD: ${DB_ADMIN_PASSWORD}
       POSTGRES_SEEDS: postgres
       DBNAME: temporal
       VISIBILITY_DBNAME: temporal_visibility
@@ -62,6 +65,8 @@ services:
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
+      DB_ADMIN_USERNAME: null
+      DB_ADMIN_PASSWORD: null
       TEMPORAL_ADDRESS: temporal:7233
       # Attachments with the local driver live on a volume: a container
       # rebuild must not take the files with it.
@@ -88,6 +93,8 @@ services:
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
+      DB_ADMIN_USERNAME: null
+      DB_ADMIN_PASSWORD: null
       TEMPORAL_ADDRESS: temporal:7233
     # No ports — this process doesn't serve HTTP, only consumes Temporal task queues.
 

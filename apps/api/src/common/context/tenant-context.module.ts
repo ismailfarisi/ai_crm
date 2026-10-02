@@ -3,6 +3,7 @@ import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ClsModule } from 'nestjs-cls';
 import { TenantContextService } from './tenant-context.service';
 import { TenantContextInterceptor } from './tenant-context.interceptor';
+import { DatabaseRoleGuard } from './database-role.guard';
 
 @Global()
 @Module({
@@ -14,6 +15,7 @@ import { TenantContextInterceptor } from './tenant-context.interceptor';
   ],
   providers: [
     TenantContextService,
+    DatabaseRoleGuard,
     { provide: APP_INTERCEPTOR, useClass: TenantContextInterceptor },
   ],
   exports: [TenantContextService],

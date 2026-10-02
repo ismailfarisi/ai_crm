@@ -7,12 +7,15 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-crm}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-crm_dev_password}
       POSTGRES_DB: ${POSTGRES_DB:-crm}
+      DB_USERNAME: ${DB_USERNAME:-crm_app}
+      DB_PASSWORD: ${DB_PASSWORD:-crm_app_dev_password}
     ports:
       - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       # Postgres 18+ images expect the mount one level up, at /var/lib/postgresql,
       # and place the cluster in a major-version subdirectory beneath it.
       - postgres_data:/var/lib/postgresql
+      - ./scripts/create-db-app-role.sql:/docker-entrypoint-initdb.d/10-create-db-app-role.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-crm} -d ${POSTGRES_DB:-crm}"]
       interval: 5s

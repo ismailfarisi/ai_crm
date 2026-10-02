@@ -1,0 +1,21 @@
+\getenv app_role DB_USERNAME
+\getenv app_password DB_PASSWORD
+\getenv admin_role POSTGRES_USER
+\getenv database_name POSTGRES_DB
+
+CREATE ROLE :"app_role" WITH
+  LOGIN
+  PASSWORD :'app_password'
+  NOSUPERUSER
+  NOBYPASSRLS
+  NOCREATEDB
+  NOCREATEROLE;
+
+GRANT CONNECT ON DATABASE :"database_name" TO :"app_role";
+GRANT USAGE ON SCHEMA public TO :"app_role";
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO :"app_role";
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO :"app_role";
+ALTER DEFAULT PRIVILEGES FOR ROLE :"admin_role" IN SCHEMA public
+  GRANT ALL PRIVILEGES ON TABLES TO :"app_role";
+ALTER DEFAULT PRIVILEGES FOR ROLE :"admin_role" IN SCHEMA public
+  GRANT ALL PRIVILEGES ON SEQUENCES TO :"app_role";

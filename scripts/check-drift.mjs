@@ -66,7 +66,7 @@ function generate() {
         'typeorm',
         'migration:generate',
         '-d',
-        'dist/database/data-source.js',
+        'dist/database/migration-data-source.js',
         OUT,
       ],
       { encoding: 'utf8', stdio: 'pipe', shell: process.platform === 'win32' },

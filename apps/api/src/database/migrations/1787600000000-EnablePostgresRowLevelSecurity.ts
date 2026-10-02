@@ -54,30 +54,73 @@ const TENANT_TABLES = [
   'work_orders',
 ];
 
+const ORGANIZATION_TABLES = [
+  'ai_agents',
+  'ai_budgets',
+  'ai_configs',
+  'ai_usage_logs',
+  'channel_configs',
+  'channel_link_codes',
+  'channel_messages',
+  'intent_agent_configs',
+  'staff_channel_identities',
+];
+
+const CAMEL_TENANT_TABLES = [
+  'automation_executions',
+  'automation_workflows',
+  'category_budgets',
+  'expense_claims',
+  'finance_accounts',
+  'journal_entries',
+  'recurring_expenses',
+];
+
+const SNAKE_ORGANIZATION_TABLES = ['channel_conversations'];
+
+async function enableTenantPolicy(
+  queryRunner: QueryRunner,
+  table: string,
+  tenantColumn: 'tenant_id' | 'tenantId' | 'organization_id' | 'organizationId',
+): Promise<void> {
+  const column = `"${tenantColumn}"`;
+  await queryRunner.query(`ALTER TABLE "${table}" ENABLE ROW LEVEL SECURITY;`);
+  await queryRunner.query(`ALTER TABLE "${table}" FORCE ROW LEVEL SECURITY;`);
+  await queryRunner.query(
+    `DROP POLICY IF EXISTS tenant_isolation_policy ON "${table}";`,
+  );
+  await queryRunner.query(
+    `CREATE POLICY tenant_isolation_policy ON "${table}" FOR ALL ` +
+      `USING (current_setting('app.bypass_rls', true) = 'on' OR ${column} = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) ` +
+      `WITH CHECK (current_setting('app.bypass_rls', true) = 'on' OR ${column} = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);`,
+  );
+}
+
 export class EnablePostgresRowLevelSecurity1787600000000 implements MigrationInterface {
   name = 'EnablePostgresRowLevelSecurity1787600000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     for (const table of TENANT_TABLES) {
-      await queryRunner.query(
-        `ALTER TABLE "${table}" ENABLE ROW LEVEL SECURITY;`,
-      );
-      await queryRunner.query(
-        `ALTER TABLE "${table}" FORCE ROW LEVEL SECURITY;`,
-      );
-      await queryRunner.query(
-        `DROP POLICY IF EXISTS tenant_isolation_policy ON "${table}";`,
-      );
-      await queryRunner.query(
-        `CREATE POLICY tenant_isolation_policy ON "${table}" FOR ALL ` +
-          `USING (current_setting('app.bypass_rls', true) = 'on' OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) ` +
-          `WITH CHECK (current_setting('app.bypass_rls', true) = 'on' OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);`,
-      );
+      await enableTenantPolicy(queryRunner, table, 'tenant_id');
+    }
+    for (const table of CAMEL_TENANT_TABLES) {
+      await enableTenantPolicy(queryRunner, table, 'tenantId');
+    }
+    for (const table of ORGANIZATION_TABLES) {
+      await enableTenantPolicy(queryRunner, table, 'organizationId');
+    }
+    for (const table of SNAKE_ORGANIZATION_TABLES) {
+      await enableTenantPolicy(queryRunner, table, 'organization_id');
     }
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    for (const table of [...TENANT_TABLES].reverse()) {
+    for (const table of [
+      ...TENANT_TABLES,
+      ...CAMEL_TENANT_TABLES,
+      ...ORGANIZATION_TABLES,
+      ...SNAKE_ORGANIZATION_TABLES,
+    ].reverse()) {
       await queryRunner.query(
         `DROP POLICY IF EXISTS tenant_isolation_policy ON "${table}";`,
       );

@@ -2,6 +2,7 @@ import { AiService } from '../../../ai/ai.service';
 import { ChannelsService } from '../../channels.service';
 import { QuotesService } from '../../../quotes/quotes.service';
 import { AiAgentService } from '../../services/ai-agent.service';
+import { TenantContextService } from '@/common/context/tenant-context.service';
 import {
   MessageAiIntent,
   MessageAiProcessingStatus,
@@ -29,6 +30,7 @@ export function createChannelAiActivities(deps: {
   channelsService: ChannelsService;
   quotesService: QuotesService;
   aiAgentService: AiAgentService;
+  tenantContext: TenantContextService;
 }) {
   const classifier = new IntentClassifierAgent(deps.aiService);
   const actionHandlers = createActionHandlerRegistry({
@@ -40,11 +42,15 @@ export function createChannelAiActivities(deps: {
     async classifyMessageActivity(
       params: ClassifyMessageParams,
     ): Promise<ClassifyMessageResult> {
-      const result = await classifier.classify(
+      const result = await deps.tenantContext.runWithTenant(
         params.organizationId,
-        params.transcript,
-        params.systemPromptOverride,
-        params.modelOverride,
+        () =>
+          classifier.classify(
+            params.organizationId,
+            params.transcript,
+            params.systemPromptOverride,
+            params.modelOverride,
+          ),
       );
       if (result.skipped) {
         return { skipped: true };
@@ -64,80 +70,91 @@ export function createChannelAiActivities(deps: {
     async persistClassificationActivity(
       params: PersistClassificationParams,
     ): Promise<void> {
-      await deps.channelsService.updateAiClassification(params.messageId, {
-        aiProcessingStatus: params.status as MessageAiProcessingStatus,
-        ...(params.status === 'AWAITING_REPLY'
-          ? {}
-          : {
-              aiIntent: params.intent ?? null,
-              aiConfidence: params.confidence ?? null,
-              aiSummary: params.summary ?? null,
-              aiSuggestedReply: params.suggestedReply ?? null,
-              aiSuggestedReplyOptions: params.options ?? [],
-            }),
-      });
+      await deps.tenantContext.runWithTenant(params.organizationId, () =>
+        deps.channelsService.updateAiClassification(params.messageId, {
+          aiProcessingStatus: params.status as MessageAiProcessingStatus,
+          ...(params.status === 'AWAITING_REPLY'
+            ? {}
+            : {
+                aiIntent: params.intent ?? null,
+                aiConfidence: params.confidence ?? null,
+                aiSummary: params.summary ?? null,
+                aiSuggestedReply: params.suggestedReply ?? null,
+                aiSuggestedReplyOptions: params.options ?? [],
+              }),
+        }),
+      );
     },
 
     async dispatchAgentActivity(
       params: DispatchAgentParams,
     ): Promise<DispatchAgentResult> {
-      const agent = await deps.aiAgentService.findEnabledForIntent(
+      return deps.tenantContext.runWithTenant(
         params.organizationId,
-        params.intent,
-      );
-      if (!agent) return { autoAcked: false, reason: 'NO_AGENT' };
-      if (!agent.eligibleProviders.includes(params.provider)) {
-        return { autoAcked: false, reason: 'PROVIDER_INELIGIBLE' };
-      }
-      if (params.confidence < agent.confidenceThreshold) {
-        return { autoAcked: false, reason: 'LOW_CONFIDENCE' };
-      }
+        async () => {
+          const agent = await deps.aiAgentService.findEnabledForIntent(
+            params.organizationId,
+            params.intent,
+          );
+          if (!agent) return { autoAcked: false, reason: 'NO_AGENT' };
+          if (!agent.eligibleProviders.includes(params.provider)) {
+            return { autoAcked: false, reason: 'PROVIDER_INELIGIBLE' };
+          }
+          if (params.confidence < agent.confidenceThreshold) {
+            return { autoAcked: false, reason: 'LOW_CONFIDENCE' };
+          }
 
-      const handler = actionHandlers[agent.actionType];
-      if (!handler) return { autoAcked: false, reason: 'NO_AGENT' };
+          const handler = actionHandlers[agent.actionType];
+          if (!handler) return { autoAcked: false, reason: 'NO_AGENT' };
 
-      const result = await handler.handle(
-        {
-          organizationId: params.organizationId,
-          provider: params.provider,
-          senderIdentifier: params.senderIdentifier,
-          contactId: params.contactId,
-          messageBody: params.messageBody,
-          classification: {
-            intent: params.intent,
-            confidence: params.confidence,
-            summary: params.summary,
-          },
+          const result = await handler.handle(
+            {
+              organizationId: params.organizationId,
+              provider: params.provider,
+              senderIdentifier: params.senderIdentifier,
+              contactId: params.contactId,
+              messageBody: params.messageBody,
+              classification: {
+                intent: params.intent,
+                confidence: params.confidence,
+                summary: params.summary,
+              },
+            },
+            agent,
+          );
+
+          return { ...result, reason: 'DISPATCHED' };
         },
-        agent,
       );
-
-      return { ...result, reason: 'DISPATCHED' };
     },
 
     async persistDispatchResultActivity(
       params: PersistDispatchResultParams,
     ): Promise<void> {
-      await deps.channelsService.updateAiClassification(params.messageId, {
-        aiAutoAcked: params.autoAcked,
-        ...(params.createdQuoteId
-          ? { aiCreatedQuoteId: params.createdQuoteId }
-          : {}),
-      });
+      await deps.tenantContext.runWithTenant(params.organizationId, () =>
+        deps.channelsService.updateAiClassification(params.messageId, {
+          aiAutoAcked: params.autoAcked,
+          ...(params.createdQuoteId
+            ? { aiCreatedQuoteId: params.createdQuoteId }
+            : {}),
+        }),
+      );
     },
 
     async sendClarifyingQuestionActivity(
       params: SendClarifyingQuestionParams,
     ): Promise<void> {
-      await deps.channelsService.sendMessage(
-        params.organizationId,
-        'system:ai-clarify',
-        {
-          provider: params.provider,
-          recipient: params.senderIdentifier,
-          contactId: params.contactId,
-          body: params.question,
-        },
+      await deps.tenantContext.runWithTenant(params.organizationId, () =>
+        deps.channelsService.sendMessage(
+          params.organizationId,
+          'system:ai-clarify',
+          {
+            provider: params.provider,
+            recipient: params.senderIdentifier,
+            contactId: params.contactId,
+            body: params.question,
+          },
+        ),
       );
     },
   };
