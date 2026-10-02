@@ -106,7 +106,7 @@ jobs:
         env:
           POSTGRES_USER: crm
           POSTGRES_DB: crm
-        run: psql -h localhost -U "$DB_ADMIN_USERNAME" -d "$DB_NAME" -v ON_ERROR_STOP=1 -f scripts/create-db-app-role.sql
+        run: PGPASSWORD="$DB_ADMIN_PASSWORD" psql -h localhost -U "$DB_ADMIN_USERNAME" -d "$DB_NAME" -v ON_ERROR_STOP=1 -f scripts/create-db-app-role.sql
       - name: Migrate from zero
         run: pnpm migration:run
       # Blocking: new drift fails, the known backlog in scripts/drift-baseline.json does not.
