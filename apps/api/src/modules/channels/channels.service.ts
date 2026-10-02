@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -10,6 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
 import type { AppConfig } from '@/config/configuration';
+import { TenantContextService } from '@/common/context/tenant-context.service';
 import { ContactsService } from '../contacts/contacts.service';
 import { TemporalService } from '../temporal/temporal.service';
 import {
@@ -60,6 +62,8 @@ export class ChannelsService {
     private readonly channelCommandService: ChannelCommandService,
     private readonly temporalService: TemporalService,
     private readonly intentAgentConfigService: IntentAgentConfigService,
+    @Optional()
+    private readonly tenantContext?: TenantContextService,
   ) {}
 
   /** The URL the given provider's inbound webhook is reachable at — must match the route in ChannelsWebhookController. */
@@ -398,38 +402,43 @@ export class ChannelsService {
     verifyToken: string,
     challenge: string,
   ): Promise<string> {
-    const config = await this.configRepo.findOne({
-      where: {
-        organizationId: orgId,
-        provider: ChannelProviderType.WHATSAPP_META,
-      },
-    });
+    const run = <T>(fn: () => Promise<T>): Promise<T> =>
+      this.tenantContext ? this.tenantContext.runWithTenant(orgId, fn) : fn();
 
-    if (!config) {
-      throw new UnauthorizedException('Channel configuration not found');
-    }
+    return run(async () => {
+      const config = await this.configRepo.findOne({
+        where: {
+          organizationId: orgId,
+          provider: ChannelProviderType.WHATSAPP_META,
+        },
+      });
 
-    let credentialVerifyToken: string | undefined;
-    if (config.encryptedCredentials) {
-      try {
-        const decrypted = this.cryptoService.decrypt(
-          config.encryptedCredentials,
-        );
-        credentialVerifyToken = decrypted?.verifyToken;
-      } catch (e) {
-        // Ignore decryption error
+      if (!config) {
+        throw new UnauthorizedException('Channel configuration not found');
       }
-    }
 
-    const matchesToken =
-      (credentialVerifyToken && verifyToken === credentialVerifyToken) ||
-      (config.webhookSecret && verifyToken === config.webhookSecret);
+      let credentialVerifyToken: string | undefined;
+      if (config.encryptedCredentials) {
+        try {
+          const decrypted = this.cryptoService.decrypt(
+            config.encryptedCredentials,
+          );
+          credentialVerifyToken = decrypted?.verifyToken;
+        } catch (e) {
+          // Ignore decryption error
+        }
+      }
 
-    if (mode !== 'subscribe' || !verifyToken || !matchesToken) {
-      throw new UnauthorizedException('Invalid verification token or mode');
-    }
+      const matchesToken =
+        (credentialVerifyToken && verifyToken === credentialVerifyToken) ||
+        (config.webhookSecret && verifyToken === config.webhookSecret);
 
-    return challenge;
+      if (mode !== 'subscribe' || !verifyToken || !matchesToken) {
+        throw new UnauthorizedException('Invalid verification token or mode');
+      }
+
+      return challenge;
+    });
   }
 
   async processInboundWebhook(
@@ -438,127 +447,132 @@ export class ChannelsService {
     headers: any,
     body: any,
   ): Promise<{ ignored?: boolean; success?: boolean; messageId?: string }> {
-    const config = await this.configRepo.findOne({
-      where: { organizationId: orgId, provider },
-    });
+    const run = <T>(fn: () => Promise<T>): Promise<T> =>
+      this.tenantContext ? this.tenantContext.runWithTenant(orgId, fn) : fn();
 
-    if (!config || !config.isEnabled) {
-      return { ignored: true };
-    }
+    return run(async () => {
+      const config = await this.configRepo.findOne({
+        where: { organizationId: orgId, provider },
+      });
 
-    let credentials: Record<string, any> = {};
-    if (config.encryptedCredentials) {
+      if (!config || !config.isEnabled) {
+        return { ignored: true };
+      }
+
+      let credentials: Record<string, any> = {};
+      if (config.encryptedCredentials) {
+        try {
+          credentials = this.cryptoService.decrypt(config.encryptedCredentials);
+        } catch (e) {
+          // Ignore decryption error
+        }
+      }
+
+      const driver = this.getDriver(provider);
+      const parsed = await driver.parseWebhookPayload(credentials, headers, body);
+      if (!parsed || !parsed.senderIdentifier) {
+        return { ignored: true };
+      }
+
+      // Staff commands (quote approval via chat) are routed here, before any
+      // customer-contact side effect. `handled: false` means this sender has
+      // no linked staff identity and no active linking code — fall through to
+      // the ordinary customer path exactly as before.
+      const commandResult = await this.channelCommandService.handleInboundMessage(
+        orgId,
+        provider,
+        parsed.senderIdentifier,
+        parsed.body,
+      );
+      if (commandResult.handled) {
+        if (commandResult.reply && commandResult.userId) {
+          await this.sendMessage(orgId, commandResult.userId, {
+            provider,
+            recipient: parsed.senderIdentifier,
+            body: commandResult.reply.body,
+          });
+        }
+        return { success: true };
+      }
+
+      const contact = await this.contactsService.findOrCreateForChannel(
+        orgId,
+        parsed.senderIdentifier,
+        provider,
+      );
+
+      const message = this.messageRepo.create({
+        organizationId: orgId,
+        contactId: contact.id,
+        provider,
+        direction: MessageDirection.INBOUND,
+        sender: parsed.senderIdentifier,
+        recipient: orgId,
+        body: parsed.body,
+        metadata: {
+          externalId: parsed.externalMessageId,
+          rawPayload: parsed.rawPayload,
+        },
+        status: MessageStatus.RECEIVED,
+        aiProcessingStatus: MessageAiProcessingStatus.PENDING,
+      });
+
+      const saved = await this.messageRepo.save(message);
+
       try {
-        credentials = this.cryptoService.decrypt(config.encryptedCredentials);
-      } catch (e) {
-        // Ignore decryption error
+        const client = this.temporalService.getClient();
+        const intentConfig =
+          await this.intentAgentConfigService.getEffective(orgId);
+        if (
+          intentConfig.isEnabled &&
+          intentConfig.eligibleProviders.includes(provider)
+        ) {
+          // Per-contact, long-running conversation — the first message and
+          // every follow-up reply both flow in purely via signal, so this
+          // correlates back to the same in-progress workflow instead of
+          // starting an unrelated one per message. Settings are resolved once,
+          // here, and carried in the workflow's input for its whole lifetime.
+          await client.workflow.signalWithStart(channelConversationWorkflow, {
+            taskQueue: 'channel-ai-queue',
+            workflowId: `channel-conv-${orgId}-${provider}-${contact.id}`,
+            args: [
+              {
+                organizationId: orgId,
+                provider,
+                contactId: contact.id,
+                senderIdentifier: parsed.senderIdentifier,
+                maxTurns: intentConfig.maxTurns,
+                replyTimeoutMinutes: intentConfig.replyTimeoutMinutes,
+                systemPrompt: intentConfig.systemPrompt,
+                model: intentConfig.model,
+              },
+            ],
+            signal: newInboundMessageSignal,
+            signalArgs: [{ messageId: saved.id, body: parsed.body }],
+          });
+        } else {
+          await client.workflow.start(channelAiWorkflow, {
+            taskQueue: 'channel-ai-queue',
+            workflowId: `channel-ai-${saved.id}`,
+            args: [
+              {
+                messageId: saved.id,
+                organizationId: orgId,
+                contactId: contact.id,
+                provider,
+                senderIdentifier: parsed.senderIdentifier,
+                body: parsed.body,
+              },
+            ],
+          });
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`Channel AI workflow start deferred/failed: ${msg}`);
       }
-    }
 
-    const driver = this.getDriver(provider);
-    const parsed = await driver.parseWebhookPayload(credentials, headers, body);
-    if (!parsed || !parsed.senderIdentifier) {
-      return { ignored: true };
-    }
-
-    // Staff commands (quote approval via chat) are routed here, before any
-    // customer-contact side effect. `handled: false` means this sender has
-    // no linked staff identity and no active linking code — fall through to
-    // the ordinary customer path exactly as before.
-    const commandResult = await this.channelCommandService.handleInboundMessage(
-      orgId,
-      provider,
-      parsed.senderIdentifier,
-      parsed.body,
-    );
-    if (commandResult.handled) {
-      if (commandResult.reply && commandResult.userId) {
-        await this.sendMessage(orgId, commandResult.userId, {
-          provider,
-          recipient: parsed.senderIdentifier,
-          body: commandResult.reply.body,
-        });
-      }
-      return { success: true };
-    }
-
-    const contact = await this.contactsService.findOrCreateForChannel(
-      orgId,
-      parsed.senderIdentifier,
-      provider,
-    );
-
-    const message = this.messageRepo.create({
-      organizationId: orgId,
-      contactId: contact.id,
-      provider,
-      direction: MessageDirection.INBOUND,
-      sender: parsed.senderIdentifier,
-      recipient: orgId,
-      body: parsed.body,
-      metadata: {
-        externalId: parsed.externalMessageId,
-        rawPayload: parsed.rawPayload,
-      },
-      status: MessageStatus.RECEIVED,
-      aiProcessingStatus: MessageAiProcessingStatus.PENDING,
+      return { success: true, messageId: saved.id };
     });
-
-    const saved = await this.messageRepo.save(message);
-
-    try {
-      const client = this.temporalService.getClient();
-      const intentConfig =
-        await this.intentAgentConfigService.getEffective(orgId);
-      if (
-        intentConfig.isEnabled &&
-        intentConfig.eligibleProviders.includes(provider)
-      ) {
-        // Per-contact, long-running conversation — the first message and
-        // every follow-up reply both flow in purely via signal, so this
-        // correlates back to the same in-progress workflow instead of
-        // starting an unrelated one per message. Settings are resolved once,
-        // here, and carried in the workflow's input for its whole lifetime.
-        await client.workflow.signalWithStart(channelConversationWorkflow, {
-          taskQueue: 'channel-ai-queue',
-          workflowId: `channel-conv-${orgId}-${provider}-${contact.id}`,
-          args: [
-            {
-              organizationId: orgId,
-              provider,
-              contactId: contact.id,
-              senderIdentifier: parsed.senderIdentifier,
-              maxTurns: intentConfig.maxTurns,
-              replyTimeoutMinutes: intentConfig.replyTimeoutMinutes,
-              systemPrompt: intentConfig.systemPrompt,
-              model: intentConfig.model,
-            },
-          ],
-          signal: newInboundMessageSignal,
-          signalArgs: [{ messageId: saved.id, body: parsed.body }],
-        });
-      } else {
-        await client.workflow.start(channelAiWorkflow, {
-          taskQueue: 'channel-ai-queue',
-          workflowId: `channel-ai-${saved.id}`,
-          args: [
-            {
-              messageId: saved.id,
-              organizationId: orgId,
-              contactId: contact.id,
-              provider,
-              senderIdentifier: parsed.senderIdentifier,
-              body: parsed.body,
-            },
-          ],
-        });
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`Channel AI workflow start deferred/failed: ${msg}`);
-    }
-
-    return { success: true, messageId: saved.id };
   }
 
   async updateAiClassification(

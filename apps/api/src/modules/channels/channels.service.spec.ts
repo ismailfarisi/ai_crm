@@ -136,6 +136,9 @@ function makeService(
     contactsService,
     configService,
     channelCommandService,
+    overrides.temporalService as any,
+    overrides.intentAgentConfigService as any,
+    overrides.tenantContext as any,
   );
   return {
     service,
@@ -682,6 +685,36 @@ describe('ChannelsService', () => {
       );
       expect(messages).toHaveLength(1);
       expect(messages[0].direction).toBe(MessageDirection.INBOUND);
+    });
+
+    it('executes processInboundWebhook inside tenantContext.runWithTenant when tenantContext is provided', async () => {
+      const mockTenantContext = {
+        runWithTenant: jest
+          .fn()
+          .mockImplementation(async (_tenantId, fn) => fn()),
+      };
+      const { service } = makeService({ tenantContext: mockTenantContext });
+      await service.saveConfig(orgId, ChannelProviderType.TELEGRAM, true, {
+        botToken: 'token',
+      });
+
+      await service.processInboundWebhook(
+        orgId,
+        ChannelProviderType.TELEGRAM,
+        {},
+        {
+          message: {
+            text: 'Hello from telegram',
+            chat: { id: '998877' },
+            message_id: 12345,
+          },
+        },
+      );
+
+      expect(mockTenantContext.runWithTenant).toHaveBeenCalledWith(
+        orgId,
+        expect.any(Function),
+      );
     });
   });
 });
