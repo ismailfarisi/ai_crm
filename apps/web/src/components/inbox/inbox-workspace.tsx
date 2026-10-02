@@ -54,7 +54,9 @@ export function InboxWorkspace() {
       let existing = threadMap.get(threadKey);
       if (!existing) {
         let name = 'Unknown Contact';
-        if (contactObj) {
+        if (msg.staffUser) {
+          name = msg.staffUser.name;
+        } else if (contactObj) {
           name = contactObj.fullName;
         } else if (msg.direction === 'INBOUND') {
           name = msg.sender;
@@ -68,6 +70,7 @@ export function InboxWorkspace() {
           name,
           recipientOrSender: msg.direction === 'INBOUND' ? msg.sender : msg.recipient,
           contact: contactObj,
+          staffUser: msg.staffUser || null,
           lastMessage: msg,
           messages: [],
           providers: new Set<string>(),
@@ -77,11 +80,19 @@ export function InboxWorkspace() {
 
       existing.messages.push(msg);
       existing.providers.add(msg.provider);
+
+      // Update staffUser if found on any message in thread
+      if (!existing.staffUser && msg.staffUser) {
+        existing.staffUser = msg.staffUser;
+        existing.name = msg.staffUser.name;
+      }
       
       // Update contact if found on newer message
       if (!existing.contact && contactObj) {
         existing.contact = contactObj;
-        existing.name = contactObj.fullName;
+        if (!existing.staffUser) {
+          existing.name = contactObj.fullName;
+        }
       }
     }
 

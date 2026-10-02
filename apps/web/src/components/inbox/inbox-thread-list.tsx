@@ -16,6 +16,12 @@ export interface ThreadGroup {
   name: string;
   recipientOrSender: string;
   contact?: ContactDto | null;
+  staffUser?: {
+    id: string;
+    name: string;
+    email: string;
+    role?: string;
+  } | null;
   lastMessage: ChannelMessageDto;
   messages: ChannelMessageDto[];
   providers: Set<string>;
@@ -147,9 +153,16 @@ export function InboxThreadList({
                 {/* Content */}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-1 mb-0.5">
-                    <span className="truncate text-sm font-semibold text-ink">
-                      {thread.name}
-                    </span>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="truncate text-sm font-semibold text-ink">
+                        {thread.name}
+                      </span>
+                      {thread.staffUser && (
+                        <span className="rounded bg-brand/10 text-brand text-[10px] font-medium px-1.5 py-0.5 border border-brand/20 shrink-0">
+                          Staff
+                        </span>
+                      )}
+                    </div>
                     <span className="shrink-0 text-[11px] text-ink-subtle">
                       {formatRelative(lastMsg.createdAt)}
                     </span>

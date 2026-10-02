@@ -19,6 +19,12 @@ export interface ChannelMessageDto {
   organizationId: string;
   contactId: string | null;
   contact?: ContactDto | null;
+  staffUser?: {
+    id: string;
+    name: string;
+    email: string;
+    role?: string;
+  } | null;
   provider: 'WHATSAPP_META' | 'TELEGRAM' | 'EMAIL_SMTP' | 'EMAIL_RESEND';
   direction: 'INBOUND' | 'OUTBOUND';
   sender: string;

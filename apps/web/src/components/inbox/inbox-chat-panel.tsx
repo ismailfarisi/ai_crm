@@ -104,9 +104,16 @@ export function InboxChatPanel({ thread, onMessageSent }: InboxChatPanelProps) {
             {initials(thread.name, '')}
           </div>
           <div>
-            <h3 className="font-semibold text-ink leading-none">{thread.name}</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold text-ink leading-none">{thread.name}</h3>
+              {thread.staffUser && (
+                <span className="rounded bg-brand/10 text-brand text-[10px] font-medium px-1.5 py-0.5 border border-brand/20">
+                  Staff Member
+                </span>
+              )}
+            </div>
             <p className="text-xs text-ink-subtle mt-1">
-              {thread.contact?.email || thread.contact?.phone || thread.recipientOrSender}
+              {thread.staffUser?.email || thread.contact?.email || thread.contact?.phone || thread.recipientOrSender}
             </p>
           </div>
         </div>

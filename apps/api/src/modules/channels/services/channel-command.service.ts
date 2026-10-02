@@ -112,6 +112,16 @@ export class ChannelCommandService {
     });
   }
 
+  async listAllIdentities(
+    organizationId: string,
+  ): Promise<StaffChannelIdentity[]> {
+    return this.identityRepository.find({
+      where: { organizationId },
+      relations: { user: true },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
   async revokeIdentity(
     organizationId: string,
     userId: string,

@@ -127,6 +127,7 @@ function makeService(
     overrides.channelCommandService ||
     ({
       handleInboundMessage: jest.fn().mockResolvedValue({ handled: false }),
+      listAllIdentities: jest.fn().mockResolvedValue([]),
     } as any);
 
   const service = new ChannelsService(
@@ -479,6 +480,55 @@ describe('ChannelsService', () => {
       expect(contactsService.toDto).toHaveBeenCalled();
       expect(result.contact).toEqual(
         expect.objectContaining({ fullName: '447700900000' }),
+      );
+    });
+
+    it('enriches messages with linked staff user details when sender is a linked staff identity', async () => {
+      const channelCommandService = {
+        listAllIdentities: jest.fn().mockResolvedValue([
+          {
+            organizationId: orgId,
+            provider: ChannelProviderType.TELEGRAM,
+            identifier: '1489789983',
+            userId: 'staff-user-1',
+            user: {
+              id: 'staff-user-1',
+              firstName: 'Ada',
+              lastName: 'Okonkwo',
+              email: 'owner@northwind.test',
+              role: 'owner',
+            },
+          },
+        ]),
+      };
+      const { service, messages } = makeService({ channelCommandService });
+      messages.push({
+        id: 'msg-staff-1',
+        organizationId: orgId,
+        contactId: 'contact-staff-1',
+        contact: { id: 'contact-staff-1', firstName: '1489789983', lastName: '' },
+        provider: ChannelProviderType.TELEGRAM,
+        direction: MessageDirection.INBOUND,
+        sender: '1489789983',
+        recipient: orgId,
+        body: 'create a quote',
+        metadata: {},
+        status: MessageStatus.RECEIVED,
+        createdAt: new Date(),
+      } as unknown as ChannelMessage);
+
+      const [result] = await service.getMessages(orgId);
+      expect((result as any).staffUser).toEqual({
+        id: 'staff-user-1',
+        name: 'Ada Okonkwo',
+        email: 'owner@northwind.test',
+        role: 'owner',
+      });
+      expect(result.contact).toEqual(
+        expect.objectContaining({
+          fullName: 'Ada Okonkwo',
+          isStaff: true,
+        }),
       );
     });
   });

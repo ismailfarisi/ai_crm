@@ -25,6 +25,7 @@ import {
   MessageDirection,
   MessageStatus,
 } from './entities/channel-message.entity';
+import { StaffChannelIdentity } from './entities/staff-channel-identity.entity';
 import { ChannelCryptoService } from './services/channel-crypto.service';
 import { ChannelCommandService } from './services/channel-command.service';
 import { ChannelDriver } from './interfaces/channel-driver.interface';
@@ -385,15 +386,51 @@ export class ChannelsService {
       take: query?.limit || 50,
     });
 
+    const identities =
+      typeof this.channelCommandService?.listAllIdentities === 'function'
+        ? await this.channelCommandService.listAllIdentities(orgId)
+        : [];
+
+    const identityMap = new Map<string, StaffChannelIdentity>();
+    for (const ident of identities) {
+      identityMap.set(`${ident.provider}:${ident.identifier}`, ident);
+    }
+
     // `Contact.fullName` is a getter, not a column — it's dropped by JSON
     // serialization unless run through the same DTO mapping the contacts
     // endpoints use, so the embedded `contact` here must go through it too.
-    return messages.map((message) => ({
-      ...message,
-      contact: message.contact
+    return messages.map((message) => {
+      const contactDto = message.contact
         ? (this.contactsService.toDto(message.contact) as any)
-        : null,
-    }));
+        : null;
+
+      const ident =
+        identityMap.get(`${message.provider}:${message.sender}`) ||
+        identityMap.get(`${message.provider}:${message.recipient}`);
+
+      let staffUser: { id: string; name: string; email: string; role?: string } | undefined = undefined;
+      if (ident?.user) {
+        const u = ident.user as any;
+        const name = `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email;
+        staffUser = {
+          id: u.id,
+          name,
+          email: u.email,
+          ...(u.role ? { role: u.role } : (u.roles?.[0]?.name ? { role: u.roles[0].name } : {})),
+        };
+      }
+
+      if (staffUser && contactDto) {
+        contactDto.fullName = staffUser.name;
+        contactDto.isStaff = true;
+      }
+
+      return {
+        ...message,
+        contact: contactDto,
+        ...(staffUser ? { staffUser } : {}),
+      };
+    });
   }
 
   async verifyMetaChallenge(

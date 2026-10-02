@@ -4,8 +4,11 @@ import {
   Column,
   CreateDateColumn,
   Index,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 import { ChannelProviderType } from './channel-config.entity';
+import { User } from '../../users/entities/user.entity';
 
 /**
  * Maps an inbound channel identity (a phone number, Telegram chat id, or
@@ -35,6 +38,10 @@ export class StaffChannelIdentity {
 
   @Column('uuid')
   userId: string;
+
+  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'userId' })
+  user?: User;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
