@@ -604,7 +604,7 @@ describe('ChannelsService', () => {
       expect(messages[0].contactId).toBe('contact-uuid-789');
     });
 
-    it('does not create a contact when a staff command handled the message', async () => {
+    it('records both inbound and outbound messages with contactId when a staff command handled the message', async () => {
       const channelCommandService = {
         handleInboundMessage: jest.fn().mockResolvedValue({
           handled: true,
@@ -633,11 +633,20 @@ describe('ChannelsService', () => {
       );
 
       expect(res).toEqual({ success: true });
-      expect(contactsService.findOrCreateForChannel).not.toHaveBeenCalled();
-      // The reply is sent back out through sendMessage, producing an outbound message row.
-      expect(messages).toHaveLength(1);
-      expect(messages[0].direction).toBe(MessageDirection.OUTBOUND);
-      expect(messages[0].body).toBe('Approved.');
+      expect(contactsService.findOrCreateForChannel).toHaveBeenCalledWith(
+        orgId,
+        '998877',
+        ChannelProviderType.TELEGRAM,
+      );
+      // Both inbound command and outbound reply are stored and linked to contact
+      expect(messages).toHaveLength(2);
+      expect(messages[0].direction).toBe(MessageDirection.INBOUND);
+      expect(messages[0].body).toBe('approve QT-2026-0004');
+      expect(messages[0].contactId).toBe('contact-uuid-789');
+
+      expect(messages[1].direction).toBe(MessageDirection.OUTBOUND);
+      expect(messages[1].body).toBe('Approved.');
+      expect(messages[1].contactId).toBe('contact-uuid-789');
     });
 
     it('behaves exactly as before for an ordinary customer message, using the real ChannelCommandService', async () => {

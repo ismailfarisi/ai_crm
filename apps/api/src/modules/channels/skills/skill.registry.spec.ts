@@ -3,6 +3,7 @@ import { SkillRegistry } from './skill.registry';
 import { DeliveryDispatchSkill } from './delivery-dispatch.skill';
 import { SalesOrderFromDocumentSkill } from './sales-order-from-document.skill';
 import { QuoteApproveSkill } from './quote-approve.skill';
+import { QuoteCreateSkill } from './quote-create.skill';
 import { PurchaseOrderCreateSkill } from './purchase-order-create.skill';
 import { WorkOrderLogTimeSkill } from './work-order-log-time.skill';
 
@@ -17,15 +18,17 @@ describe('SkillRegistry', () => {
       {} as any, // production
       {} as any, // deliveryNotes
       {} as any, // orders
+      {} as any, // contacts
     );
   });
 
   describe('all', () => {
-    it('contains all 5 skills', () => {
+    it('contains all 6 skills', () => {
       const skills = registry.all();
-      expect(skills).toHaveLength(5);
+      expect(skills).toHaveLength(6);
       expect(skills.map((s) => s.name)).toEqual([
         CHANNEL_SKILLS.QUOTE_APPROVE,
+        CHANNEL_SKILLS.QUOTE_CREATE,
         CHANNEL_SKILLS.PURCHASE_ORDER_CREATE,
         CHANNEL_SKILLS.WORK_ORDER_LOG_TIME,
         CHANNEL_SKILLS.DELIVERY_DISPATCH,
@@ -35,6 +38,12 @@ describe('SkillRegistry', () => {
   });
 
   describe('byName', () => {
+    it('returns QuoteCreateSkill for quote.create', () => {
+      const skill = registry.byName(CHANNEL_SKILLS.QUOTE_CREATE);
+      expect(skill).toBeInstanceOf(QuoteCreateSkill);
+      expect(skill?.name).toBe(CHANNEL_SKILLS.QUOTE_CREATE);
+    });
+
     it('returns DeliveryDispatchSkill for delivery.dispatch', () => {
       const skill = registry.byName(CHANNEL_SKILLS.DELIVERY_DISPATCH);
       expect(skill).toBeInstanceOf(DeliveryDispatchSkill);
@@ -105,18 +114,20 @@ describe('SkillRegistry', () => {
       ]);
     });
 
-    it('returns all 5 skills when user has all required permissions', () => {
+    it('returns all 6 skills when user has all required permissions', () => {
       const allPermissions: Permission[] = [
         PERMISSIONS.QUOTE_APPROVE,
+        PERMISSIONS.QUOTE_CREATE,
         PERMISSIONS.PURCHASE_ORDER_CREATE,
         PERMISSIONS.WORK_ORDER_EXECUTE,
         PERMISSIONS.DELIVERY_NOTE_DISPATCH,
         PERMISSIONS.SALES_ORDER_UPDATE,
       ];
       const permitted = registry.permittedFor(allPermissions);
-      expect(permitted).toHaveLength(5);
+      expect(permitted).toHaveLength(6);
       expect(permitted.map((s) => s.name)).toEqual([
         CHANNEL_SKILLS.QUOTE_APPROVE,
+        CHANNEL_SKILLS.QUOTE_CREATE,
         CHANNEL_SKILLS.PURCHASE_ORDER_CREATE,
         CHANNEL_SKILLS.WORK_ORDER_LOG_TIME,
         CHANNEL_SKILLS.DELIVERY_DISPATCH,

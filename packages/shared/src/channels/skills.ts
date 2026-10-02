@@ -38,6 +38,7 @@ export type ChannelResultType =
  */
 export const CHANNEL_SKILLS = {
   QUOTE_APPROVE: 'quote.approve',
+  QUOTE_CREATE: 'quote.create',
   PURCHASE_ORDER_CREATE: 'purchase_order.create',
   WORK_ORDER_LOG_TIME: 'work_order.log_time',
   DELIVERY_DISPATCH: 'delivery.dispatch',

@@ -485,8 +485,32 @@ export class ChannelsService {
         parsed.body,
       );
       if (commandResult.handled) {
+        const contact = await this.contactsService.findOrCreateForChannel(
+          orgId,
+          parsed.senderIdentifier,
+          provider,
+        );
+
+        const inboundMessage = this.messageRepo.create({
+          organizationId: orgId,
+          contactId: contact.id,
+          provider,
+          direction: MessageDirection.INBOUND,
+          sender: parsed.senderIdentifier,
+          recipient: orgId,
+          body: parsed.body,
+          metadata: {
+            externalId: parsed.externalMessageId,
+            rawPayload: parsed.rawPayload,
+            staffUserId: commandResult.userId,
+          },
+          status: MessageStatus.RECEIVED,
+        });
+        await this.messageRepo.save(inboundMessage);
+
         if (commandResult.reply && commandResult.userId) {
           await this.sendMessage(orgId, commandResult.userId, {
+            contactId: contact.id,
             provider,
             recipient: parsed.senderIdentifier,
             body: commandResult.reply.body,
