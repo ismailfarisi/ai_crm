@@ -13,7 +13,7 @@
     "dev:worker": "pnpm --filter api worker:dev",
     "build": "pnpm --filter shared build && pnpm --filter api build && pnpm --filter web build",
     "lint": "pnpm -r lint",
-    "test": "pnpm -r --filter ./packages/* --filter ./apps/* --if-present test",
+    "test": "pnpm --filter api test && pnpm --filter @saas/shared test",
     "test:e2e": "pnpm --filter api test:e2e",
     "test:e2e:web": "pnpm --filter web test:e2e",
     "db:up": "docker compose up -d postgres redis temporal",

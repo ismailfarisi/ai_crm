@@ -160,8 +160,10 @@ export function validateEnv(raw: Record<string, unknown>): Env {
       ['JWT_REFRESH_SECRET', env.JWT_REFRESH_SECRET],
       ['DB_PASSWORD', env.DB_PASSWORD],
       ['DB_ADMIN_PASSWORD', env.DB_ADMIN_PASSWORD],
-    ].filter(([, value]) =>
-      (DEV_ONLY_PLACEHOLDERS as readonly string[]).includes(value),
+    ].filter(
+      ([, value]) =>
+        typeof value === 'string' &&
+        (DEV_ONLY_PLACEHOLDERS as readonly string[]).includes(value),
     );
 
     if (offending.length) {
