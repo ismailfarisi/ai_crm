@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { z } from 'zod';
@@ -56,8 +56,24 @@ const EMPTY: FormValues = {
   model: '',
 };
 
+function getFirstErrorMessage(errors: Record<string, any>): string {
+  for (const key of Object.keys(errors)) {
+    const err = errors[key];
+    if (!err) continue;
+    if (typeof err?.message === 'string' && err.message.length > 0) {
+      return err.message;
+    }
+    if (typeof err === 'object') {
+      const nested = getFirstErrorMessage(err);
+      if (nested) return nested;
+    }
+  }
+  return 'Please check the form for errors.';
+}
+
 export function AiAgentFormDialog({ open, onClose, agent }: AiAgentFormDialogProps) {
   const isEditing = Boolean(agent);
+  const [rootError, setRootError] = useState<string | null>(null);
 
   const create = useCreateAiAgent();
   const update = useUpdateAiAgent();
@@ -67,6 +83,7 @@ export function AiAgentFormDialog({ open, onClose, agent }: AiAgentFormDialogPro
     handleSubmit,
     reset,
     setError,
+    setValue,
     watch,
     formState: { errors, isSubmitting },
   } = useForm<FormValues, unknown, SubmitValues>({
@@ -75,8 +92,16 @@ export function AiAgentFormDialog({ open, onClose, agent }: AiAgentFormDialogPro
   });
 
   useEffect(() => {
-    if (!open) return;
+    register('eligibleProviders');
+  }, [register]);
 
+  useEffect(() => {
+    if (!open) {
+      setRootError(null);
+      return;
+    }
+
+    setRootError(null);
     reset(
       agent
         ? {
@@ -85,7 +110,7 @@ export function AiAgentFormDialog({ open, onClose, agent }: AiAgentFormDialogPro
             actionType: agent.actionType,
             config: agent.config ?? {},
             confidenceThreshold: agent.confidenceThreshold,
-            eligibleProviders: agent.eligibleProviders as FormValues['eligibleProviders'],
+            eligibleProviders: (agent.eligibleProviders ?? []) as FormValues['eligibleProviders'],
             isEnabled: agent.isEnabled,
             // Blank in the form means "use the provider's model"; the schema
             // turns it back into null on the way out.
@@ -97,22 +122,47 @@ export function AiAgentFormDialog({ open, onClose, agent }: AiAgentFormDialogPro
 
   const eligibleProviders = watch('eligibleProviders') ?? [];
 
-  const onSubmit = handleSubmit(async (values) => {
-    try {
-      if (agent) {
-        await update.mutateAsync({ id: agent.id, input: values });
-      } else {
-        await create.mutateAsync(values);
-      }
-      onClose();
-    } catch (error) {
-      if (error instanceof ApiError) {
-        for (const [field, message] of Object.entries(error.fieldErrors)) {
-          setError(field as keyof FormValues, { message });
+  const toggleProvider = (val: string) => {
+    const current = watch('eligibleProviders') ?? [];
+    const next = current.includes(val as never)
+      ? current.filter((p) => p !== val)
+      : [...current, val];
+    setValue('eligibleProviders', next as FormValues['eligibleProviders'], {
+      shouldValidate: true,
+      shouldDirty: true,
+    });
+  };
+
+  const onSubmit = handleSubmit(
+    async (values) => {
+      setRootError(null);
+      try {
+        if (agent) {
+          await update.mutateAsync({ id: agent.id, input: values });
+        } else {
+          await create.mutateAsync(values);
+        }
+        onClose();
+      } catch (error) {
+        if (error instanceof ApiError) {
+          if (error.fieldErrors && Object.keys(error.fieldErrors).length > 0) {
+            for (const [field, message] of Object.entries(error.fieldErrors)) {
+              setError(field as keyof FormValues, { message });
+            }
+          } else {
+            setRootError(error.message);
+          }
+        } else if (error instanceof Error) {
+          setRootError(error.message);
+        } else {
+          setRootError('An unexpected error occurred while saving.');
         }
       }
-    }
-  });
+    },
+    (formErrors) => {
+      setRootError(getFirstErrorMessage(formErrors));
+    },
+  );
 
   return (
     <Dialog
@@ -126,13 +176,23 @@ export function AiAgentFormDialog({ open, onClose, agent }: AiAgentFormDialogPro
           <Button variant="secondary" onClick={onClose} type="button">
             Cancel
           </Button>
-          <Button type="submit" form="ai-agent-form" loading={isSubmitting}>
+          <Button
+            type="submit"
+            form="ai-agent-form"
+            loading={isSubmitting || update.isPending || create.isPending}
+            onClick={onSubmit}
+          >
             {isEditing ? 'Save changes' : 'Create agent'}
           </Button>
         </>
       }
     >
       <form id="ai-agent-form" onSubmit={onSubmit} className="space-y-4" noValidate>
+        {rootError && (
+          <div className="rounded-xl border border-danger/40 bg-danger/10 p-3 text-xs font-medium text-danger">
+            {rootError}
+          </div>
+        )}
         <Input
           label="Name"
           required
@@ -209,7 +269,7 @@ export function AiAgentFormDialog({ open, onClose, agent }: AiAgentFormDialogPro
                   className="size-4 accent-[var(--color-brand)]"
                   value={provider.value}
                   checked={eligibleProviders.includes(provider.value as never)}
-                  {...register('eligibleProviders')}
+                  onChange={() => toggleProvider(provider.value)}
                 />
                 {provider.label}
               </label>
