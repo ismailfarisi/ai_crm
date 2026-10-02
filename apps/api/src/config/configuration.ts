@@ -15,8 +15,10 @@ const envSchema = z.object({
   // Database
   DB_HOST: z.string().default('localhost'),
   DB_PORT: z.coerce.number().int().positive().default(5433),
-  DB_USERNAME: z.string().default('crm'),
-  DB_PASSWORD: z.string().default('crm_dev_password'),
+  DB_USERNAME: z.string().default('crm_app'),
+  DB_PASSWORD: z.string().default('crm_app_dev_password'),
+  DB_ADMIN_USERNAME: z.string().optional(),
+  DB_ADMIN_PASSWORD: z.string().optional(),
   DB_NAME: z.string().default('crm'),
   DB_SYNCHRONIZE: z
     .string()
@@ -135,6 +137,7 @@ const DEV_ONLY_PLACEHOLDERS = [
   'dev_only_access_secret_change_me_at_least_32_chars',
   'dev_only_refresh_secret_change_me_at_least_32_chars',
   'crm_dev_password',
+  'crm_app_dev_password',
 ] as const;
 
 export function validateEnv(raw: Record<string, unknown>): Env {
@@ -156,8 +159,11 @@ export function validateEnv(raw: Record<string, unknown>): Env {
       ['JWT_ACCESS_SECRET', env.JWT_ACCESS_SECRET],
       ['JWT_REFRESH_SECRET', env.JWT_REFRESH_SECRET],
       ['DB_PASSWORD', env.DB_PASSWORD],
-    ].filter(([, value]) =>
-      (DEV_ONLY_PLACEHOLDERS as readonly string[]).includes(value),
+      ['DB_ADMIN_PASSWORD', env.DB_ADMIN_PASSWORD],
+    ].filter(
+      ([, value]) =>
+        typeof value === 'string' &&
+        (DEV_ONLY_PLACEHOLDERS as readonly string[]).includes(value),
     );
 
     if (offending.length) {

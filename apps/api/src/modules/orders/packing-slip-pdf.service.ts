@@ -92,12 +92,10 @@ export class PackingSlipPdfService {
         totals: {
           total: 0,
         },
-        notes: [
-          order ? `Order: ${order.orderNumber}` : null,
-          note.notes,
-        ]
-          .filter(Boolean)
-          .join('\n') || undefined,
+        notes:
+          [order ? `Order: ${order.orderNumber}` : null, note.notes]
+            .filter(Boolean)
+            .join('\n') || undefined,
       };
 
       const baseConfig = template?.config ?? DEFAULT_DOCUMENT_TEMPLATE_CONFIG;

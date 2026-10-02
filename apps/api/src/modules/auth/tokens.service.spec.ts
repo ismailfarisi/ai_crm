@@ -20,7 +20,7 @@ const configStub = {
 
 const user = {
   id: '11111111-1111-1111-1111-111111111111',
-  organizationId: '22222222-2222-2222-2222-222222222222',
+  tenantId: '22222222-2222-2222-2222-222222222222',
   email: 'user@example.com',
   isActive: true,
   credentialsChangedAt: new Date('2026-01-01T00:00:00Z'),
@@ -41,7 +41,7 @@ function makeService(overrides: Partial<Record<'repo' | 'jwt', unknown>> = {}) {
     ),
     verifyAsync: jest
       .fn()
-      .mockResolvedValue({ sub: user.id, org: user.organizationId }),
+      .mockResolvedValue({ sub: user.id, org: user.tenantId }),
   }) as unknown as JwtService;
 
   return { service: new TokensService(repo, jwt, configStub), repo, jwt };

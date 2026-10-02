@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { AppDataSource } from './data-source';
+import { MigrationDataSource } from './migration-data-source';
 
 /**
  * The cheapest detector for a sprint that posted an unbalanced journal entry.
@@ -9,9 +9,9 @@ import { AppDataSource } from './data-source';
  * change did it.
  */
 async function main(): Promise<void> {
-  await AppDataSource.initialize();
+  await MigrationDataSource.initialize();
   try {
-    const rows = await AppDataSource.query<
+    const rows = await MigrationDataSource.query<
       { tenant_id: string; name: string; difference: string }[]
     >(`
       SELECT j."tenantId" AS tenant_id,
@@ -45,7 +45,7 @@ async function main(): Promise<void> {
     }
     console.log(`\nTrial balance sums to zero for ${rows.length} tenant(s).`);
   } finally {
-    await AppDataSource.destroy();
+    await MigrationDataSource.destroy();
   }
 }
 

@@ -3,14 +3,15 @@ import { config as loadEnv } from 'dotenv';
 import { DataSource } from 'typeorm';
 import { join } from 'node:path';
 import { validateEnv } from '@/config/configuration';
+import { TenantRlsSubscriber } from './tenant-rls.subscriber';
 
 loadEnv();
 
 const env = validateEnv(process.env);
 
 /**
- * Used by the TypeORM CLI for migrations. The running app builds its own
- * connection from ConfigService — this file must stay in sync with `app.module.ts`.
+ * Used by Temporal activities that run outside Nest's DI container. Migration
+ * commands use `migration-data-source.ts` with separate admin credentials.
  */
 export const AppDataSource = new DataSource({
   type: 'postgres',
@@ -22,6 +23,7 @@ export const AppDataSource = new DataSource({
   ssl: env.DB_SSL ? { rejectUnauthorized: false } : false,
   synchronize: false,
   logging: env.DB_LOGGING,
+  subscribers: [TenantRlsSubscriber],
   entities: [
     join(__dirname, '..', 'modules', '**', 'entities', '*.entity.{ts,js}'),
   ],

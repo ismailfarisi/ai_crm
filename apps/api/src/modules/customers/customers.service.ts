@@ -161,7 +161,7 @@ export class CustomersService {
   ): Promise<CustomerDto> {
     const customer = this.customers.create({
       ...(input as object),
-      organizationId: actor.organizationId,
+      tenantId: actor.organizationId,
     } as Partial<Customer>);
 
     const saved = await this.customers.save(customer);
@@ -188,8 +188,8 @@ export class CustomersService {
   private scoped(actor: AuthenticatedUser): SelectQueryBuilder<Customer> {
     return this.customers
       .createQueryBuilder('customer')
-      .where('customer.organizationId = :organizationId', {
-        organizationId: actor.organizationId,
+      .where('customer.tenantId = :tenantId', {
+        tenantId: actor.organizationId,
       });
   }
 

@@ -35,9 +35,13 @@ describe('DocumentTemplatesController', () => {
       create: jest.fn().mockResolvedValue({ id: 'tmpl-1' }),
       update: jest.fn().mockResolvedValue({ id: 'tmpl-1' }),
       delete: jest.fn().mockResolvedValue(undefined),
-      setDefault: jest.fn().mockResolvedValue({ id: 'tmpl-1', isDefault: true }),
+      setDefault: jest
+        .fn()
+        .mockResolvedValue({ id: 'tmpl-1', isDefault: true }),
       generateAi: jest.fn().mockResolvedValue(DEFAULT_DOCUMENT_TEMPLATE_CONFIG),
-      previewPdf: jest.fn().mockResolvedValue(Buffer.from('%PDF-1.4 test preview')),
+      previewPdf: jest
+        .fn()
+        .mockResolvedValue(Buffer.from('%PDF-1.4 test preview')),
     };
 
     controller = new DocumentTemplatesController(
@@ -63,26 +67,17 @@ describe('DocumentTemplatesController', () => {
     });
 
     it('should protect create with DOCUMENT_TEMPLATE_MANAGE', () => {
-      const perms = reflector.get<string[]>(
-        PERMISSIONS_KEY,
-        controller.create,
-      );
+      const perms = reflector.get<string[]>(PERMISSIONS_KEY, controller.create);
       expect(perms).toEqual([PERMISSIONS.DOCUMENT_TEMPLATE_MANAGE]);
     });
 
     it('should protect update with DOCUMENT_TEMPLATE_MANAGE', () => {
-      const perms = reflector.get<string[]>(
-        PERMISSIONS_KEY,
-        controller.update,
-      );
+      const perms = reflector.get<string[]>(PERMISSIONS_KEY, controller.update);
       expect(perms).toEqual([PERMISSIONS.DOCUMENT_TEMPLATE_MANAGE]);
     });
 
     it('should protect delete with DOCUMENT_TEMPLATE_MANAGE', () => {
-      const perms = reflector.get<string[]>(
-        PERMISSIONS_KEY,
-        controller.delete,
-      );
+      const perms = reflector.get<string[]>(PERMISSIONS_KEY, controller.delete);
       expect(perms).toEqual([PERMISSIONS.DOCUMENT_TEMPLATE_MANAGE]);
     });
 
@@ -138,7 +133,11 @@ describe('DocumentTemplatesController', () => {
     it('update delegates to service.update with tenant organizationId, id and body', async () => {
       const body = { name: 'Renamed Template' };
       await controller.update(actor, 'tmpl-1', body);
-      expect(mockService.update).toHaveBeenCalledWith('org-111', 'tmpl-1', body);
+      expect(mockService.update).toHaveBeenCalledWith(
+        'org-111',
+        'tmpl-1',
+        body,
+      );
     });
 
     it('delete delegates to service.delete with tenant organizationId and id', async () => {

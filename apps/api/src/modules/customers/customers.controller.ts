@@ -96,12 +96,7 @@ export class CustomersController {
       'from',
       false,
     );
-    const to = this.parseDateParam(
-      toStr,
-      () => new Date(),
-      'to',
-      true,
-    );
+    const to = this.parseDateParam(toStr, () => new Date(), 'to', true);
 
     if (from.getTime() > to.getTime()) {
       throw new BadRequestException(
@@ -117,7 +112,10 @@ export class CustomersController {
     );
     if (res) {
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${filename}"`,
+      );
       res.end(buffer);
     }
   }

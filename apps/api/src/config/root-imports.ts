@@ -2,6 +2,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { join } from 'node:path';
 import { configuration, validateEnv, type AppConfig } from './configuration';
+import { TenantRlsSubscriber } from '../database/tenant-rls.subscriber';
 
 /**
  * Shared by `AppModule` and `WorkerModule` so the two processes (API server,
@@ -36,6 +37,7 @@ export function buildTypeOrmModule() {
           db.synchronize && !config.get('isProduction', { infer: true }),
         logging: db.logging,
         autoLoadEntities: true,
+        subscribers: [TenantRlsSubscriber],
         migrations: [
           join(__dirname, '..', 'database', 'migrations', '*.{ts,js}'),
         ],

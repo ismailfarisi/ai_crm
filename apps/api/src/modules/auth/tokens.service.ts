@@ -122,7 +122,7 @@ export class TokensService {
   ): Promise<IssuedTokens> {
     const payload: AccessTokenPayload = {
       sub: user.id,
-      org: user.organizationId,
+      org: user.tenantId,
       email: user.email,
       cav: Math.floor(new Date(user.credentialsChangedAt).getTime() / 1000),
     };
@@ -139,7 +139,7 @@ export class TokensService {
     const refreshToken = await this.jwt.signAsync(
       {
         sub: user.id,
-        org: user.organizationId,
+        org: user.tenantId,
         jti: randomBytes(16).toString('hex'),
       },
       {

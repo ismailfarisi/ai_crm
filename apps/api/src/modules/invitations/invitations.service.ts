@@ -20,6 +20,7 @@ import type { Role } from '@/modules/rbac/entities/role.entity';
 import { RbacService } from '@/modules/rbac/rbac.service';
 import { Team } from '@/modules/teams/entities/team.entity';
 import { UsersService } from '@/modules/users/users.service';
+import { TenantContextService } from '@/common/context/tenant-context.service';
 import { Invitation } from './entities/invitation.entity';
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -36,6 +37,7 @@ export class InvitationsService {
     private readonly users: UsersService,
     private readonly mail: MailService,
     private readonly config: ConfigService<AppConfig, true>,
+    private readonly tenantContext: TenantContextService,
   ) {}
 
   /**
@@ -56,7 +58,7 @@ export class InvitationsService {
 
     const pending = await this.invitations.findOne({
       where: {
-        organizationId,
+        tenantId: organizationId,
         email: input.email.toLowerCase(),
         acceptedAt: IsNull(),
       },
@@ -73,7 +75,7 @@ export class InvitationsService {
     let teamId: string | null = null;
     if (input.teamId) {
       const team = await this.teams.findOne({
-        where: { id: input.teamId, organizationId },
+        where: { id: input.teamId, tenantId: organizationId },
       });
       if (!team) {
         throw new NotFoundException('Team not found');
@@ -85,7 +87,7 @@ export class InvitationsService {
     const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
     const invitation = await this.invitations.save(
       this.invitations.create({
-        organizationId,
+        tenantId: organizationId,
         email: input.email.toLowerCase(),
         firstName: input.firstName,
         lastName: input.lastName,
@@ -143,7 +145,7 @@ export class InvitationsService {
 
   async listPending(organizationId: string): Promise<InvitationDto[]> {
     const invites = await this.invitations.find({
-      where: { organizationId, acceptedAt: IsNull() },
+      where: { tenantId: organizationId, acceptedAt: IsNull() },
       order: { createdAt: 'DESC' },
     });
     return invites.map((invitation) => this.toDto(invitation));
@@ -167,35 +169,39 @@ export class InvitationsService {
     roles: Role[];
     organizationId: string;
   }> {
-    const invitation = await this.invitations.findOne({
-      where: { tokenHash: this.hash(rawToken), acceptedAt: IsNull() },
-    });
+    return this.tenantContext.runAsSystem(async () => {
+      const invitation = await this.invitations.findOne({
+        where: { tokenHash: this.hash(rawToken), acceptedAt: IsNull() },
+      });
 
-    if (!invitation) {
-      throw new BadRequestException('This invite is not valid');
-    }
-    if (invitation.expiresAt.getTime() <= Date.now()) {
-      throw new BadRequestException('This invite has expired');
-    }
-    if (await this.users.emailExists(invitation.email)) {
-      throw new BadRequestException(
-        'An account already exists for this email — sign in instead',
+      if (!invitation) {
+        throw new BadRequestException('This invite is not valid');
+      }
+      if (invitation.expiresAt.getTime() <= Date.now()) {
+        throw new BadRequestException('This invite has expired');
+      }
+      if (await this.users.emailExists(invitation.email)) {
+        throw new BadRequestException(
+          'An account already exists for this email — sign in instead',
+        );
+      }
+
+      const roles = await this.rbac.findRolesByIds(
+        invitation.tenantId,
+        invitation.roleIds,
       );
-    }
-
-    const roles = await this.rbac.findRolesByIds(
-      invitation.organizationId,
-      invitation.roleIds,
-    );
-    return { invitation, roles, organizationId: invitation.organizationId };
+      return { invitation, roles, organizationId: invitation.tenantId };
+    });
   }
 
   /** Marks an invitation accepted once the invitee's account exists. */
   async markAccepted(invitationId: string): Promise<void> {
-    await this.invitations.update(
-      { id: invitationId },
-      { acceptedAt: new Date() },
-    );
+    await this.tenantContext.runAsSystem(async () => {
+      await this.invitations.update(
+        { id: invitationId },
+        { acceptedAt: new Date() },
+      );
+    });
   }
 
   // ─── Internals ──────────────────────────────────────────────────────────────
@@ -205,7 +211,7 @@ export class InvitationsService {
     invitationId: string,
   ): Promise<Invitation> {
     const invitation = await this.invitations.findOne({
-      where: { id: invitationId, organizationId, acceptedAt: IsNull() },
+      where: { id: invitationId, tenantId: organizationId, acceptedAt: IsNull() },
     });
     if (!invitation) {
       throw new NotFoundException('Invitation not found');

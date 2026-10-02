@@ -307,7 +307,7 @@ export class TaxService {
   ): Promise<TaxParty | null> {
     if (!customerId) return null;
     const customer = await this.customers.findOne({
-      where: { id: customerId, organizationId: tenantId },
+      where: { id: customerId, tenantId },
     });
     return customer
       ? { country: customer.country, taxId: customer.taxId }

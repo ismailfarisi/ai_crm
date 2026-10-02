@@ -15,8 +15,12 @@ env:
   JWT_REFRESH_SECRET: ci_refresh_secret_at_least_32_characters_long
   DB_HOST: localhost
   DB_PORT: 5432
-  DB_USERNAME: crm
-  DB_PASSWORD: crm_ci_password
+  DB_USERNAME: crm_test_app
+  DB_PASSWORD: crm_test_app_password
+  DB_ADMIN_USERNAME: crm
+  DB_ADMIN_PASSWORD: crm_ci_password
+  DB_APP_USERNAME: crm_test_app
+  DB_APP_PASSWORD: crm_test_app_password
   DB_NAME: crm
 
 jobs:
@@ -98,6 +102,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter shared build
       - run: pnpm --filter api build
+      - name: Provision application role
+        env:
+          POSTGRES_USER: crm
+          POSTGRES_DB: crm
+        run: PGPASSWORD="$DB_ADMIN_PASSWORD" psql -h localhost -U "$DB_ADMIN_USERNAME" -d "$DB_NAME" -v ON_ERROR_STOP=1 -f scripts/create-db-app-role.sql
       - name: Migrate from zero
         run: pnpm migration:run
       # Blocking: new drift fails, the known backlog in scripts/drift-baseline.json does not.

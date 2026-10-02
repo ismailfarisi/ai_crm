@@ -26,7 +26,7 @@ describe('CustomerStatementService', () => {
         companyName: 'Acme Industries',
         email: 'billing@acme.com',
         phone: '+1 555 1234',
-        organizationId: 'org-1',
+        tenantId: 'org-1',
         currency: 'USD',
       }),
     };
@@ -385,10 +385,12 @@ describe('CustomerStatementService', () => {
     });
 
     it('should resolve template and pass template config to renderer', async () => {
-      mockTemplatesService.resolveForDocumentType = jest.fn().mockResolvedValue({
-        id: 'tpl-stmt-1',
-        config: { primaryColor: '#2563eb', showWatermark: false },
-      });
+      mockTemplatesService.resolveForDocumentType = jest
+        .fn()
+        .mockResolvedValue({
+          id: 'tpl-stmt-1',
+          config: { primaryColor: '#2563eb', showWatermark: false },
+        });
 
       await service.getStatementPdf(
         'org-1',
@@ -401,10 +403,10 @@ describe('CustomerStatementService', () => {
         'org-1',
         'STATEMENT',
       );
-      expect(mockRenderer.render).toHaveBeenCalledWith(
-        expect.any(Object),
-        { primaryColor: '#2563eb', showWatermark: false },
-      );
+      expect(mockRenderer.render).toHaveBeenCalledWith(expect.any(Object), {
+        primaryColor: '#2563eb',
+        showWatermark: false,
+      });
     });
 
     it('should render successfully when templatesService is not provided', async () => {

@@ -38,6 +38,7 @@ export interface ClassifyMessageResult {
 }
 
 export interface PersistClassificationParams {
+  organizationId: string;
   messageId: string;
   status: 'COMPLETED' | 'SKIPPED' | 'FAILED' | 'AWAITING_REPLY';
   intent?: MessageAiIntent;
@@ -68,6 +69,7 @@ export interface DispatchAgentResult {
 }
 
 export interface PersistDispatchResultParams {
+  organizationId: string;
   messageId: string;
   autoAcked: boolean;
   createdQuoteId?: string;

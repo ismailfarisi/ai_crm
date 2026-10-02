@@ -26,7 +26,7 @@ export class TeamsService {
 
   async listTeams(organizationId: string): Promise<TeamDto[]> {
     const teams = await this.teams.find({
-      where: { organizationId },
+      where: { tenantId: organizationId },
       relations: { lead: true },
       order: { name: 'ASC' },
     });
@@ -36,7 +36,7 @@ export class TeamsService {
       .createQueryBuilder('user')
       .select('user.teamId', 'teamId')
       .addSelect('COUNT(*)', 'count')
-      .where('user.organizationId = :organizationId', { organizationId })
+      .where('user.tenantId = :organizationId', { organizationId })
       .andWhere('user.teamId IS NOT NULL')
       .groupBy('user.teamId')
       .getRawMany<{ teamId: string; count: string }>();
@@ -51,7 +51,7 @@ export class TeamsService {
   async getTeam(organizationId: string, teamId: string): Promise<TeamDto> {
     const team = await this.findTeam(organizationId, teamId);
     const memberCount = await this.users.count({
-      where: { organizationId, teamId: team.id },
+      where: { tenantId: organizationId, teamId: team.id },
     });
     return this.toDto(team, memberCount);
   }
@@ -71,7 +71,7 @@ export class TeamsService {
     }
 
     const team = this.teams.create({
-      organizationId,
+      tenantId: organizationId,
       name: input.name.trim(),
       leadId: lead?.id ?? null,
     });
@@ -137,7 +137,7 @@ export class TeamsService {
     // Soft delete; members keep existing, their teamId is cleared so nobody is
     // stranded in a deleted team.
     await this.users.update(
-      { organizationId, teamId: team.id },
+      { tenantId: organizationId, teamId: team.id },
       { teamId: null, managerId: null },
     );
     await this.teams.softRemove(team);
@@ -187,7 +187,7 @@ export class TeamsService {
     teamId: string,
   ): Promise<Team> {
     const team = await this.teams.findOne({
-      where: { id: teamId, organizationId },
+      where: { id: teamId, tenantId: organizationId },
       relations: { lead: true },
     });
     if (!team) {
@@ -201,7 +201,7 @@ export class TeamsService {
     userId: string,
   ): Promise<User> {
     const user = await this.users.findOne({
-      where: { id: userId, organizationId },
+      where: { id: userId, tenantId: organizationId },
       relations: { roles: true },
     });
     if (!user) {
@@ -218,7 +218,7 @@ export class TeamsService {
     const trimmed = name.trim();
     const qb = this.teams
       .createQueryBuilder('team')
-      .where('team.organizationId = :organizationId', { organizationId })
+      .where('team.tenantId = :organizationId', { organizationId })
       .andWhere('LOWER(team.name) = LOWER(:name)', { name: trimmed });
     if (excludeId) {
       qb.andWhere('team.id != :excludeId', { excludeId });

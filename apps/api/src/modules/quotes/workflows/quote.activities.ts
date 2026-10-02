@@ -6,7 +6,12 @@ import { LedgerService } from '../../finance/ledger.service';
 import { LedgerAccount } from '../../finance/entities/ledger-account.entity';
 import { JournalEntry } from '../../finance/entities/journal-entry.entity';
 import { provisionOrderForQuote } from '../../orders/order-provisioning';
+import { ClsServiceManager } from 'nestjs-cls';
+import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { QuoteWorkflowInput } from './interfaces';
+
+const getTenantContext = () =>
+  new TenantContextService(ClsServiceManager.getClsService());
 
 /**
  * Temporal activities run outside Nest's DI container, so they can't inject
@@ -95,12 +100,15 @@ export async function generateInvoiceActivity(
 ): Promise<string> {
   const quoteId = typeof input === 'string' ? input : input.quoteId;
   const dataSource = await getDataSource();
+  const tenantContext = getTenantContext();
 
   let tenantId = typeof input === 'string' ? undefined : input.tenantId;
   if (!tenantId) {
-    const quote = await dataSource
-      .getRepository(Quote)
-      .findOne({ where: { id: quoteId } });
+    const quote = await tenantContext.runAsSystem(async () => {
+      return dataSource
+        .getRepository(Quote)
+        .findOne({ where: { id: quoteId } });
+    });
     if (!quote) {
       throw new Error(
         `[QuoteActivity] generateInvoice: quote ${quoteId} not found`,
@@ -114,12 +122,14 @@ export async function generateInvoiceActivity(
     dataSource.getRepository(JournalEntry),
     dataSource,
   );
-  const result = await provisionOrderForQuote(
-    dataSource,
-    ledger,
-    tenantId,
-    quoteId,
-  );
+  const result = await tenantContext.runWithTenant(tenantId, async () => {
+    return provisionOrderForQuote(
+      dataSource,
+      ledger,
+      tenantId!,
+      quoteId,
+    );
+  });
   console.log(
     `[QuoteActivity] generateInvoice: quoteId=${quoteId}, order=${result.order.orderNumber}, ` +
       `raised=${result.invoicesRaised.map((i) => i.invoiceNumber).join(',') || 'none'}, isNew=${result.isNew}`,

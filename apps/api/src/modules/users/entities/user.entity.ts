@@ -8,7 +8,7 @@ import {
   ManyToOne,
   OneToMany,
 } from 'typeorm';
-import { BaseEntity } from '@/common/entities/base.entity';
+import { TenantBaseEntity } from '@/common/entities/base.entity';
 import { Contact } from '@/modules/contacts/entities/contact.entity';
 import { Organization } from '@/modules/organizations/entities/organization.entity';
 import { Role } from '@/modules/rbac/entities/role.entity';
@@ -17,12 +17,9 @@ import { RefreshToken } from '@/modules/auth/entities/refresh-token.entity';
 
 @Entity('users')
 @Index('uq_users_email', ['email'], { unique: true })
-export class User extends BaseEntity {
-  @Column({ type: 'uuid' })
-  organizationId: string;
-
+export class User extends TenantBaseEntity {
   @ManyToOne(() => Organization, (org) => org.users, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'organizationId' })
+  @JoinColumn({ name: 'tenant_id' })
   organization: Organization;
 
   /**

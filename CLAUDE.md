@@ -47,4 +47,6 @@ CI (`.github/workflows/ci.yml`) runs build, tests, and a schema job that migrate
 
 The schema is owned by migrations (`DB_SYNCHRONIZE=false` everywhere). After changing an entity, generate a migration: `pnpm migration:generate Name` and run `pnpm migration:run`. `pnpm migration:generate` against a migrated DB must report no drift.
 
+The API and Temporal worker connect as `DB_USERNAME`/`DB_PASSWORD`, a non-superuser role with `NOBYPASSRLS`. `DB_ADMIN_USERNAME`/`DB_ADMIN_PASSWORD` are for migrations and database provisioning only. Fresh Docker databases create the app role automatically. On an existing local or staging volume, first set `DB_ADMIN_*` to the existing Postgres owner and `DB_*` to the new app role, then provision it once with `docker compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /docker-entrypoint-initdb.d/10-create-db-app-role.sql'` (add `--env-file .env.staging -f docker-compose.staging.yml` for staging). The API refuses to boot if its connection role can bypass RLS.
+
 Invites are email-based: `POST /invitations` creates a pending invite and emails a tokenized link; the invitee sets their password at `/auth/accept-invite`. The mail provider is `MAIL_PROVIDER=console` (logs the link) or `ses`.

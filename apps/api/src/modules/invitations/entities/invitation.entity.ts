@@ -1,5 +1,5 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
-import { BaseEntity } from '@/common/entities/base.entity';
+import { TenantBaseEntity } from '@/common/entities/base.entity';
 import { Organization } from '@/modules/organizations/entities/organization.entity';
 import { User } from '@/modules/users/entities/user.entity';
 
@@ -9,15 +9,13 @@ import { User } from '@/modules/users/entities/user.entity';
  * not expose working invite links. The raw token is delivered by email.
  */
 @Entity('invitations')
-export class Invitation extends BaseEntity {
+export class Invitation extends TenantBaseEntity {
   @Index('idx_invitations_org')
-  @Column({ type: 'uuid' })
-  organizationId: string;
 
   @ManyToOne(() => Organization, (org) => org.invitations, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'organizationId' })
+  @JoinColumn({ name: 'tenant_id' })
   organization: Organization;
 
   @Column({ type: 'varchar', length: 255 })

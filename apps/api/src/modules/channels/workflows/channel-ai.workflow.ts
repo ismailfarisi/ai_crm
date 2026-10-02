@@ -42,6 +42,7 @@ export async function channelAiWorkflow(
     // slow) — mark it FAILED instead of leaving the message stuck at PENDING
     // forever with no way for a human to tell something went wrong.
     await persistClassificationActivity({
+      organizationId: input.organizationId,
       messageId: input.messageId,
       status: 'FAILED',
     });
@@ -50,6 +51,7 @@ export async function channelAiWorkflow(
 
   if (classified.skipped) {
     await persistClassificationActivity({
+      organizationId: input.organizationId,
       messageId: input.messageId,
       status: 'SKIPPED',
     });
@@ -57,6 +59,7 @@ export async function channelAiWorkflow(
   }
 
   await persistClassificationActivity({
+    organizationId: input.organizationId,
     messageId: input.messageId,
     status: 'COMPLETED',
     intent: classified.intent,
@@ -79,6 +82,7 @@ export async function channelAiWorkflow(
     });
 
     await persistDispatchResultActivity({
+      organizationId: input.organizationId,
       messageId: input.messageId,
       autoAcked: dispatchResult.autoAcked,
       createdQuoteId: dispatchResult.createdQuoteId,
@@ -148,6 +152,7 @@ export async function channelConversationWorkflow(
       // stuck at PENDING/AWAITING_REPLY forever with no way for a human to
       // tell the conversation stalled.
       await persistClassificationActivity({
+        organizationId: input.organizationId,
         messageId: message.messageId,
         status: 'FAILED',
       });
@@ -156,6 +161,7 @@ export async function channelConversationWorkflow(
 
     if (classified.skipped) {
       await persistClassificationActivity({
+        organizationId: input.organizationId,
         messageId: message.messageId,
         status: 'SKIPPED',
       });
@@ -163,6 +169,7 @@ export async function channelConversationWorkflow(
     }
 
     await persistClassificationActivity({
+      organizationId: input.organizationId,
       messageId: message.messageId,
       status: 'COMPLETED',
       intent: classified.intent,
@@ -192,6 +199,7 @@ export async function channelConversationWorkflow(
 
     if (dispatchResult.reason === 'DISPATCHED') {
       await persistDispatchResultActivity({
+        organizationId: input.organizationId,
         messageId: message.messageId,
         autoAcked: dispatchResult.autoAcked,
         createdQuoteId: dispatchResult.createdQuoteId,
@@ -232,6 +240,7 @@ export async function channelConversationWorkflow(
     }
 
     await persistClassificationActivity({
+      organizationId: input.organizationId,
       messageId: message.messageId,
       status: 'AWAITING_REPLY',
     });

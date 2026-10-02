@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, LessThan, Repository } from 'typeorm';
 import { Invoice, InvoiceStatus } from './entities/invoice.entity';
 import { AutomationEventBridgeService } from '../automations/services/automation-event-bridge.service';
+import { TenantContextService } from '@/common/context/tenant-context.service';
 
 /**
  * Daily sweep that fires an `invoice.overdue` automation event exactly once
@@ -19,36 +20,41 @@ export class InvoiceOverdueService {
     @InjectRepository(Invoice)
     private readonly invoiceRepository: Repository<Invoice>,
     private readonly automationEventBridgeService: AutomationEventBridgeService,
+    private readonly tenantContext: TenantContextService,
   ) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_1AM)
   async detectOverdueInvoices(): Promise<void> {
-    const overdue = await this.invoiceRepository.find({
-      where: {
-        status: In([InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID]),
-        dueDate: LessThan(new Date()),
-        overdueNotifiedAt: IsNull(),
-      },
-    });
+    const overdue = await this.tenantContext.runAsSystem(() =>
+      this.invoiceRepository.find({
+        where: {
+          status: In([InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID]),
+          dueDate: LessThan(new Date()),
+          overdueNotifiedAt: IsNull(),
+        },
+      }),
+    );
 
     for (const invoice of overdue) {
       try {
-        await this.automationEventBridgeService.handleCrmEvent({
-          tenantId: invoice.tenantId,
-          eventType: 'invoice.overdue',
-          entityId: invoice.id,
-          data: {
-            invoiceId: invoice.id,
-            invoiceNumber: invoice.invoiceNumber,
-            customerId: invoice.customerId,
-            customerEmail: invoice.customerEmail,
-            amount: invoice.amount,
-            paidAmount: invoice.paidAmount,
-            dueDate: invoice.dueDate,
-          },
+        await this.tenantContext.runWithTenant(invoice.tenantId, async () => {
+          await this.automationEventBridgeService.handleCrmEvent({
+            tenantId: invoice.tenantId,
+            eventType: 'invoice.overdue',
+            entityId: invoice.id,
+            data: {
+              invoiceId: invoice.id,
+              invoiceNumber: invoice.invoiceNumber,
+              customerId: invoice.customerId,
+              customerEmail: invoice.customerEmail,
+              amount: invoice.amount,
+              paidAmount: invoice.paidAmount,
+              dueDate: invoice.dueDate,
+            },
+          });
+          invoice.overdueNotifiedAt = new Date();
+          await this.invoiceRepository.save(invoice);
         });
-        invoice.overdueNotifiedAt = new Date();
-        await this.invoiceRepository.save(invoice);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         // Left un-marked so it retries on tomorrow's run.

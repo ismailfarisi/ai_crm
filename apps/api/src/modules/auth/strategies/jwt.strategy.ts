@@ -11,6 +11,7 @@ import type { AppConfig } from '@/config/configuration';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { RbacService } from '@/modules/rbac/rbac.service';
 import { UsersService } from '@/modules/users/users.service';
+import { TenantContextService } from '@/common/context/tenant-context.service';
 import { ACCESS_TOKEN_COOKIE } from '../auth.constants';
 import type { AccessTokenPayload } from '../tokens.service';
 
@@ -20,6 +21,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     config: ConfigService<AppConfig, true>,
     private readonly users: UsersService,
     private readonly rbac: RbacService,
+    private readonly tenantContext: TenantContextService,
   ) {
     super({
       // The browser uses an httpOnly cookie; the Authorization header is kept
@@ -39,6 +41,9 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
    * the database (behind a 5s cache) so a revoked role stops working right away.
    */
   async validate(payload: AccessTokenPayload): Promise<AuthenticatedUser> {
+    if (payload?.org) {
+      this.tenantContext.setTenantId(payload.org);
+    }
     const user = await this.users.findByIdForAuth(payload.sub);
 
     if (!user || !user.isActive) {
@@ -46,7 +51,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
         'Account is inactive or no longer exists',
       );
     }
-    if (user.organizationId !== payload.org) {
+    if (user.tenantId !== payload.org) {
       throw new UnauthorizedException(
         'Token does not match the account organization',
       );
@@ -60,11 +65,11 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       throw new UnauthorizedException('Session expired, please sign in again');
     }
 
-    const access = await this.rbac.resolveAccess(user.id, user.organizationId);
+    const access = await this.rbac.resolveAccess(user.id, user.tenantId);
 
     return {
       id: user.id,
-      organizationId: user.organizationId,
+      organizationId: user.tenantId,
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,

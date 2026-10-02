@@ -20,6 +20,7 @@ import { LedgerService } from '@/modules/finance/ledger.service';
 import { InvitationsService } from '@/modules/invitations/invitations.service';
 import { RbacService } from '@/modules/rbac/rbac.service';
 import { UsersService } from '@/modules/users/users.service';
+import { TenantContextService } from '@/common/context/tenant-context.service';
 import { TokensService, type IssuedTokens } from './tokens.service';
 
 interface RequestContext {
@@ -41,6 +42,7 @@ export class AuthService {
     private readonly invitations: InvitationsService,
     private readonly ledger: LedgerService,
     private readonly audit: AuditService,
+    private readonly tenantContext: TenantContextService,
   ) {}
 
   /**
@@ -51,80 +53,89 @@ export class AuthService {
     input: RegisterInput,
     context: RequestContext,
   ): Promise<IssuedTokens & { userId: string }> {
-    if (await this.users.emailExists(input.email)) {
+    const emailExists = await this.tenantContext.runAsSystem(() =>
+      this.users.emailExists(input.email),
+    );
+    if (emailExists) {
       throw new BadRequestException(
         'An account with that email already exists',
       );
     }
 
-    const userId = await this.dataSource.transaction(async (manager) => {
-      const orgRepo = manager.getRepository(Organization);
+    const userId = await this.tenantContext.runAsSystem(async () => {
+      return this.dataSource.transaction(async (manager) => {
+        const orgRepo = manager.getRepository(Organization);
 
-      const organization = await orgRepo.save(
-        orgRepo.create({
-          name: input.organizationName,
-          slug: await this.uniqueSlug(
-            input.organizationName,
-            manager.getRepository(Organization),
-          ),
-          // Both asked for at sign-up. The base currency can never be changed
-          // once anything has been posted, and a country is what tax rules
-          // match on, so neither is a decision to make on someone's behalf.
-          baseCurrency: input.baseCurrency ?? 'USD',
-          country: input.country ?? null,
-        }),
-      );
+        const organization = await orgRepo.save(
+          orgRepo.create({
+            name: input.organizationName,
+            slug: await this.uniqueSlug(
+              input.organizationName,
+              manager.getRepository(Organization),
+            ),
+            // Both asked for at sign-up. The base currency can never be changed
+            // once anything has been posted, and a country is what tax rules
+            // match on, so neither is a decision to make on someone's behalf.
+            baseCurrency: input.baseCurrency ?? 'USD',
+            country: input.country ?? null,
+          }),
+        );
 
-      const roles = await this.rbac.provisionSystemRoles(
-        organization.id,
-        manager,
-      );
+        const roles = await this.rbac.provisionSystemRoles(
+          organization.id,
+          manager,
+        );
 
-      // Same transaction as the roles: a tenant that exists without a chart
-      // of accounts has nowhere to post, and every later journal write would
-      // fail on a lookup instead of at signup.
-      await this.ledger.provisionChartOfAccounts(organization.id, manager);
-      // A new organization starts on a trial. Inserted here rather than
-      // lazily so the trial clock starts at signup, not at first billing visit.
-      await manager.query(
-        `INSERT INTO "subscriptions" ("tenant_id", "status", "seats", "trial_ends_at")
-         VALUES ($1, 'TRIALING', 1, now() + ($2 || ' days')::interval)
-         ON CONFLICT ("tenant_id") DO NOTHING`,
-        [organization.id, String(TRIAL_DAYS)],
-      );
-      const ownerRole = roles.find((role) => role.slug === SYSTEM_ROLES.OWNER);
-      if (!ownerRole) {
-        throw new Error('Owner role was not provisioned — aborting signup');
-      }
+        // Same transaction as the roles: a tenant that exists without a chart
+        // of accounts has nowhere to post, and every later journal write would
+        // fail on a lookup instead of at signup.
+        await this.ledger.provisionChartOfAccounts(organization.id, manager);
+        // A new organization starts on a trial. Inserted here rather than
+        // lazily so the trial clock starts at signup, not at first billing visit.
+        await manager.query(
+          `INSERT INTO "subscriptions" ("tenant_id", "status", "seats", "trial_ends_at")
+           VALUES ($1, 'TRIALING', 1, now() + ($2 || ' days')::interval)
+           ON CONFLICT ("tenant_id") DO NOTHING`,
+          [organization.id, String(TRIAL_DAYS)],
+        );
+        const ownerRole = roles.find((role) => role.slug === SYSTEM_ROLES.OWNER);
+        if (!ownerRole) {
+          throw new Error('Owner role was not provisioned — aborting signup');
+        }
 
-      const user = await this.users.createUser(
-        {
-          organizationId: organization.id,
-          email: input.email,
-          password: input.password,
-          firstName: input.firstName,
-          lastName: input.lastName,
-          roles: [ownerRole],
-        },
-        manager,
-      );
+        const user = await this.users.createUser(
+          {
+            organizationId: organization.id,
+            email: input.email,
+            password: input.password,
+            firstName: input.firstName,
+            lastName: input.lastName,
+            roles: [ownerRole],
+          },
+          manager,
+        );
 
-      await this.provisionStarterTaxCodes(organization.id, manager);
+        await this.provisionStarterTaxCodes(organization.id, manager);
 
-      this.logger.log(
-        `Provisioned organization "${organization.name}" (${organization.id})`,
-      );
-      return user.id;
+        this.logger.log(
+          `Provisioned organization "${organization.name}" (${organization.id})`,
+        );
+        return user.id;
+      });
     });
 
-    const user = await this.users.findByIdForAuth(userId);
+    const user = await this.tenantContext.runAsSystem(() =>
+      this.users.findByIdForAuth(userId),
+    );
     if (!user) {
       throw new Error('User disappeared immediately after signup');
     }
 
-    await this.users.recordLogin(user.id);
-    const tokens = await this.tokens.issue(user, context);
-    return { ...tokens, userId: user.id };
+    return this.tenantContext.runWithTenant(user.tenantId, async () => {
+      await this.users.recordLogin(user.id);
+      const tokens = await this.tokens.issue(user, context);
+      return { ...tokens, userId: user.id };
+    });
   }
 
   /**
@@ -157,7 +168,9 @@ export class AuthService {
     input: LoginInput,
     context: RequestContext,
   ): Promise<IssuedTokens & { userId: string }> {
-    const user = await this.users.findByEmailWithPassword(input.email);
+    const user = await this.tenantContext.runAsSystem(() =>
+      this.users.findByEmailWithPassword(input.email),
+    );
 
     // Same message and roughly the same work either way, so the response does
     // not reveal whether the email exists.
@@ -172,23 +185,25 @@ export class AuthService {
       throw new UnauthorizedException('This account has been deactivated');
     }
 
-    await this.users.recordLogin(user.id);
-    // Sign-ins are recorded here rather than by the HTTP interceptor: the
-    // login route has no authenticated user for the interceptor to attribute
-    // it to, and who signed in from where is the first thing anyone asks
-    // after an account is misused.
-    await this.audit.record({
-      tenantId: user.organizationId,
-      actorId: user.id,
-      actorName: [user.firstName, user.lastName].filter(Boolean).join(' '),
-      action: 'auth.login',
-      subjectType: 'USER',
-      subjectId: user.id,
-      summary: user.email,
-      ip: context.ipAddress ?? null,
+    return this.tenantContext.runWithTenant(user.tenantId, async () => {
+      await this.users.recordLogin(user.id);
+      // Sign-ins are recorded here rather than by the HTTP interceptor: the
+      // login route has no authenticated user for the interceptor to attribute
+      // it to, and who signed in from where is the first thing anyone asks
+      // after an account is misused.
+      await this.audit.record({
+        tenantId: user.tenantId,
+        actorId: user.id,
+        actorName: [user.firstName, user.lastName].filter(Boolean).join(' '),
+        action: 'auth.login',
+        subjectType: 'USER',
+        subjectId: user.id,
+        summary: user.email,
+        ip: context.ipAddress ?? null,
+      });
+      const tokens = await this.tokens.issue(user, context);
+      return { ...tokens, userId: user.id };
     });
-    const tokens = await this.tokens.issue(user, context);
-    return { ...tokens, userId: user.id };
   }
 
   /**
@@ -203,20 +218,22 @@ export class AuthService {
     const { invitation, roles, organizationId } =
       await this.invitations.consume(token);
 
-    const user = await this.users.createUser({
-      organizationId,
-      email: invitation.email,
-      password,
-      firstName: invitation.firstName,
-      lastName: invitation.lastName,
-      roles,
-      teamId: invitation.teamId,
-    });
+    return this.tenantContext.runWithTenant(organizationId, async () => {
+      const user = await this.users.createUser({
+        organizationId,
+        email: invitation.email,
+        password,
+        firstName: invitation.firstName,
+        lastName: invitation.lastName,
+        roles,
+        teamId: invitation.teamId,
+      });
 
-    await this.invitations.markAccepted(invitation.id);
-    await this.users.recordLogin(user.id);
-    const tokens = await this.tokens.issue(user, context);
-    return { ...tokens, userId: user.id };
+      await this.invitations.markAccepted(invitation.id);
+      await this.users.recordLogin(user.id);
+      const tokens = await this.tokens.issue(user, context);
+      return { ...tokens, userId: user.id };
+    });
   }
 
   async refresh(
@@ -225,7 +242,10 @@ export class AuthService {
   ): Promise<IssuedTokens> {
     const { tokens } = await this.tokens.rotate(
       refreshToken,
-      (userId) => this.users.findByIdForAuth(userId),
+      (userId) =>
+        this.tenantContext.runAsSystem(() =>
+          this.users.findByIdForAuth(userId),
+        ),
       context,
     );
     return tokens;
@@ -258,7 +278,7 @@ export class AuthService {
     // Every other device is signed out; the caller gets a fresh pair.
     await this.tokens.revokeAllForUser(userId);
     await this.audit.record({
-      tenantId: user.organizationId,
+      tenantId: user.tenantId,
       actorId: user.id,
       actorName: [user.firstName, user.lastName].filter(Boolean).join(' '),
       action: 'auth.change_password',
@@ -272,35 +292,39 @@ export class AuthService {
     userId: string,
     organizationId: string,
   ): Promise<SessionDto> {
-    const user = await this.users.findMember(organizationId, userId);
-    const organization = await this.organizations.findOne({
-      where: { id: organizationId },
+    return this.tenantContext.runWithTenant(organizationId, async () => {
+      const user = await this.users.findMember(organizationId, userId);
+      const organization = await this.organizations.findOne({
+        where: { id: organizationId },
+      });
+      if (!organization) {
+        throw new UnauthorizedException('Organization no longer exists');
+      }
+
+      const access = await this.rbac.resolveAccess(userId, organizationId);
+
+      return {
+        user: this.users.toDto(user),
+        organization: {
+          id: organization.id,
+          name: organization.name,
+          slug: organization.slug,
+          createdAt: organization.createdAt.toISOString(),
+        },
+        permissions: access.permissions,
+      };
     });
-    if (!organization) {
-      throw new UnauthorizedException('Organization no longer exists');
-    }
-
-    const access = await this.rbac.resolveAccess(userId, organizationId);
-
-    return {
-      user: this.users.toDto(user),
-      organization: {
-        id: organization.id,
-        name: organization.name,
-        slug: organization.slug,
-        createdAt: organization.createdAt.toISOString(),
-      },
-      permissions: access.permissions,
-    };
   }
 
   /** Same as `getSession`, when the caller only has a user id to hand. */
   async getSessionForUser(userId: string): Promise<SessionDto> {
-    const user = await this.users.findByIdForAuth(userId);
+    const user = await this.tenantContext.runAsSystem(() =>
+      this.users.findByIdForAuth(userId),
+    );
     if (!user) {
       throw new UnauthorizedException('Account no longer exists');
     }
-    return this.getSession(user.id, user.organizationId);
+    return this.getSession(user.id, user.tenantId);
   }
 
   /** Used after a password change so the acting device is not signed out. */
@@ -308,11 +332,15 @@ export class AuthService {
     userId: string,
     context: RequestContext,
   ): Promise<IssuedTokens> {
-    const user = await this.users.findByIdForAuth(userId);
+    const user = await this.tenantContext.runAsSystem(() =>
+      this.users.findByIdForAuth(userId),
+    );
     if (!user) {
       throw new UnauthorizedException('Account no longer exists');
     }
-    return this.tokens.issue(user, context);
+    return this.tenantContext.runWithTenant(user.tenantId, () =>
+      this.tokens.issue(user, context),
+    );
   }
 
   private async uniqueSlug(

@@ -1,6 +1,9 @@
 import { DEFAULT_DOCUMENT_TEMPLATE_CONFIG } from '@saas/shared';
 import { PackingSlipPdfService } from './packing-slip-pdf.service';
-import { DeliveryNote, DeliveryNoteLine } from '../credits/entities/credit-note.entity';
+import {
+  DeliveryNote,
+  DeliveryNoteLine,
+} from '../credits/entities/credit-note.entity';
 import { SalesOrder } from './entities/sales-order.entity';
 import { DocumentTemplatesService } from '../document-templates/document-templates.service';
 import { DocumentPdfRendererService } from '../document-templates/document-pdf-renderer.service';
@@ -17,7 +20,9 @@ describe('PackingSlipPdfService', () => {
 
   beforeEach(() => {
     pdfRenderer = {
-      render: jest.fn().mockResolvedValue(Buffer.from('%PDF-1.4 mock packing slip')),
+      render: jest
+        .fn()
+        .mockResolvedValue(Buffer.from('%PDF-1.4 mock packing slip')),
     };
     documentTemplatesService = {
       resolveForDocumentType: jest.fn().mockResolvedValue({
@@ -67,12 +72,16 @@ describe('PackingSlipPdfService', () => {
       orderNumber: 'SO-2026-0001',
     } as SalesOrder;
 
-    const buffer = await service.generate(note, lines, order, 'Relay Logistics');
-
-    expect(documentTemplatesService.resolveForDocumentType).toHaveBeenCalledWith(
-      tenantId,
-      'DELIVERY_NOTE',
+    const buffer = await service.generate(
+      note,
+      lines,
+      order,
+      'Relay Logistics',
     );
+
+    expect(
+      documentTemplatesService.resolveForDocumentType,
+    ).toHaveBeenCalledWith(tenantId, 'DELIVERY_NOTE');
     expect(pdfRenderer.render).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'DELIVERY_NOTE',

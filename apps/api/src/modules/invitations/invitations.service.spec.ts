@@ -80,6 +80,13 @@ function makeService(
     ConstructorParameters<typeof InvitationsService>[0]
   >[4];
 
+  const tenantContext = {
+    runAsSystem: jest.fn(async (cb: () => unknown) => cb()),
+    runWithTenant: jest.fn(async (_id: string, cb: () => unknown) => cb()),
+    getTenantId: jest.fn().mockReturnValue(ORG_ID),
+    isSystem: jest.fn().mockReturnValue(false),
+  };
+
   return new InvitationsService(
     invitations,
     teams,
@@ -88,6 +95,7 @@ function makeService(
     users,
     mail as never,
     configStub,
+    tenantContext as never,
   );
 }
 
@@ -163,7 +171,7 @@ describe('InvitationsService', () => {
       lastName: 'Person',
       roleIds: [adminRole.id],
       teamId: null,
-      organizationId: ORG_ID,
+      tenantId: ORG_ID,
       expiresAt: new Date(Date.now() + 60_000),
       tokenHash: 'hash',
     };

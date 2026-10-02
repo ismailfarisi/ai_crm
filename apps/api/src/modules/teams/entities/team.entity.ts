@@ -6,7 +6,7 @@ import {
   ManyToOne,
   OneToMany,
 } from 'typeorm';
-import { SoftDeletableEntity } from '@/common/entities/base.entity';
+import { TenantSoftDeletableEntity } from '@/common/entities/base.entity';
 import { Organization } from '@/modules/organizations/entities/organization.entity';
 import { User } from '@/modules/users/entities/user.entity';
 
@@ -15,13 +15,10 @@ import { User } from '@/modules/users/entities/user.entity';
  * (`manager` role) see the contacts owned by their team's members.
  */
 @Entity('teams')
-export class Team extends SoftDeletableEntity {
-  @Index('idx_teams_org_name', ['organizationId', 'name'], { unique: true })
-  @Column({ type: 'uuid' })
-  organizationId: string;
-
+@Index('idx_teams_tenant_name', ['tenantId', 'name'], { unique: true })
+export class Team extends TenantSoftDeletableEntity {
   @ManyToOne(() => Organization, (org) => org.users, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'organizationId' })
+  @JoinColumn({ name: 'tenant_id' })
   organization: Organization;
 
   @Column({ type: 'varchar', length: 80 })

@@ -20,7 +20,7 @@ const actor: AuthenticatedUser = {
 
 const customer = {
   id: '33333333-3333-3333-3333-333333333333',
-  organizationId: actor.organizationId,
+  tenantId: actor.organizationId,
   companyName: 'Acme Corp',
   contactName: null,
   email: null,
@@ -72,9 +72,9 @@ describe('CustomersService', () => {
 
       const qb = (repo.createQueryBuilder as jest.Mock).mock.results[0].value;
       expect(qb.where).toHaveBeenCalledWith(
-        'customer.organizationId = :organizationId',
+        'customer.tenantId = :tenantId',
         {
-          organizationId: actor.organizationId,
+          tenantId: actor.organizationId,
         },
       );
     });
@@ -129,7 +129,7 @@ describe('CustomersService', () => {
       await service.create(actor, input);
 
       expect(repo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ organizationId: actor.organizationId }),
+        expect.objectContaining({ tenantId: actor.organizationId }),
       );
       expect(repo.save).toHaveBeenCalled();
     });

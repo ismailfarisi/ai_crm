@@ -33,18 +33,23 @@ export class DocumentTemplatesService {
 
   async findAll(organizationId: string): Promise<DocumentTemplate[]> {
     return this.templateRepo.find({
-      where: { organizationId },
+      where: { tenantId: organizationId },
       order: { isDefault: 'DESC', createdAt: 'DESC' },
     });
   }
 
-  async findById(organizationId: string, id: string): Promise<DocumentTemplate> {
+  async findById(
+    organizationId: string,
+    id: string,
+  ): Promise<DocumentTemplate> {
     const template = await this.templateRepo.findOne({
-      where: { id, organizationId },
+      where: { id, tenantId: organizationId },
     });
 
     if (!template) {
-      throw new NotFoundException(`Document template with ID "${id}" not found`);
+      throw new NotFoundException(
+        `Document template with ID "${id}" not found`,
+      );
     }
 
     return template;
@@ -63,7 +68,7 @@ export class DocumentTemplatesService {
     }
 
     const template = this.templateRepo.create({
-      organizationId,
+      tenantId: organizationId,
       createdById: userId,
       name: dto.name,
       description: dto.description ?? null,
@@ -115,7 +120,7 @@ export class DocumentTemplatesService {
 
     if (template.isDefault) {
       const allTemplates = await this.templateRepo.find({
-        where: { organizationId },
+        where: { tenantId: organizationId },
       });
       const otherDefaults = allTemplates.filter(
         (t) => t.id !== id && t.isDefault,
@@ -162,7 +167,7 @@ export class DocumentTemplatesService {
     } else {
       // If template covers all (empty appliesTo), clear isDefault on all other templates
       const otherTemplates = await this.templateRepo.find({
-        where: { organizationId },
+        where: { tenantId: organizationId },
       });
       for (const other of otherTemplates) {
         if (other.id !== id && other.isDefault) {
@@ -180,7 +185,7 @@ export class DocumentTemplatesService {
     docType: DocumentType,
   ): Promise<DocumentTemplate | null> {
     const templates = await this.templateRepo.find({
-      where: { organizationId },
+      where: { tenantId: organizationId },
     });
 
     if (templates.length === 0) {
@@ -249,7 +254,7 @@ export class DocumentTemplatesService {
     excludeId?: string,
   ): Promise<void> {
     const existingTemplates = await this.templateRepo.find({
-      where: { organizationId },
+      where: { tenantId: organizationId },
     });
 
     for (const other of existingTemplates) {
@@ -289,7 +294,12 @@ export class DocumentTemplatesService {
     const docData: UniversalDocumentData = {
       type: docType,
       number: numbers[docType] || 'DOC-PREVIEW-001',
-      status: docType === 'QUOTE' ? 'SENT' : docType === 'DELIVERY_NOTE' ? 'SHIPPED' : 'ISSUED',
+      status:
+        docType === 'QUOTE'
+          ? 'SENT'
+          : docType === 'DELIVERY_NOTE'
+            ? 'SHIPPED'
+            : 'ISSUED',
       issuedAt: new Date().toISOString(),
       dueDate:
         docType === 'INVOICE'
