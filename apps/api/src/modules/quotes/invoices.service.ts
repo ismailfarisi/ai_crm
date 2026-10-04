@@ -452,6 +452,11 @@ export class InvoicesService {
         .filter(Boolean)
         .join(', ') || undefined;
 
+    const logoUrl =
+      organization?.logoData && organization?.logoContentType
+        ? `data:${organization.logoContentType};base64,${organization.logoData.toString('base64')}`
+        : undefined;
+
     const docData: UniversalDocumentData = {
       type: 'INVOICE',
       number: invoice.invoiceNumber,
@@ -466,6 +471,7 @@ export class InvoicesService {
         phone: organization?.phone || undefined,
         email: organization?.email || undefined,
         website: organization?.website || undefined,
+        logoUrl,
       },
       party: {
         name: invoice.customerName || 'Customer',

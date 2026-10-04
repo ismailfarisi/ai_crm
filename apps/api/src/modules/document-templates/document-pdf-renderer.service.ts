@@ -63,6 +63,26 @@ function getDocumentTitle(
   }
 }
 
+interface StatusStyle {
+  bg: string;
+  text: string;
+  border: string;
+}
+
+function getStatusStyle(status: string): StatusStyle {
+  const s = status.toUpperCase();
+  if (['PAID', 'APPROVED', 'DELIVERED', 'COMPLETED', 'ACTIVE'].includes(s)) {
+    return { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' };
+  }
+  if (['ISSUED', 'SENT', 'DRAFT', 'PENDING', 'OPEN'].includes(s)) {
+    return { bg: '#fffbeb', text: '#b45309', border: '#fde68a' };
+  }
+  if (['OVERDUE', 'CANCELLED', 'REJECTED', 'VOID'].includes(s)) {
+    return { bg: '#fef2f2', text: '#b91c1c', border: '#fecaca' };
+  }
+  return { bg: '#f8fafc', text: '#475569', border: '#e2e8f0' };
+}
+
 function getStatusColor(status: string): string {
   const s = status.toUpperCase();
   if (['PAID', 'APPROVED', 'DELIVERED', 'COMPLETED', 'ACTIVE'].includes(s)) {
@@ -216,34 +236,54 @@ export class DocumentPdfRendererService {
         // --- 1. HEADER SECTION ---
         if (config.header.layout === 'banner') {
           // Banner layout: colored bar across top
-          const bannerHeight = 52;
+          const bannerHeight = 56;
           doc.rect(0, 0, pageWidth, bannerHeight).fill(primaryColor);
 
-          // In banner: Company Name or Logo on left, Document Title on right
+          // In banner: Company Name / Logo on left, Document Title on right
           let logoDrawn = false;
-          if (logoBuffer && config.header.showLogo) {
-            try {
-              doc.image(logoBuffer, margins.left, 8, { fit: [120, 36] });
-              logoDrawn = true;
-            } catch {
-              logoDrawn = false;
+          let bannerTextX = margins.left;
+          if (config.header.showLogo) {
+            const logoBoxSize = 38;
+            if (logoBuffer) {
+              try {
+                doc.image(logoBuffer, margins.left, 9, { fit: [logoBoxSize, logoBoxSize] });
+                logoDrawn = true;
+              } catch {
+                logoDrawn = false;
+              }
             }
+            if (!logoDrawn) {
+              doc.roundedRect(margins.left, 9, logoBoxSize, logoBoxSize, 6).fill('#ffffff22');
+              const initials = (docData.organization.name || 'ORG')
+                .replace(/[^a-zA-Z0-9]/g, '')
+                .slice(0, 3)
+                .toUpperCase() || 'CRM';
+              doc
+                .font(boldFont)
+                .fontSize(11)
+                .fillColor('#ffffff')
+                .text(initials, margins.left, 21, {
+                  width: logoBoxSize,
+                  align: 'center',
+                });
+              logoDrawn = true;
+            }
+            bannerTextX = margins.left + logoBoxSize + 10;
           }
-          if (!logoDrawn) {
-            doc
-              .font(boldFont)
-              .fontSize(15)
-              .fillColor('#ffffff')
-              .text(docData.organization.name, margins.left, 16, {
-                width: contentWidth / 2,
-              });
-          }
+
+          doc
+            .font(boldFont)
+            .fontSize(15)
+            .fillColor('#ffffff')
+            .text(docData.organization.name, bannerTextX, 19, {
+              width: contentWidth / 2 - (bannerTextX - margins.left),
+            });
 
           doc
             .font(boldFont)
             .fontSize(16)
             .fillColor('#ffffff')
-            .text(docTitle, margins.left + contentWidth / 2, 16, {
+            .text(docTitle, margins.left + contentWidth / 2, 19, {
               width: contentWidth / 2,
               align: 'right',
             });
@@ -325,49 +365,76 @@ export class DocumentPdfRendererService {
 
           // Status Badge
           const statusText = docData.status.toUpperCase().replace(/_/g, ' ');
-          doc.font(boldFont).fontSize(8);
+          doc.font(boldFont).fontSize(7.5);
           const badgeWidth = Math.max(54, doc.widthOfString(statusText) + 14);
           const badgeHeight = 15;
           const badgeX = margins.left + contentWidth - badgeWidth;
-          const statusCol = getStatusColor(docData.status);
+          const statusSt = getStatusStyle(docData.status);
           doc
             .roundedRect(badgeX, rY + 3, badgeWidth, badgeHeight, 3)
-            .fill(statusCol);
+            .fillAndStroke(statusSt.bg, statusSt.border);
           doc
             .font(boldFont)
-            .fontSize(8)
-            .fillColor('#ffffff')
+            .fontSize(7.5)
+            .fillColor(statusSt.text)
             .text(statusText, badgeX, rY + 6.5, {
               width: badgeWidth,
               align: 'center',
             });
 
-          y = Math.max(leftEndY, rY + badgeHeight + 10) + 14;
+          y = Math.max(leftEndY, rY + badgeHeight + 10) + 10;
+          doc
+            .moveTo(margins.left, y)
+            .lineTo(margins.left + contentWidth, y)
+            .strokeColor('#e2e8f0')
+            .lineWidth(0.75)
+            .stroke();
+          y += 12;
         } else if (config.header.layout === 'centered') {
           // Centered layout
           let logoDrawn = false;
-          if (logoBuffer && config.header.showLogo) {
-            try {
-              const logoW = 120;
-              const logoX = margins.left + (contentWidth - logoW) / 2;
-              doc.image(logoBuffer, logoX, y, { fit: [logoW, 40] });
-              y += 44;
+          if (config.header.showLogo) {
+            if (logoBuffer) {
+              try {
+                const logoW = 120;
+                const logoX = margins.left + (contentWidth - logoW) / 2;
+                doc.image(logoBuffer, logoX, y, { fit: [logoW, 40] });
+                y += 44;
+                logoDrawn = true;
+              } catch {
+                logoDrawn = false;
+              }
+            }
+            if (!logoDrawn) {
+              const badgeSize = 42;
+              const badgeX = margins.left + (contentWidth - badgeSize) / 2;
+              doc.roundedRect(badgeX, y, badgeSize, badgeSize, 8).fill(primaryColor);
+              const initials = (docData.organization.name || 'ORG')
+                .replace(/[^a-zA-Z0-9]/g, '')
+                .slice(0, 3)
+                .toUpperCase() || 'CRM';
+              doc
+                .font(boldFont)
+                .fontSize(12)
+                .fillColor('#ffffff')
+                .text(initials, badgeX, y + 14, {
+                  width: badgeSize,
+                  align: 'center',
+                });
+              y += 48;
               logoDrawn = true;
-            } catch {
-              logoDrawn = false;
             }
           }
-          if (!logoDrawn) {
-            doc
-              .font(boldFont)
-              .fontSize(16)
-              .fillColor(primaryColor)
-              .text(docData.organization.name, margins.left, y, {
-                width: contentWidth,
-                align: 'center',
-              });
-            y = doc.y + 4;
-          }
+
+          doc
+            .font(boldFont)
+            .fontSize(16)
+            .fillColor('#0f172a')
+            .text(docData.organization.name, margins.left, y, {
+              width: contentWidth,
+              align: 'center',
+            });
+          y = doc.y + 3;
 
           doc.font(regularFont).fontSize(8.5).fillColor('#475569');
           const compLines: string[] = [];
@@ -395,13 +462,14 @@ export class DocumentPdfRendererService {
             .moveTo(margins.left, y)
             .lineTo(margins.left + contentWidth, y)
             .strokeColor('#e2e8f0')
+            .lineWidth(0.75)
             .stroke();
           y += 10;
 
           // Title & Doc number centered
           doc
             .font(boldFont)
-            .fontSize(16)
+            .fontSize(17)
             .fillColor(primaryColor)
             .text(docTitle, margins.left, y, {
               width: contentWidth,
@@ -438,23 +506,31 @@ export class DocumentPdfRendererService {
 
           // Status Badge centered
           const statusText = docData.status.toUpperCase().replace(/_/g, ' ');
-          doc.font(boldFont).fontSize(8);
+          doc.font(boldFont).fontSize(7.5);
           const badgeWidth = Math.max(54, doc.widthOfString(statusText) + 14);
           const badgeHeight = 15;
           const badgeX = margins.left + (contentWidth - badgeWidth) / 2;
-          const statusCol = getStatusColor(docData.status);
+          const statusSt = getStatusStyle(docData.status);
           doc
             .roundedRect(badgeX, y, badgeWidth, badgeHeight, 3)
-            .fill(statusCol);
+            .fillAndStroke(statusSt.bg, statusSt.border);
           doc
             .font(boldFont)
-            .fontSize(8)
-            .fillColor('#ffffff')
+            .fontSize(7.5)
+            .fillColor(statusSt.text)
             .text(statusText, badgeX, y + 3.5, {
               width: badgeWidth,
               align: 'center',
             });
-          y += badgeHeight + 14;
+          y += badgeHeight + 10;
+
+          doc
+            .moveTo(margins.left, y)
+            .lineTo(margins.left + contentWidth, y)
+            .strokeColor('#e2e8f0')
+            .lineWidth(0.75)
+            .stroke();
+          y += 12;
         } else {
           // Default: 'split' layout
           const leftW = contentWidth * 0.55;
@@ -463,56 +539,80 @@ export class DocumentPdfRendererService {
 
           const startY = y;
           let logoDrawn = false;
-          if (logoBuffer && config.header.showLogo) {
-            try {
-              doc.image(logoBuffer, margins.left, y, { fit: [140, 42] });
-              y += 46;
-              logoDrawn = true;
-            } catch {
-              logoDrawn = false;
+          const logoBoxSize = 40;
+          let textStartX = margins.left;
+
+          if (config.header.showLogo) {
+            if (logoBuffer) {
+              try {
+                doc.image(logoBuffer, margins.left, y, { fit: [logoBoxSize, logoBoxSize] });
+                logoDrawn = true;
+              } catch {
+                logoDrawn = false;
+              }
             }
+
+            if (!logoDrawn) {
+              doc.roundedRect(margins.left, y, logoBoxSize, logoBoxSize, 6).fill(primaryColor);
+              const initials = (docData.organization.name || 'ORG')
+                .replace(/[^a-zA-Z0-9]/g, '')
+                .slice(0, 3)
+                .toUpperCase() || 'CRM';
+              doc
+                .font(boldFont)
+                .fontSize(11)
+                .fillColor('#ffffff')
+                .text(initials, margins.left, y + 13, {
+                  width: logoBoxSize,
+                  align: 'center',
+                });
+              logoDrawn = true;
+            }
+
+            textStartX = margins.left + logoBoxSize + 10;
           }
 
-          if (!logoDrawn) {
-            doc
-              .font(boldFont)
-              .fontSize(16)
-              .fillColor(primaryColor)
-              .text(docData.organization.name, margins.left, y, {
-                width: leftW,
-              });
-            y = doc.y + 3;
-          }
+          const orgTextW = margins.left + leftW - textStartX;
+          let lY = startY;
+
+          doc
+            .font(boldFont)
+            .fontSize(15)
+            .fillColor('#0f172a')
+            .text(docData.organization.name, textStartX, lY, {
+              width: orgTextW,
+            });
+          lY = doc.y + 2;
 
           doc.font(regularFont).fontSize(8.5).fillColor('#475569');
           if (
             config.header.showCompanyAddress &&
             docData.organization.address
           ) {
-            doc.text(docData.organization.address, margins.left, y, {
-              width: leftW,
+            doc.text(docData.organization.address, textStartX, lY, {
+              width: orgTextW,
             });
-            y = doc.y + 2;
+            lY = doc.y + 2;
           }
           if (config.header.showCompanyPhone && docData.organization.phone) {
-            doc.text(`Phone: ${docData.organization.phone}`, margins.left, y, {
-              width: leftW,
+            doc.text(`Phone: ${docData.organization.phone}`, textStartX, lY, {
+              width: orgTextW,
             });
-            y = doc.y + 2;
+            lY = doc.y + 2;
           }
           if (config.header.showCompanyEmail && docData.organization.email) {
-            doc.text(`Email: ${docData.organization.email}`, margins.left, y, {
-              width: leftW,
+            doc.text(`Email: ${docData.organization.email}`, textStartX, lY, {
+              width: orgTextW,
             });
-            y = doc.y + 2;
+            lY = doc.y + 2;
           }
           if (config.header.showCompanyTaxId && docData.organization.taxId) {
-            doc.text(`Tax ID: ${docData.organization.taxId}`, margins.left, y, {
-              width: leftW,
+            doc.text(`Tax ID: ${docData.organization.taxId}`, textStartX, lY, {
+              width: orgTextW,
             });
-            y = doc.y + 2;
+            lY = doc.y + 2;
           }
-          const leftEndY = y;
+          const leftEndY = Math.max(lY, startY + (config.header.showLogo ? logoBoxSize + 4 : 0));
 
           let rY = startY;
           doc.font(boldFont).fontSize(18).fillColor(primaryColor);
@@ -552,24 +652,33 @@ export class DocumentPdfRendererService {
 
           // Status Badge
           const statusText = docData.status.toUpperCase().replace(/_/g, ' ');
-          doc.font(boldFont).fontSize(8);
+          doc.font(boldFont).fontSize(7.5);
           const badgeWidth = Math.max(54, doc.widthOfString(statusText) + 14);
           const badgeHeight = 15;
           const badgeX = margins.left + contentWidth - badgeWidth;
-          const statusCol = getStatusColor(docData.status);
+          const statusSt = getStatusStyle(docData.status);
           doc
             .roundedRect(badgeX, rY + 3, badgeWidth, badgeHeight, 3)
-            .fill(statusCol);
+            .fillAndStroke(statusSt.bg, statusSt.border);
           doc
             .font(boldFont)
-            .fontSize(8)
-            .fillColor('#ffffff')
+            .fontSize(7.5)
+            .fillColor(statusSt.text)
             .text(statusText, badgeX, rY + 6.5, {
               width: badgeWidth,
               align: 'center',
             });
 
-          y = Math.max(leftEndY, rY + badgeHeight + 10) + 14;
+          y = Math.max(leftEndY, rY + badgeHeight + 10) + 10;
+
+          // Header bottom divider line
+          doc
+            .moveTo(margins.left, y)
+            .lineTo(margins.left + contentWidth, y)
+            .strokeColor('#e2e8f0')
+            .lineWidth(0.75)
+            .stroke();
+          y += 12;
         }
 
         // --- 2. PARTIES SECTION ---
@@ -794,30 +903,23 @@ export class DocumentPdfRendererService {
         }
 
         const renderTableHeader = (headerY: number): number => {
-          const headerHeight = 20;
-          if (config.itemsTable.headerBackgroundColor) {
-            doc
-              .rect(margins.left, headerY, contentWidth, headerHeight)
-              .fill(config.itemsTable.headerBackgroundColor);
-          } else {
-            doc
-              .rect(margins.left, headerY, contentWidth, headerHeight)
-              .fill('#f1f5f9');
-          }
-
+          const headerHeight = 22;
+          const headerBg =
+            config.itemsTable.headerBackgroundColor || primaryColor;
           const headerTextColor =
-            config.itemsTable.headerTextColor ||
-            (config.itemsTable.headerBackgroundColor
-              ? '#ffffff'
-              : primaryColor);
+            config.itemsTable.headerTextColor || '#ffffff';
 
-          doc.font(boldFont).fontSize(8.5).fillColor(headerTextColor);
+          doc
+            .rect(margins.left, headerY, contentWidth, headerHeight)
+            .fill(headerBg);
+
+          doc.font(boldFont).fontSize(8).fillColor(headerTextColor);
 
           for (const col of columns) {
-            const pad = col.align === 'right' ? 4 : 4;
+            const pad = 4;
             const x = col.align === 'right' ? col.x : col.x + pad;
             const w = col.width - 8;
-            doc.text(col.label, x, headerY + 5.5, {
+            doc.text(col.label.toUpperCase(), x, headerY + 6.5, {
               width: w,
               align: col.align,
             });
@@ -828,6 +930,7 @@ export class DocumentPdfRendererService {
             .moveTo(margins.left, afterHeaderY)
             .lineTo(margins.left + contentWidth, afterHeaderY)
             .strokeColor('#cbd5e1')
+            .lineWidth(0.5)
             .stroke();
           return afterHeaderY + 2;
         };
@@ -1093,11 +1196,19 @@ export class DocumentPdfRendererService {
           y += 6;
 
           if (config.totals.highlightTotal) {
-            renderTotalLine(
-              'Total:',
-              formatMoney(docData.totals.total, docData.currency),
-              true,
-            );
+            doc
+              .roundedRect(totalsX - 6, y - 3, totalsWidth + 12, 22, 4)
+              .fill('#f1f5f9');
+            doc
+              .font(boldFont)
+              .fontSize(10)
+              .fillColor(primaryColor)
+              .text('Total:', totalsX, y + 3, { width: labelWidth, align: 'left' })
+              .text(formatMoney(docData.totals.total, docData.currency), totalsX + labelWidth, y + 3, {
+                width: valueWidth,
+                align: 'right',
+              });
+            y += 25;
           } else {
             renderTotalLine(
               'Total:',
@@ -1202,45 +1313,71 @@ export class DocumentPdfRendererService {
         }
 
         if (config.footer.showSignatureBlock) {
-          if (y + 55 > pageHeight - margins.bottom - 40) {
+          if (y + 60 > pageHeight - margins.bottom - 40) {
             doc.addPage({ size: 'A4', margins });
             y = margins.top;
           }
-          y += 18;
-          const sigW = 180;
-          const sigX = margins.left + contentWidth - sigW;
-          doc
-            .moveTo(sigX, y + 22)
-            .lineTo(sigX + sigW, y + 22)
-            .strokeColor('#94a3b8')
-            .stroke();
-          doc
-            .font(regularFont)
-            .fontSize(8)
-            .fillColor('#64748b')
-            .text(
-              config.footer.signatureLabel || 'Authorized Signature',
-              sigX,
-              y + 26,
-              {
-                width: sigW,
-                align: 'center',
-              },
-            );
-          y += 40;
+          y += 16;
+          if (docData.type === 'QUOTE' && docData.party?.name) {
+            const sigColW = (contentWidth - 40) / 2;
+            const rightSigX = margins.left + sigColW + 40;
+
+            doc.font(boldFont).fontSize(8).fillColor('#334155');
+            doc.text(`For ${docData.organization.name}:`, margins.left, y);
+            doc.text(`Accepted by ${docData.party.name}:`, rightSigX, y);
+            y += 24;
+
+            doc
+              .moveTo(margins.left, y)
+              .lineTo(margins.left + sigColW, y)
+              .moveTo(rightSigX, y)
+              .lineTo(rightSigX + sigColW, y)
+              .strokeColor('#94a3b8')
+              .lineWidth(0.75)
+              .stroke();
+
+            doc.font(regularFont).fontSize(7.5).fillColor('#64748b');
+            doc.text('Authorized Signature / Date', margins.left, y + 4, { width: sigColW });
+            doc.text('Client Signature / Stamp / Date', rightSigX, y + 4, { width: sigColW });
+            y += 20;
+          } else {
+            const sigW = 180;
+            const sigX = margins.left + contentWidth - sigW;
+            doc
+              .moveTo(sigX, y + 22)
+              .lineTo(sigX + sigW, y + 22)
+              .strokeColor('#94a3b8')
+              .stroke();
+            doc
+              .font(regularFont)
+              .fontSize(8)
+              .fillColor('#64748b')
+              .text(
+                config.footer.signatureLabel || 'Authorized Signature',
+                sigX,
+                y + 26,
+                {
+                  width: sigW,
+                  align: 'center',
+                },
+              );
+            y += 40;
+          }
         }
 
         // --- 7. TWO-PASS PAGE NUMBERING ---
         if (config.footer.showPageNumbers) {
           const pageRange = doc.bufferedPageRange();
+          const totalPages = pageRange.count;
           for (
             let i = pageRange.start;
-            i < pageRange.start + pageRange.count;
+            i < pageRange.start + totalPages;
             i++
           ) {
             doc.switchToPage(i);
             const pageNum = i - pageRange.start + 1;
-            const totalPages = pageRange.count;
+            const savedBottom = doc.page.margins.bottom;
+            doc.page.margins.bottom = 0;
             doc
               .font(regularFont)
               .fontSize(7.5)
@@ -1248,12 +1385,14 @@ export class DocumentPdfRendererService {
               .text(
                 `Page ${pageNum} of ${totalPages}`,
                 margins.left,
-                pageHeight - margins.bottom + 12,
+                pageHeight - margins.bottom + 8,
                 {
                   width: contentWidth,
                   align: 'center',
+                  lineBreak: false,
                 },
               );
+            doc.page.margins.bottom = savedBottom;
           }
         }
 

@@ -660,6 +660,11 @@ export class QuotesService {
         .filter(Boolean)
         .join(', ') || undefined;
 
+    const logoUrl =
+      organization?.logoData && organization?.logoContentType
+        ? `data:${organization.logoContentType};base64,${organization.logoData.toString('base64')}`
+        : undefined;
+
     const docData: UniversalDocumentData = {
       type: 'QUOTE',
       number: quote.quoteNumber || quote.id,
@@ -674,6 +679,7 @@ export class QuotesService {
         phone: organization?.phone || undefined,
         email: organization?.email || undefined,
         website: organization?.website || undefined,
+        logoUrl,
       },
       party: {
         name: quote.customerName || 'Customer',
@@ -701,7 +707,9 @@ export class QuotesService {
           : undefined,
         total: Number(quote.totalAmount || 0),
       },
-      notes: quote.notes || undefined,
+      notes:
+        [quote.notes, quote.termsAndConditions].filter(Boolean).join('\n\n') ||
+        undefined,
       paymentTerms: quote.paymentTerms || undefined,
     };
 
