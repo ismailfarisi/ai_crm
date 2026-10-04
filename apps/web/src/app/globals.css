@@ -121,3 +121,45 @@
     background-color: var(--color-ink-subtle);
   }
 }
+
+@media print {
+  /* When the quotation preview/print modal is open, suppress everything else in the body */
+  body.quote-print-modal-open > *:not(#quote-print-modal-root) {
+    display: none !important;
+  }
+
+  /* Suppress standard app chrome */
+  aside,
+  header,
+  nav,
+  .print-hidden {
+    display: none !important;
+  }
+
+  @page {
+    size: auto;
+    margin: 12mm 15mm;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Prevent awkward cuts across table rows, totals, and signature blocks */
+  .print-break-inside-avoid,
+  tr,
+  tbody {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+}

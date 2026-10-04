@@ -307,6 +307,7 @@ export function QuoteEditorPage({
         if (updated.items) setItems(updated.items);
         setStatus(updated.status);
         toast.success('Quotation draft updated');
+        return updated.id;
       } else {
         // Create new quote
         const payload: CreateQuotePayload = {
@@ -335,9 +336,11 @@ export function QuoteEditorPage({
         setStatus(created.status);
         if (created.items) setItems(created.items);
         toast.success('New quotation created');
+        return created.id;
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to save quotation');
+      return null;
     } finally {
       setIsSaving(false);
     }
@@ -724,6 +727,8 @@ export function QuoteEditorPage({
       <QuotePrintModal
         open={isPrintModalOpen}
         onClose={() => setIsPrintModalOpen(false)}
+        quoteId={id}
+        onSaveBeforeDownload={handleSaveDraft}
         headerData={headerData}
         items={items}
         totals={totals}

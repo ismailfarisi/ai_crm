@@ -17,6 +17,8 @@ import { RecordPaymentModal } from '@/components/invoices/record-payment-modal';
 import { InvoicePaymentsModal } from '@/components/invoices/invoice-payments-modal';
 import { VoidInvoiceModal } from '@/components/invoices/void-invoice-modal';
 import { InvoiceCreditsDialog } from '@/components/credits/invoice-credits-dialog';
+import { DocumentPrintModal } from '@/components/documents/document-print-modal';
+import { api } from '@/lib/api/endpoints';
 
 const STAT_TONES = {
   brand: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
@@ -60,6 +62,7 @@ export function InvoicesView() {
   const [payingInvoice, setPayingInvoice] = useState<InvoiceDto | null>(null);
   const [historyInvoice, setHistoryInvoice] = useState<InvoiceDto | null>(null);
   const [voidingInvoice, setVoidingInvoice] = useState<InvoiceDto | null>(null);
+  const [printingInvoice, setPrintingInvoice] = useState<InvoiceDto | null>(null);
   const [creditingId, setCreditingId] = useState<string | null>(null);
   // Looked up from the list so the dialog shows figures refreshed after each action.
   const creditingInvoice = invoices.find((i) => i.id === creditingId) ?? null;
@@ -107,6 +110,7 @@ export function InvoicesView() {
         onRecordPayment={setPayingInvoice}
         onSend={handleSend}
         onDownload={downloadPdf}
+        onPrint={setPrintingInvoice}
         onViewHistory={setHistoryInvoice}
         onVoid={setVoidingInvoice}
         onCredit={(invoice) => setCreditingId(invoice.id)}
@@ -143,6 +147,61 @@ export function InvoicesView() {
           await voidInvoice.mutateAsync({ id: voidingInvoice.id, payload });
         }}
       />
+
+      {printingInvoice && (
+        <DocumentPrintModal
+          open={printingInvoice !== null}
+          onClose={() => setPrintingInvoice(null)}
+          documentType="INVOICE"
+          data={{
+            type: 'INVOICE',
+            number: printingInvoice.invoiceNumber,
+            status: printingInvoice.status,
+            issuedAt: printingInvoice.issuedAt,
+            dueDate: printingInvoice.dueDate || undefined,
+            currency: printingInvoice.currency || 'USD',
+            organization: {
+              name: 'AI CRM Enterprise',
+              address: 'Enterprise Cloud & AI Solutions\n100 Tech Boulevard, Suite 500',
+              email: 'contact@aicrm.io',
+              phone: '+1 (800) 555-0199',
+            },
+            party: {
+              name: printingInvoice.customerName || 'Customer',
+              email: printingInvoice.customerEmail,
+            },
+            items: (printingInvoice.items || []).map((it) => ({
+              code: (it as any).sku || (it as any).code || undefined,
+              description: it.description || '',
+              quantity: Number(it.quantity) || 1,
+              unitPrice: Number(it.unitPrice) || 0,
+              discount: Number(it.discount) || 0,
+              taxRate: Number(it.taxRate) || 0,
+              amount:
+                it.subtotal != null
+                  ? Number(it.subtotal)
+                  : (Number(it.quantity) || 1) * (Number(it.unitPrice) || 0),
+            })),
+            totals: {
+              subtotal: Number(printingInvoice.subtotalAmount || printingInvoice.amount || 0),
+              discounts: Number(printingInvoice.discountAmount || 0),
+              taxes: printingInvoice.taxAmount
+                ? [{ rate: 0, label: 'Taxes', amount: Number(printingInvoice.taxAmount) }]
+                : undefined,
+              total: Number(printingInvoice.amount || 0),
+              amountPaid: Number(printingInvoice.paidAmount || 0),
+              balanceDue: Math.max(
+                0,
+                Number(printingInvoice.amount || 0) - Number(printingInvoice.paidAmount || 0),
+              ),
+            },
+            paymentTerms: printingInvoice.paymentTerms || undefined,
+            notes: printingInvoice.notes || undefined,
+          }}
+          documentId={printingInvoice.id}
+          downloadPdfFn={api.invoices.downloadPdf}
+        />
+      )}
     </div>
   );
 }

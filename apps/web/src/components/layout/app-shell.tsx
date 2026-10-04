@@ -162,7 +162,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen">
       {/* Desktop sidebar */}
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-border bg-surface lg:flex">
+      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-border bg-surface lg:flex print:hidden">
         <Brand />
         <SidebarSearch />
         {sidebarContent}
@@ -171,7 +171,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {/* Mobile drawer */}
       {mobileOpen && (
-        <div className="fixed inset-0 z-40 lg:hidden">
+        <div className="fixed inset-0 z-40 lg:hidden print:hidden">
           <button
             aria-label="Close navigation"
             className="absolute inset-0 bg-black/40 backdrop-blur-sm"
@@ -196,8 +196,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       )}
 
       {/* Main Content Area */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-surface/80 px-4 backdrop-blur lg:px-6">
+      <div className="flex min-w-0 flex-1 flex-col print:w-full print:block">
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-surface/80 px-4 backdrop-blur lg:px-6 print:hidden">
           <button
             onClick={() => setMobileOpen(true)}
             aria-label="Open navigation"
@@ -217,10 +217,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           <NotificationBell />
           <ThemeToggle />
         </header>
-        <BillingBanner />
+        <div className="print:hidden">
+          <BillingBanner />
+        </div>
 
-        <main className="flex-1 px-4 py-6 lg:px-8 lg:py-8">
-          <div className="mx-auto max-w-6xl space-y-6">{children}</div>
+        <main className="flex-1 px-4 py-6 lg:px-8 lg:py-8 print:p-0 print:m-0">
+          <div className="mx-auto max-w-6xl space-y-6 print:max-w-none print:space-y-0">{children}</div>
         </main>
       </div>
     </div>

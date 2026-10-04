@@ -3,11 +3,13 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { Plus, FileText, Clock, CheckCircle, DollarSign, Sparkles, type LucideIcon } from 'lucide-react';
-import { useQuotes } from '@/hooks/use-quotes';
+import { useQuotes, type Quote } from '@/hooks/use-quotes';
+import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/primitives';
 import { QuotesTable } from '@/components/quotes/quotes-table';
 import { CreateQuoteModal } from '@/components/quotes/create-quote-modal';
+import { DocumentPrintModal } from '@/components/documents/document-print-modal';
 
 const STAT_TONES = {
   brand: 'bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400',
@@ -43,6 +45,7 @@ function Stat({
 export function QuotesView() {
   const { quotes, isLoading, createQuote, sendSignal } = useQuotes();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [printingQuote, setPrintingQuote] = useState<Quote | null>(null);
 
   const totalQuotes = quotes.length;
   const awaitingApproval = quotes.filter((q) => q.status === 'AWAITING_APPROVAL').length;
@@ -92,6 +95,7 @@ export function QuotesView() {
         onSignal={async (id, action) => {
           await sendSignal(id, action);
         }}
+        onPrint={setPrintingQuote}
       />
 
       <CreateQuoteModal
@@ -101,6 +105,50 @@ export function QuotesView() {
           await createQuote(payload);
         }}
       />
+
+      {printingQuote && (
+        <DocumentPrintModal
+          isOpen={true}
+          onClose={() => setPrintingQuote(null)}
+          documentType="QUOTE"
+          documentData={{
+            documentNumber: printingQuote.quoteNumber || `QUO-${printingQuote.id.slice(0, 8).toUpperCase()}`,
+            issueDate: (printingQuote as any).createdAt || new Date().toISOString(),
+            validUntil: printingQuote.validUntil || undefined,
+            currency: printingQuote.currency || 'USD',
+            status: printingQuote.status,
+            customer: {
+              name: printingQuote.customerName || 'Valued Customer',
+              email: printingQuote.customerEmail || undefined,
+            },
+            items: (printingQuote.items || []).map((it) => ({
+              code: (it as any).sku || (it as any).code || undefined,
+              description: it.description || '',
+              quantity: Number(it.quantity) || 1,
+              unitPrice: Number(it.unitPrice) || 0,
+              discount: Number(it.discount) || 0,
+              taxRate: Number(it.taxRate) || 0,
+              amount:
+                it.subtotal != null
+                  ? Number(it.subtotal)
+                  : (Number(it.quantity) || 1) * (Number(it.unitPrice) || 0),
+            })),
+            totals: {
+              subtotal: Number(printingQuote.subtotalAmount || printingQuote.totalAmount || 0),
+              discounts: Number(printingQuote.discountAmount || 0),
+              taxes: printingQuote.taxAmount
+                ? [{ rate: 0, label: 'Taxes', amount: Number(printingQuote.taxAmount) }]
+                : undefined,
+              total: Number(printingQuote.totalAmount || 0),
+            },
+            paymentTerms: printingQuote.paymentTerms || undefined,
+            terms: printingQuote.termsAndConditions || undefined,
+            notes: printingQuote.notes || undefined,
+          }}
+          documentId={printingQuote.id}
+          downloadPdfFn={api.quotes.downloadPdf}
+        />
+      )}
     </div>
   );
 }

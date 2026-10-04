@@ -3,23 +3,25 @@
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { ColumnDef } from '@tanstack/react-table';
-import { Bot, User, Check, X, FileText } from 'lucide-react';
+import { Bot, User, Check, X, FileText, Download, Printer } from 'lucide-react';
 import { QuoteStatusBadge } from '@/components/quotes/quote-status-badge';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/data-table';
 import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
-import type { Quote } from '@/hooks/use-quotes';
+import { type Quote, useDownloadQuotePdf } from '@/hooks/use-quotes';
 
 interface QuotesTableProps {
   quotes: Quote[];
   isLoading?: boolean;
   onSignal?: (id: string, action: 'APPROVE' | 'REJECT') => Promise<void>;
+  onPrint?: (quote: Quote) => void;
 }
 
-export function QuotesTable({ quotes, isLoading = false, onSignal }: QuotesTableProps) {
+export function QuotesTable({ quotes, isLoading = false, onSignal, onPrint }: QuotesTableProps) {
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [processingAction, setProcessingAction] = useState<'APPROVE' | 'REJECT' | null>(null);
+  const downloadPdf = useDownloadQuotePdf();
 
   const handleAction = async (id: string, action: 'APPROVE' | 'REJECT') => {
     if (!onSignal) return;
@@ -133,37 +135,60 @@ export function QuotesTable({ quotes, isLoading = false, onSignal }: QuotesTable
           const quote = row.original;
           const isProcessing = processingId === quote.id;
 
-          if (quote.status === 'AWAITING_APPROVAL' && onSignal) {
-            return (
-              <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
-                <Button
-                  size="sm"
-                  variant="primary"
-                  loading={isProcessing && processingAction === 'APPROVE'}
-                  disabled={isProcessing}
-                  onClick={() => handleAction(quote.id, 'APPROVE')}
+          return (
+            <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+              {onPrint && (
+                <button
+                  type="button"
+                  onClick={() => onPrint(quote)}
+                  title="Print / Preview"
+                  className="rounded-lg p-1.5 text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors cursor-pointer"
+                  aria-label={`Print preview for ${quote.quoteNumber || 'quote'}`}
                 >
-                  <Check className="size-3.5" />
-                  Approve
-                </Button>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  loading={isProcessing && processingAction === 'REJECT'}
-                  disabled={isProcessing}
-                  onClick={() => handleAction(quote.id, 'REJECT')}
-                >
-                  <X className="size-3.5" />
-                  Reject
-                </Button>
-              </div>
-            );
-          }
-          return <span className="text-xs text-ink-subtle">—</span>;
+                  <Printer className="size-4" />
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => downloadPdf(quote)}
+                title="Download PDF"
+                className="rounded-lg p-1.5 text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors cursor-pointer"
+                aria-label={`Download PDF for ${quote.quoteNumber || 'quote'}`}
+              >
+                <Download className="size-4" />
+              </button>
+
+              {quote.status === 'AWAITING_APPROVAL' && onSignal && (
+                <>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    loading={isProcessing && processingAction === 'APPROVE'}
+                    disabled={isProcessing}
+                    onClick={() => handleAction(quote.id, 'APPROVE')}
+                  >
+                    <Check className="size-3.5" />
+                    Approve
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    loading={isProcessing && processingAction === 'REJECT'}
+                    disabled={isProcessing}
+                    onClick={() => handleAction(quote.id, 'REJECT')}
+                  >
+                    <X className="size-3.5" />
+                    Reject
+                  </Button>
+                </>
+              )}
+            </div>
+          );
         },
       },
     ],
-    [processingId, processingAction, onSignal]
+    [processingId, processingAction, onSignal, downloadPdf, onPrint]
   );
 
   return (

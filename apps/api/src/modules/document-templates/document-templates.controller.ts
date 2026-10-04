@@ -18,6 +18,8 @@ import {
   generateTemplateAiSchema,
   type GenerateTemplateAiInput,
   type DocumentTemplateConfig,
+  type DocumentType,
+  DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
 } from '@saas/shared';
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
 import { zodBody } from '@/common/pipes/zod-validation.pipe';
@@ -49,6 +51,25 @@ export class DocumentTemplatesController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<DocumentTemplate[]> {
     return this.templatesService.findAll(user.organizationId);
+  }
+
+  @Get('resolve/:docType')
+  @RequirePermissions(PERMISSIONS.DOCUMENT_TEMPLATE_READ)
+  @ApiOperation({
+    summary: 'Resolve active template config for a document type',
+  })
+  async resolveForType(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('docType') docType: DocumentType,
+  ): Promise<{ template: DocumentTemplate | null; config: DocumentTemplateConfig }> {
+    const template = await this.templatesService.resolveForDocumentType(
+      user.organizationId,
+      docType,
+    );
+    return {
+      template,
+      config: template?.config ?? DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+    };
   }
 
   @Post('generate-ai')

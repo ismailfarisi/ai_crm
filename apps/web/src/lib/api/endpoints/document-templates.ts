@@ -78,10 +78,15 @@ export const documentTemplatesEndpoints = {
         method: 'POST',
         body: input,
       }),
+    resolve: (docType: DocumentType) =>
+      apiFetch<{ template: DocumentTemplateDto | null; config: DocumentTemplateConfig }>(
+        `/settings/document-templates/resolve/${docType}`,
+      ),
   },
 };
 
 export const documentTemplatesKeys = {
   documentTemplates: ['document-templates'] as const,
   documentTemplate: (id: string) => ['document-templates', id] as const,
+  resolveTemplate: (docType: DocumentType) => ['document-templates', 'resolve', docType] as const,
 };
