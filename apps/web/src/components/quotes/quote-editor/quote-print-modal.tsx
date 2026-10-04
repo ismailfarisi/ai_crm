@@ -49,7 +49,7 @@ export function QuotePrintModal({
       },
       party: {
         name: headerData.customerName || 'Valued Customer',
-        email: headerData.customerEmail,
+        email: headerData.customerEmail || undefined,
       },
       items: items
         .filter((it) => it.type === 'product' || !it.type)

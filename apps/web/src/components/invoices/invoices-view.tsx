@@ -168,7 +168,7 @@ export function InvoicesView() {
             },
             party: {
               name: printingInvoice.customerName || 'Customer',
-              email: printingInvoice.customerEmail,
+              email: printingInvoice.customerEmail || undefined,
             },
             items: (printingInvoice.items || []).map((it) => ({
               code: (it as any).sku || (it as any).code || undefined,

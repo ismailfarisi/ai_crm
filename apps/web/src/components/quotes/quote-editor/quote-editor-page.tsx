@@ -269,10 +269,10 @@ export function QuoteEditorPage({
   }, []);
 
   // Save Draft
-  const handleSaveDraft = async () => {
+  const handleSaveDraft = async (): Promise<string | null> => {
     if (!headerData.title.trim()) {
       toast.error('Please enter a quotation title');
-      return;
+      return null;
     }
 
     setIsSaving(true);

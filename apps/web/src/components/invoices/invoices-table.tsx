@@ -64,6 +64,7 @@ export function InvoicesTable({
   onRecordPayment,
   onSend,
   onDownload,
+  onPrint,
   onViewHistory,
   onVoid,
   onCredit,

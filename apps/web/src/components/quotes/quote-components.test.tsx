@@ -173,6 +173,10 @@ describe('QuotePrintModal', () => {
     discountAmount: 0.5,
     taxAmount: 0.48,
     totalAmount: 9.97,
+    costAmount: 0,
+    marginAmount: 9.5,
+    marginPct: 1,
+    hasCompleteCost: true,
   };
 
   it('renders quotation preview document and buttons when open', () => {

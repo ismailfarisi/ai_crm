@@ -108,16 +108,23 @@ export function QuotesView() {
 
       {printingQuote && (
         <DocumentPrintModal
-          isOpen={true}
+          open={true}
           onClose={() => setPrintingQuote(null)}
           documentType="QUOTE"
-          documentData={{
-            documentNumber: printingQuote.quoteNumber || `QUO-${printingQuote.id.slice(0, 8).toUpperCase()}`,
-            issueDate: (printingQuote as any).createdAt || new Date().toISOString(),
-            validUntil: printingQuote.validUntil || undefined,
+          data={{
+            type: 'QUOTE',
+            number: printingQuote.quoteNumber || `QUO-${printingQuote.id.slice(0, 8).toUpperCase()}`,
+            issuedAt: (printingQuote as any).createdAt || new Date(),
+            validUntil: printingQuote.validUntil ? new Date(printingQuote.validUntil) : undefined,
             currency: printingQuote.currency || 'USD',
             status: printingQuote.status,
-            customer: {
+            organization: {
+              name: 'AI CRM Enterprise',
+              address: 'Enterprise Cloud & AI Solutions\n100 Tech Boulevard, Suite 500',
+              email: 'contact@aicrm.io',
+              phone: '+1 (800) 555-0199',
+            },
+            party: {
               name: printingQuote.customerName || 'Valued Customer',
               email: printingQuote.customerEmail || undefined,
             },
