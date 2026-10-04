@@ -47,6 +47,8 @@ export const salesEndpoints = {
     signal: (id: string, payload: { action: 'APPROVE' | 'REJECT' | 'OVERRIDE'; payload?: unknown }) =>
       apiFetch<QuoteDto>(`/quotes/${id}/signal`, { method: 'POST', body: payload }),
     guardrails: (id: string) => apiFetch<QuoteGuardrailsDto>(`/quotes/${id}/guardrails`),
+    downloadPdf: (id: string) => apiFetchBlob(`/quotes/${id}/pdf`),
+    pdfUrl: (id: string) => `${API_PUBLIC_URL}/quotes/${id}/pdf`,
   },
   catalog: {
     searchItems: (q?: string, limit = 25) =>

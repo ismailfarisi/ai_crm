@@ -3,7 +3,7 @@
 import React, { useMemo } from 'react';
 import Link from 'next/link';
 import { ColumnDef } from '@tanstack/react-table';
-import { AlertTriangle, Ban, CheckCircle, Clock, Download, History, Mail, Wallet, Undo2 } from 'lucide-react';
+import { AlertTriangle, Ban, CheckCircle, Clock, Download, History, Mail, Wallet, Undo2, Printer } from 'lucide-react';
 import type { InvoiceDto, InvoiceStatus } from '@saas/shared';
 import { PERMISSIONS, isInvoiceOverdue } from '@saas/shared';
 import { Badge } from '@/components/ui/primitives';
@@ -18,6 +18,7 @@ interface InvoicesTableProps {
   onRecordPayment?: (invoice: InvoiceDto) => void;
   onSend?: (invoice: InvoiceDto) => void;
   onDownload?: (invoice: InvoiceDto) => void;
+  onPrint?: (invoice: InvoiceDto) => void;
   onViewHistory?: (invoice: InvoiceDto) => void;
   onVoid?: (invoice: InvoiceDto) => void;
   onCredit?: (invoice: InvoiceDto) => void;
@@ -63,6 +64,7 @@ export function InvoicesTable({
   onRecordPayment,
   onSend,
   onDownload,
+  onPrint,
   onViewHistory,
   onVoid,
   onCredit,
@@ -156,8 +158,19 @@ export function InvoicesTable({
 
           return (
             <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+              {onPrint && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onPrint(invoice)}
+                  title="Preview & Print Invoice"
+                  aria-label={`Preview & Print Invoice ${invoice.invoiceNumber}`}
+                >
+                  <Printer className="size-3.5" />
+                </Button>
+              )}
               {onDownload && (
-                <Button size="sm" variant="ghost" onClick={() => onDownload(invoice)}>
+                <Button size="sm" variant="ghost" onClick={() => onDownload(invoice)} title="Download PDF">
                   <Download className="size-3.5" />
                 </Button>
               )}
@@ -200,7 +213,7 @@ export function InvoicesTable({
         },
       },
     ],
-    [canManage, canCredit, onRecordPayment, onSend, onDownload, onViewHistory, onVoid, onCredit, sendingId]
+    [canManage, canCredit, onRecordPayment, onSend, onDownload, onPrint, onViewHistory, onVoid, onCredit, sendingId]
   );
 
   return (

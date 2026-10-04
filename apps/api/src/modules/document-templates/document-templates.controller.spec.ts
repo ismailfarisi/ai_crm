@@ -42,6 +42,7 @@ describe('DocumentTemplatesController', () => {
       previewPdf: jest
         .fn()
         .mockResolvedValue(Buffer.from('%PDF-1.4 test preview')),
+      resolveForDocumentType: jest.fn().mockResolvedValue(null),
     };
 
     controller = new DocumentTemplatesController(
@@ -54,6 +55,14 @@ describe('DocumentTemplatesController', () => {
       const perms = reflector.get<string[]>(
         PERMISSIONS_KEY,
         controller.findAll,
+      );
+      expect(perms).toEqual([PERMISSIONS.DOCUMENT_TEMPLATE_READ]);
+    });
+
+    it('should protect resolveForType with DOCUMENT_TEMPLATE_READ', () => {
+      const perms = reflector.get<string[]>(
+        PERMISSIONS_KEY,
+        controller.resolveForType,
       );
       expect(perms).toEqual([PERMISSIONS.DOCUMENT_TEMPLATE_READ]);
     });
@@ -221,6 +230,39 @@ describe('DocumentTemplatesController', () => {
         DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
         'INVOICE',
       );
+    });
+  });
+
+  describe('resolveForType', () => {
+    it('returns custom template and its config when found', async () => {
+      const customTemplate = {
+        id: 'tmpl-quote-1',
+        name: 'Corporate Quote Template',
+        config: {
+          ...DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+          branding: {
+            ...DEFAULT_DOCUMENT_TEMPLATE_CONFIG.branding,
+            primaryColor: '#059669',
+          },
+        },
+      };
+      (mockService.resolveForDocumentType as jest.Mock).mockResolvedValueOnce(customTemplate);
+
+      const result = await controller.resolveForType(actor, 'QUOTE');
+
+      expect(mockService.resolveForDocumentType).toHaveBeenCalledWith('org-111', 'QUOTE');
+      expect(result.template).toEqual(customTemplate);
+      expect(result.config.branding.primaryColor).toBe('#059669');
+    });
+
+    it('falls back to DEFAULT_DOCUMENT_TEMPLATE_CONFIG when no template is found', async () => {
+      (mockService.resolveForDocumentType as jest.Mock).mockResolvedValueOnce(null);
+
+      const result = await controller.resolveForType(actor, 'INVOICE');
+
+      expect(mockService.resolveForDocumentType).toHaveBeenCalledWith('org-111', 'INVOICE');
+      expect(result.template).toBeNull();
+      expect(result.config).toEqual(DEFAULT_DOCUMENT_TEMPLATE_CONFIG);
     });
   });
 });

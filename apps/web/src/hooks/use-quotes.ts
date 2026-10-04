@@ -198,3 +198,21 @@ export function useQuote(id: string | null) {
     setQuote,
   };
 }
+
+export function useDownloadQuotePdf() {
+  return useCallback(async (quote: { id: string; quoteNumber?: string | null }) => {
+    try {
+      const blob = await api.quotes.downloadPdf(quote.id);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${quote.quoteNumber || `quote-${quote.id}`}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not download quote PDF');
+    }
+  }, []);
+}

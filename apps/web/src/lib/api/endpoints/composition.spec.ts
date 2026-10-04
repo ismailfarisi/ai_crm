@@ -79,7 +79,7 @@ const QUERY_KEYS = [
   'creditNotes', 'creditNoteRefunds', 'deliveryNotes', 'taxCodes', 'taxRules', 'taxReport',
   'notifications', 'billingPlans', 'subscription', 'currencySettings', 'fxRates', 'financialReport',
   'organization', 'audit', 'auditForSubject', 'attachments',
-  'documentTemplates', 'documentTemplate',
+  'documentTemplates', 'documentTemplate', 'resolveTemplate',
 ];
 
 describe('api surface composition', () => {

@@ -1,10 +1,20 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { QuoteStatusPipeline } from './quote-status-pipeline';
 import { QuoteLinesTable } from './quote-editor/quote-lines-table';
 import { QuoteTotalsCard } from './quote-editor/quote-totals-card';
 import { QuoteTabsSection } from './quote-editor/quote-tabs-section';
-import type { QuoteLineItem } from '@saas/shared';
+import { QuotePrintModal } from './quote-editor/quote-print-modal';
+import { DocumentTemplateSheet } from '../documents/document-template-sheet';
+import { DEFAULT_DOCUMENT_TEMPLATE_CONFIG, type QuoteLineItem } from '@saas/shared';
+
+function renderWithClient(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
 
 describe('QuoteStatusPipeline', () => {
   it('renders all pipeline stages for DRAFT', () => {
@@ -130,5 +140,203 @@ describe('QuoteTabsSection', () => {
     // Click Internal Notes tab
     fireEvent.click(screen.getByText('Internal Notes'));
     expect(screen.getByDisplayValue('Internal target margin: 40%.')).toBeDefined();
+  });
+});
+
+describe('QuotePrintModal', () => {
+  const dummyHeader = {
+    title: 'Dundu company',
+    quoteNumber: 'QT-2026-0030',
+    customerId: 'cust-1',
+    customerName: 'S7 Berlin GmbH',
+    customerEmail: 'ismailfarisi@gmail.com',
+    paymentTerms: 'NET_60',
+    currency: 'USD',
+  };
+
+  const dummyItems: QuoteLineItem[] = [
+    {
+      id: 'item-1',
+      type: 'product',
+      description: 'Carton',
+      quantity: 1,
+      uom: 'Units',
+      unitPrice: 10,
+      discount: 5,
+      taxRate: 5,
+      subtotal: 9.5,
+    },
+  ];
+
+  const dummyTotals = {
+    subtotalAmount: 9.5,
+    discountAmount: 0.5,
+    taxAmount: 0.48,
+    totalAmount: 9.97,
+    costAmount: 0,
+    marginAmount: 9.5,
+    marginPct: 1,
+    hasCompleteCost: true,
+  };
+
+  it('renders quotation preview document and buttons when open', () => {
+    const handleClose = vi.fn();
+    renderWithClient(
+      <QuotePrintModal
+        open={true}
+        onClose={handleClose}
+        headerData={dummyHeader}
+        items={dummyItems}
+        totals={dummyTotals}
+        termsAndConditions="Payment due according to agreed payment terms."
+      />
+    );
+
+    expect(screen.getByText('QUOTE Document Preview')).toBeDefined();
+    expect(screen.getByText('S7 Berlin GmbH')).toBeDefined();
+    expect(screen.getByText('Carton')).toBeDefined();
+    expect(screen.getByText('$9.97')).toBeDefined();
+    expect(screen.getByText('Payment due according to agreed payment terms.')).toBeDefined();
+    expect(screen.getByText('Authorized Signature')).toBeDefined();
+
+    expect(screen.getByText('Print / Save as PDF')).toBeDefined();
+    expect(screen.getByText('Download PDF')).toBeDefined();
+    expect(document.body.classList.contains('quote-print-modal-open')).toBe(true);
+  });
+
+  it('triggers window.print when Print / Save as PDF is clicked', () => {
+    const printSpy = vi.spyOn(window, 'print').mockImplementation(() => {});
+    renderWithClient(
+      <QuotePrintModal
+        open={true}
+        onClose={vi.fn()}
+        headerData={dummyHeader}
+        items={dummyItems}
+        totals={dummyTotals}
+      />
+    );
+
+    fireEvent.click(screen.getByText('Print / Save as PDF'));
+    expect(printSpy).toHaveBeenCalled();
+    printSpy.mockRestore();
+  });
+
+  it('does not render when open is false', () => {
+    renderWithClient(
+      <QuotePrintModal
+        open={false}
+        onClose={vi.fn()}
+        headerData={dummyHeader}
+        items={dummyItems}
+        totals={dummyTotals}
+      />
+    );
+
+    expect(screen.queryByText('QUOTE Document Preview')).toBeNull();
+  });
+});
+
+describe('DocumentTemplateSheet', () => {
+  const dummyInvoiceData = {
+    type: 'INVOICE' as const,
+    number: 'INV-2026-0042',
+    status: 'ISSUED',
+    issuedAt: new Date('2026-10-01'),
+    dueDate: new Date('2026-10-31'),
+    currency: 'USD',
+    organization: {
+      name: 'Acme Corp Global',
+      address: '742 Industrial Pkwy, Austin, TX',
+      phone: '+1 512 555-0199',
+      email: 'billing@acmecorp.com',
+      taxId: 'US-99238411',
+    },
+    party: {
+      name: 'Apex Supplies LLC',
+      address: '100 Logistics Way, Chicago, IL',
+      email: 'accounts@apex.example',
+    },
+    items: [
+      {
+        code: 'BOX-01',
+        description: 'Corrugated Box',
+        quantity: 100,
+        unitPrice: 2.5,
+        discount: 0,
+        taxRate: 10,
+        amount: 250,
+      },
+    ],
+    totals: {
+      subtotal: 250,
+      discounts: 0,
+      taxes: [{ rate: 10, label: 'VAT 10%', amount: 25 }],
+      total: 275,
+      balanceDue: 275,
+    },
+    notes: 'Thank you for your business.',
+    paymentTerms: 'NET 30',
+  };
+
+  it('renders split header layout by default', () => {
+    render(
+      <DocumentTemplateSheet
+        data={dummyInvoiceData}
+        config={{
+          ...DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+          header: {
+            ...DEFAULT_DOCUMENT_TEMPLATE_CONFIG.header,
+            layout: 'split',
+          },
+        }}
+      />
+    );
+
+    expect(screen.getByText('TAX INVOICE')).toBeDefined();
+    expect(screen.getByText('INV-2026-0042')).toBeDefined();
+    expect(screen.getByText('Apex Supplies LLC')).toBeDefined();
+    expect(screen.getByText('Corrugated Box')).toBeDefined();
+    expect(screen.getByText('$275.00')).toBeDefined();
+  });
+
+  it('renders banner header layout with primaryColor background', () => {
+    render(
+      <DocumentTemplateSheet
+        data={dummyInvoiceData}
+        config={{
+          ...DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+          branding: {
+            ...DEFAULT_DOCUMENT_TEMPLATE_CONFIG.branding,
+            primaryColor: '#059669',
+          },
+          header: {
+            ...DEFAULT_DOCUMENT_TEMPLATE_CONFIG.header,
+            layout: 'banner',
+          },
+        }}
+      />
+    );
+
+    expect(screen.getByText('TAX INVOICE')).toBeDefined();
+    expect(screen.getByText('Acme Corp Global')).toBeDefined();
+    expect(screen.getByText('Apex Supplies LLC')).toBeDefined();
+  });
+
+  it('renders centered header layout', () => {
+    render(
+      <DocumentTemplateSheet
+        data={dummyInvoiceData}
+        config={{
+          ...DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+          header: {
+            ...DEFAULT_DOCUMENT_TEMPLATE_CONFIG.header,
+            layout: 'centered',
+          },
+        }}
+      />
+    );
+
+    expect(screen.getByText('TAX INVOICE')).toBeDefined();
+    expect(screen.getByText('Acme Corp Global')).toBeDefined();
   });
 });

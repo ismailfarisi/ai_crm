@@ -3,7 +3,11 @@
 import { useCallback, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import type { DocumentTemplateConfig, DocumentType } from '@saas/shared';
+import {
+  DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+  type DocumentTemplateConfig,
+  type DocumentType,
+} from '@saas/shared';
 import {
   api,
   queryKeys,
@@ -164,5 +168,19 @@ export function useDocumentTemplates(options?: UseDocumentTemplatesOptions) {
     setDefaultTemplate,
     generateWithAi,
     previewPdf,
+  };
+}
+
+export function useResolveDocumentTemplate(docType: DocumentType) {
+  const query = useQuery({
+    queryKey: queryKeys.resolveTemplate(docType),
+    queryFn: () => api.documentTemplates.resolve(docType),
+    staleTime: 60_000,
+  });
+
+  return {
+    template: query.data?.template ?? null,
+    config: query.data?.config ?? DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+    isLoading: query.isLoading,
   };
 }
