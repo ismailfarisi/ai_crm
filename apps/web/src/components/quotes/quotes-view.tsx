@@ -147,6 +147,7 @@ export function QuotesView() {
                 ? [{ rate: 0, label: 'Taxes', amount: Number(printingQuote.taxAmount) }]
                 : undefined,
               total: Number(printingQuote.totalAmount || 0),
+            },
             paymentTerms: printingQuote.paymentTerms || undefined,
             notes:
               [printingQuote.notes, printingQuote.termsAndConditions]
