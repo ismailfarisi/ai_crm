@@ -18,6 +18,7 @@ import { InvoicePaymentsModal } from '@/components/invoices/invoice-payments-mod
 import { VoidInvoiceModal } from '@/components/invoices/void-invoice-modal';
 import { InvoiceCreditsDialog } from '@/components/credits/invoice-credits-dialog';
 import { DocumentPrintModal } from '@/components/documents/document-print-modal';
+import { useOrganization } from '@/hooks/use-organization';
 import { api } from '@/lib/api/endpoints';
 
 const STAT_TONES = {
@@ -53,11 +54,20 @@ function Stat({
 
 export function InvoicesView() {
   const { invoices, isLoading } = useInvoices();
+  const { data: orgProfile } = useOrganization();
   const { data: accounts = [] } = useFinanceAccounts();
   const recordPayment = useRecordInvoicePayment();
   const sendInvoice = useSendInvoice();
   const voidInvoice = useVoidInvoice();
   const downloadPdf = useDownloadInvoicePdf();
+
+  const orgName = orgProfile?.name || 'Your Company';
+  const orgAddress = [
+    orgProfile?.addressLine1,
+    orgProfile?.addressLine2,
+    [orgProfile?.city, orgProfile?.region, orgProfile?.postalCode].filter(Boolean).join(' '),
+    orgProfile?.country,
+  ].filter(Boolean).join(', ') || undefined;
 
   const [payingInvoice, setPayingInvoice] = useState<InvoiceDto | null>(null);
   const [historyInvoice, setHistoryInvoice] = useState<InvoiceDto | null>(null);
@@ -161,10 +171,13 @@ export function InvoicesView() {
             dueDate: printingInvoice.dueDate || undefined,
             currency: printingInvoice.currency || 'USD',
             organization: {
-              name: 'AI CRM Enterprise',
-              address: 'Enterprise Cloud & AI Solutions\n100 Tech Boulevard, Suite 500',
-              email: 'contact@aicrm.io',
-              phone: '+1 (800) 555-0199',
+              name: orgName,
+              address: orgAddress,
+              email: orgProfile?.email || undefined,
+              phone: orgProfile?.phone || undefined,
+              taxId: orgProfile?.taxId || undefined,
+              website: orgProfile?.website || undefined,
+              logoUrl: orgProfile?.logoUrl || undefined,
             },
             party: {
               name: printingInvoice.customerName || 'Customer',

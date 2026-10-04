@@ -10,6 +10,7 @@ import { PageHeader } from '@/components/ui/primitives';
 import { QuotesTable } from '@/components/quotes/quotes-table';
 import { CreateQuoteModal } from '@/components/quotes/create-quote-modal';
 import { DocumentPrintModal } from '@/components/documents/document-print-modal';
+import { useOrganization } from '@/hooks/use-organization';
 
 const STAT_TONES = {
   brand: 'bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400',
@@ -44,8 +45,17 @@ function Stat({
 
 export function QuotesView() {
   const { quotes, isLoading, createQuote, sendSignal } = useQuotes();
+  const { data: orgProfile } = useOrganization();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [printingQuote, setPrintingQuote] = useState<Quote | null>(null);
+
+  const orgName = orgProfile?.name || 'Your Company';
+  const orgAddress = [
+    orgProfile?.addressLine1,
+    orgProfile?.addressLine2,
+    [orgProfile?.city, orgProfile?.region, orgProfile?.postalCode].filter(Boolean).join(' '),
+    orgProfile?.country,
+  ].filter(Boolean).join(', ') || undefined;
 
   const totalQuotes = quotes.length;
   const awaitingApproval = quotes.filter((q) => q.status === 'AWAITING_APPROVAL').length;
@@ -119,10 +129,13 @@ export function QuotesView() {
             currency: printingQuote.currency || 'USD',
             status: printingQuote.status,
             organization: {
-              name: 'AI CRM Enterprise',
-              address: 'Enterprise Cloud & AI Solutions\n100 Tech Boulevard, Suite 500',
-              email: 'contact@aicrm.io',
-              phone: '+1 (800) 555-0199',
+              name: orgName,
+              address: orgAddress,
+              email: orgProfile?.email || undefined,
+              phone: orgProfile?.phone || undefined,
+              taxId: orgProfile?.taxId || undefined,
+              website: orgProfile?.website || undefined,
+              logoUrl: orgProfile?.logoUrl || undefined,
             },
             party: {
               name: printingQuote.customerName || 'Valued Customer',
