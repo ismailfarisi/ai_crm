@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Plus, FileText, Clock, CheckCircle, DollarSign, Sparkles, type LucideIcon } from 'lucide-react';
 import { useQuotes, type Quote } from '@/hooks/use-quotes';
-import { api } from '@/lib/api';
+import { api } from '@/lib/api/endpoints';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/primitives';
 import { QuotesTable } from '@/components/quotes/quotes-table';
