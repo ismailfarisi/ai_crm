@@ -147,10 +147,11 @@ export function QuotesView() {
                 ? [{ rate: 0, label: 'Taxes', amount: Number(printingQuote.taxAmount) }]
                 : undefined,
               total: Number(printingQuote.totalAmount || 0),
-            },
             paymentTerms: printingQuote.paymentTerms || undefined,
-            terms: printingQuote.termsAndConditions || undefined,
-            notes: printingQuote.notes || undefined,
+            notes:
+              [printingQuote.notes, printingQuote.termsAndConditions]
+                .filter(Boolean)
+                .join('\n\n') || undefined,
           }}
           documentId={printingQuote.id}
           downloadPdfFn={api.quotes.downloadPdf}
