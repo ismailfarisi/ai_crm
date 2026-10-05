@@ -82,13 +82,16 @@ export function ProductionKanban({
     if (wo.status === 'COMPLETE' || wo.status === 'CANCELLED') return;
 
     // Check if card is already placed in this target column
-    const currentTargetColId =
-      wo.parameters?.columnId && columns.some((c) => c.id === wo.parameters.columnId)
-        ? wo.parameters.columnId
-        : columns.find((c) => c.isDefault && c.status === wo.status)?.id ??
-          columns.find((c) => c.status === wo.status)?.id;
+    const assigned = wo.parameters?.columnId
+      ? columns.find((c) => c.id === wo.parameters?.columnId)
+      : null;
+    const currentTarget =
+      assigned && assigned.status === wo.status
+        ? assigned
+        : columns.find((c) => c.isDefault && c.status === wo.status) ??
+          columns.find((c) => c.status === wo.status);
 
-    if (currentTargetColId === targetColumn.id) return;
+    if (currentTarget?.id === targetColumn.id) return;
 
     const targetStatus = targetColumn.status;
 
@@ -132,25 +135,23 @@ export function ProductionKanban({
           toast.success(`${res.woNumber} released to the floor`);
         }
       } else if (targetStatus === 'IN_PROGRESS') {
-        let currentWo = wo;
-        if (wo.status === 'PLANNED') {
-          currentWo = await api.workOrders.release(wo.id);
-        }
-        const pendingOp = currentWo.operations.find(
-          (op) => op.status === 'PENDING' || op.status === 'PAUSED',
-        );
-        if (pendingOp) {
-          await api.workOrders.start(wo.id, pendingOp.id);
-          toast.success(`Started ${pendingOp.label} on ${wo.woNumber}`);
+        if (wo.status !== 'IN_PROGRESS') {
+          let currentWo = wo;
+          if (wo.status === 'PLANNED') {
+            currentWo = await api.workOrders.release(wo.id);
+          }
+          const pendingOp = currentWo.operations.find(
+            (op) => op.status === 'PENDING' || op.status === 'PAUSED',
+          );
+          if (pendingOp) {
+            await api.workOrders.start(wo.id, pendingOp.id);
+            toast.success(`Started ${pendingOp.label} on ${wo.woNumber}`);
+          }
         }
       }
 
       // Update the column assignment on the work order
-      const updateFn =
-        api.production?.workOrders?.updateColumn || api.workOrders?.updateColumn;
-      if (updateFn) {
-        await updateFn(wo.id, targetColumn.id);
-      }
+      await api.workOrders.updateColumn(wo.id, targetColumn.id);
 
       toast.success(`Moved ${wo.woNumber} to ${targetColumn.name}`);
       await invalidate();
@@ -217,15 +218,17 @@ export function ProductionKanban({
         {columns.map((column, colIdx) => {
           // Card placement: check wo.parameters?.columnId first, fallback to default for status
           const jobs = workOrders.filter((wo) => {
-            if (wo.parameters?.columnId) {
-              if (columns.some((c) => c.id === wo.parameters?.columnId)) {
-                return wo.parameters.columnId === column.id;
-              }
-            }
-            const defaultCol =
-              columns.find((c) => c.isDefault && c.status === wo.status) ??
-              columns.find((c) => c.status === wo.status);
-            return defaultCol?.id === column.id;
+            if (wo.status === 'CANCELLED' && column.status !== 'CANCELLED') return false;
+            const paramColId = typeof wo.parameters?.columnId === 'string' ? wo.parameters.columnId : null;
+            const assigned = paramColId
+              ? columns.find((c) => c.id === paramColId)
+              : null;
+            const target =
+              assigned && assigned.status === wo.status
+                ? assigned
+                : columns.find((c) => c.isDefault && c.status === wo.status) ??
+                  columns.find((c) => c.status === wo.status);
+            return target?.id === column.id;
           });
 
           const isOver = dragOverColId === column.id;

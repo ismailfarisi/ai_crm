@@ -46,15 +46,6 @@ vi.mock('@/lib/api/endpoints', () => {
         getColumns: vi.fn().mockResolvedValue(defaultCols),
         updateColumns: vi.fn().mockImplementation(async (cols: any) => cols),
       },
-      production: {
-        board: {
-          getColumns: vi.fn().mockResolvedValue(defaultCols),
-          updateColumns: vi.fn().mockImplementation(async (cols: any) => cols),
-        },
-        workOrders: {
-          updateColumn: updateColumnMock,
-        },
-      },
       workOrders: {
         updateColumn: updateColumnMock,
         list: vi.fn(),
@@ -87,7 +78,6 @@ vi.mock('@/lib/api/endpoints', () => {
         stop: vi.fn().mockResolvedValue({ workOrder: { id: 'wo-2' }, capped: false }),
         finish: vi.fn().mockResolvedValue({ workOrder: { id: 'wo-2' }, capped: false }),
         logTime: vi.fn().mockResolvedValue({ id: 'wo-2' }),
-        updateColumn: vi.fn().mockImplementation(async (id: string, colId: string) => ({ id, columnId: colId })),
       },
     },
     queryKeys: {
@@ -854,15 +844,17 @@ describe('ProductionBoard', () => {
     it('renders cards under their assigned custom column via parameters.columnId', () => {
       const workOrdersWithCustomCols: WorkOrderDto[] = [
         {
-          ...mockWorkOrders[0],
+          ...mockWorkOrders[2],
           id: 'wo-custom-qc',
           woNumber: 'WO-9001',
+          status: 'IN_PROGRESS',
           parameters: { columnId: 'col-qc' },
         },
         {
-          ...mockWorkOrders[1],
+          ...mockWorkOrders[2],
           id: 'wo-custom-pkg',
           woNumber: 'WO-9002',
+          status: 'IN_PROGRESS',
           parameters: { columnId: 'col-packaging' },
         },
       ];
@@ -1068,6 +1060,7 @@ describe('ProductionBoard', () => {
       const woWithCol: WorkOrderDto = {
         ...mockWorkOrders[0],
         id: 'wo-with-col',
+        status: 'IN_PROGRESS',
         parameters: { columnId: 'col-qc' },
       };
 
