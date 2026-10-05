@@ -16,6 +16,7 @@ import {
   FileCheck,
   AlertCircle,
   PackagePlus,
+  Undo2,
 } from 'lucide-react';
 import type {
   BillingStage,
@@ -27,11 +28,12 @@ import type {
   UpdateQuotePayload,
   GuardrailViolation,
 } from '@saas/shared';
-import { calculateQuoteTotals, evaluateGuardrails } from '@saas/shared';
+import { calculateQuoteTotals, evaluateGuardrails, PERMISSIONS } from '@saas/shared';
 import { useCostingPolicy } from '@/hooks/use-catalog';
 import { useTaxCodes } from '@/hooks/use-credits';
 import { api } from '@/lib/api/endpoints';
 import { Button } from '@/components/ui/button';
+import { Can } from '@/components/auth/can';
 import { toast } from 'sonner';
 
 import { QuoteStatusPipeline } from '../quote-status-pipeline';
@@ -66,6 +68,7 @@ export function QuoteEditorPage({
   const [isSaving, setIsSaving] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSignaling, setIsSignaling] = useState<'APPROVE' | 'REJECT' | null>(null);
+  const [isReverting, setIsReverting] = useState(false);
 
   // Modals & Drawers
   const [isAiDrawerOpen, setIsAiDrawerOpen] = useState(false);
@@ -306,7 +309,11 @@ export function QuoteEditorPage({
         // show what was stored, not what was typed.
         if (updated.items) setItems(updated.items);
         setStatus(updated.status);
-        toast.success('Quotation draft updated');
+        toast.success(
+          status === 'AWAITING_APPROVAL'
+            ? 'Quotation changes saved'
+            : 'Quotation draft updated',
+        );
         return updated.id;
       } else {
         // Create new quote
@@ -434,6 +441,44 @@ export function QuoteEditorPage({
     }
   };
 
+  // Revert / Withdraw to Draft
+  const handleRevertToDraft = async () => {
+    if (!id) return;
+    setIsReverting(true);
+    try {
+      const payload: UpdateQuotePayload = {
+        title: headerData.title.trim(),
+        quoteNumber: headerData.quoteNumber,
+        customerId: headerData.customerId,
+        customerName: headerData.customerName || 'General Customer',
+        customerEmail: headerData.customerEmail,
+        validUntil: headerData.validUntil,
+        paymentTerms: headerData.paymentTerms,
+        currency: headerData.currency,
+        items,
+        subtotalAmount: totals.subtotalAmount,
+        discountAmount: totals.discountAmount,
+        taxAmount: totals.taxAmount,
+        totalAmount: totals.totalAmount,
+        termsAndConditions,
+        billingSchedule,
+        notes,
+        prompt,
+        createdBy,
+        status: 'DRAFT',
+      };
+      const updated = await api.quotes.update(id, payload);
+      setId(updated.id);
+      if (updated.items) setItems(updated.items);
+      setStatus(updated.status);
+      toast.success('Quotation returned to draft');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to return quotation to draft');
+    } finally {
+      setIsReverting(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex h-96 flex-col items-center justify-center gap-3">
@@ -524,63 +569,98 @@ export function QuoteEditorPage({
 
             {/* Manager Actions if Awaiting Approval */}
             {status === 'AWAITING_APPROVAL' && (
-              <div className="flex items-center gap-2 pl-2 border-l border-border/30">
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  loading={isSignaling === 'APPROVE'}
-                  disabled={Boolean(isSignaling)}
-                  onClick={() => handleSignal('APPROVE')}
-                  className="rounded-full px-4 text-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 font-semibold"
-                >
-                  <CheckCircle2 className="size-4" />
-                  <span>Approve Quote</span>
-                </Button>
+              <Can permission={PERMISSIONS.QUOTE_APPROVE}>
+                <div className="flex items-center gap-2 pl-2 border-l border-border/30">
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    loading={isSignaling === 'APPROVE'}
+                    disabled={Boolean(isSignaling) || isSaving || isReverting}
+                    onClick={() => handleSignal('APPROVE')}
+                    className="rounded-full px-4 text-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 font-semibold"
+                  >
+                    <CheckCircle2 className="size-4" />
+                    <span>Approve Quote</span>
+                  </Button>
 
-                <Button
-                  type="button"
-                  variant="danger"
-                  size="sm"
-                  loading={isSignaling === 'REJECT'}
-                  disabled={Boolean(isSignaling)}
-                  onClick={() => handleSignal('REJECT')}
-                  className="rounded-full px-4 text-xs gap-1.5 font-semibold"
-                >
-                  <XCircle className="size-4" />
-                  <span>Reject</span>
-                </Button>
-              </div>
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    loading={isSignaling === 'REJECT'}
+                    disabled={Boolean(isSignaling) || isSaving || isReverting}
+                    onClick={() => handleSignal('REJECT')}
+                    className="rounded-full px-4 text-xs gap-1.5 font-semibold"
+                  >
+                    <XCircle className="size-4" />
+                    <span>Reject</span>
+                  </Button>
+                </div>
+              </Can>
             )}
 
-            {/* Standard Draft / Submit Buttons */}
-            {!isReadOnly && status !== 'AWAITING_APPROVAL' && (
+            {/* Editable Actions (Save / Submit / Revert) */}
+            {!isReadOnly && (
               <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  loading={isSaving}
-                  disabled={isSaving || isSubmitting}
-                  onClick={handleSaveDraft}
-                  className="rounded-full px-4 text-xs gap-1.5 shadow-2xs border-border/40 hover:border-border"
-                >
-                  <Save className="size-4 text-ink-subtle" />
-                  <span>Save Draft</span>
-                </Button>
+                {status === 'AWAITING_APPROVAL' ? (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      loading={isSaving}
+                      disabled={isSaving || isSubmitting || Boolean(isSignaling) || isReverting}
+                      onClick={handleSaveDraft}
+                      className="rounded-full px-4 text-xs gap-1.5 shadow-2xs border-border/40 hover:border-border"
+                    >
+                      <Save className="size-4 text-ink-subtle" />
+                      <span>Save Changes</span>
+                    </Button>
 
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  loading={isSubmitting}
-                  disabled={isSaving || isSubmitting}
-                  onClick={handleSubmitForApproval}
-                  className="rounded-full px-4 text-xs gap-1.5 shadow-xs font-semibold"
-                >
-                  <Send className="size-4" />
-                  <span>Submit for Approval</span>
-                </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      loading={isReverting}
+                      disabled={isSaving || isSubmitting || Boolean(isSignaling) || isReverting}
+                      onClick={handleRevertToDraft}
+                      className="rounded-full px-4 text-xs gap-1.5 text-ink-muted hover:text-ink hover:bg-surface-muted"
+                      title="Return this quotation to draft status for further revision"
+                    >
+                      <Undo2 className="size-4 text-ink-subtle" />
+                      <span>Revert to Draft</span>
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      loading={isSaving}
+                      disabled={isSaving || isSubmitting || Boolean(isSignaling) || isReverting}
+                      onClick={handleSaveDraft}
+                      className="rounded-full px-4 text-xs gap-1.5 shadow-2xs border-border/40 hover:border-border"
+                    >
+                      <Save className="size-4 text-ink-subtle" />
+                      <span>{status === 'REJECTED' ? 'Save Changes' : 'Save Draft'}</span>
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      loading={isSubmitting}
+                      disabled={isSaving || isSubmitting || Boolean(isSignaling) || isReverting}
+                      onClick={handleSubmitForApproval}
+                      className="rounded-full px-4 text-xs gap-1.5 shadow-xs font-semibold"
+                    >
+                      <Send className="size-4" />
+                      <span>{status === 'REJECTED' ? 'Re-submit for Approval' : 'Submit for Approval'}</span>
+                    </Button>
+                  </>
+                )}
               </>
             )}
           </div>
