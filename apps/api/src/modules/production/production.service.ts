@@ -430,16 +430,34 @@ export class ProductionService {
       ...col,
       sequence: idx,
     }));
-    let setting = await this.boardSettingsRepo.findOne({ where: { tenantId } });
-    if (!setting) {
-      setting = this.boardSettingsRepo.create({
-        tenantId,
-        columns: normalized,
-      });
-    } else {
-      setting.columns = normalized;
+    try {
+      let setting = await this.boardSettingsRepo.findOne({ where: { tenantId } });
+      if (!setting) {
+        setting = this.boardSettingsRepo.create({
+          tenantId,
+          columns: normalized,
+        });
+      } else {
+        setting.columns = normalized;
+      }
+      await this.boardSettingsRepo.save(setting);
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (
+        (err instanceof QueryFailedError && code === POSTGRES_UNIQUE_VIOLATION) ||
+        code === POSTGRES_UNIQUE_VIOLATION
+      ) {
+        const setting = await this.boardSettingsRepo.findOne({
+          where: { tenantId },
+        });
+        if (setting) {
+          setting.columns = normalized;
+          await this.boardSettingsRepo.save(setting);
+        }
+      } else {
+        throw err;
+      }
     }
-    await this.boardSettingsRepo.save(setting);
     return normalized;
   }
 
@@ -458,10 +476,47 @@ export class ProductionService {
       );
     }
 
+    const currentWo = await this.workOrders.findOne({
+      where: { id, tenantId },
+    });
+    if (!currentWo) throw new NotFoundException('Work order not found');
+
+    if (currentWo.status === 'COMPLETE' || currentWo.status === 'CANCELLED') {
+      throw new BadRequestException(
+        `Cannot move a ${currentWo.status.toLowerCase()} work order`,
+      );
+    }
+
+    if (targetCol.status === 'COMPLETE') {
+      if (currentWo.status === 'PLANNED') {
+        throw new BadRequestException(
+          'Cannot complete a planned job without releasing first',
+        );
+      }
+      return this.complete(
+        tenantId,
+        id,
+        actorId,
+        { qtyCompleted: null, columnId: targetCol.id },
+        canSeeCost,
+      );
+    }
+
     await this.dataSource.transaction(async (manager) => {
       const wo = await this.lock(manager, tenantId, id);
+      if (wo.status === 'COMPLETE' || wo.status === 'CANCELLED') {
+        throw new BadRequestException(
+          `Cannot move a ${wo.status.toLowerCase()} work order`,
+        );
+      }
+
       if (targetCol.status !== wo.status) {
-        if (targetCol.status === 'RELEASED' && wo.status === 'PLANNED') {
+        if (!canTransitionWorkOrder(wo.status, targetCol.status)) {
+          throw new BadRequestException(
+            `Cannot move work order from ${wo.status} to ${targetCol.status}`,
+          );
+        }
+        if (targetCol.status === 'RELEASED') {
           wo.status = 'RELEASED';
           wo.releasedAt = new Date();
         } else if (targetCol.status === 'IN_PROGRESS') {
@@ -469,18 +524,9 @@ export class ProductionService {
             wo.releasedAt = new Date();
           }
           wo.status = 'IN_PROGRESS';
-        } else if (targetCol.status === 'COMPLETE') {
-          if (wo.status === 'PLANNED') {
-            throw new BadRequestException(
-              'Cannot complete a planned job without releasing first',
-            );
-          }
-          // Direct complete transition
-          wo.status = 'COMPLETE';
-          wo.completedAt = new Date();
-          wo.completedById = actorId;
         }
       }
+
       wo.parameters = {
         ...(wo.parameters || {}),
         columnId: targetCol.id,
@@ -519,7 +565,7 @@ export class ProductionService {
     tenantId: string,
     id: string,
     actorId: string,
-    input: { qtyCompleted: number | null },
+    input: { qtyCompleted: number | null; columnId?: string },
     canSeeCost: boolean,
   ): Promise<WorkOrderDto> {
     await this.dataSource.transaction(async (manager) => {
@@ -575,6 +621,12 @@ export class ProductionService {
       wo.qtyCompleted = qtyCompleted;
       wo.completedAt = now;
       wo.completedById = actorId;
+      if (input.columnId) {
+        wo.parameters = {
+          ...(wo.parameters || {}),
+          columnId: input.columnId,
+        };
+      }
       await manager.getRepository(WorkOrder).save(wo);
 
       // Only material has been capitalised into WIP, so only material leaves
