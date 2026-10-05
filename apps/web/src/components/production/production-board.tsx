@@ -21,6 +21,7 @@ import { useWorkOrders } from '@/hooks/use-work-orders';
 import { useCan } from '@/lib/session-context';
 import { EmptyState, PageHeader } from '@/components/ui/primitives';
 import { ProductionKanban } from './production-kanban';
+import { ProductionGantt } from './production-gantt';
 import { WorkOrderDrawer } from './work-order-drawer';
 
 export const WO_STATUS_LABELS: Record<WorkOrderStatus, string> = {
@@ -311,73 +312,10 @@ export function ProductionBoard() {
           onSelectWorkOrder={(id) => setSelectedWorkOrderId(id)}
         />
       ) : (
-        /* Gantt View / Timeline Schedule */
-        <section aria-label="Production Gantt Schedule" className="rounded-2xl border border-line bg-surface p-6 shadow-2xs">
-          <div className="flex items-center justify-between border-b border-line pb-4 mb-4">
-            <div>
-              <h2 className="text-base font-semibold text-ink">Floor Schedule &amp; Timeline</h2>
-              <p className="text-xs text-ink-muted">
-                Visual timeline sequencing operations across work centres.
-              </p>
-            </div>
-            <span className="rounded-full bg-surface-sunk px-3 py-1 text-xs font-medium text-ink-muted">
-              {filteredWorkOrders.length} jobs scheduled
-            </span>
-          </div>
-
-          <div className="space-y-4">
-            {filteredWorkOrders.map((wo) => {
-              const ops = [...wo.operations].sort((a, b) => a.sequence - b.sequence);
-
-              return (
-                <div
-                  key={wo.id}
-                  onClick={() => setSelectedWorkOrderId(wo.id)}
-                  className="rounded-xl border border-line p-4 transition-all hover:border-accent hover:bg-surface-sunk/30 cursor-pointer"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs font-bold text-ink">{wo.woNumber}</span>
-                      <span className="text-xs text-ink-muted font-medium truncate max-w-xs">
-                        {wo.description}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3 text-xs text-ink-subtle">
-                      <span>{wo.qty} units</span>
-                      {wo.dueDate && (
-                        <span className="inline-flex items-center gap-1">
-                          <CalendarClock className="size-3" />
-                          {new Date(wo.dueDate).toLocaleDateString()}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Operation Timeline Track */}
-                  <div className="flex items-center gap-1.5 pt-2">
-                    {ops.map((op) => (
-                      <div
-                        key={op.id}
-                        className={`flex-1 rounded-md px-2 py-1.5 text-[11px] border font-medium ${
-                          op.status === 'RUNNING'
-                            ? 'bg-success/15 border-success text-success animate-pulse'
-                            : op.status === 'DONE'
-                              ? 'bg-surface-sunk border-line text-ink-subtle line-through'
-                              : 'bg-surface border-line text-ink'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="truncate">{op.sequence}. {op.label}</span>
-                          <span className="font-mono text-[10px] ml-1">{op.workCenterName}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
+        <ProductionGantt
+          workOrders={filteredWorkOrders}
+          onSelectWorkOrder={(id) => setSelectedWorkOrderId(id)}
+        />
       )}
 
       {/* Slide-Over Work Order Floor Drawer */}

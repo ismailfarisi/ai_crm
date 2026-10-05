@@ -408,6 +408,157 @@ describe('ProductionBoard', () => {
     });
   });
 
+  describe('Production Gantt Chart View', () => {
+    it('renders Gantt chart rows in By Work Order mode and displays WO details and overdue indicators', () => {
+      renderBoard();
+
+      // Switch to Gantt view
+      const ganttBtn = screen.getByRole('button', { name: /gantt view/i });
+      fireEvent.click(ganttBtn);
+
+      expect(screen.getByText('Floor Schedule & Timeline')).toBeInTheDocument();
+      expect(screen.getByText('4 jobs scheduled')).toBeInTheDocument();
+
+      // Check By Work Order button is pressed
+      const workOrderModeBtn = screen.getByRole('button', { name: /by work order/i });
+      expect(workOrderModeBtn).toHaveAttribute('aria-pressed', 'true');
+
+      // Verify work order numbers in the left column
+      expect(screen.getByText('WO-1001')).toBeInTheDocument();
+      expect(screen.getByText('WO-1002')).toBeInTheDocument();
+      expect(screen.getByText('WO-1003')).toBeInTheDocument();
+      expect(screen.getByText('WO-1004')).toBeInTheDocument();
+
+      // Verify descriptions and customer names
+      expect(screen.getByText('Custom Folding Carton')).toBeInTheDocument();
+      expect(screen.getByText(/Acme Corp/)).toBeInTheDocument();
+
+      // WO-1002 is overdue
+      expect(screen.getByText('Overdue')).toBeInTheDocument();
+
+      // Check Today marker
+      expect(screen.getAllByTestId('gantt-today-marker').length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('switches between By Work Order and By Work Centre views', () => {
+      renderBoard();
+
+      // Switch to Gantt view
+      const ganttBtn = screen.getByRole('button', { name: /gantt view/i });
+      fireEvent.click(ganttBtn);
+
+      // Switch to By Work Centre mode
+      const workCenterModeBtn = screen.getByRole('button', { name: /by work centre/i });
+      fireEvent.click(workCenterModeBtn);
+
+      expect(workCenterModeBtn).toHaveAttribute('aria-pressed', 'true');
+
+      // Scope queries within Gantt section (since top filter dropdown also has work centre options)
+      const ganttSection = screen.getByLabelText('Production Gantt Schedule');
+      expect(within(ganttSection).getByText('Offset Press')).toBeInTheDocument();
+      expect(within(ganttSection).getByText('Flatbed Cutter')).toBeInTheDocument();
+      expect(within(ganttSection).getByText('Bench Assembly')).toBeInTheDocument();
+
+      // Operation counts on machines
+      expect(screen.getByText('2 operations')).toBeInTheDocument();
+
+      // Switch back to By Work Order mode
+      const woModeBtn = screen.getByRole('button', { name: /by work order/i });
+      fireEvent.click(woModeBtn);
+
+      expect(woModeBtn).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByText('Custom Folding Carton')).toBeInTheDocument();
+    });
+
+    it('toggles time scales between Day, Week, and Month', () => {
+      renderBoard();
+
+      const ganttBtn = screen.getByRole('button', { name: /gantt view/i });
+      fireEvent.click(ganttBtn);
+
+      // Default is Month
+      const monthBtn = screen.getByRole('button', { name: /month zoom/i });
+      expect(monthBtn).toHaveAttribute('aria-pressed', 'true');
+
+      // Switch to Day
+      const dayBtn = screen.getByRole('button', { name: /day zoom/i });
+      fireEvent.click(dayBtn);
+      expect(dayBtn).toHaveAttribute('aria-pressed', 'true');
+      expect(monthBtn).toHaveAttribute('aria-pressed', 'false');
+
+      // Switch to Week
+      const weekBtn = screen.getByRole('button', { name: /week zoom/i });
+      fireEvent.click(weekBtn);
+      expect(weekBtn).toHaveAttribute('aria-pressed', 'true');
+      expect(dayBtn).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('navigates timeline window using Prev, Today, and Next controls', () => {
+      renderBoard();
+
+      const ganttBtn = screen.getByRole('button', { name: /gantt view/i });
+      fireEvent.click(ganttBtn);
+
+      const nextBtn = screen.getByRole('button', { name: /next period/i });
+      const prevBtn = screen.getByRole('button', { name: /previous period/i });
+      const todayBtn = screen.getByRole('button', { name: /today/i });
+
+      fireEvent.click(nextBtn);
+      expect(nextBtn).toBeInTheDocument();
+
+      fireEvent.click(prevBtn);
+      fireEvent.click(prevBtn);
+      expect(prevBtn).toBeInTheDocument();
+
+      fireEvent.click(todayBtn);
+      expect(todayBtn).toBeInTheDocument();
+    });
+
+    it('clicking a Gantt bar opens the slide-over WorkOrderDrawer', () => {
+      renderBoard();
+
+      const ganttBtn = screen.getByRole('button', { name: /gantt view/i });
+      fireEvent.click(ganttBtn);
+
+      const bars = screen.getAllByTestId('gantt-bar');
+      expect(bars.length).toBeGreaterThan(0);
+
+      // Click the first bar
+      fireEvent.click(bars[0]);
+
+      // Drawer dialog is open
+      const drawer = screen.getByRole('dialog');
+      expect(drawer).toBeInTheDocument();
+      expect(within(drawer).getByText('Custom Folding Carton')).toBeInTheDocument();
+      expect(within(drawer).getByText('1. Printing')).toBeInTheDocument();
+    });
+
+    it('displays hover tooltip on operation segments', () => {
+      renderBoard();
+
+      const ganttBtn = screen.getByRole('button', { name: /gantt view/i });
+      fireEvent.click(ganttBtn);
+
+      // Find segment with title
+      const segment = screen.getByTitle(/WO: WO-1001/);
+      expect(segment).toBeInTheDocument();
+      expect(segment).toHaveAttribute('title', expect.stringContaining('Offset Press'));
+      expect(segment).toHaveAttribute('title', expect.stringContaining('Acme Corp'));
+      expect(segment).toHaveAttribute('title', expect.stringContaining('Status: PENDING'));
+
+      // Hover triggers tooltip
+      fireEvent.mouseEnter(segment);
+      const tooltip = screen.getByTestId('gantt-tooltip');
+      expect(tooltip).toBeInTheDocument();
+      expect(within(tooltip).getByText('WO-1001')).toBeInTheDocument();
+      expect(within(tooltip).getByText('Acme Corp')).toBeInTheDocument();
+
+      // Mouse leave hides tooltip
+      fireEvent.mouseLeave(segment);
+      expect(screen.queryByTestId('gantt-tooltip')).not.toBeInTheDocument();
+    });
+  });
+
   describe('Slide-Over Work Order Drawer', () => {
     it('opens drawer on card click and displays details and operations', () => {
       renderBoard();
