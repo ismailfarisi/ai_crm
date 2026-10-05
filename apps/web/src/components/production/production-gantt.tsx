@@ -270,7 +270,9 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
         <div>
           <h2 className="text-base font-semibold text-ink">Floor Schedule &amp; Timeline</h2>
           <p className="text-xs text-ink-muted">
-            Visual timeline sequencing operations across work centres.
+            {viewMode === 'work-center'
+              ? 'Indicative timing from job dates; machine bookings are not scheduled.'
+              : 'Visual timeline sequencing operations across work centres.'}
           </p>
         </div>
         <span className="rounded-full bg-surface-sunk px-3 py-1 text-xs font-medium text-ink-muted">

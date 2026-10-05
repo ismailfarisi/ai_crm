@@ -1,5 +1,6 @@
 import { WorkOrderManageSkill } from './work-order-manage.skill';
 import { ProductionService } from '../../production/production.service';
+import { PERMISSIONS } from '@saas/shared';
 import type { SkillContext } from './skill.types';
 
 describe('WorkOrderManageSkill', () => {
@@ -10,6 +11,7 @@ describe('WorkOrderManageSkill', () => {
     userId: 'user-1',
     conversationId: 'conv-1',
     channelProvider: 'TELEGRAM',
+    permissions: [PERMISSIONS.WORK_ORDER_EXECUTE, PERMISSIONS.WORK_ORDER_UPDATE],
   } as unknown as SkillContext;
 
   beforeEach(() => {
@@ -103,6 +105,55 @@ describe('WorkOrderManageSkill', () => {
       expect(production.complete).toHaveBeenCalledWith('org-1', 'wo-1', 'user-1', { qtyCompleted: 200 }, false);
       expect(outcome.reply).toContain('marked COMPLETE');
     }
+  });
+
+  it('asks for actual good pieces instead of assuming the ordered quantity', async () => {
+    (production.list as jest.Mock).mockResolvedValue([
+      {
+        id: 'wo-1',
+        woNumber: 'WO-2026-0001',
+        qty: 200,
+        status: 'IN_PROGRESS',
+        operations: [],
+      },
+    ]);
+
+    const res = await skill.resolve(
+      { workOrderNumber: 'WO-2026-0001', action: 'COMPLETE' },
+      ctx,
+    );
+
+    expect(res.kind).toBe('question');
+    if (res.kind === 'question') {
+      expect(res.question).toContain('How many good pieces were produced');
+      expect(res.slots).toEqual(
+        expect.objectContaining({ workOrderNumber: 'WO-2026-0001', action: 'COMPLETE' }),
+      );
+    }
+  });
+
+  it('refuses status changes for execute-only users', async () => {
+    (production.list as jest.Mock).mockResolvedValue([
+      { id: 'wo-1', woNumber: 'WO-2026-0003', status: 'PLANNED', operations: [] },
+    ]);
+
+    const res = await skill.resolve(
+      { workOrderNumber: 'WO-2026-0003', action: 'RELEASE' },
+      { ...ctx, permissions: [PERMISSIONS.WORK_ORDER_EXECUTE] },
+    );
+
+    expect(res.kind).toBe('refused');
+    expect(production.release).not.toHaveBeenCalled();
+  });
+
+  it('rechecks status-change permission at execution time', async () => {
+    await expect(
+      skill.execute(
+        { workOrderId: 'wo-1', woNumber: 'WO-2026-0003', action: 'CANCEL' },
+        { ...ctx, permissions: [PERMISSIONS.WORK_ORDER_EXECUTE] },
+      ),
+    ).rejects.toThrow(/permission to cancel work orders/i);
+    expect(production.cancel).not.toHaveBeenCalled();
   });
 
   it('refuses when work order is not found', async () => {

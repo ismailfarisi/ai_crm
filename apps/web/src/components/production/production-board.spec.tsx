@@ -305,6 +305,31 @@ describe('ProductionBoard', () => {
       expect(within(varianceCard).getByText(/1\.2h/)).toBeInTheDocument();
       expect(within(varianceCard).getByText(/\/ 4\.0h/)).toBeInTheDocument();
     });
+
+    it('counts each running operation as a clock', () => {
+      const workOrdersWithTwoRunningOps = mockWorkOrders.map((wo) =>
+        wo.id === 'wo-2'
+          ? {
+              ...wo,
+              operations: [
+                ...wo.operations,
+                { ...wo.operations[0], id: 'op-2b', sequence: 2 },
+              ],
+            }
+          : wo,
+      );
+      vi.mocked(useWorkOrders).mockReturnValue({
+        data: workOrdersWithTwoRunningOps,
+        isPending: false,
+        isError: false,
+        error: null,
+      } as never);
+
+      renderBoard();
+
+      const runningCard = screen.getByTestId('kpi-running-clocks');
+      expect(within(runningCard).getByText('2')).toBeInTheDocument();
+    });
   });
 
   describe('Search Filter Input', () => {
@@ -452,6 +477,9 @@ describe('ProductionBoard', () => {
       fireEvent.click(workCenterModeBtn);
 
       expect(workCenterModeBtn).toHaveAttribute('aria-pressed', 'true');
+      expect(
+        screen.getByText(/indicative timing from job dates; machine bookings are not scheduled/i),
+      ).toBeInTheDocument();
 
       // Scope queries within Gantt section (since top filter dropdown also has work centre options)
       const ganttSection = screen.getByLabelText('Production Gantt Schedule');

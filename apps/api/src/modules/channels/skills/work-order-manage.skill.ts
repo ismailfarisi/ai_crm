@@ -13,7 +13,7 @@ const slotSchema = z.object({
   workOrderNumber: z.string().optional(),
   action: z.enum(['START', 'STOP', 'FINISH', 'RELEASE', 'COMPLETE', 'CANCEL', 'ADVANCE']).optional(),
   operationQuery: z.string().optional(),
-  quantityCompleted: z.number().positive().optional(),
+  quantityCompleted: z.number().nonnegative().optional(),
   cancelReason: z.string().optional(),
 });
 
@@ -27,6 +27,10 @@ export interface ResolvedWorkOrderManage {
   nextOperationLabel?: string;
   quantityCompleted?: number;
   cancelReason?: string;
+}
+
+function requiresWorkOrderUpdate(action: ResolvedWorkOrderManage['action']): boolean {
+  return action === 'RELEASE' || action === 'COMPLETE' || action === 'CANCEL';
 }
 
 export class WorkOrderManageSkill implements ChannelSkill<ResolvedWorkOrderManage> {
@@ -51,7 +55,11 @@ export class WorkOrderManageSkill implements ChannelSkill<ResolvedWorkOrderManag
         description: 'The production action to execute',
       },
       operationQuery: { type: 'string', description: 'Operation or machine name, e.g. "die cutting"' },
-      quantityCompleted: { type: 'number', description: 'Good pieces produced when completing a job' },
+      quantityCompleted: {
+        type: 'number',
+        minimum: 0,
+        description: 'Good pieces produced when completing a job',
+      },
       cancelReason: { type: 'string', description: 'Reason for cancellation' },
     },
     additionalProperties: false,
@@ -81,6 +89,16 @@ export class WorkOrderManageSkill implements ChannelSkill<ResolvedWorkOrderManag
 
     const action = (slots.action as ResolvedWorkOrderManage['action']) || 'START';
 
+    if (
+      requiresWorkOrderUpdate(action) &&
+      !ctx.permissions.includes(PERMISSIONS.WORK_ORDER_UPDATE)
+    ) {
+      return {
+        kind: 'refused',
+        reason: `You don't have permission to ${action.toLowerCase()} work orders.`,
+      };
+    }
+
     if (action === 'RELEASE') {
       return {
         kind: 'resolved',
@@ -89,10 +107,21 @@ export class WorkOrderManageSkill implements ChannelSkill<ResolvedWorkOrderManag
     }
 
     if (action === 'COMPLETE') {
-      const qty = typeof slots.quantityCompleted === 'number' ? slots.quantityCompleted : wo.qty;
+      if (typeof slots.quantityCompleted !== 'number') {
+        return {
+          kind: 'question',
+          question: `How many good pieces were produced for ${wo.woNumber}?`,
+          slots: { ...slots, workOrderNumber: wo.woNumber, action },
+        };
+      }
       return {
         kind: 'resolved',
-        value: { workOrderId: wo.id, woNumber: wo.woNumber, action: 'COMPLETE', quantityCompleted: qty },
+        value: {
+          workOrderId: wo.id,
+          woNumber: wo.woNumber,
+          action: 'COMPLETE',
+          quantityCompleted: slots.quantityCompleted,
+        },
       };
     }
 
@@ -162,6 +191,13 @@ export class WorkOrderManageSkill implements ChannelSkill<ResolvedWorkOrderManag
   }
 
   async execute(value: ResolvedWorkOrderManage, ctx: SkillContext): Promise<SkillOutcome> {
+    if (
+      requiresWorkOrderUpdate(value.action) &&
+      !ctx.permissions.includes(PERMISSIONS.WORK_ORDER_UPDATE)
+    ) {
+      throw new Error(`You don't have permission to ${value.action.toLowerCase()} work orders.`);
+    }
+
     switch (value.action) {
       case 'RELEASE': {
         await this.production.release(ctx.organizationId, value.workOrderId);

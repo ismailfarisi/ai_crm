@@ -85,9 +85,7 @@ export function ProductionBoard() {
       if (wo.status === 'RELEASED' || wo.status === 'IN_PROGRESS') {
         activeJobs++;
       }
-      if (wo.operations.some((op) => op.status === 'RUNNING')) {
-        runningClocks++;
-      }
+      runningClocks += wo.operations.filter((op) => op.status === 'RUNNING').length;
       if (wo.dueDate && wo.status !== 'COMPLETE' && wo.status !== 'CANCELLED') {
         const due = new Date(wo.dueDate);
         const dueMidnight = new Date(due.getFullYear(), due.getMonth(), due.getDate());

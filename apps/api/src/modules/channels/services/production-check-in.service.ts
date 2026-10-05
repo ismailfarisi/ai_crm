@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -8,8 +9,18 @@ import { StaffChannelIdentity } from '../entities/staff-channel-identity.entity'
 import { ChannelConfig, ChannelProviderType } from '../entities/channel-config.entity';
 import { ChannelConversation } from '../entities/channel-conversation.entity';
 import { CHANNEL_SKILLS, type WorkOrderDto, type WorkOrderQueryPayload } from '@saas/shared';
+import type { AppConfig } from '../../../config/configuration';
 
 const COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+export function isWithinCheckInWindow(
+  date: Date,
+  startHourUtc: number,
+  endHourUtc: number,
+): boolean {
+  const hourUtc = date.getUTCHours();
+  return hourUtc >= startHourUtc && hourUtc < endHourUtc;
+}
 
 @Injectable()
 export class ProductionCheckInService {
@@ -25,10 +36,16 @@ export class ProductionCheckInService {
     private readonly configRepo: Repository<ChannelConfig>,
     @InjectRepository(ChannelConversation)
     private readonly convRepo: Repository<ChannelConversation>,
+    private readonly config: ConfigService<AppConfig, true>,
   ) {}
 
   @Cron(CronExpression.EVERY_30_MINUTES)
   async handleScheduledCheckIns(): Promise<void> {
+    const { startHourUtc, endHourUtc } = this.config.get('productionCheckIns', {
+      infer: true,
+    });
+    if (!isWithinCheckInWindow(new Date(), startHourUtc, endHourUtc)) return;
+
     const activeConfigs = await this.configRepo.find({
       where: { isEnabled: true },
     });
@@ -71,7 +88,11 @@ export class ProductionCheckInService {
       // 2. Check delayed / overdue jobs
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      if (job.status !== 'COMPLETE' && job.status !== 'CANCELLED' && job.dueDate && new Date(job.dueDate) < today) {
+      if (
+        (job.status === 'RELEASED' || job.status === 'IN_PROGRESS') &&
+        job.dueDate &&
+        new Date(job.dueDate) < today
+      ) {
         const cooldownKey = `wo-overdue:${job.id}`;
         const lastPing = this.lastPings.get(cooldownKey);
         if (!lastPing || Date.now() - lastPing > COOLDOWN_MS) {
@@ -111,7 +132,7 @@ export class ProductionCheckInService {
         this.convRepo.create({
           organizationId: orgId,
           provider: recipient.provider,
-          recipient: recipient.identifier,
+          senderIdentifier: recipient.identifier,
           userId: recipient.userId,
           skillName: CHANNEL_SKILLS.WORK_ORDER_MANAGE,
           status: 'COLLECTING',
