@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
-import { isBalanced } from '@saas/shared';
+import { DEFAULT_BOARD_COLUMNS, isBalanced } from '@saas/shared';
 import { ProductionService } from './production.service';
 
 const tenantId = '11111111-1111-1111-1111-111111111111';
@@ -18,6 +18,7 @@ function makeWorld() {
     SalesOrderLine: [],
     Quote: [],
     JournalEntry: [],
+    ProductionBoardSetting: [],
   };
   let nextId = 1;
   let sequence = 0;
@@ -174,6 +175,7 @@ function makeWorld() {
     repo('SalesOrder') as any,
     repo('SalesOrderLine') as any,
     repo('Quote') as any,
+    repo('ProductionBoardSetting') as any,
     costing as any,
     inventory as any,
     ledger as any,
@@ -489,5 +491,156 @@ describe('ProductionService.complete', () => {
     await expect(w.service.cancel(tenantId, wo.id, null)).rejects.toThrow(
       /Return Greyboard/,
     );
+  });
+});
+
+describe('Board Columns Configuration', () => {
+  let service: ProductionService;
+  let mockBoardSettingsRepo: any;
+  let mockWoRepo: any;
+
+  beforeEach(() => {
+    mockBoardSettingsRepo = {
+      findOne: jest.fn(),
+      find: jest.fn(),
+      create: jest.fn((dto) => ({ ...dto })),
+      save: jest.fn(),
+    };
+    mockWoRepo = {
+      findOne: jest.fn(),
+      save: jest.fn(),
+      createQueryBuilder: jest.fn(),
+    };
+    const emptyRepo = {
+      find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValue(null),
+    };
+    const dataSource: any = {
+      transaction: jest.fn(async (cb) => {
+        const manager: any = {
+          getRepository: jest.fn((entity: any) => {
+            if (entity.name === 'WorkOrder') return mockWoRepo;
+            if (entity.name === 'ProductionBoardSetting')
+              return mockBoardSettingsRepo;
+            return emptyRepo;
+          }),
+        };
+        return cb(manager);
+      }),
+    };
+    mockWoRepo.createQueryBuilder.mockReturnValue({
+      setLock: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockImplementation(() => mockWoRepo.findOne()),
+    });
+
+    service = new ProductionService(
+      mockWoRepo,
+      emptyRepo as any,
+      emptyRepo as any,
+      emptyRepo as any,
+      emptyRepo as any,
+      emptyRepo as any,
+      mockBoardSettingsRepo,
+      {} as any,
+      {} as any,
+      {} as any,
+      dataSource,
+    );
+  });
+
+  it('returns DEFAULT_BOARD_COLUMNS when no tenant settings exist', async () => {
+    mockBoardSettingsRepo.findOne.mockResolvedValue(null);
+    const columns = await service.getBoardColumns('test-tenant');
+    expect(columns).toEqual(DEFAULT_BOARD_COLUMNS);
+  });
+
+  it('saves and normalizes custom columns sequence on update', async () => {
+    const customCols = [
+      {
+        id: 'c1',
+        name: 'Planned',
+        status: 'PLANNED' as const,
+        color: 'slate' as const,
+        sequence: 0,
+        isDefault: true,
+      },
+      {
+        id: 'c2',
+        name: 'Released',
+        status: 'RELEASED' as const,
+        color: 'blue' as const,
+        sequence: 1,
+        isDefault: true,
+      },
+      {
+        id: 'c3',
+        name: 'In progress',
+        status: 'IN_PROGRESS' as const,
+        color: 'amber' as const,
+        sequence: 2,
+        isDefault: true,
+      },
+      {
+        id: 'c-qc',
+        name: 'QC',
+        status: 'IN_PROGRESS' as const,
+        color: 'purple' as const,
+        sequence: 5,
+        isDefault: false,
+      },
+      {
+        id: 'c4',
+        name: 'Complete',
+        status: 'COMPLETE' as const,
+        color: 'emerald' as const,
+        sequence: 10,
+        isDefault: true,
+      },
+    ];
+    mockBoardSettingsRepo.findOne.mockResolvedValue(null);
+    mockBoardSettingsRepo.save.mockImplementation((entity: any) =>
+      Promise.resolve(entity),
+    );
+
+    const result = await service.updateBoardColumns('test-tenant', customCols);
+    expect(result).toHaveLength(5);
+    // Sequences normalized 0 to 4
+    expect(result.map((c) => c.sequence)).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it('updates work order parameters.columnId and syncs status', async () => {
+    const wo = {
+      id: 'wo-1',
+      tenantId: 'test-tenant',
+      status: 'RELEASED',
+      parameters: {},
+    };
+    mockWoRepo.findOne.mockResolvedValue(wo);
+    mockBoardSettingsRepo.findOne.mockResolvedValue({
+      tenantId: 'test-tenant',
+      columns: [
+        {
+          id: 'c-qc',
+          name: 'QC',
+          status: 'IN_PROGRESS',
+          color: 'purple',
+          sequence: 3,
+          isDefault: false,
+        },
+      ],
+    });
+    mockWoRepo.save.mockImplementation((w: any) => Promise.resolve(w));
+
+    await service.updateWorkOrderColumn(
+      'test-tenant',
+      'wo-1',
+      'c-qc',
+      'user-1',
+      false,
+    );
+    expect(wo.status).toBe('IN_PROGRESS');
+    expect((wo.parameters as any).columnId).toBe('c-qc');
   });
 });

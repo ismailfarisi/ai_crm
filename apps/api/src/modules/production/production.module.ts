@@ -13,6 +13,7 @@ import {
   WorkOrderMaterial,
   WorkOrderOperation,
 } from './entities/work-order.entity';
+import { ProductionBoardSetting } from './entities/production-board-settings.entity';
 import { ProductionController } from './production.controller';
 import { ProductionService } from './production.service';
 
@@ -25,6 +26,7 @@ import { ProductionService } from './production.service';
       SalesOrder,
       SalesOrderLine,
       Quote,
+      ProductionBoardSetting,
     ]),
     // Routing and material come from the costing engine; issues move stock
     // and post to the ledger.

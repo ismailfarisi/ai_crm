@@ -16,6 +16,7 @@ import {
 import {
   actualCost,
   canTransitionWorkOrder,
+  DEFAULT_BOARD_COLUMNS,
   elapsedMinutes,
   isOnTheFloor,
   LEDGER_ROLES,
@@ -23,6 +24,7 @@ import {
   rankVariance,
   type CostSplit,
   type JournalLineInput,
+  type ProductionBoardColumn,
   type QuoteLineItem,
   type VarianceRow,
   type WorkOrderDto,
@@ -46,6 +48,7 @@ import {
   WorkOrderMaterial,
   WorkOrderOperation,
 } from './entities/work-order.entity';
+import { ProductionBoardSetting } from './entities/production-board-settings.entity';
 
 const POSTGRES_UNIQUE_VIOLATION = '23505';
 const money = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -80,6 +83,8 @@ export class ProductionService {
     private readonly salesOrderLines: Repository<SalesOrderLine>,
     @InjectRepository(Quote)
     private readonly quotes: Repository<Quote>,
+    @InjectRepository(ProductionBoardSetting)
+    private readonly boardSettingsRepo: Repository<ProductionBoardSetting>,
     private readonly costing: CostingService,
     private readonly inventory: InventoryService,
     private readonly ledger: LedgerService,
@@ -401,6 +406,89 @@ export class ProductionService {
     if (byMaterial.size) await matRepo.save([...byMaterial.values()]);
 
     return wo;
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Board Configuration & Movement
+   * ------------------------------------------------------------------ */
+
+  async getBoardColumns(tenantId: string): Promise<ProductionBoardColumn[]> {
+    const setting = await this.boardSettingsRepo.findOne({
+      where: { tenantId },
+    });
+    if (setting && setting.columns && setting.columns.length > 0) {
+      return [...setting.columns].sort((a, b) => a.sequence - b.sequence);
+    }
+    return DEFAULT_BOARD_COLUMNS;
+  }
+
+  async updateBoardColumns(
+    tenantId: string,
+    columns: ProductionBoardColumn[],
+  ): Promise<ProductionBoardColumn[]> {
+    const normalized = columns.map((col, idx) => ({
+      ...col,
+      sequence: idx,
+    }));
+    let setting = await this.boardSettingsRepo.findOne({ where: { tenantId } });
+    if (!setting) {
+      setting = this.boardSettingsRepo.create({
+        tenantId,
+        columns: normalized,
+      });
+    } else {
+      setting.columns = normalized;
+    }
+    await this.boardSettingsRepo.save(setting);
+    return normalized;
+  }
+
+  async updateWorkOrderColumn(
+    tenantId: string,
+    id: string,
+    columnId: string,
+    actorId: string,
+    canSeeCost: boolean,
+  ): Promise<WorkOrderDto> {
+    const columns = await this.getBoardColumns(tenantId);
+    const targetCol = columns.find((c) => c.id === columnId);
+    if (!targetCol) {
+      throw new BadRequestException(
+        `Target column "${columnId}" not found on board`,
+      );
+    }
+
+    await this.dataSource.transaction(async (manager) => {
+      const wo = await this.lock(manager, tenantId, id);
+      if (targetCol.status !== wo.status) {
+        if (targetCol.status === 'RELEASED' && wo.status === 'PLANNED') {
+          wo.status = 'RELEASED';
+          wo.releasedAt = new Date();
+        } else if (targetCol.status === 'IN_PROGRESS') {
+          if (wo.status === 'PLANNED') {
+            wo.releasedAt = new Date();
+          }
+          wo.status = 'IN_PROGRESS';
+        } else if (targetCol.status === 'COMPLETE') {
+          if (wo.status === 'PLANNED') {
+            throw new BadRequestException(
+              'Cannot complete a planned job without releasing first',
+            );
+          }
+          // Direct complete transition
+          wo.status = 'COMPLETE';
+          wo.completedAt = new Date();
+          wo.completedById = actorId;
+        }
+      }
+      wo.parameters = {
+        ...(wo.parameters || {}),
+        columnId: targetCol.id,
+      };
+      await manager.getRepository(WorkOrder).save(wo);
+    });
+
+    return this.get(tenantId, id, canSeeCost);
   }
 
   /* ------------------------------------------------------------------ *
@@ -989,7 +1077,11 @@ export class ProductionService {
             valueIssued: canSeeCost ? m.valueIssued : 0,
             estimatedUnitCost: canSeeCost ? m.estimatedUnitCost : 0,
           })),
-        createdAt: wo.createdAt.toISOString(),
+        createdAt: wo.createdAt
+          ? wo.createdAt instanceof Date
+            ? wo.createdAt.toISOString()
+            : String(wo.createdAt)
+          : new Date().toISOString(),
       };
     });
   }
