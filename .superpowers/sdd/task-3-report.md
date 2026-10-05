@@ -1,93 +1,68 @@
-# Task 3 Report: Refactor TypeORM Entities & Domain Services to Standardized tenantId
+# Task 3 Implementation Report: Proactive Production Check-In Cron (`apps/api`)
 
-**Date:** 2026-10-01  
-**Branch:** `feat/postgres-rls-multitenancy`  
-**Commit:** `9d9b26d` (`refactor: update entities and services to standardized tenantId`)  
-**Status:** Completed & Verified  
+## What Was Implemented
+- Implemented `ProductionCheckInService` in `apps/api/src/modules/channels/services/production-check-in.service.ts`:
+  - Decorated with `@Cron(CronExpression.EVERY_30_MINUTES)` to run scheduled check-ins across all tenant organizations having active channel configurations.
+  - Multi-tenant isolation: retrieves work orders scoped strictly by `organizationId` via `ProductionService.list(orgId, ...)` and resolves staff identity contacts filtered strictly by `organizationId`.
+  - Overrunning operation detection: scans `RUNNING` operations where `actualMinutes + runningMinutes > totalEstimated` (`estimatedSetupMinutes + estimatedRunMinutes`).
+  - Delayed/overdue order detection: scans non-complete, non-cancelled work orders where `dueDate < startOfToday`.
+  - 2-hour anti-spam cooldown window (`COOLDOWN_MS = 2 * 60 * 60 * 1000`) tracked per operation (`op:${op.id}`) and per overdue work order (`wo-overdue:${job.id}`).
+  - Resolves recipients mapped to operator ID or falls back to any configured Telegram staff identity for that tenant organization.
+  - Dispatches actionable alert messages through `ChannelsService.sendMessage`.
+- Registered `ProductionCheckInService` in `apps/api/src/modules/channels/channels.module.ts` in `providers` and `exports`.
+- Created comprehensive test suite in `apps/api/src/modules/channels/services/production-check-in.service.spec.ts`.
 
----
+## TDD Evidence
 
-## 1. Overview & Objective
-
-Task 3 aligns the NestJS TypeORM domain model in `apps/api` with the column standardization database migration established in Task 2. Specifically, the legacy column name `organization_id` (and TypeORM property `organizationId`) has been refactored to `tenant_id` and property `tenantId` across all core tenant-partitioned entities, indexes, and service query builders.
-
-The actor context model preserves `actor.organizationId` on `AuthenticatedUser` (reflecting JWT claims), while entity properties and database queries now reference `tenantId` uniformly.
-
----
-
-## 2. Changes Implemented
-
-### A. Base Entities (`apps/api/src/common/entities/base.entity.ts`)
-- **`TenantBaseEntity`**: Abstract base entity extending `BaseEntity`, introducing `@Column({ name: 'tenant_id', type: 'uuid' }) tenantId: string`.
-- **`TenantSoftDeletableEntity`**: Abstract base entity extending `SoftDeletableEntity`, introducing `@Column({ name: 'tenant_id', type: 'uuid' }) tenantId: string`.
-
-### B. Core Tenant Entities
-1. **`Contact` (`apps/api/src/modules/contacts/entities/contact.entity.ts`)**:
-   - Extends `TenantSoftDeletableEntity`.
-   - Updated `@JoinColumn({ name: 'tenant_id' })`.
-   - Updated composite indexes to use `tenantId`.
-2. **`Customer` (`apps/api/src/modules/customers/entities/customer.entity.ts`)**:
-   - Extends `TenantSoftDeletableEntity`.
-   - Updated `@JoinColumn({ name: 'tenant_id' })`.
-   - Renamed indexes: `idx_customers_tenant_created` (`['tenantId', 'createdAt']`) and `uq_customers_tenant_company` (`['tenantId', 'companyName']`).
-3. **`User` (`apps/api/src/modules/users/entities/user.entity.ts`)**:
-   - Extends `TenantBaseEntity`.
-   - Updated `@JoinColumn({ name: 'tenant_id' })`.
-4. **`Team` (`apps/api/src/modules/teams/entities/team.entity.ts`)**:
-   - Extends `TenantSoftDeletableEntity`.
-   - Updated `@JoinColumn({ name: 'tenant_id' })`.
-   - Renamed index: `idx_teams_tenant_name` (`['tenantId', 'name']`).
-5. **`Role` (`apps/api/src/modules/rbac/entities/role.entity.ts`)**:
-   - Extends `TenantBaseEntity`.
-   - Updated `@JoinColumn({ name: 'tenant_id' })`.
-   - Renamed index: `uq_roles_tenant_slug` (`['tenantId', 'slug']`).
-6. **`Invitation` (`apps/api/src/modules/invitations/entities/invitation.entity.ts`)**:
-   - Extends `TenantBaseEntity`.
-   - Updated `@JoinColumn({ name: 'tenant_id' })`.
-7. **`DocumentTemplate` (`apps/api/src/modules/document-templates/entities/document-template.entity.ts`)**:
-   - Explicitly mapped `@Column({ name: 'tenant_id', type: 'uuid' }) tenantId: string`.
-   - Renamed index: `idx_document_templates_tenant` (`['tenantId', 'type']`).
-
-### C. Domain Services & Repositories
-- **`ContactsService`**: `findOrCreateForChannel`, `create`, and `scoped()` updated to filter and save `tenantId: actor.organizationId`.
-- **`CustomersService` & `CustomerStatementService`**: Filter and query builders updated from `customer.organizationId` to `customer.tenantId`.
-- **`TeamsService`**: `listTeams`, `getTeam`, `createTeam`, `deleteTeam`, `findTeam`, `findMemberInOrg`, and `ensureUniqueName` updated to query by `tenantId`.
-- **`UsersService`**: `createUser`, `listMembers`, `findMember`, `findTeamInOrg`, and `isLastActiveOwner` updated to operate on `tenantId`.
-- **`RbacService`**: `syncSystemRolesForAllOrganizations`, `provisionSystemRoles`, `resolveAccess`, `listRoles`, `findRole`, `createRole`, `findRolesByIds`, and `findRoleBySlug` updated to use `tenantId`.
-- **`InvitationsService`**: `createInvitation`, `listPending`, `consume`, and `findPending` updated to use `tenantId`.
-- **`DocumentTemplatesService`**: `findAll`, `findById`, `create`, `delete`, `setDefault`, `resolveForDocumentType`, and `unsetDefaultConflict` updated to use `tenantId`.
-
-### D. Cross-Cutting & Consumer Updates
-- **`TaxService`**: `partyForCustomer` queries customer by `customer.tenantId`.
-- **`BillingService`**: `activeUsers` queries active users count by `tenantId`.
-- **`AuthService`**: Session resolution and login audit logs updated to `user.tenantId`.
-- **`JwtStrategy`**: Validates `user.tenantId` against payload.
-- **`TokensService`**: Mints JWT payload using `user.tenantId`.
-- **`Database Seeds (`run-seed.ts`)**: Sets `owner.tenantId` on seed user creation.
-
----
-
-## 3. Verification & Test Results
-
-### Build Verification
-```bash
-pnpm --filter api build
+### RED Phase
+Running `pnpm --filter api test src/modules/channels/services/production-check-in.service.spec.ts` prior to service implementation:
 ```
-- **Exit Code**: 0 (Clean compilation, zero TypeScript errors)
+$ jest "src/modules/channels/services/production-check-in.service.spec.ts"
+FAIL src/modules/channels/services/production-check-in.service.spec.ts
+  ● Test suite failed to run
 
-### Unit & Integration Tests
-```bash
-pnpm --filter api test
+    Cannot find module './production-check-in.service' from 'modules/channels/services/production-check-in.service.spec.ts'
+
+    > 1 | import { ProductionCheckInService } from './production-check-in.service';
+        | ^
 ```
-- **Test Suites**: 70 passed, 70 total
-- **Tests**: 794 passed, 794 total
-- **Snapshots**: 0 total
-- **Time**: 45.247 s
 
-All tests in `CustomersService`, `CustomerStatementService`, `DocumentTemplatesService`, `InvitationsService`, `TokensService`, `RbacService`, and other modules pass with full assertion coverage.
+### GREEN Phase
+Running `pnpm --filter api test src/modules/channels/services/production-check-in.service.spec.ts`:
+```
+PASS src/modules/channels/services/production-check-in.service.spec.ts
+  ProductionCheckInService
+    √ detects operations running longer than estimated time and sends check-in (3 ms)
+    √ respects 2-hour cooldown and does not ping again within cooldown window
+    √ detects overdue work orders and dispatches overdue alert (1 ms)
+    √ runs handleScheduledCheckIns across distinct orgs with active configs (1 ms)
 
----
+Test Suites: 1 passed, 1 total
+Tests:       4 passed, 4 total
+Snapshots:   0 total
+Time:        1.561 s, estimated 3 s
+```
 
-## 4. Next Steps
-Task 3 is complete. The system is ready to proceed to:
-- **Task 4**: Database Migration for PostgreSQL Row-Level Security (RLS) policies on tenant-isolated tables.
+### Regression Verification
+Running full channels test suite `pnpm --filter api test src/modules/channels/`:
+```
+Test Suites: 17 passed, 17 total
+Tests:       255 passed, 255 total
+Snapshots:   0 total
+Time:        3.486 s
+Ran all test suites matching src/modules/channels/.
+```
+
+## Files Changed
+- `apps/api/src/modules/channels/services/production-check-in.service.ts` (created)
+- `apps/api/src/modules/channels/services/production-check-in.service.spec.ts` (created)
+- `apps/api/src/modules/channels/channels.module.ts` (modified: added service to providers & exports)
+
+## Self-Review Findings
+- **Multi-tenant data isolation**: Every lookup and outgoing message specifies `organizationId`. Cross-tenant data leakage is prevented.
+- **Schema & Drift**: No entity schemas or migrations were altered.
+- **Rate limiting / Anti-spam**: In-memory `lastPings` map prevents duplicate alerts within a 2-hour window per operation or work order.
+- **TypeScript & Typing**: Passed type validation without any compilation errors in the channels module.
+
+## Issues or Concerns
+- None. In-memory cooldown tracking resets upon server restart, which is expected for ephemeral alerting cooldowns and safe against unbounded memory growth given typical active work order counts.
