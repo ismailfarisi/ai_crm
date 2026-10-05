@@ -11,6 +11,16 @@ describe('validateEnv', () => {
     expect(() => validateEnv(base)).not.toThrow();
   });
 
+  it('rejects an invalid production check-in window', () => {
+    expect(() =>
+      validateEnv({
+        ...base,
+        PRODUCTION_CHECK_IN_START_HOUR_UTC: '19',
+        PRODUCTION_CHECK_IN_END_HOUR_UTC: '7',
+      }),
+    ).toThrow(/PRODUCTION_CHECK_IN_END_HOUR_UTC must be later/);
+  });
+
   it('fails when secrets are too short', () => {
     expect(() => validateEnv({ ...base, JWT_ACCESS_SECRET: 'short' })).toThrow(
       /JWT_ACCESS_SECRET must be at least 32 characters/,

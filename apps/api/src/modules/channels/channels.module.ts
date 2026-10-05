@@ -19,6 +19,7 @@ import { ChannelCryptoService } from './services/channel-crypto.service';
 import { ChannelCommandService } from './services/channel-command.service';
 import { AiAgentService } from './services/ai-agent.service';
 import { IntentAgentConfigService } from './services/intent-agent-config.service';
+import { ProductionCheckInService } from './services/production-check-in.service';
 import { ChannelsService } from './channels.service';
 import { ChannelsController } from './channels.controller';
 import { ChannelsWebhookController } from './channels-webhook.controller';
@@ -50,7 +51,13 @@ import { ChannelsWebhookController } from './channels-webhook.controller';
     SkillRouterService,
     AiAgentService,
     IntentAgentConfigService,
+    ProductionCheckInService,
   ],
-  exports: [ChannelsService, ChannelCryptoService, AiAgentService],
+  exports: [
+    ChannelsService,
+    ChannelCryptoService,
+    AiAgentService,
+    ProductionCheckInService,
+  ],
 })
 export class ChannelsModule {}

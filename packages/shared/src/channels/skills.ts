@@ -41,6 +41,8 @@ export const CHANNEL_SKILLS = {
   QUOTE_CREATE: 'quote.create',
   PURCHASE_ORDER_CREATE: 'purchase_order.create',
   WORK_ORDER_LOG_TIME: 'work_order.log_time',
+  WORK_ORDER_MANAGE: 'work_order.manage',
+  WORK_ORDER_QUERY: 'work_order.query',
   DELIVERY_DISPATCH: 'delivery.dispatch',
   SALES_ORDER_FROM_DOCUMENT: 'sales_order.from_document',
 } as const;
