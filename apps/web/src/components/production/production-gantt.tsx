@@ -61,6 +61,7 @@ function stepTimeWindow(anchorDate: Date, scale: GanttTimeScale, direction: -1 |
     return d;
   }
   // month
+  d.setDate(1);
   d.setMonth(d.getMonth() + direction);
   return d;
 }

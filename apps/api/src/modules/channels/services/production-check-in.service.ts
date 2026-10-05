@@ -6,7 +6,8 @@ import { ProductionService } from '../../production/production.service';
 import { ChannelsService } from '../channels.service';
 import { StaffChannelIdentity } from '../entities/staff-channel-identity.entity';
 import { ChannelConfig, ChannelProviderType } from '../entities/channel-config.entity';
-import type { WorkOrderDto, WorkOrderQueryPayload } from '@saas/shared';
+import { ChannelConversation } from '../entities/channel-conversation.entity';
+import { CHANNEL_SKILLS, type WorkOrderDto, type WorkOrderQueryPayload } from '@saas/shared';
 
 const COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 hours
 
@@ -22,6 +23,8 @@ export class ProductionCheckInService {
     private readonly identityRepo: Repository<StaffChannelIdentity>,
     @InjectRepository(ChannelConfig)
     private readonly configRepo: Repository<ChannelConfig>,
+    @InjectRepository(ChannelConversation)
+    private readonly convRepo: Repository<ChannelConversation>,
   ) {}
 
   @Cron(CronExpression.EVERY_30_MINUTES)
@@ -102,6 +105,24 @@ export class ProductionCheckInService {
         recipient: recipient.identifier,
         body,
       });
+
+      const ttlDate = new Date(Date.now() + 15 * 60 * 1000); // 15 mins TTL
+      await this.convRepo.save(
+        this.convRepo.create({
+          organizationId: orgId,
+          provider: recipient.provider,
+          recipient: recipient.identifier,
+          userId: recipient.userId,
+          skillName: CHANNEL_SKILLS.WORK_ORDER_MANAGE,
+          status: 'COLLECTING',
+          slots: {
+            workOrderNumber: job.woNumber,
+            operationQuery: op.label,
+          },
+          expiresAt: ttlDate,
+        }),
+      );
+
       return true;
     } catch (err) {
       this.logger.warn(`Failed to dispatch check-in ping to ${recipient.identifier}:`, err);

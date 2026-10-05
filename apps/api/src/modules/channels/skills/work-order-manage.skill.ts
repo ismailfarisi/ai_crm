@@ -23,6 +23,8 @@ export interface ResolvedWorkOrderManage {
   action: 'START' | 'STOP' | 'FINISH' | 'RELEASE' | 'COMPLETE' | 'CANCEL' | 'ADVANCE';
   operationId?: string;
   operationLabel?: string;
+  nextOperationId?: string;
+  nextOperationLabel?: string;
   quantityCompleted?: number;
   cancelReason?: string;
 }
@@ -113,8 +115,12 @@ export class WorkOrderManageSkill implements ChannelSkill<ResolvedWorkOrderManag
     if (!targetOp) {
       if (action === 'STOP' || action === 'FINISH') {
         targetOp = wo.operations.find((op) => op.status === 'RUNNING');
-      } else if (action === 'START' || action === 'ADVANCE') {
+      } else if (action === 'START') {
         targetOp = wo.operations.find((op) => op.status === 'PENDING');
+      } else if (action === 'ADVANCE') {
+        targetOp =
+          wo.operations.find((op) => op.status === 'RUNNING') ??
+          wo.operations.find((op) => op.status === 'PENDING');
       }
     }
 
@@ -127,6 +133,13 @@ export class WorkOrderManageSkill implements ChannelSkill<ResolvedWorkOrderManag
       };
     }
 
+    let nextOp: typeof wo.operations[number] | undefined;
+    if (action === 'ADVANCE' && targetOp) {
+      nextOp = wo.operations.find(
+        (op) => op.sequence > targetOp!.sequence && op.status === 'PENDING',
+      );
+    }
+
     return {
       kind: 'resolved',
       value: {
@@ -135,6 +148,8 @@ export class WorkOrderManageSkill implements ChannelSkill<ResolvedWorkOrderManag
         action,
         operationId: targetOp?.id,
         operationLabel: targetOp?.label,
+        nextOperationId: nextOp?.id,
+        nextOperationLabel: nextOp?.label,
       },
     };
   }
@@ -170,11 +185,27 @@ export class WorkOrderManageSkill implements ChannelSkill<ResolvedWorkOrderManag
         await this.production.stopOperation(ctx.organizationId, value.workOrderId, value.operationId, false);
         return { reply: `⏸️ Paused "${value.operationLabel}" on ${value.woNumber}. Time logged.`, resultType: 'WORK_ORDER', resultId: value.workOrderId };
       }
-      case 'FINISH':
-      case 'ADVANCE': {
+      case 'FINISH': {
         if (!value.operationId) throw new Error('Operation is required to finish');
         await this.production.stopOperation(ctx.organizationId, value.workOrderId, value.operationId, true);
         return { reply: `✅ Finished "${value.operationLabel}" on ${value.woNumber}. Step marked DONE.`, resultType: 'WORK_ORDER', resultId: value.workOrderId };
+      }
+      case 'ADVANCE': {
+        if (!value.operationId) throw new Error('Operation is required to finish');
+        await this.production.stopOperation(ctx.organizationId, value.workOrderId, value.operationId, true);
+        if (value.nextOperationId) {
+          await this.production.startOperation(ctx.organizationId, value.workOrderId, value.nextOperationId, ctx.userId);
+          return {
+            reply: `✅ Finished "${value.operationLabel}". Started next operation: "${value.nextOperationLabel}".`,
+            resultType: 'WORK_ORDER',
+            resultId: value.workOrderId,
+          };
+        }
+        return {
+          reply: `✅ Finished final operation "${value.operationLabel}" on ${value.woNumber}. All operations complete!`,
+          resultType: 'WORK_ORDER',
+          resultId: value.workOrderId,
+        };
       }
     }
   }

@@ -683,6 +683,20 @@ describe('ProductionBoard', () => {
       expect(toast.error).toHaveBeenCalledWith("You don't have permission to update work order status");
     });
 
+    it('blocks dropping onto In progress when user lacks execute or update permission', () => {
+      vi.mocked(useCan).mockReturnValue(false);
+      renderBoard();
+
+      const inProgressCol = screen.getByLabelText('In progress');
+      fireEvent.drop(inProgressCol, {
+        dataTransfer: {
+          getData: () => 'wo-1',
+        },
+      });
+
+      expect(toast.error).toHaveBeenCalledWith("You don't have permission to release and start work orders");
+    });
+
     it('disables dragging on completed cards', () => {
       renderBoard();
 

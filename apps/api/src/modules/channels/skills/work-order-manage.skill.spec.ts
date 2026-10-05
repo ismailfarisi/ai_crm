@@ -137,14 +137,66 @@ describe('WorkOrderManageSkill', () => {
     }
   });
 
-  it('finishes and advances operation when action is FINISH or ADVANCE', async () => {
+  it('finishes operation when action is FINISH', async () => {
     (production.list as jest.Mock).mockResolvedValue([
       {
         id: 'wo-1',
         woNumber: 'WO-2026-0003',
         status: 'IN_PROGRESS',
         operations: [
-          { id: 'op-1', label: 'Printing', status: 'RUNNING', workCenterName: 'Press' },
+          { id: 'op-1', sequence: 1, label: 'Printing', status: 'RUNNING', workCenterName: 'Press' },
+        ],
+      },
+    ]);
+    (production.stopOperation as jest.Mock).mockResolvedValue({ id: 'wo-1' });
+
+    const res = await skill.resolve({ workOrderNumber: 'WO-2026-0003', action: 'FINISH', operationQuery: 'printing' }, ctx);
+    expect(res.kind).toBe('resolved');
+    if (res.kind === 'resolved') {
+      const outcome = await skill.execute(res.value, ctx);
+      expect(production.stopOperation).toHaveBeenCalledWith('org-1', 'wo-1', 'op-1', true);
+      expect(outcome.reply).toContain('Finished "Printing" on WO-2026-0003. Step marked DONE.');
+    }
+  });
+
+  it('advances to next sequential operation when action is ADVANCE and next op exists', async () => {
+    (production.list as jest.Mock).mockResolvedValue([
+      {
+        id: 'wo-1',
+        woNumber: 'WO-2026-0003',
+        status: 'IN_PROGRESS',
+        operations: [
+          { id: 'op-1', sequence: 1, label: 'Printing', status: 'RUNNING', workCenterName: 'Press' },
+          { id: 'op-2', sequence: 2, label: 'Die cutting', status: 'PENDING', workCenterName: 'Cutter' },
+        ],
+      },
+    ]);
+    (production.stopOperation as jest.Mock).mockResolvedValue({ id: 'wo-1' });
+    (production.startOperation as jest.Mock).mockResolvedValue({ id: 'wo-1' });
+
+    const res = await skill.resolve({ workOrderNumber: 'WO-2026-0003', action: 'ADVANCE' }, ctx);
+    expect(res.kind).toBe('resolved');
+    if (res.kind === 'resolved') {
+      expect(res.value.operationId).toBe('op-1');
+      expect(res.value.operationLabel).toBe('Printing');
+      expect(res.value.nextOperationId).toBe('op-2');
+      expect(res.value.nextOperationLabel).toBe('Die cutting');
+
+      const outcome = await skill.execute(res.value, ctx);
+      expect(production.stopOperation).toHaveBeenCalledWith('org-1', 'wo-1', 'op-1', true);
+      expect(production.startOperation).toHaveBeenCalledWith('org-1', 'wo-1', 'op-2', 'user-1');
+      expect(outcome.reply).toBe('✅ Finished "Printing". Started next operation: "Die cutting".');
+    }
+  });
+
+  it('advances final operation when action is ADVANCE and no next op exists', async () => {
+    (production.list as jest.Mock).mockResolvedValue([
+      {
+        id: 'wo-1',
+        woNumber: 'WO-2026-0003',
+        status: 'IN_PROGRESS',
+        operations: [
+          { id: 'op-1', sequence: 1, label: 'Printing', status: 'RUNNING', workCenterName: 'Press' },
         ],
       },
     ]);
@@ -153,9 +205,13 @@ describe('WorkOrderManageSkill', () => {
     const res = await skill.resolve({ workOrderNumber: 'WO-2026-0003', action: 'ADVANCE', operationQuery: 'printing' }, ctx);
     expect(res.kind).toBe('resolved');
     if (res.kind === 'resolved') {
+      expect(res.value.operationId).toBe('op-1');
+      expect(res.value.nextOperationId).toBeUndefined();
+
       const outcome = await skill.execute(res.value, ctx);
       expect(production.stopOperation).toHaveBeenCalledWith('org-1', 'wo-1', 'op-1', true);
-      expect(outcome.reply).toContain('Finished "Printing"');
+      expect(production.startOperation).not.toHaveBeenCalled();
+      expect(outcome.reply).toBe('✅ Finished final operation "Printing" on WO-2026-0003. All operations complete!');
     }
   });
 

@@ -65,8 +65,8 @@ export function ProductionKanban({
         return;
       }
     } else if (targetStatus === 'IN_PROGRESS') {
-      if (!canExecute) {
-        toast.error("You don't have permission to update work order status");
+      if (!canExecute || (wo.status === 'PLANNED' && !canUpdate)) {
+        toast.error("You don't have permission to release and start work orders");
         return;
       }
     }

@@ -3,6 +3,8 @@ import { ProductionService } from '../../production/production.service';
 import { ChannelsService } from '../channels.service';
 import { StaffChannelIdentity } from '../entities/staff-channel-identity.entity';
 import { ChannelConfig, ChannelProviderType } from '../entities/channel-config.entity';
+import { ChannelConversation } from '../entities/channel-conversation.entity';
+import { CHANNEL_SKILLS } from '@saas/shared';
 import type { Repository } from 'typeorm';
 
 describe('ProductionCheckInService', () => {
@@ -11,6 +13,7 @@ describe('ProductionCheckInService', () => {
   let channels: Partial<ChannelsService>;
   let identityRepo: Partial<Repository<StaffChannelIdentity>>;
   let configRepo: Partial<Repository<ChannelConfig>>;
+  let convRepo: Partial<Repository<ChannelConversation>>;
 
   beforeEach(() => {
     production = {
@@ -26,11 +29,16 @@ describe('ProductionCheckInService', () => {
     configRepo = {
       find: jest.fn(),
     };
+    convRepo = {
+      create: jest.fn((entity) => entity),
+      save: jest.fn().mockImplementation(async (entity) => ({ id: 'conv-1', ...entity })),
+    };
     service = new ProductionCheckInService(
       production as ProductionService,
       channels as ChannelsService,
       identityRepo as Repository<StaffChannelIdentity>,
       configRepo as Repository<ChannelConfig>,
+      convRepo as Repository<ChannelConversation>,
     );
   });
 
@@ -72,6 +80,20 @@ describe('ProductionCheckInService', () => {
       recipient: '12345678',
       body: expect.stringContaining('WO-2026-0003'),
     }));
+    expect(convRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: 'org-1',
+        provider: ChannelProviderType.TELEGRAM,
+        recipient: '12345678',
+        userId: 'user-1',
+        skillName: CHANNEL_SKILLS.WORK_ORDER_MANAGE,
+        status: 'COLLECTING',
+        slots: {
+          workOrderNumber: 'WO-2026-0003',
+          operationQuery: 'Die cutting',
+        },
+      }),
+    );
   });
 
   it('respects 2-hour cooldown and does not ping again within cooldown window', async () => {

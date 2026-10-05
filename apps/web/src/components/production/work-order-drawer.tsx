@@ -65,11 +65,14 @@ export function WorkOrderDrawer({ workOrderId, onClose }: WorkOrderDrawerProps) 
   useEffect(() => {
     if (!workOrderId) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        if (loggingOp || completing) return;
+        onClose();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [workOrderId, onClose]);
+  }, [workOrderId, onClose, loggingOp, completing]);
 
   const running = wo?.operations.some((op) => op.status === 'RUNNING') ?? false;
   const now = useNow(running);
