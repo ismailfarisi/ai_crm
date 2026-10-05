@@ -79,6 +79,7 @@ export function ProductionKanban({
   const handleDrop = async (targetColumn: ProductionBoardColumn, workOrderId: string) => {
     const wo = workOrders.find((w) => w.id === workOrderId);
     if (!wo) return;
+    if (wo.status === 'COMPLETE' || wo.status === 'CANCELLED') return;
 
     // Check if card is already placed in this target column
     const currentTargetColId =
@@ -164,15 +165,11 @@ export function ProductionKanban({
     if (!completingWo) return;
     try {
       setIsSubmitting(true);
-      await api.workOrders.complete(completingWo.id, Number(goodQty) || 0);
-
-      if (completingTargetColId) {
-        const updateFn =
-          api.production?.workOrders?.updateColumn || api.workOrders?.updateColumn;
-        if (updateFn) {
-          await updateFn(completingWo.id, completingTargetColId).catch(() => {});
-        }
-      }
+      await api.workOrders.complete(
+        completingWo.id,
+        Number(goodQty) || 0,
+        completingTargetColId ?? undefined,
+      );
 
       toast.success(`${completingWo.woNumber} completed`);
       await invalidate();
@@ -324,7 +321,11 @@ export function ProductionKanban({
                             disabled={colIdx === 0}
                             onClick={async () => {
                               setOpenMenuColId(null);
-                              await moveColumn(column.id, 'left');
+                              try {
+                                await moveColumn(column.id, 'left');
+                              } catch (err: unknown) {
+                                toast.error(err instanceof Error ? err.message : 'Failed to move column');
+                              }
                             }}
                             className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-ink hover:bg-surface-sunk disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                           >
@@ -337,7 +338,11 @@ export function ProductionKanban({
                             disabled={colIdx === columns.length - 1}
                             onClick={async () => {
                               setOpenMenuColId(null);
-                              await moveColumn(column.id, 'right');
+                              try {
+                                await moveColumn(column.id, 'right');
+                              } catch (err: unknown) {
+                                toast.error(err instanceof Error ? err.message : 'Failed to move column');
+                              }
                             }}
                             className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-ink hover:bg-surface-sunk disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                           >
@@ -350,7 +355,11 @@ export function ProductionKanban({
                             disabled={Boolean(column.isDefault)}
                             onClick={async () => {
                               setOpenMenuColId(null);
-                              await deleteColumn(column.id);
+                              try {
+                                await deleteColumn(column.id);
+                              } catch (err: unknown) {
+                                toast.error(err instanceof Error ? err.message : 'Failed to delete column');
+                              }
                             }}
                             className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-danger hover:bg-danger/10 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                           >

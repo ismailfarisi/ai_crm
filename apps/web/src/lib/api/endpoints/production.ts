@@ -41,8 +41,11 @@ export const productionEndpoints = {
         body: input,
       }),
     release: (id: string) => apiFetch<WorkOrderDto>(`/work-orders/${id}/release`, { method: 'POST' }),
-    complete: (id: string, qtyCompleted: number | null) =>
-      apiFetch<WorkOrderDto>(`/work-orders/${id}/complete`, { method: 'POST', body: { qtyCompleted } }),
+    complete: (id: string, qtyCompleted: number | null, columnId?: string) =>
+      apiFetch<WorkOrderDto>(`/work-orders/${id}/complete`, {
+        method: 'POST',
+        body: { qtyCompleted, ...(columnId ? { columnId } : {}) },
+      }),
     cancel: (id: string, reason: string | null) =>
       apiFetch<WorkOrderDto>(`/work-orders/${id}/cancel`, { method: 'POST', body: { reason } }),
     start: (id: string, operationId: string) =>

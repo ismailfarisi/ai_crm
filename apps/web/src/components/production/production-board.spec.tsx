@@ -710,7 +710,7 @@ describe('ProductionBoard', () => {
       fireEvent.click(confirmBtn);
 
       await waitFor(() => {
-        expect(api.workOrders.complete).toHaveBeenCalledWith('wo-3', 200);
+        expect(api.workOrders.complete).toHaveBeenCalledWith('wo-3', 200, 'complete');
       });
     });
 
