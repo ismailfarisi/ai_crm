@@ -82,6 +82,10 @@ const envSchema = z.object({
   THROTTLE_LIMIT: z.coerce.number().int().positive().default(120),
   AUTH_THROTTLE_LIMIT: z.coerce.number().int().positive().default(10),
 
+  // Automated production check-ins use UTC until organizations have timezone settings.
+  PRODUCTION_CHECK_IN_START_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(7),
+  PRODUCTION_CHECK_IN_END_HOUR_UTC: z.coerce.number().int().min(1).max(24).default(19),
+
   // Mail (see modules/mail — providers are switchable via this enum)
   MAIL_PROVIDER: z.enum(['console', 'ses']).default('console'),
   MAIL_FROM: z.string().default('Relay CRM <no-reply@relay.local>'),
@@ -153,6 +157,12 @@ export function validateEnv(raw: Record<string, unknown>): Env {
   }
 
   const env = result.data;
+
+  if (env.PRODUCTION_CHECK_IN_END_HOUR_UTC <= env.PRODUCTION_CHECK_IN_START_HOUR_UTC) {
+    throw new Error(
+      'Invalid environment configuration: PRODUCTION_CHECK_IN_END_HOUR_UTC must be later than PRODUCTION_CHECK_IN_START_HOUR_UTC.',
+    );
+  }
 
   if (env.NODE_ENV === 'production') {
     const offending = [
@@ -250,6 +260,10 @@ export function configuration() {
       ttl: env.THROTTLE_TTL,
       limit: env.THROTTLE_LIMIT,
       authLimit: env.AUTH_THROTTLE_LIMIT,
+    },
+    productionCheckIns: {
+      startHourUtc: env.PRODUCTION_CHECK_IN_START_HOUR_UTC,
+      endHourUtc: env.PRODUCTION_CHECK_IN_END_HOUR_UTC,
     },
     mail: {
       provider: env.MAIL_PROVIDER,

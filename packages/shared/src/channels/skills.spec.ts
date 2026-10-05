@@ -13,4 +13,10 @@ describe('CHANNEL_SKILLS', () => {
     expect(dnType).toBe('DELIVERY_NOTE');
     expect(soType).toBe('SALES_ORDER');
   });
+
+  it('defines WORK_ORDER_MANAGE and WORK_ORDER_QUERY', () => {
+    expect(CHANNEL_SKILLS.WORK_ORDER_MANAGE).toBe('work_order.manage');
+    expect(CHANNEL_SKILLS.WORK_ORDER_QUERY).toBe('work_order.query');
+  });
 });
+
