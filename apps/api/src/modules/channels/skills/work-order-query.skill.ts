@@ -60,6 +60,14 @@ export class WorkOrderQuerySkill implements ChannelSkill<ResolvedWorkOrderQuery>
       queryType = 'JOB_STATUS';
     }
 
+    if (queryType === 'JOB_STATUS' && !woNum) {
+      return {
+        kind: 'question',
+        question: 'Which work order would you like to check? (e.g. WO-2026-0003)',
+        slots: { ...slots, queryType: 'JOB_STATUS' },
+      };
+    }
+
     return {
       kind: 'resolved',
       value: { queryType, workOrderNumber: woNum },

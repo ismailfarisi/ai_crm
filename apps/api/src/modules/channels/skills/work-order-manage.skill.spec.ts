@@ -179,6 +179,48 @@ describe('WorkOrderManageSkill', () => {
     }
   });
 
+  it('picks running operation for FINISH action when no operationQuery provided', async () => {
+    (production.list as jest.Mock).mockResolvedValue([
+      {
+        id: 'wo-1',
+        woNumber: 'WO-2026-0003',
+        status: 'IN_PROGRESS',
+        operations: [
+          { id: 'op-1', label: 'Printing', status: 'RUNNING', workCenterName: 'Press' },
+          { id: 'op-2', label: 'Cutting', status: 'PENDING', workCenterName: 'Cutter' },
+        ],
+      },
+    ]);
+
+    const res = await skill.resolve({ workOrderNumber: 'WO-2026-0003', action: 'FINISH' }, ctx);
+    expect(res.kind).toBe('resolved');
+    if (res.kind === 'resolved') {
+      expect(res.value.operationId).toBe('op-1');
+      expect(res.value.operationLabel).toBe('Printing');
+    }
+  });
+
+  it('prompts with question when ADVANCE has no pending operation and no query', async () => {
+    (production.list as jest.Mock).mockResolvedValue([
+      {
+        id: 'wo-1',
+        woNumber: 'WO-2026-0003',
+        status: 'IN_PROGRESS',
+        operations: [
+          { id: 'op-1', label: 'Printing', status: 'DONE', workCenterName: 'Press' },
+        ],
+      },
+    ]);
+
+    const res = await skill.resolve({ workOrderNumber: 'WO-2026-0003', action: 'ADVANCE' }, ctx);
+    expect(res.kind).toBe('question');
+    if (res.kind === 'question') {
+      expect(res.question).toContain('Which operation on WO-2026-0003?');
+      expect(res.question).toContain('1. Printing (DONE)');
+      expect(res.slots).toEqual(expect.objectContaining({ action: 'ADVANCE', workOrderNumber: 'WO-2026-0003' }));
+    }
+  });
+
   it('previews actions correctly', async () => {
     expect(await skill.preview({ workOrderId: 'wo-1', woNumber: 'WO-2026-0001', action: 'RELEASE' })).toBe('Release WO-2026-0001 to the floor?');
     expect(await skill.preview({ workOrderId: 'wo-1', woNumber: 'WO-2026-0001', action: 'COMPLETE', quantityCompleted: 150 })).toBe('Complete WO-2026-0001 with 150 pieces?');

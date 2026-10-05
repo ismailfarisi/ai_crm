@@ -143,6 +143,15 @@ describe('WorkOrderQuerySkill', () => {
     }
   });
 
+  it('asks for work order number when queryType is JOB_STATUS and woNumber is missing', async () => {
+    const res = await skill.resolve({ queryType: 'JOB_STATUS' }, ctx);
+    expect(res.kind).toBe('question');
+    if (res.kind === 'question') {
+      expect(res.question).toBe('Which work order would you like to check? (e.g. WO-2026-0003)');
+      expect(res.slots).toEqual({ queryType: 'JOB_STATUS' });
+    }
+  });
+
   it('previews queries correctly', async () => {
     expect(await skill.preview({ queryType: 'JOB_STATUS', workOrderNumber: 'WO-2026-0001' })).toBe('Check status of WO-2026-0001?');
     expect(await skill.preview({ queryType: 'OVERDUE_JOBS' })).toBe('List overdue production jobs?');

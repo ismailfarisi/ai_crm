@@ -111,14 +111,14 @@ export class WorkOrderManageSkill implements ChannelSkill<ResolvedWorkOrderManag
       : undefined;
 
     if (!targetOp) {
-      if (action === 'STOP') {
+      if (action === 'STOP' || action === 'FINISH') {
         targetOp = wo.operations.find((op) => op.status === 'RUNNING');
       } else if (action === 'START' || action === 'ADVANCE') {
         targetOp = wo.operations.find((op) => op.status === 'PENDING');
       }
     }
 
-    if (!targetOp && (action === 'START' || action === 'STOP' || action === 'FINISH')) {
+    if (!targetOp && (action === 'START' || action === 'STOP' || action === 'FINISH' || action === 'ADVANCE')) {
       const opList = wo.operations.map((op, i) => `${i + 1}. ${op.label} (${op.status})`).join('\n');
       return {
         kind: 'question',
