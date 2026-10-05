@@ -13,6 +13,8 @@ import { PurchaseOrderCreateSkill } from './purchase-order-create.skill';
 import { WorkOrderLogTimeSkill } from './work-order-log-time.skill';
 import { DeliveryDispatchSkill } from './delivery-dispatch.skill';
 import { SalesOrderFromDocumentSkill } from './sales-order-from-document.skill';
+import { WorkOrderManageSkill } from './work-order-manage.skill';
+import { WorkOrderQuerySkill } from './work-order-query.skill';
 import { ContactsService } from '../../contacts/contacts.service';
 
 /**
@@ -43,6 +45,12 @@ export class SkillRegistry {
         purchasing,
       ) as unknown as ChannelSkill<never>,
       new WorkOrderLogTimeSkill(production) as unknown as ChannelSkill<never>,
+      new WorkOrderManageSkill(
+        production,
+      ) as unknown as ChannelSkill<never>,
+      new WorkOrderQuerySkill(
+        production,
+      ) as unknown as ChannelSkill<never>,
       new DeliveryDispatchSkill(
         deliveryNotes,
         orders,

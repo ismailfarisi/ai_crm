@@ -6,6 +6,8 @@ import { QuoteApproveSkill } from './quote-approve.skill';
 import { QuoteCreateSkill } from './quote-create.skill';
 import { PurchaseOrderCreateSkill } from './purchase-order-create.skill';
 import { WorkOrderLogTimeSkill } from './work-order-log-time.skill';
+import { WorkOrderManageSkill } from './work-order-manage.skill';
+import { WorkOrderQuerySkill } from './work-order-query.skill';
 
 describe('SkillRegistry', () => {
   let registry: SkillRegistry;
@@ -23,14 +25,16 @@ describe('SkillRegistry', () => {
   });
 
   describe('all', () => {
-    it('contains all 6 skills', () => {
+    it('contains all 8 skills', () => {
       const skills = registry.all();
-      expect(skills).toHaveLength(6);
+      expect(skills).toHaveLength(8);
       expect(skills.map((s) => s.name)).toEqual([
         CHANNEL_SKILLS.QUOTE_APPROVE,
         CHANNEL_SKILLS.QUOTE_CREATE,
         CHANNEL_SKILLS.PURCHASE_ORDER_CREATE,
         CHANNEL_SKILLS.WORK_ORDER_LOG_TIME,
+        CHANNEL_SKILLS.WORK_ORDER_MANAGE,
+        CHANNEL_SKILLS.WORK_ORDER_QUERY,
         CHANNEL_SKILLS.DELIVERY_DISPATCH,
         CHANNEL_SKILLS.SALES_ORDER_FROM_DOCUMENT,
       ]);
@@ -69,6 +73,16 @@ describe('SkillRegistry', () => {
     it('returns WorkOrderLogTimeSkill for work_order.log_time', () => {
       const skill = registry.byName(CHANNEL_SKILLS.WORK_ORDER_LOG_TIME);
       expect(skill).toBeInstanceOf(WorkOrderLogTimeSkill);
+    });
+
+    it('returns WorkOrderManageSkill for work_order.manage', () => {
+      const skill = registry.byName(CHANNEL_SKILLS.WORK_ORDER_MANAGE);
+      expect(skill).toBeInstanceOf(WorkOrderManageSkill);
+    });
+
+    it('returns WorkOrderQuerySkill for work_order.query', () => {
+      const skill = registry.byName(CHANNEL_SKILLS.WORK_ORDER_QUERY);
+      expect(skill).toBeInstanceOf(WorkOrderQuerySkill);
     });
 
     it('returns undefined for an unknown skill name', () => {
@@ -114,22 +128,25 @@ describe('SkillRegistry', () => {
       ]);
     });
 
-    it('returns all 6 skills when user has all required permissions', () => {
+    it('returns all 8 skills when user has all required permissions', () => {
       const allPermissions: Permission[] = [
         PERMISSIONS.QUOTE_APPROVE,
         PERMISSIONS.QUOTE_CREATE,
         PERMISSIONS.PURCHASE_ORDER_CREATE,
         PERMISSIONS.WORK_ORDER_EXECUTE,
+        PERMISSIONS.WORK_ORDER_READ,
         PERMISSIONS.DELIVERY_NOTE_DISPATCH,
         PERMISSIONS.SALES_ORDER_UPDATE,
       ];
       const permitted = registry.permittedFor(allPermissions);
-      expect(permitted).toHaveLength(6);
+      expect(permitted).toHaveLength(8);
       expect(permitted.map((s) => s.name)).toEqual([
         CHANNEL_SKILLS.QUOTE_APPROVE,
         CHANNEL_SKILLS.QUOTE_CREATE,
         CHANNEL_SKILLS.PURCHASE_ORDER_CREATE,
         CHANNEL_SKILLS.WORK_ORDER_LOG_TIME,
+        CHANNEL_SKILLS.WORK_ORDER_MANAGE,
+        CHANNEL_SKILLS.WORK_ORDER_QUERY,
         CHANNEL_SKILLS.DELIVERY_DISPATCH,
         CHANNEL_SKILLS.SALES_ORDER_FROM_DOCUMENT,
       ]);
