@@ -431,7 +431,9 @@ export class ProductionService {
       sequence: idx,
     }));
     try {
-      let setting = await this.boardSettingsRepo.findOne({ where: { tenantId } });
+      let setting = await this.boardSettingsRepo.findOne({
+        where: { tenantId },
+      });
       if (!setting) {
         setting = this.boardSettingsRepo.create({
           tenantId,
@@ -444,7 +446,8 @@ export class ProductionService {
     } catch (err) {
       const code = (err as { code?: string }).code;
       if (
-        (err instanceof QueryFailedError && code === POSTGRES_UNIQUE_VIOLATION) ||
+        (err instanceof QueryFailedError &&
+          code === POSTGRES_UNIQUE_VIOLATION) ||
         code === POSTGRES_UNIQUE_VIOLATION
       ) {
         const setting = await this.boardSettingsRepo.findOne({
@@ -1082,6 +1085,7 @@ export class ProductionService {
         id: wo.id,
         woNumber: wo.woNumber,
         status: wo.status,
+        parameters: wo.parameters ?? null,
         salesOrderId: wo.salesOrderId,
         salesOrderNumber: order?.orderNumber ?? null,
         salesOrderLineId: wo.salesOrderLineId,

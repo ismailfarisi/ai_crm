@@ -11,6 +11,8 @@ import {
   Rocket,
   X,
 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import {
   canTransitionWorkOrder,
   elapsedMinutes,
@@ -18,12 +20,15 @@ import {
   PERMISSIONS,
   type WorkOrderOperationDto,
 } from '@saas/shared';
+import { api } from '@/lib/api/endpoints';
 import { useWorkOrder, useWorkOrderAction } from '@/hooks/use-work-orders';
+import { useBoardColumns } from '@/hooks/use-board-columns';
 import { useCan } from '@/lib/session-context';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/field';
 import { EmptyState } from '@/components/ui/primitives';
+import { COLUMN_COLOR_MAP } from './column-modal';
 import { WO_STATUS_LABELS } from './production-board';
 
 export interface WorkOrderDrawerProps {
@@ -48,10 +53,18 @@ function useNow(active: boolean) {
 }
 
 export function WorkOrderDrawer({ workOrderId, onClose }: WorkOrderDrawerProps) {
+  const queryClient = useQueryClient();
+  const { columns } = useBoardColumns();
   const { data: wo, isPending, isError, error } = useWorkOrder(workOrderId);
   const act = useWorkOrderAction(workOrderId ?? '');
   const canExecute = useCan({ permission: PERMISSIONS.WORK_ORDER_EXECUTE });
   const canUpdate = useCan({ permission: PERMISSIONS.WORK_ORDER_UPDATE });
+
+  const activeColumn = wo
+    ? columns.find((c) => c.id === wo.parameters?.columnId) ||
+      columns.find((c) => c.isDefault && c.status === wo.status) ||
+      columns.find((c) => c.status === wo.status)
+    : null;
 
   // Quick log time state
   const [loggingOp, setLoggingOp] = useState<WorkOrderOperationDto | null>(null);
@@ -113,9 +126,26 @@ export function WorkOrderDrawer({ workOrderId, onClose }: WorkOrderDrawerProps) 
                   {wo?.woNumber ?? 'Loading...'}
                 </span>
                 {wo && (
-                  <span className="rounded bg-surface-sunk px-2 py-0.5 text-xs font-medium text-ink">
-                    {WO_STATUS_LABELS[wo.status]}
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="rounded bg-surface-sunk px-2 py-0.5 text-xs font-medium text-ink">
+                      {WO_STATUS_LABELS[wo.status]}
+                    </span>
+                    {activeColumn && (
+                      <span
+                        data-testid="drawer-column-badge"
+                        className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-medium ${
+                          COLUMN_COLOR_MAP[activeColumn.color]?.badge || 'bg-surface-sunk text-ink'
+                        }`}
+                      >
+                        <span
+                          className={`size-1.5 rounded-full ${
+                            COLUMN_COLOR_MAP[activeColumn.color]?.dot || 'bg-ink'
+                          }`}
+                        />
+                        {activeColumn.name}
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
               <button
@@ -138,6 +168,47 @@ export function WorkOrderDrawer({ workOrderId, onClose }: WorkOrderDrawerProps) 
                   {wo.customerName ? ` · ${wo.customerName}` : ''}
                   {wo.dueDate ? ` · Due ${new Date(wo.dueDate).toLocaleDateString()}` : ''}
                 </p>
+
+                {/* Stage switcher dropdown */}
+                {canUpdate && wo.status !== 'COMPLETE' && wo.status !== 'CANCELLED' && (
+                  <div className="mt-2.5 flex items-center gap-2">
+                    <label htmlFor="drawer-column-select" className="text-xs font-medium text-ink-muted shrink-0">
+                      Board Stage:
+                    </label>
+                    <select
+                      id="drawer-column-select"
+                      aria-label="Switch board column"
+                      value={activeColumn?.id ?? ''}
+                      disabled={busy}
+                      onChange={async (e) => {
+                        const targetColId = e.target.value;
+                        if (!targetColId || targetColId === activeColumn?.id) return;
+                        try {
+                          await api.workOrders.updateColumn(wo.id, targetColId);
+                          toast.success(
+                            `Moved ${wo.woNumber} to ${
+                              columns.find((c) => c.id === targetColId)?.name
+                            }`,
+                          );
+                          await Promise.all([
+                            queryClient.invalidateQueries({ queryKey: ['work-orders'] }),
+                            queryClient.invalidateQueries({ queryKey: ['production-board-columns'] }),
+                          ]);
+                        } catch (err: unknown) {
+                          const msg = err instanceof Error ? err.message : 'Failed to update column';
+                          toast.error(msg);
+                        }
+                      }}
+                      className="rounded-md border border-line bg-surface px-2 py-1 text-xs text-ink font-medium focus:outline-hidden focus:border-accent"
+                    >
+                      {columns.map((col) => (
+                        <option key={col.id} value={col.id}>
+                          {col.name} ({WO_STATUS_LABELS[col.status] || col.status})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 {/* Quick lifecycle controls */}
                 <div className="mt-3 flex flex-wrap items-center gap-2">

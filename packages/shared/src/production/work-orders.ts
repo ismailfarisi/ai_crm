@@ -265,6 +265,7 @@ export interface WorkOrderDto {
   id: string;
   woNumber: string;
   status: WorkOrderStatus;
+  parameters?: Record<string, any> | null;
   salesOrderId: string | null;
   salesOrderNumber: string | null;
   salesOrderLineId: string | null;

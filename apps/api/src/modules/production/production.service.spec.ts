@@ -868,7 +868,7 @@ describe('Board Columns Configuration', () => {
 
     expect(dto.status).toBe('COMPLETE');
     expect(wo.status).toBe('COMPLETE');
-    expect((wo.parameters as any).columnId).toBe('complete');
+    expect(wo.parameters.columnId).toBe('complete');
     expect(print.status).toBe('DONE');
     expect(wrap.status).toBe('SKIPPED');
     expect(wo.completedById).toBe('u2');

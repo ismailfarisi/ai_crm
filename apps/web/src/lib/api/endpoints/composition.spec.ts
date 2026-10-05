@@ -54,7 +54,7 @@ const API_SECTIONS = [
   'quotes', 'catalog', 'invoices', 'channels', 'aiAgents', 'intentAgentConfig',
   'automations', 'finance', 'expenses', 'ai', 'suppliers',
   'purchaseOrders', 'purchasePolicy', 'inventory', 'goodsReceipts', 'bills',
-  'salesOrders', 'quoteAcceptance', 'workOrders', 'creditNotes', 'deliveryNotes', 'tax',
+  'salesOrders', 'quoteAcceptance', 'workOrders', 'board', 'creditNotes', 'deliveryNotes', 'tax',
   'notifications', 'billing', 'currencies', 'reports', 'organization', 'audit', 'attachments',
   'documentTemplates',
 ];
@@ -75,7 +75,7 @@ const QUERY_KEYS = [
   'stock', 'stockLocations', 'reorderSuggestions', 'stockReconcile', 'goodsReceipts',
   'bills', 'bill', 'billMatch', 'billPayments', 'billAging', 'billableLines',
   'salesOrders', 'salesOrder', 'quoteSalesOrder',
-  'workOrders', 'workOrder', 'workOrderVariance',
+  'workOrders', 'workOrder', 'workOrderVariance', 'boardColumns',
   'creditNotes', 'creditNoteRefunds', 'deliveryNotes', 'taxCodes', 'taxRules', 'taxReport',
   'notifications', 'billingPlans', 'subscription', 'currencySettings', 'fxRates', 'financialReport',
   'organization', 'audit', 'auditForSubject', 'attachments',
