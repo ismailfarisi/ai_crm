@@ -7,7 +7,6 @@ import {
   isOnTheFloor,
   PERMISSIONS,
   type WorkOrderDto,
-  type WorkOrderOperationDto,
 } from '@saas/shared';
 import { useWorkOrderAction } from '@/hooks/use-work-orders';
 import { useCan } from '@/lib/session-context';
@@ -112,8 +111,12 @@ export function WorkOrderCard({ workOrder, onSelect, onActionSuccess }: WorkOrde
     <div
       role="button"
       tabIndex={0}
-      draggable
+      draggable={workOrder.status !== 'COMPLETE'}
       onDragStart={(e) => {
+        if (workOrder.status === 'COMPLETE') {
+          e.preventDefault();
+          return;
+        }
         if (e.dataTransfer) {
           e.dataTransfer.setData('text/plain', workOrder.id);
           e.dataTransfer.effectAllowed = 'move';

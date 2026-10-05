@@ -3,9 +3,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { WorkOrderDto } from '@saas/shared';
+import { toast } from 'sonner';
 import { ProductionBoard } from './production-board';
 import { useWorkOrders, useWorkOrder, useWorkOrderAction } from '@/hooks/use-work-orders';
 import { useCan } from '@/lib/session-context';
+
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    message: vi.fn(),
+  },
+}));
 
 vi.mock('@/hooks/use-work-orders', () => ({
   useWorkOrders: vi.fn(),
@@ -250,6 +259,7 @@ function renderBoard() {
 
 describe('ProductionBoard', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.mocked(useCan).mockReturnValue(true);
     vi.mocked(useWorkOrders).mockReturnValue({
       data: mockWorkOrders,
@@ -466,18 +476,70 @@ describe('ProductionBoard', () => {
       const completeCol = screen.getByLabelText('Complete');
       fireEvent.drop(completeCol, {
         dataTransfer: {
-          getData: () => 'wo-2',
+          getData: () => 'wo-3',
         },
       });
 
       // Dialog opens asking for completed quantity
-      expect(screen.getByText('Complete WO-1002')).toBeInTheDocument();
+      expect(screen.getByText('Complete WO-1003')).toBeInTheDocument();
       const confirmBtn = screen.getByRole('button', { name: /confirm complete/i });
       fireEvent.click(confirmBtn);
 
       await waitFor(() => {
-        expect(api.workOrders.complete).toHaveBeenCalledWith('wo-2', 500);
+        expect(api.workOrders.complete).toHaveBeenCalledWith('wo-3', 200);
       });
+    });
+
+    it('blocks completing a job that is still PLANNED', () => {
+      renderBoard();
+
+      const completeCol = screen.getByLabelText('Complete');
+      fireEvent.drop(completeCol, {
+        dataTransfer: {
+          getData: () => 'wo-1',
+        },
+      });
+
+      expect(toast.error).toHaveBeenCalledWith('Release the work order before completing it');
+      expect(screen.queryByText('Complete WO-1001')).not.toBeInTheDocument();
+    });
+
+    it('blocks completing a job that has RUNNING operations', () => {
+      renderBoard();
+
+      const completeCol = screen.getByLabelText('Complete');
+      fireEvent.drop(completeCol, {
+        dataTransfer: {
+          getData: () => 'wo-2',
+        },
+      });
+
+      expect(toast.error).toHaveBeenCalledWith('Stop running operations before completing the job');
+      expect(screen.queryByText('Complete WO-1002')).not.toBeInTheDocument();
+    });
+
+    it('blocks drop transition when user lacks permission', () => {
+      vi.mocked(useCan).mockReturnValue(false);
+      renderBoard();
+
+      const releasedCol = screen.getByLabelText('Released');
+      fireEvent.drop(releasedCol, {
+        dataTransfer: {
+          getData: () => 'wo-1',
+        },
+      });
+
+      expect(toast.error).toHaveBeenCalledWith("You don't have permission to update work order status");
+    });
+
+    it('disables dragging on completed cards', () => {
+      renderBoard();
+
+      const completedCard = screen.getByText('WO-1004').closest('[role="button"]')!;
+      expect(completedCard).toHaveAttribute('draggable', 'false');
+
+      const plannedCard = screen.getByText('WO-1001').closest('[role="button"]')!;
+      expect(plannedCard).toHaveAttribute('draggable', 'true');
     });
   });
 

@@ -1,13 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
-  ArrowRight,
   CheckCircle2,
   Clock,
-  ExternalLink,
-  Package,
   Pause,
   Play,
   Plus,
@@ -19,7 +16,6 @@ import {
   elapsedMinutes,
   isOnTheFloor,
   PERMISSIONS,
-  type WorkOrderDto,
   type WorkOrderOperationDto,
 } from '@saas/shared';
 import { useWorkOrder, useWorkOrderAction } from '@/hooks/use-work-orders';

@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import {
   PERMISSIONS,
-  type WorkOrderDto,
   type WorkOrderStatus,
 } from '@saas/shared';
 import { useWorkOrders } from '@/hooks/use-work-orders';
@@ -329,11 +328,6 @@ export function ProductionBoard() {
           <div className="space-y-4">
             {filteredWorkOrders.map((wo) => {
               const ops = [...wo.operations].sort((a, b) => a.sequence - b.sequence);
-              const totalEst = ops.reduce(
-                (sum, op) => sum + op.estimatedSetupMinutes + op.estimatedRunMinutes,
-                0,
-              );
-              const totalAct = ops.reduce((sum, op) => sum + op.actualMinutes, 0);
 
               return (
                 <div

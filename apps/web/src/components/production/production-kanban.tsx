@@ -4,8 +4,9 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { CheckCircle2 } from 'lucide-react';
-import type { WorkOrderDto, WorkOrderStatus } from '@saas/shared';
+import { PERMISSIONS, type WorkOrderDto, type WorkOrderStatus } from '@saas/shared';
 import { api } from '@/lib/api/endpoints';
+import { useCan } from '@/lib/session-context';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/field';
@@ -36,6 +37,8 @@ export function ProductionKanban({
   onActionSuccess,
 }: ProductionKanbanProps) {
   const queryClient = useQueryClient();
+  const canUpdate = useCan({ permission: PERMISSIONS.WORK_ORDER_UPDATE });
+  const canExecute = useCan({ permission: PERMISSIONS.WORK_ORDER_EXECUTE });
   const [dragOverCol, setDragOverCol] = useState<WorkOrderStatus | null>(null);
 
   // Completion confirmation modal state
@@ -55,6 +58,18 @@ export function ProductionKanban({
     const wo = workOrders.find((w) => w.id === workOrderId);
     if (!wo) return;
     if (wo.status === targetStatus) return;
+
+    if (targetStatus === 'RELEASED' || targetStatus === 'COMPLETE') {
+      if (!canUpdate) {
+        toast.error("You don't have permission to update work order status");
+        return;
+      }
+    } else if (targetStatus === 'IN_PROGRESS') {
+      if (!canExecute) {
+        toast.error("You don't have permission to update work order status");
+        return;
+      }
+    }
 
     try {
       if (targetStatus === 'RELEASED') {
@@ -84,6 +99,14 @@ export function ProductionKanban({
           await invalidate();
         }
       } else if (targetStatus === 'COMPLETE') {
+        if (wo.status === 'PLANNED') {
+          toast.error('Release the work order before completing it');
+          return;
+        }
+        if (wo.operations.some((op) => op.status === 'RUNNING')) {
+          toast.error('Stop running operations before completing the job');
+          return;
+        }
         setCompletingWo(wo);
         setGoodQty(String(wo.qty));
       } else if (targetStatus === 'PLANNED') {
