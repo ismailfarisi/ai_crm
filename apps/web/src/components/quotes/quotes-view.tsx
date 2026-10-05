@@ -60,7 +60,7 @@ export function QuotesView() {
   const totalQuotes = quotes.length;
   const awaitingApproval = quotes.filter((q) => q.status === 'AWAITING_APPROVAL').length;
   const approved = quotes.filter((q) => q.status === 'APPROVED').length;
-  const totalValue = quotes.reduce((acc, q) => acc + (q.totalAmount || 0), 0);
+  const totalValue = quotes.reduce((acc, q) => acc + (Number(q.totalAmount) || 0), 0);
 
   const formattedTotalValue = `$${totalValue.toLocaleString(undefined, {
     minimumFractionDigits: 2,

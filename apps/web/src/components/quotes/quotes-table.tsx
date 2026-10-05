@@ -100,10 +100,11 @@ export function QuotesTable({ quotes, isLoading = false, onSignal, onPrint }: Qu
       },
       {
         accessorKey: 'totalAmount',
+        sortingFn: (rowA, rowB) => (Number(rowA.original.totalAmount) || 0) - (Number(rowB.original.totalAmount) || 0),
         header: ({ column }) => <DataTableColumnHeader column={column} title="Total Amount" />,
         cell: ({ row }) => (
           <span className="font-medium text-ink">
-            ${(row.original.totalAmount || 0).toLocaleString(undefined, {
+            ${(Number(row.original.totalAmount) || 0).toLocaleString(undefined, {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2,
             })}

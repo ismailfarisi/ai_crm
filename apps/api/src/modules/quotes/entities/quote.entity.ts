@@ -7,6 +7,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import type { BillingStage, QuoteLineItem } from '@saas/shared';
+import { numericTransformer } from '../../finance/entities/finance-account.entity';
 
 export enum QuoteCreatedBy {
   AI = 'AI',
@@ -102,6 +103,7 @@ export class Quote {
     precision: 12,
     scale: 2,
     default: 0,
+    transformer: numericTransformer,
   })
   subtotalAmount: number;
 
@@ -111,6 +113,7 @@ export class Quote {
     precision: 12,
     scale: 2,
     default: 0,
+    transformer: numericTransformer,
   })
   discountAmount: number;
 
@@ -120,10 +123,17 @@ export class Quote {
     precision: 12,
     scale: 2,
     default: 0,
+    transformer: numericTransformer,
   })
   taxAmount: number;
 
-  @Column({ type: 'numeric', precision: 12, scale: 2, default: 0 })
+  @Column({
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+    transformer: numericTransformer,
+  })
   totalAmount: number;
 
   @Column({ name: 'terms_and_conditions', type: 'text', nullable: true })

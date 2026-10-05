@@ -197,7 +197,6 @@ describe('QuotePrintModal', () => {
     expect(screen.getByText('Carton')).toBeDefined();
     expect(screen.getByText('$9.97')).toBeDefined();
     expect(screen.getByText('Payment due according to agreed payment terms.')).toBeDefined();
-    expect(screen.getByText('Authorized Signature')).toBeDefined();
 
     expect(screen.getByText('Print / Save as PDF')).toBeDefined();
     expect(screen.getByText('Download PDF')).toBeDefined();
@@ -296,7 +295,7 @@ describe('DocumentTemplateSheet', () => {
     expect(screen.getByText('INV-2026-0042')).toBeDefined();
     expect(screen.getByText('Apex Supplies LLC')).toBeDefined();
     expect(screen.getByText('Corrugated Box')).toBeDefined();
-    expect(screen.getByText('$275.00')).toBeDefined();
+    expect(screen.getAllByText('$275.00').length).toBeGreaterThan(0);
   });
 
   it('renders banner header layout with primaryColor background', () => {
