@@ -11,28 +11,23 @@ import { api, productionKeys } from '@/lib/api/endpoints';
 export function useBoardColumns() {
   const queryClient = useQueryClient();
 
-  const query = useQuery({
+  const query = useQuery<ProductionBoardColumn[]>({
     queryKey: productionKeys.boardColumns(),
-    queryFn: () =>
-      api.production?.board
-        ? api.production.board.getColumns()
-        : api.board.getColumns(),
+    queryFn: () => api.board.getColumns(),
     placeholderData: DEFAULT_BOARD_COLUMNS,
   });
 
-  const columns = query.data || DEFAULT_BOARD_COLUMNS;
+  const columns: ProductionBoardColumn[] = query.data || DEFAULT_BOARD_COLUMNS;
 
-  const mutation = useMutation({
+  const mutation = useMutation<ProductionBoardColumn[], Error, ProductionBoardColumn[]>({
     mutationFn: (newColumns: ProductionBoardColumn[]) => {
       const normalized = newColumns.map((col, idx) => ({
         ...col,
         sequence: idx,
       }));
-      return api.production?.board
-        ? api.production.board.updateColumns(normalized)
-        : api.board.updateColumns(normalized);
+      return api.board.updateColumns(normalized);
     },
-    onSuccess: (updated) => {
+    onSuccess: (updated: ProductionBoardColumn[]) => {
       queryClient.setQueryData(productionKeys.boardColumns(), updated);
       queryClient.invalidateQueries({ queryKey: ['work-orders'] });
     },

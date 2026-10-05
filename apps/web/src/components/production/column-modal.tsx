@@ -203,7 +203,7 @@ export function ColumnModal({
           onChange={(e) => setStatus(e.target.value as WorkOrderStatus)}
           options={STATUS_OPTIONS}
           hint="Determines inventory WIP accounting and job lifecycle transitions."
-          disabled={column?.isDefault}
+          disabled={Boolean(column)}
         />
 
         <div className="space-y-1.5">

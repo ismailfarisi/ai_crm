@@ -514,19 +514,21 @@ export class ProductionService {
       }
 
       if (targetCol.status !== wo.status) {
-        if (!canTransitionWorkOrder(wo.status, targetCol.status)) {
-          throw new BadRequestException(
-            `Cannot move work order from ${wo.status} to ${targetCol.status}`,
-          );
-        }
-        if (targetCol.status === 'RELEASED') {
-          wo.status = 'RELEASED';
+        if (wo.status === 'PLANNED' && targetCol.status === 'IN_PROGRESS') {
           wo.releasedAt = new Date();
-        } else if (targetCol.status === 'IN_PROGRESS') {
-          if (wo.status === 'PLANNED') {
-            wo.releasedAt = new Date();
-          }
           wo.status = 'IN_PROGRESS';
+        } else {
+          if (!canTransitionWorkOrder(wo.status, targetCol.status)) {
+            throw new BadRequestException(
+              `Cannot move work order from ${wo.status} to ${targetCol.status}`,
+            );
+          }
+          if (targetCol.status === 'RELEASED') {
+            wo.status = 'RELEASED';
+            wo.releasedAt = new Date();
+          } else if (targetCol.status === 'IN_PROGRESS') {
+            wo.status = 'IN_PROGRESS';
+          }
         }
       }
 
@@ -571,6 +573,14 @@ export class ProductionService {
     input: { qtyCompleted: number | null; columnId?: string },
     canSeeCost: boolean,
   ): Promise<WorkOrderDto> {
+    if (input.columnId) {
+      const columns = await this.getBoardColumns(tenantId);
+      const target = columns.find((c) => c.id === input.columnId);
+      if (!target || target.status !== 'COMPLETE') {
+        throw new BadRequestException('Invalid completion column');
+      }
+    }
+
     await this.dataSource.transaction(async (manager) => {
       const wo = await this.lock(manager, tenantId, id);
       this.assertTransition(wo, 'COMPLETE');

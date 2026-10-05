@@ -61,7 +61,7 @@ export function WorkOrderDrawer({ workOrderId, onClose }: WorkOrderDrawerProps) 
   const canUpdate = useCan({ permission: PERMISSIONS.WORK_ORDER_UPDATE });
 
   const activeColumn = wo
-    ? columns.find((c) => c.id === wo.parameters?.columnId) ||
+    ? columns.find((c) => c.id === wo.parameters?.columnId && c.status === wo.status) ||
       columns.find((c) => c.isDefault && c.status === wo.status) ||
       columns.find((c) => c.status === wo.status)
     : null;
@@ -201,11 +201,13 @@ export function WorkOrderDrawer({ workOrderId, onClose }: WorkOrderDrawerProps) 
                       }}
                       className="rounded-md border border-line bg-surface px-2 py-1 text-xs text-ink font-medium focus:outline-hidden focus:border-accent"
                     >
-                      {columns.map((col) => (
-                        <option key={col.id} value={col.id}>
-                          {col.name} ({WO_STATUS_LABELS[col.status] || col.status})
-                        </option>
-                      ))}
+                      {columns
+                        .filter((c) => c.status !== 'COMPLETE')
+                        .map((col) => (
+                          <option key={col.id} value={col.id}>
+                            {col.name} ({WO_STATUS_LABELS[col.status] || col.status})
+                          </option>
+                        ))}
                     </select>
                   </div>
                 )}
