@@ -13,7 +13,7 @@ Relay CRM's existing list interfaces rely on standard, read-only data tables whe
 
 This specification defines the architecture for a reusable **Data View Engine** in Relay CRM featuring:
 1. **Spreadsheet-Grade Inline Cell Editing:** Direct in-place editing of text, numbers, dates, statuses, and assigned owners with instant optimistic updates and automatic error rollbacks.
-2. **Interactive Drag-and-Drop Kanban Pipelines:** Visual progression of deals and leads powered by `@dnd-kit`, displaying column metrics (card counts, total revenue) with enforced commercial approval signals.
+2. **Interactive Drag-and-Drop Kanban Pipelines:** Visual progression of deals and leads powered by native HTML5 Drag and Drop (harmonized with Relay's existing production board), displaying column metrics (card counts, total revenue) with enforced commercial approval signals.
 3. **Saved Views & Compound Filters:** Persistent view presets (tabs) stored in PostgreSQL with shareable URL parameters, compound `AND`/`OR` filter builders, and self-service column customization.
 4. **Immediate Rollout to Quotes & Contacts:** Pre-configured view presets for sales quotes and customer leads, architected to plug cleanly into Customers, Orders, and Custom Objects with zero code duplication.
 
@@ -34,7 +34,7 @@ This specification defines the architecture for a reusable **Data View Engine** 
 │  │    └── Optimistic TanStack Query mutations (0ms perceived latency)  │
 │  │                                                                     │
 │  └── Layout 2: <KanbanBoard>                                           │
-│       └── Accessible drag-and-drop via @dnd-kit                        │
+│       └── Zero-dependency native HTML5 drag-and-drop (React 19 native) │
 │       └── Dynamic column metrics (e.g. stage revenue sum)              │
 │       └── Commercial approval guard & signal confirmation modals       │
 └───────────────────────────────────┬────────────────────────────────────┘
@@ -139,9 +139,11 @@ The inline editable table extends Relay’s existing TanStack Table (`@tanstack/
 
 ---
 
-## 6. Kanban Board Engine (`@dnd-kit`)
+## 6. Kanban Board Engine (Native HTML5 Drag and Drop)
 
-Built using `@dnd-kit/core` and `@dnd-kit/sortable` for fluid, accessible drag-and-drop.
+Harmonized with Relay's existing `ProductionKanban` architecture (`apps/web/src/components/production/production-kanban.tsx`), the general-purpose Kanban engine uses **native HTML5 Drag and Drop** (`draggable={true}`, `onDragStart`, `onDragOver`, `onDragEnter`, `onDragLeave`, `onDrop`). This guarantees:
+- **Zero External Dependencies:** Eliminates third-party DnD library bloat and avoids React 19 / Next.js 16 SSR hydration conflicts.
+- **Consistent Design System:** Shares the exact visual tokens, card spacing, drop target highlighting (`dragOverColId`), and color schemes established in the production board.
 
 ### 6.1. Anatomy & Column Aggregations
 * **Columns:** Group records by an enum status field (`status`).
