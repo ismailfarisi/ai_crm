@@ -16,6 +16,7 @@ import {
 import {
   actualCost,
   canTransitionWorkOrder,
+  DEFAULT_BOARD_COLUMNS,
   elapsedMinutes,
   isOnTheFloor,
   LEDGER_ROLES,
@@ -23,6 +24,7 @@ import {
   rankVariance,
   type CostSplit,
   type JournalLineInput,
+  type ProductionBoardColumn,
   type QuoteLineItem,
   type VarianceRow,
   type WorkOrderDto,
@@ -46,6 +48,7 @@ import {
   WorkOrderMaterial,
   WorkOrderOperation,
 } from './entities/work-order.entity';
+import { ProductionBoardSetting } from './entities/production-board-settings.entity';
 
 const POSTGRES_UNIQUE_VIOLATION = '23505';
 const money = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -80,6 +83,8 @@ export class ProductionService {
     private readonly salesOrderLines: Repository<SalesOrderLine>,
     @InjectRepository(Quote)
     private readonly quotes: Repository<Quote>,
+    @InjectRepository(ProductionBoardSetting)
+    private readonly boardSettingsRepo: Repository<ProductionBoardSetting>,
     private readonly costing: CostingService,
     private readonly inventory: InventoryService,
     private readonly ledger: LedgerService,
@@ -404,6 +409,140 @@ export class ProductionService {
   }
 
   /* ------------------------------------------------------------------ *
+   * Board Configuration & Movement
+   * ------------------------------------------------------------------ */
+
+  async getBoardColumns(tenantId: string): Promise<ProductionBoardColumn[]> {
+    const setting = await this.boardSettingsRepo.findOne({
+      where: { tenantId },
+    });
+    if (setting && setting.columns && setting.columns.length > 0) {
+      return [...setting.columns].sort((a, b) => a.sequence - b.sequence);
+    }
+    return DEFAULT_BOARD_COLUMNS;
+  }
+
+  async updateBoardColumns(
+    tenantId: string,
+    columns: ProductionBoardColumn[],
+  ): Promise<ProductionBoardColumn[]> {
+    const normalized = columns.map((col, idx) => ({
+      ...col,
+      sequence: idx,
+    }));
+    try {
+      let setting = await this.boardSettingsRepo.findOne({
+        where: { tenantId },
+      });
+      if (!setting) {
+        setting = this.boardSettingsRepo.create({
+          tenantId,
+          columns: normalized,
+        });
+      } else {
+        setting.columns = normalized;
+      }
+      await this.boardSettingsRepo.save(setting);
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (
+        (err instanceof QueryFailedError &&
+          code === POSTGRES_UNIQUE_VIOLATION) ||
+        code === POSTGRES_UNIQUE_VIOLATION
+      ) {
+        const setting = await this.boardSettingsRepo.findOne({
+          where: { tenantId },
+        });
+        if (setting) {
+          setting.columns = normalized;
+          await this.boardSettingsRepo.save(setting);
+        }
+      } else {
+        throw err;
+      }
+    }
+    return normalized;
+  }
+
+  async updateWorkOrderColumn(
+    tenantId: string,
+    id: string,
+    columnId: string,
+    actorId: string,
+    canSeeCost: boolean,
+  ): Promise<WorkOrderDto> {
+    const columns = await this.getBoardColumns(tenantId);
+    const targetCol = columns.find((c) => c.id === columnId);
+    if (!targetCol) {
+      throw new BadRequestException(
+        `Target column "${columnId}" not found on board`,
+      );
+    }
+
+    const currentWo = await this.workOrders.findOne({
+      where: { id, tenantId },
+    });
+    if (!currentWo) throw new NotFoundException('Work order not found');
+
+    if (currentWo.status === 'COMPLETE' || currentWo.status === 'CANCELLED') {
+      throw new BadRequestException(
+        `Cannot move a ${currentWo.status.toLowerCase()} work order`,
+      );
+    }
+
+    if (targetCol.status === 'COMPLETE') {
+      if (currentWo.status === 'PLANNED') {
+        throw new BadRequestException(
+          'Cannot complete a planned job without releasing first',
+        );
+      }
+      return this.complete(
+        tenantId,
+        id,
+        actorId,
+        { qtyCompleted: null, columnId: targetCol.id },
+        canSeeCost,
+      );
+    }
+
+    await this.dataSource.transaction(async (manager) => {
+      const wo = await this.lock(manager, tenantId, id);
+      if (wo.status === 'COMPLETE' || wo.status === 'CANCELLED') {
+        throw new BadRequestException(
+          `Cannot move a ${wo.status.toLowerCase()} work order`,
+        );
+      }
+
+      if (targetCol.status !== wo.status) {
+        if (wo.status === 'PLANNED' && targetCol.status === 'IN_PROGRESS') {
+          wo.releasedAt = new Date();
+          wo.status = 'IN_PROGRESS';
+        } else {
+          if (!canTransitionWorkOrder(wo.status, targetCol.status)) {
+            throw new BadRequestException(
+              `Cannot move work order from ${wo.status} to ${targetCol.status}`,
+            );
+          }
+          if (targetCol.status === 'RELEASED') {
+            wo.status = 'RELEASED';
+            wo.releasedAt = new Date();
+          } else if (targetCol.status === 'IN_PROGRESS') {
+            wo.status = 'IN_PROGRESS';
+          }
+        }
+      }
+
+      wo.parameters = {
+        ...(wo.parameters || {}),
+        columnId: targetCol.id,
+      };
+      await manager.getRepository(WorkOrder).save(wo);
+    });
+
+    return this.get(tenantId, id, canSeeCost);
+  }
+
+  /* ------------------------------------------------------------------ *
    * Lifecycle
    * ------------------------------------------------------------------ */
 
@@ -431,9 +570,17 @@ export class ProductionService {
     tenantId: string,
     id: string,
     actorId: string,
-    input: { qtyCompleted: number | null },
+    input: { qtyCompleted: number | null; columnId?: string },
     canSeeCost: boolean,
   ): Promise<WorkOrderDto> {
+    if (input.columnId) {
+      const columns = await this.getBoardColumns(tenantId);
+      const target = columns.find((c) => c.id === input.columnId);
+      if (!target || target.status !== 'COMPLETE') {
+        throw new BadRequestException('Invalid completion column');
+      }
+    }
+
     await this.dataSource.transaction(async (manager) => {
       const wo = await this.lock(manager, tenantId, id);
       this.assertTransition(wo, 'COMPLETE');
@@ -487,6 +634,12 @@ export class ProductionService {
       wo.qtyCompleted = qtyCompleted;
       wo.completedAt = now;
       wo.completedById = actorId;
+      if (input.columnId) {
+        wo.parameters = {
+          ...(wo.parameters || {}),
+          columnId: input.columnId,
+        };
+      }
       await manager.getRepository(WorkOrder).save(wo);
 
       // Only material has been capitalised into WIP, so only material leaves
@@ -942,6 +1095,7 @@ export class ProductionService {
         id: wo.id,
         woNumber: wo.woNumber,
         status: wo.status,
+        parameters: wo.parameters ?? null,
         salesOrderId: wo.salesOrderId,
         salesOrderNumber: order?.orderNumber ?? null,
         salesOrderLineId: wo.salesOrderLineId,
@@ -989,7 +1143,11 @@ export class ProductionService {
             valueIssued: canSeeCost ? m.valueIssued : 0,
             estimatedUnitCost: canSeeCost ? m.estimatedUnitCost : 0,
           })),
-        createdAt: wo.createdAt.toISOString(),
+        createdAt: wo.createdAt
+          ? wo.createdAt instanceof Date
+            ? wo.createdAt.toISOString()
+            : String(wo.createdAt)
+          : new Date().toISOString(),
       };
     });
   }

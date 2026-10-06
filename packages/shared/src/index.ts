@@ -37,6 +37,7 @@ export * from './channels/skills';
 export * from './orders/billing';
 export * from './schemas/sales-order';
 export * from './production/work-orders';
+export * from './production/board-columns';
 export * from './schemas/work-order';
 export * from './tax/tax';
 export * from './credits/credit-notes';

@@ -39,6 +39,7 @@ export const issueMaterialSchema = z.object({
 export const completeWorkOrderSchema = z.object({
   /** Good pieces produced. Defaults to the ordered quantity. */
   qtyCompleted: z.coerce.number().min(0).nullish().transform((v) => v ?? null),
+  columnId: z.string().trim().nullish().transform((v) => v ?? undefined),
 });
 
 export const cancelWorkOrderSchema = z.object({

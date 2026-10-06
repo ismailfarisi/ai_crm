@@ -1,5 +1,5 @@
 /* One slice of the browser's API surface. Composed in ./index.ts. */
-import type { VarianceRow, WorkOrderDto, WorkOrderStatus } from '@saas/shared';
+import type { ProductionBoardColumn, VarianceRow, WorkOrderDto, WorkOrderStatus } from '@saas/shared';
 import { apiFetch } from '../client';
 
 export interface WorkOrderListParams {
@@ -22,6 +22,14 @@ export interface VarianceReportDto {
 }
 
 export const productionEndpoints = {
+  board: {
+    getColumns: () => apiFetch<ProductionBoardColumn[]>('/production/board/columns'),
+    updateColumns: (columns: ProductionBoardColumn[]) =>
+      apiFetch<ProductionBoardColumn[]>('/production/board/columns', {
+        method: 'PUT',
+        body: { columns },
+      }),
+  },
   workOrders: {
     list: (params: WorkOrderListParams = {}) => apiFetch<WorkOrderDto[]>('/work-orders', { query: params }),
     get: (id: string) => apiFetch<WorkOrderDto>(`/work-orders/${id}`),
@@ -33,8 +41,11 @@ export const productionEndpoints = {
         body: input,
       }),
     release: (id: string) => apiFetch<WorkOrderDto>(`/work-orders/${id}/release`, { method: 'POST' }),
-    complete: (id: string, qtyCompleted: number | null) =>
-      apiFetch<WorkOrderDto>(`/work-orders/${id}/complete`, { method: 'POST', body: { qtyCompleted } }),
+    complete: (id: string, qtyCompleted: number | null, columnId?: string) =>
+      apiFetch<WorkOrderDto>(`/work-orders/${id}/complete`, {
+        method: 'POST',
+        body: { qtyCompleted, ...(columnId ? { columnId } : {}) },
+      }),
     cancel: (id: string, reason: string | null) =>
       apiFetch<WorkOrderDto>(`/work-orders/${id}/cancel`, { method: 'POST', body: { reason } }),
     start: (id: string, operationId: string) =>
@@ -57,10 +68,16 @@ export const productionEndpoints = {
         method: 'POST',
         body: { workOrderMaterialId, qty },
       }),
+    updateColumn: (id: string, columnId: string) =>
+      apiFetch<WorkOrderDto>(`/work-orders/${id}/column`, {
+        method: 'PATCH',
+        body: { columnId },
+      }),
   },
 };
 
 export const productionKeys = {
+  boardColumns: () => ['production-board-columns'] as const,
   workOrders: (params: WorkOrderListParams = {}) => ['work-orders', params] as const,
   workOrder: (id: string) => ['work-orders', id] as const,
   workOrderVariance: (params: { from?: string; to?: string } = {}) => ['work-orders', 'variance', params] as const,

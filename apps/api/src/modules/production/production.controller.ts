@@ -4,7 +4,9 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -15,12 +17,16 @@ import {
   issueMaterialSchema,
   logOperationTimeSchema,
   PERMISSIONS,
+  updateBoardColumnsSchema,
+  updateWorkOrderColumnSchema,
   workOrderQuerySchema,
   type CancelWorkOrderPayload,
   type CompleteWorkOrderPayload,
   type CreateWorkOrdersPayload,
   type IssueMaterialPayload,
   type LogOperationTimePayload,
+  type UpdateBoardColumnsPayload,
+  type UpdateWorkOrderColumnPayload,
   type WorkOrderDto,
   type WorkOrderQueryPayload,
 } from '@saas/shared';
@@ -234,6 +240,44 @@ export class ProductionController {
       id,
       user.id,
       body,
+      canSeeCost(user),
+    );
+  }
+
+  @Get('production/board/columns')
+  @RequirePermissions(PERMISSIONS.WORK_ORDER_READ)
+  @ApiOperation({ summary: 'Get customized production board columns' })
+  getBoardColumns(@CurrentUser() user: AuthenticatedUser) {
+    return this.production.getBoardColumns(user.organizationId);
+  }
+
+  @Put('production/board/columns')
+  @RequirePermissions(PERMISSIONS.WORK_ORDER_UPDATE)
+  @ApiOperation({ summary: 'Update production board columns layout' })
+  updateBoardColumns(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(zodBody(updateBoardColumnsSchema)) body: UpdateBoardColumnsPayload,
+  ) {
+    return this.production.updateBoardColumns(
+      user.organizationId,
+      body.columns,
+    );
+  }
+
+  @Patch('work-orders/:id/column')
+  @RequirePermissions(PERMISSIONS.WORK_ORDER_UPDATE)
+  @ApiOperation({ summary: 'Move work order to target board column' })
+  updateWorkOrderColumn(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(zodBody(updateWorkOrderColumnSchema))
+    body: UpdateWorkOrderColumnPayload,
+  ) {
+    return this.production.updateWorkOrderColumn(
+      user.organizationId,
+      id,
+      body.columnId,
+      user.id,
       canSeeCost(user),
     );
   }

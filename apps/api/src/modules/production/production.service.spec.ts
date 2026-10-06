@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
-import { isBalanced } from '@saas/shared';
+import { DEFAULT_BOARD_COLUMNS, isBalanced } from '@saas/shared';
 import { ProductionService } from './production.service';
 
 const tenantId = '11111111-1111-1111-1111-111111111111';
@@ -18,6 +18,7 @@ function makeWorld() {
     SalesOrderLine: [],
     Quote: [],
     JournalEntry: [],
+    ProductionBoardSetting: [],
   };
   let nextId = 1;
   let sequence = 0;
@@ -174,6 +175,7 @@ function makeWorld() {
     repo('SalesOrder') as any,
     repo('SalesOrderLine') as any,
     repo('Quote') as any,
+    repo('ProductionBoardSetting') as any,
     costing as any,
     inventory as any,
     ledger as any,
@@ -489,5 +491,397 @@ describe('ProductionService.complete', () => {
     await expect(w.service.cancel(tenantId, wo.id, null)).rejects.toThrow(
       /Return Greyboard/,
     );
+  });
+});
+
+describe('Board Columns Configuration', () => {
+  let service: ProductionService;
+  let mockBoardSettingsRepo: any;
+  let mockWoRepo: any;
+
+  beforeEach(() => {
+    mockBoardSettingsRepo = {
+      findOne: jest.fn(),
+      find: jest.fn(),
+      create: jest.fn((dto) => ({ ...dto })),
+      save: jest.fn(),
+    };
+    mockWoRepo = {
+      findOne: jest.fn(),
+      save: jest.fn(),
+      createQueryBuilder: jest.fn(),
+    };
+    const emptyRepo = {
+      find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValue(null),
+    };
+    const dataSource: any = {
+      transaction: jest.fn(async (cb) => {
+        const manager: any = {
+          getRepository: jest.fn((entity: any) => {
+            if (entity.name === 'WorkOrder') return mockWoRepo;
+            if (entity.name === 'ProductionBoardSetting')
+              return mockBoardSettingsRepo;
+            return emptyRepo;
+          }),
+        };
+        return cb(manager);
+      }),
+    };
+    mockWoRepo.createQueryBuilder.mockReturnValue({
+      setLock: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockImplementation(() => mockWoRepo.findOne()),
+    });
+
+    service = new ProductionService(
+      mockWoRepo,
+      emptyRepo as any,
+      emptyRepo as any,
+      emptyRepo as any,
+      emptyRepo as any,
+      emptyRepo as any,
+      mockBoardSettingsRepo,
+      {} as any,
+      {} as any,
+      {} as any,
+      dataSource,
+    );
+  });
+
+  it('returns DEFAULT_BOARD_COLUMNS when no tenant settings exist', async () => {
+    mockBoardSettingsRepo.findOne.mockResolvedValue(null);
+    const columns = await service.getBoardColumns('test-tenant');
+    expect(columns).toEqual(DEFAULT_BOARD_COLUMNS);
+  });
+
+  it('saves and normalizes custom columns sequence on update', async () => {
+    const customCols = [
+      {
+        id: 'c1',
+        name: 'Planned',
+        status: 'PLANNED' as const,
+        color: 'slate' as const,
+        sequence: 0,
+        isDefault: true,
+      },
+      {
+        id: 'c2',
+        name: 'Released',
+        status: 'RELEASED' as const,
+        color: 'blue' as const,
+        sequence: 1,
+        isDefault: true,
+      },
+      {
+        id: 'c3',
+        name: 'In progress',
+        status: 'IN_PROGRESS' as const,
+        color: 'amber' as const,
+        sequence: 2,
+        isDefault: true,
+      },
+      {
+        id: 'c-qc',
+        name: 'QC',
+        status: 'IN_PROGRESS' as const,
+        color: 'purple' as const,
+        sequence: 5,
+        isDefault: false,
+      },
+      {
+        id: 'c4',
+        name: 'Complete',
+        status: 'COMPLETE' as const,
+        color: 'emerald' as const,
+        sequence: 10,
+        isDefault: true,
+      },
+    ];
+    mockBoardSettingsRepo.findOne.mockResolvedValue(null);
+    mockBoardSettingsRepo.save.mockImplementation((entity: any) =>
+      Promise.resolve(entity),
+    );
+
+    const result = await service.updateBoardColumns('test-tenant', customCols);
+    expect(result).toHaveLength(5);
+    // Sequences normalized 0 to 4
+    expect(result.map((c) => c.sequence)).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it('returns saved columns sorted by sequence', async () => {
+    mockBoardSettingsRepo.findOne.mockResolvedValue({
+      tenantId: 'test-tenant',
+      columns: [
+        {
+          id: 'c-late',
+          name: 'Late',
+          status: 'IN_PROGRESS',
+          color: 'rose',
+          sequence: 10,
+          isDefault: false,
+        },
+        {
+          id: 'c-early',
+          name: 'Early',
+          status: 'PLANNED',
+          color: 'slate',
+          sequence: 0,
+          isDefault: true,
+        },
+        {
+          id: 'c-mid',
+          name: 'Mid',
+          status: 'RELEASED',
+          color: 'blue',
+          sequence: 3,
+          isDefault: true,
+        },
+      ],
+    });
+    const columns = await service.getBoardColumns('test-tenant');
+    expect(columns.map((c) => c.id)).toEqual(['c-early', 'c-mid', 'c-late']);
+  });
+
+  it('handles concurrent insert race condition when updating board columns', async () => {
+    const error: any = new Error(
+      'duplicate key value violates unique constraint',
+    );
+    error.code = '23505';
+
+    mockBoardSettingsRepo.findOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        tenantId: 'test-tenant',
+        columns: [],
+      });
+
+    mockBoardSettingsRepo.save
+      .mockImplementationOnce(() => {
+        throw error;
+      })
+      .mockImplementationOnce((entity: any) => Promise.resolve(entity));
+
+    const result = await service.updateBoardColumns(
+      'test-tenant',
+      DEFAULT_BOARD_COLUMNS,
+    );
+    expect(result).toHaveLength(4);
+    expect(mockBoardSettingsRepo.save).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects move if columnId is not found on board', async () => {
+    mockBoardSettingsRepo.findOne.mockResolvedValue(null);
+    await expect(
+      service.updateWorkOrderColumn(
+        'test-tenant',
+        'wo-1',
+        'non-existent-col',
+        'u1',
+        false,
+      ),
+    ).rejects.toThrow(
+      new BadRequestException(
+        'Target column "non-existent-col" not found on board',
+      ),
+    );
+  });
+
+  it('rejects move if work order is already COMPLETE', async () => {
+    const wo = {
+      id: 'wo-1',
+      tenantId: 'test-tenant',
+      status: 'COMPLETE',
+      parameters: {},
+    };
+    mockWoRepo.findOne.mockResolvedValue(wo);
+    mockBoardSettingsRepo.findOne.mockResolvedValue(null);
+
+    await expect(
+      service.updateWorkOrderColumn(
+        'test-tenant',
+        'wo-1',
+        'in_progress',
+        'u1',
+        false,
+      ),
+    ).rejects.toThrow(
+      new BadRequestException('Cannot move a complete work order'),
+    );
+  });
+
+  it('rejects move if work order is already CANCELLED', async () => {
+    const wo = {
+      id: 'wo-1',
+      tenantId: 'test-tenant',
+      status: 'CANCELLED',
+      parameters: {},
+    };
+    mockWoRepo.findOne.mockResolvedValue(wo);
+    mockBoardSettingsRepo.findOne.mockResolvedValue(null);
+
+    await expect(
+      service.updateWorkOrderColumn(
+        'test-tenant',
+        'wo-1',
+        'in_progress',
+        'u1',
+        false,
+      ),
+    ).rejects.toThrow(
+      new BadRequestException('Cannot move a cancelled work order'),
+    );
+  });
+
+  it('rejects invalid backwards transition from IN_PROGRESS to PLANNED', async () => {
+    const wo = {
+      id: 'wo-1',
+      tenantId: 'test-tenant',
+      status: 'IN_PROGRESS',
+      parameters: {},
+    };
+    mockWoRepo.findOne.mockResolvedValue(wo);
+    mockBoardSettingsRepo.findOne.mockResolvedValue(null);
+
+    await expect(
+      service.updateWorkOrderColumn(
+        'test-tenant',
+        'wo-1',
+        'planned',
+        'u1',
+        false,
+      ),
+    ).rejects.toThrow(
+      new BadRequestException(
+        'Cannot move work order from IN_PROGRESS to PLANNED',
+      ),
+    );
+  });
+
+  it('rejects invalid backwards transition from IN_PROGRESS to RELEASED', async () => {
+    const wo = {
+      id: 'wo-1',
+      tenantId: 'test-tenant',
+      status: 'IN_PROGRESS',
+      parameters: {},
+    };
+    mockWoRepo.findOne.mockResolvedValue(wo);
+    mockBoardSettingsRepo.findOne.mockResolvedValue(null);
+
+    await expect(
+      service.updateWorkOrderColumn(
+        'test-tenant',
+        'wo-1',
+        'released',
+        'u1',
+        false,
+      ),
+    ).rejects.toThrow(
+      new BadRequestException(
+        'Cannot move work order from IN_PROGRESS to RELEASED',
+      ),
+    );
+  });
+
+  it('rejects completing a planned job without releasing first', async () => {
+    const wo = {
+      id: 'wo-1',
+      tenantId: 'test-tenant',
+      status: 'PLANNED',
+      parameters: {},
+    };
+    mockWoRepo.findOne.mockResolvedValue(wo);
+    mockBoardSettingsRepo.findOne.mockResolvedValue(null);
+
+    await expect(
+      service.updateWorkOrderColumn(
+        'test-tenant',
+        'wo-1',
+        'complete',
+        'u1',
+        false,
+      ),
+    ).rejects.toThrow(
+      new BadRequestException(
+        'Cannot complete a planned job without releasing first',
+      ),
+    );
+  });
+
+  it('updates work order parameters.columnId and syncs status', async () => {
+    const wo = {
+      id: 'wo-1',
+      tenantId: 'test-tenant',
+      status: 'RELEASED',
+      parameters: {},
+    };
+    mockWoRepo.findOne.mockResolvedValue(wo);
+    mockBoardSettingsRepo.findOne.mockResolvedValue({
+      tenantId: 'test-tenant',
+      columns: [
+        {
+          id: 'c-qc',
+          name: 'QC',
+          status: 'IN_PROGRESS',
+          color: 'purple',
+          sequence: 3,
+          isDefault: false,
+        },
+      ],
+    });
+    mockWoRepo.save.mockImplementation((w: any) => Promise.resolve(w));
+
+    await service.updateWorkOrderColumn(
+      'test-tenant',
+      'wo-1',
+      'c-qc',
+      'user-1',
+      false,
+    );
+    expect(wo.status).toBe('IN_PROGRESS');
+    expect((wo.parameters as any).columnId).toBe('c-qc');
+  });
+
+  it('correctly completes and posts accounting when moving to COMPLETE column', async () => {
+    const w = makeWorld();
+    const wo = await released(w);
+    const [print, wrap] = w.tables.WorkOrderOperation;
+    const mat = w.tables.WorkOrderMaterial[0];
+
+    await w.service.logTime(tenantId, wo.id, print.id, 'u1', 60);
+    await w.service.issueMaterial(
+      tenantId,
+      wo.id,
+      'u1',
+      { workOrderMaterialId: mat.id, qty: 100 },
+      true,
+    );
+
+    const dto = await w.service.updateWorkOrderColumn(
+      tenantId,
+      wo.id,
+      'complete',
+      'u2',
+      true,
+    );
+
+    expect(dto.status).toBe('COMPLETE');
+    expect(wo.status).toBe('COMPLETE');
+    expect(wo.parameters.columnId).toBe('complete');
+    expect(print.status).toBe('DONE');
+    expect(wrap.status).toBe('SKIPPED');
+    expect(wo.completedById).toBe('u2');
+
+    // WIP ledger entry posted: 100 sheets @ 0.50 = 50.00
+    const doneJe = w.tables.JournalEntry.find((e) =>
+      e.entryNumber.endsWith('-DONE'),
+    );
+    expect(doneJe).toBeDefined();
+    expect(doneJe.referenceType).toBe('WORK_ORDER');
+    expect(doneJe.lines.map((l: any) => [l.role, l.debit, l.credit])).toEqual([
+      ['COGS', 50, 0],
+      ['WIP', 0, 50],
+    ]);
   });
 });

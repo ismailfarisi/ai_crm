@@ -3,9 +3,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { WorkOrderDto } from '@saas/shared';
+import { DEFAULT_BOARD_COLUMNS, type ProductionBoardColumn } from '@saas/shared';
 import { toast } from 'sonner';
 import { ProductionBoard } from './production-board';
 import { useWorkOrders, useWorkOrder, useWorkOrderAction } from '@/hooks/use-work-orders';
+import { useBoardColumns } from '@/hooks/use-board-columns';
 import { useCan } from '@/lib/session-context';
 
 vi.mock('sonner', () => ({
@@ -22,50 +24,73 @@ vi.mock('@/hooks/use-work-orders', () => ({
   useWorkOrderAction: vi.fn(),
 }));
 
+vi.mock('@/hooks/use-board-columns', () => ({
+  useBoardColumns: vi.fn(),
+}));
+
 vi.mock('@/lib/session-context', () => ({
   useCan: vi.fn(),
 }));
 
-vi.mock('@/lib/api/endpoints', () => ({
-  api: {
-    workOrders: {
-      list: vi.fn(),
-      get: vi.fn(),
-      release: vi.fn().mockImplementation(async (id: string) => ({
-        id,
-        woNumber: 'WO-1001',
-        status: 'RELEASED',
-        operations: [
-          {
-            id: 'op-1',
-            sequence: 1,
-            label: 'Printing',
-            workCenterId: 'wc-1',
-            workCenterName: 'Offset Press',
-            status: 'PENDING',
-            estimatedSetupMinutes: 30,
-            estimatedRunMinutes: 60,
-            estimatedChargedMinutes: 90,
-            actualMinutes: 0,
-            runningSince: null,
-            operatorId: null,
-            startedAt: null,
-            completedAt: null,
-          },
-        ],
-      })),
-      complete: vi.fn().mockResolvedValue({ id: 'wo-2', woNumber: 'WO-1002', status: 'COMPLETE' }),
-      start: vi.fn().mockResolvedValue({ id: 'wo-3', woNumber: 'WO-1003', status: 'IN_PROGRESS' }),
-      stop: vi.fn().mockResolvedValue({ workOrder: { id: 'wo-2' }, capped: false }),
-      finish: vi.fn().mockResolvedValue({ workOrder: { id: 'wo-2' }, capped: false }),
-      logTime: vi.fn().mockResolvedValue({ id: 'wo-2' }),
+vi.mock('@/lib/api/endpoints', () => {
+  const defaultCols = [
+    { id: 'planned', name: 'Planned', status: 'PLANNED', color: 'slate', sequence: 0, isDefault: true },
+    { id: 'released', name: 'Released', status: 'RELEASED', color: 'blue', sequence: 1, isDefault: true },
+    { id: 'in_progress', name: 'In progress', status: 'IN_PROGRESS', color: 'amber', sequence: 2, isDefault: true },
+    { id: 'complete', name: 'Complete', status: 'COMPLETE', color: 'emerald', sequence: 3, isDefault: true },
+  ];
+  const updateColumnMock = vi.fn().mockImplementation(async (id: string, colId: string) => ({ id, columnId: colId }));
+  return {
+    api: {
+      board: {
+        getColumns: vi.fn().mockResolvedValue(defaultCols),
+        updateColumns: vi.fn().mockImplementation(async (cols: any) => cols),
+      },
+      workOrders: {
+        updateColumn: updateColumnMock,
+        list: vi.fn(),
+        get: vi.fn(),
+        release: vi.fn().mockImplementation(async (id: string) => ({
+          id,
+          woNumber: 'WO-1001',
+          status: 'RELEASED',
+          operations: [
+            {
+              id: 'op-1',
+              sequence: 1,
+              label: 'Printing',
+              workCenterId: 'wc-1',
+              workCenterName: 'Offset Press',
+              status: 'PENDING',
+              estimatedSetupMinutes: 30,
+              estimatedRunMinutes: 60,
+              estimatedChargedMinutes: 90,
+              actualMinutes: 0,
+              runningSince: null,
+              operatorId: null,
+              startedAt: null,
+              completedAt: null,
+            },
+          ],
+        })),
+        complete: vi.fn().mockResolvedValue({ id: 'wo-2', woNumber: 'WO-1002', status: 'COMPLETE' }),
+        start: vi.fn().mockResolvedValue({ id: 'wo-3', woNumber: 'WO-1003', status: 'IN_PROGRESS' }),
+        stop: vi.fn().mockResolvedValue({ workOrder: { id: 'wo-2' }, capped: false }),
+        finish: vi.fn().mockResolvedValue({ workOrder: { id: 'wo-2' }, capped: false }),
+        logTime: vi.fn().mockResolvedValue({ id: 'wo-2' }),
+      },
     },
-  },
-  queryKeys: {
-    workOrders: vi.fn(() => ['work-orders']),
-    workOrder: vi.fn((id: string) => ['work-orders', id]),
-  },
-}));
+    queryKeys: {
+      workOrders: vi.fn(() => ['work-orders']),
+      workOrder: vi.fn((id: string) => ['work-orders', id]),
+    },
+    productionKeys: {
+      boardColumns: vi.fn(() => ['production-board-columns']),
+      workOrders: vi.fn(() => ['work-orders']),
+      workOrder: vi.fn((id: string) => ['work-orders', id]),
+    },
+  };
+});
 
 const mockWorkOrders: WorkOrderDto[] = [
   {
@@ -280,6 +305,16 @@ describe('ProductionBoard', () => {
       mutate: vi.fn(),
       isPending: false,
     } as never);
+    vi.mocked(useBoardColumns).mockReturnValue({
+      columns: DEFAULT_BOARD_COLUMNS,
+      isLoading: false,
+      updateColumns: vi.fn(),
+      addColumn: vi.fn(),
+      editColumn: vi.fn(),
+      deleteColumn: vi.fn(),
+      moveColumn: vi.fn(),
+      isUpdating: false,
+    });
   });
 
   describe('KPI Summary Calculations', () => {
@@ -665,7 +700,7 @@ describe('ProductionBoard', () => {
       fireEvent.click(confirmBtn);
 
       await waitFor(() => {
-        expect(api.workOrders.complete).toHaveBeenCalledWith('wo-3', 200);
+        expect(api.workOrders.complete).toHaveBeenCalledWith('wo-3', 200, 'complete');
       });
     });
 
@@ -771,6 +806,308 @@ describe('ProductionBoard', () => {
         { kind: 'stop', operationId: 'op-2' },
         expect.objectContaining({ onSuccess: undefined }),
       );
+    });
+  });
+
+  describe('Dynamic Custom Kanban Columns & Actions', () => {
+    const customColumns: ProductionBoardColumn[] = [
+      { id: 'planned', name: 'Planned', status: 'PLANNED', color: 'slate', sequence: 0, isDefault: true },
+      { id: 'released', name: 'Released', status: 'RELEASED', color: 'blue', sequence: 1, isDefault: true },
+      { id: 'in_progress', name: 'In progress', status: 'IN_PROGRESS', color: 'amber', sequence: 2, isDefault: true },
+      { id: 'col-qc', name: 'QC Inspection', status: 'IN_PROGRESS', color: 'purple', sequence: 3, isDefault: false },
+      { id: 'col-packaging', name: 'Packaging', status: 'IN_PROGRESS', color: 'cyan', sequence: 4, isDefault: false },
+      { id: 'complete', name: 'Complete', status: 'COMPLETE', color: 'emerald', sequence: 5, isDefault: true },
+    ];
+
+    it('renders all custom column headers including newly added ones', () => {
+      vi.mocked(useBoardColumns).mockReturnValue({
+        columns: customColumns,
+        isLoading: false,
+        updateColumns: vi.fn(),
+        addColumn: vi.fn(),
+        editColumn: vi.fn(),
+        deleteColumn: vi.fn(),
+        moveColumn: vi.fn(),
+        isUpdating: false,
+      });
+
+      renderBoard();
+
+      expect(screen.getByLabelText('QC Inspection')).toBeInTheDocument();
+      expect(screen.getByLabelText('Packaging')).toBeInTheDocument();
+      expect(screen.getByLabelText('Planned')).toBeInTheDocument();
+      expect(screen.getByLabelText('Released')).toBeInTheDocument();
+      expect(screen.getByLabelText('In progress')).toBeInTheDocument();
+      expect(screen.getByLabelText('Complete')).toBeInTheDocument();
+    });
+
+    it('renders cards under their assigned custom column via parameters.columnId', () => {
+      const workOrdersWithCustomCols: WorkOrderDto[] = [
+        {
+          ...mockWorkOrders[2],
+          id: 'wo-custom-qc',
+          woNumber: 'WO-9001',
+          status: 'IN_PROGRESS',
+          parameters: { columnId: 'col-qc' },
+        },
+        {
+          ...mockWorkOrders[2],
+          id: 'wo-custom-pkg',
+          woNumber: 'WO-9002',
+          status: 'IN_PROGRESS',
+          parameters: { columnId: 'col-packaging' },
+        },
+      ];
+
+      vi.mocked(useWorkOrders).mockReturnValue({
+        data: workOrdersWithCustomCols,
+        isPending: false,
+        isError: false,
+        error: null,
+      } as never);
+
+      vi.mocked(useBoardColumns).mockReturnValue({
+        columns: customColumns,
+        isLoading: false,
+        updateColumns: vi.fn(),
+        addColumn: vi.fn(),
+        editColumn: vi.fn(),
+        deleteColumn: vi.fn(),
+        moveColumn: vi.fn(),
+        isUpdating: false,
+      });
+
+      renderBoard();
+
+      const qcCol = screen.getByLabelText('QC Inspection');
+      expect(within(qcCol).getByText('WO-9001')).toBeInTheDocument();
+
+      const pkgCol = screen.getByLabelText('Packaging');
+      expect(within(pkgCol).getByText('WO-9002')).toBeInTheDocument();
+    });
+
+    it('falls back cards with missing or deleted columnId to the default status column', () => {
+      const workOrdersWithDeletedCol: WorkOrderDto[] = [
+        {
+          ...mockWorkOrders[2], // status: 'IN_PROGRESS'
+          id: 'wo-fallback',
+          woNumber: 'WO-9003',
+          parameters: { columnId: 'deleted-non-existent-column' },
+        },
+      ];
+
+      vi.mocked(useWorkOrders).mockReturnValue({
+        data: workOrdersWithDeletedCol,
+        isPending: false,
+        isError: false,
+        error: null,
+      } as never);
+
+      vi.mocked(useBoardColumns).mockReturnValue({
+        columns: customColumns,
+        isLoading: false,
+        updateColumns: vi.fn(),
+        addColumn: vi.fn(),
+        editColumn: vi.fn(),
+        deleteColumn: vi.fn(),
+        moveColumn: vi.fn(),
+        isUpdating: false,
+      });
+
+      renderBoard();
+
+      // Should fallback to default 'In progress' column
+      const inProgressCol = screen.getByLabelText('In progress');
+      expect(within(inProgressCol).getByText('WO-9003')).toBeInTheDocument();
+    });
+
+    it('clicking + Add Column opens modal and calls addColumn on submit', async () => {
+      const addColumnMock = vi.fn().mockResolvedValue(undefined);
+      vi.mocked(useBoardColumns).mockReturnValue({
+        columns: customColumns,
+        isLoading: false,
+        updateColumns: vi.fn(),
+        addColumn: addColumnMock,
+        editColumn: vi.fn(),
+        deleteColumn: vi.fn(),
+        moveColumn: vi.fn(),
+        isUpdating: false,
+      });
+
+      renderBoard();
+
+      const addBtn = screen.getByRole('button', { name: /\+? ?add column/i });
+      fireEvent.click(addBtn);
+
+      expect(screen.getByText('Add Board Column')).toBeInTheDocument();
+
+      const nameInput = screen.getByLabelText(/column title/i);
+      fireEvent.change(nameInput, { target: { value: 'Surface Coating' } });
+
+      const submitBtn = screen.getByRole('button', { name: /create column/i });
+      fireEvent.click(submitBtn);
+
+      await waitFor(() => {
+        expect(addColumnMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            name: 'Surface Coating',
+            status: 'IN_PROGRESS',
+          }),
+        );
+      });
+    });
+
+    it('opens kebab menu and triggers editColumn', async () => {
+      const editColumnMock = vi.fn().mockResolvedValue(undefined);
+      vi.mocked(useBoardColumns).mockReturnValue({
+        columns: customColumns,
+        isLoading: false,
+        updateColumns: vi.fn(),
+        addColumn: vi.fn(),
+        editColumn: editColumnMock,
+        deleteColumn: vi.fn(),
+        moveColumn: vi.fn(),
+        isUpdating: false,
+      });
+
+      renderBoard();
+
+      const kebabBtn = screen.getByLabelText('Column options for QC Inspection');
+      fireEvent.click(kebabBtn);
+
+      const editMenuItem = screen.getByRole('menuitem', { name: /edit column/i });
+      fireEvent.click(editMenuItem);
+
+      expect(screen.getByText('Edit Board Column')).toBeInTheDocument();
+      const nameInput = screen.getByLabelText(/column title/i);
+      expect(nameInput).toHaveValue('QC Inspection');
+
+      fireEvent.change(nameInput, { target: { value: 'Quality Control (QC)' } });
+      const saveBtn = screen.getByRole('button', { name: /save changes/i });
+      fireEvent.click(saveBtn);
+
+      await waitFor(() => {
+        expect(editColumnMock).toHaveBeenCalledWith(
+          'col-qc',
+          expect.objectContaining({
+            name: 'Quality Control (QC)',
+          }),
+        );
+      });
+    });
+
+    it('reorders columns via Move Left and Move Right in kebab menu', async () => {
+      const moveColumnMock = vi.fn().mockResolvedValue(undefined);
+      vi.mocked(useBoardColumns).mockReturnValue({
+        columns: customColumns,
+        isLoading: false,
+        updateColumns: vi.fn(),
+        addColumn: vi.fn(),
+        editColumn: vi.fn(),
+        deleteColumn: vi.fn(),
+        moveColumn: moveColumnMock,
+        isUpdating: false,
+      });
+
+      renderBoard();
+
+      const kebabBtn = screen.getByLabelText('Column options for QC Inspection');
+      fireEvent.click(kebabBtn);
+
+      const moveLeftItem = screen.getByRole('menuitem', { name: /move left/i });
+      fireEvent.click(moveLeftItem);
+
+      await waitFor(() => {
+        expect(moveColumnMock).toHaveBeenCalledWith('col-qc', 'left');
+      });
+    });
+
+    it('disables delete on default column and enables on custom column', async () => {
+      const deleteColumnMock = vi.fn().mockResolvedValue(undefined);
+      vi.mocked(useBoardColumns).mockReturnValue({
+        columns: customColumns,
+        isLoading: false,
+        updateColumns: vi.fn(),
+        addColumn: vi.fn(),
+        editColumn: vi.fn(),
+        deleteColumn: deleteColumnMock,
+        moveColumn: vi.fn(),
+        isUpdating: false,
+      });
+
+      renderBoard();
+
+      // Check on default column 'Planned'
+      const plannedKebab = screen.getByLabelText('Column options for Planned');
+      fireEvent.click(plannedKebab);
+      const deletePlannedBtn = screen.getByRole('menuitem', { name: /delete column/i });
+      expect(deletePlannedBtn).toBeDisabled();
+
+      // Now click on custom column 'QC Inspection'
+      const qcKebab = screen.getByLabelText('Column options for QC Inspection');
+      fireEvent.click(qcKebab);
+      const deleteQcBtn = screen.getByRole('menuitem', { name: /delete column/i });
+      expect(deleteQcBtn).not.toBeDisabled();
+      fireEvent.click(deleteQcBtn);
+
+      await waitFor(() => {
+        expect(deleteColumnMock).toHaveBeenCalledWith('col-qc');
+      });
+    });
+
+    it('shows active column badge in work order drawer and updates on column change', async () => {
+      const { api } = await import('@/lib/api/endpoints');
+      const woWithCol: WorkOrderDto = {
+        ...mockWorkOrders[0],
+        id: 'wo-with-col',
+        status: 'IN_PROGRESS',
+        parameters: { columnId: 'col-qc' },
+      };
+
+      vi.mocked(useWorkOrders).mockReturnValue({
+        data: [woWithCol],
+        isPending: false,
+        isError: false,
+        error: null,
+      } as never);
+
+      vi.mocked(useWorkOrder).mockReturnValue({
+        data: woWithCol,
+        isPending: false,
+        isError: false,
+        error: null,
+      } as never);
+
+      vi.mocked(useBoardColumns).mockReturnValue({
+        columns: customColumns,
+        isLoading: false,
+        updateColumns: vi.fn(),
+        addColumn: vi.fn(),
+        editColumn: vi.fn(),
+        deleteColumn: vi.fn(),
+        moveColumn: vi.fn(),
+        isUpdating: false,
+      });
+
+      renderBoard();
+
+      // Click card to open drawer
+      const card = screen.getByText('WO-1001').closest('[role="button"]')!;
+      fireEvent.click(card);
+
+      // Verify drawer shows column badge
+      const drawer = screen.getByRole('dialog');
+      expect(within(drawer).getByTestId('drawer-column-badge')).toHaveTextContent('QC Inspection');
+
+      // Change column using dropdown
+      const columnSelect = within(drawer).getByLabelText('Switch board column');
+      fireEvent.change(columnSelect, { target: { value: 'col-packaging' } });
+
+      expect(vi.mocked(toast.error)).not.toHaveBeenCalled();
+
+      await waitFor(() => {
+        expect(api.workOrders.updateColumn).toHaveBeenCalledWith('wo-with-col', 'col-packaging');
+      });
     });
   });
 });

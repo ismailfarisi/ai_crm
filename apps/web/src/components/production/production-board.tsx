@@ -18,6 +18,7 @@ import {
   type WorkOrderStatus,
 } from '@saas/shared';
 import { useWorkOrders } from '@/hooks/use-work-orders';
+import { useBoardColumns } from '@/hooks/use-board-columns';
 import { useCan } from '@/lib/session-context';
 import { EmptyState, PageHeader } from '@/components/ui/primitives';
 import { ProductionKanban } from './production-kanban';
@@ -46,6 +47,7 @@ export function ProductionBoard() {
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState<string | null>(null);
 
   const canSeeVariance = useCan({ permission: [PERMISSIONS.QUOTE_VIEW_COST] });
+  const { columns: boardColumns } = useBoardColumns();
 
   const { data = [], isPending, isError, error } = useWorkOrders(
     {
@@ -306,6 +308,7 @@ export function ProductionBoard() {
         </div>
       ) : view === 'board' ? (
         <ProductionKanban
+          columns={boardColumns}
           workOrders={filteredWorkOrders}
           onSelectWorkOrder={(id) => setSelectedWorkOrderId(id)}
         />
