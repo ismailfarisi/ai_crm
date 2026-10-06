@@ -11,12 +11,11 @@ export class CreateProductionBoardSettings1787700000000 implements MigrationInte
         "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
         "tenant_id" uuid NOT NULL,
         "columns" jsonb NOT NULL DEFAULT '[]',
-        CONSTRAINT "PK_production_board_settings" PRIMARY KEY ("id"),
-        CONSTRAINT "UQ_production_board_settings_tenant" UNIQUE ("tenant_id")
+        CONSTRAINT "PK_production_board_settings" PRIMARY KEY ("id")
       )
     `);
     await queryRunner.query(`
-      CREATE INDEX "idx_production_board_settings_tenant" ON "production_board_settings" ("tenant_id")
+      CREATE UNIQUE INDEX "idx_production_board_settings_tenant" ON "production_board_settings" ("tenant_id")
     `);
     await queryRunner.query(
       `ALTER TABLE "production_board_settings" ENABLE ROW LEVEL SECURITY;`,
