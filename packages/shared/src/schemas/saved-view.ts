@@ -55,3 +55,5 @@ export const updateSavedViewSchema = createSavedViewSchema.partial();
 
 export type CreateSavedViewPayload = z.output<typeof createSavedViewSchema>;
 export type UpdateSavedViewPayload = z.output<typeof updateSavedViewSchema>;
+export type CreateSavedViewInput = z.input<typeof createSavedViewSchema>;
+export type UpdateSavedViewInput = z.input<typeof updateSavedViewSchema>;
