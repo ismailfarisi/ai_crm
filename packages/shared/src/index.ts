@@ -50,3 +50,5 @@ export * from './platform/attachments';
 export * from './platform/countries';
 export * from './schemas/platform';
 export * from './templates';
+export * from './views/types';
+export * from './schemas/saved-view';

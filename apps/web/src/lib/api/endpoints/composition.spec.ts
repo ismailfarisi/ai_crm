@@ -17,6 +17,7 @@ import { productionEndpoints, productionKeys } from './production';
 import { creditsEndpoints, creditsKeys } from './credits';
 import { platformEndpoints, platformKeys } from './platform';
 import { documentTemplatesEndpoints, documentTemplatesKeys } from './document-templates';
+import { savedViewsEndpoints, savedViewsKeys } from './saved-views';
 
 /**
  * Guards for the composed API surface.
@@ -47,6 +48,7 @@ const SLICES = [
   ['credits', creditsEndpoints, creditsKeys],
   ['platform', platformEndpoints, platformKeys],
   ['documentTemplates', documentTemplatesEndpoints, documentTemplatesKeys],
+  ['savedViews', savedViewsEndpoints, savedViewsKeys],
 ] as const;
 
 const API_SECTIONS = [
@@ -56,7 +58,7 @@ const API_SECTIONS = [
   'purchaseOrders', 'purchasePolicy', 'inventory', 'goodsReceipts', 'bills',
   'salesOrders', 'quoteAcceptance', 'workOrders', 'board', 'creditNotes', 'deliveryNotes', 'tax',
   'notifications', 'billing', 'currencies', 'reports', 'organization', 'audit', 'attachments',
-  'documentTemplates',
+  'documentTemplates', 'savedViews',
 ];
 
 const QUERY_KEYS = [
@@ -80,6 +82,7 @@ const QUERY_KEYS = [
   'notifications', 'billingPlans', 'subscription', 'currencySettings', 'fxRates', 'financialReport',
   'organization', 'audit', 'auditForSubject', 'attachments',
   'documentTemplates', 'documentTemplate', 'resolveTemplate',
+  'savedViews', 'savedView',
 ];
 
 describe('api surface composition', () => {
