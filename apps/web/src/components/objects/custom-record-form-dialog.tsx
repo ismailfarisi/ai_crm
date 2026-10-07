@@ -64,7 +64,7 @@ export function CustomRecordFormDialog({
               <Input
                 key={attr.id}
                 id={fieldId}
-                label={labelText}
+                label={attr.name}
                 type="number"
                 value={values[attr.slug] ?? ''}
                 onChange={(e) => {
@@ -103,7 +103,7 @@ export function CustomRecordFormDialog({
               <Select
                 key={attr.id}
                 id={fieldId}
-                label={labelText}
+                label={attr.name}
                 placeholder={`Select ${attr.name}`}
                 value={values[attr.slug] ?? ''}
                 onChange={(e) =>
@@ -147,7 +147,7 @@ export function CustomRecordFormDialog({
               key={attr.id}
               id={fieldId}
               type={attr.type === 'email' ? 'email' : attr.type === 'date' ? 'date' : 'text'}
-              label={labelText}
+              label={attr.name}
               value={values[attr.slug] ?? ''}
               onChange={(e) =>
                 setValues((prev) => ({ ...prev, [attr.slug]: e.target.value }))
