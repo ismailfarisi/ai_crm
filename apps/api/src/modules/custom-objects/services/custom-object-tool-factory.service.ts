@@ -64,10 +64,9 @@ export class CustomObjectToolFactoryService {
       const required: string[] = [];
 
       for (const attr of obj.attributes || []) {
-        const a = attr as any;
-        const key = a.key ?? a.slug;
-        const label = a.label ?? a.name ?? key;
-        const normalizedType = String(a.type ?? '').toUpperCase();
+        const key = ('key' in attr && typeof attr.key === 'string' && attr.key) ? attr.key : attr.slug;
+        const label = ('label' in attr && typeof attr.label === 'string' && attr.label) ? attr.label : attr.name ?? key;
+        const normalizedType = String(attr.type ?? '').toUpperCase();
         const typeMapping =
           normalizedType === 'NUMBER' ? 'number' : normalizedType === 'BOOLEAN' ? 'boolean' : 'string';
 
