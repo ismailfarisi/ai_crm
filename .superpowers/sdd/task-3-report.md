@@ -1,68 +1,33 @@
-# Task 3 Implementation Report: Proactive Production Check-In Cron (`apps/api`)
+# Task 3 Report: Backend Database Migration & TypeORM Entities (`apps/api`)
 
-## What Was Implemented
-- Implemented `ProductionCheckInService` in `apps/api/src/modules/channels/services/production-check-in.service.ts`:
-  - Decorated with `@Cron(CronExpression.EVERY_30_MINUTES)` to run scheduled check-ins across all tenant organizations having active channel configurations.
-  - Multi-tenant isolation: retrieves work orders scoped strictly by `organizationId` via `ProductionService.list(orgId, ...)` and resolves staff identity contacts filtered strictly by `organizationId`.
-  - Overrunning operation detection: scans `RUNNING` operations where `actualMinutes + runningMinutes > totalEstimated` (`estimatedSetupMinutes + estimatedRunMinutes`).
-  - Delayed/overdue order detection: scans non-complete, non-cancelled work orders where `dueDate < startOfToday`.
-  - 2-hour anti-spam cooldown window (`COOLDOWN_MS = 2 * 60 * 60 * 1000`) tracked per operation (`op:${op.id}`) and per overdue work order (`wo-overdue:${job.id}`).
-  - Resolves recipients mapped to operator ID or falls back to any configured Telegram staff identity for that tenant organization.
-  - Dispatches actionable alert messages through `ChannelsService.sendMessage`.
-- Registered `ProductionCheckInService` in `apps/api/src/modules/channels/channels.module.ts` in `providers` and `exports`.
-- Created comprehensive test suite in `apps/api/src/modules/channels/services/production-check-in.service.spec.ts`.
+## Status: DONE
 
-## TDD Evidence
+### Summary of Work
+Implemented the database migration, TypeORM entity definitions, and Row-Level Security (RLS) policies for the Custom Objects & Dynamic Relationships Engine in `apps/api`.
 
-### RED Phase
-Running `pnpm --filter api test src/modules/channels/services/production-check-in.service.spec.ts` prior to service implementation:
-```
-$ jest "src/modules/channels/services/production-check-in.service.spec.ts"
-FAIL src/modules/channels/services/production-check-in.service.spec.ts
-  ● Test suite failed to run
+### Created / Modified Files
+1. **Migration**:
+   - `apps/api/src/database/migrations/1789000000000-CreateCustomObjectsTables.ts`:
+     - Creates tables: `custom_object_definitions`, `custom_attribute_definitions`, `custom_relationship_definitions`, `custom_records`, `custom_record_links`.
+     - Creates composite unique constraints, foreign keys with cascade delete, and indexing (including GIN index on `custom_records.values`).
+     - Enables and forces Row-Level Security (RLS) on all 5 tables with `tenant_isolation_policy` respecting `app.bypass_rls` and `app.current_tenant_id`.
+     - Full rollback down migration to drop tables cleanly.
+2. **TypeORM Entities**:
+   - `apps/api/src/modules/custom-objects/entities/custom-object-definition.entity.ts`: Extends `TenantSoftDeletableEntity`, unique constraint on `(tenant_id, slug)`, one-to-many relations with attributes and relationships.
+   - `apps/api/src/modules/custom-objects/entities/custom-attribute-definition.entity.ts`: Extends `TenantSoftDeletableEntity`, unique constraint on `(object_id, slug)`, jsonb columns for `default_value`, `options`, `validation_rules`.
+   - `apps/api/src/modules/custom-objects/entities/custom-relationship-definition.entity.ts`: Extends `TenantSoftDeletableEntity`, unique constraint on `(source_object_id, slug)`, target configuration and cardinality.
+   - `apps/api/src/modules/custom-objects/entities/custom-record.entity.ts`: Extends `TenantSoftDeletableEntity`, jsonb `values` dictionary.
+   - `apps/api/src/modules/custom-objects/entities/custom-record-link.entity.ts`: Unique edge constraint on `(relationship_id, source_record_id, target_record_id)`, relations to definition and source record.
+   - `apps/api/src/modules/custom-objects/entities/index.ts`: Barrel export file.
+3. **Unit Tests**:
+   - `apps/api/src/modules/custom-objects/entities/custom-objects.entities.spec.ts`: Unit tests validating entity instantiation and default attributes across all custom object entities.
 
-    Cannot find module './production-check-in.service' from 'modules/channels/services/production-check-in.service.spec.ts'
+### Verification & Testing
+- **TDD Step 1 & 2**: Created unit test and verified initial test failure before entities were defined (failure confirmed: module not found).
+- **TDD Step 4**: Ran unit tests with Jest after implementing entities:
+  - Command: `pnpm --filter api test custom-objects.entities.spec.ts`
+  - Output: 5/5 tests passing (100% pass rate).
+- **TypeScript & Nest Build**: Ran `pnpm --filter api build` — build succeeded without errors.
 
-    > 1 | import { ProductionCheckInService } from './production-check-in.service';
-        | ^
-```
-
-### GREEN Phase
-Running `pnpm --filter api test src/modules/channels/services/production-check-in.service.spec.ts`:
-```
-PASS src/modules/channels/services/production-check-in.service.spec.ts
-  ProductionCheckInService
-    √ detects operations running longer than estimated time and sends check-in (3 ms)
-    √ respects 2-hour cooldown and does not ping again within cooldown window
-    √ detects overdue work orders and dispatches overdue alert (1 ms)
-    √ runs handleScheduledCheckIns across distinct orgs with active configs (1 ms)
-
-Test Suites: 1 passed, 1 total
-Tests:       4 passed, 4 total
-Snapshots:   0 total
-Time:        1.561 s, estimated 3 s
-```
-
-### Regression Verification
-Running full channels test suite `pnpm --filter api test src/modules/channels/`:
-```
-Test Suites: 17 passed, 17 total
-Tests:       255 passed, 255 total
-Snapshots:   0 total
-Time:        3.486 s
-Ran all test suites matching src/modules/channels/.
-```
-
-## Files Changed
-- `apps/api/src/modules/channels/services/production-check-in.service.ts` (created)
-- `apps/api/src/modules/channels/services/production-check-in.service.spec.ts` (created)
-- `apps/api/src/modules/channels/channels.module.ts` (modified: added service to providers & exports)
-
-## Self-Review Findings
-- **Multi-tenant data isolation**: Every lookup and outgoing message specifies `organizationId`. Cross-tenant data leakage is prevented.
-- **Schema & Drift**: No entity schemas or migrations were altered.
-- **Rate limiting / Anti-spam**: In-memory `lastPings` map prevents duplicate alerts within a 2-hour window per operation or work order.
-- **TypeScript & Typing**: Passed type validation without any compilation errors in the channels module.
-
-## Issues or Concerns
-- None. In-memory cooldown tracking resets upon server restart, which is expected for ephemeral alerting cooldowns and safe against unbounded memory growth given typical active work order counts.
+### Commits
+- `200fb10`: `feat(api): implement custom objects entities, RLS policies and migration`
