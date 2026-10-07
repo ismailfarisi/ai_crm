@@ -15,6 +15,7 @@ import { RecordValidationService } from './services/record-validation.service';
 import { CoreEntityBridgeService } from './services/core-entity-bridge.service';
 import { CustomObjectsController } from './controllers/custom-objects.controller';
 import { CustomRecordsController } from './controllers/custom-records.controller';
+import { RecordLinksController } from './controllers/record-links.controller';
 
 @Module({
   imports: [
@@ -30,7 +31,7 @@ import { CustomRecordsController } from './controllers/custom-records.controller
       WorkOrder,
     ]),
   ],
-  controllers: [CustomObjectsController, CustomRecordsController],
+  controllers: [CustomObjectsController, CustomRecordsController, RecordLinksController],
   providers: [
     CustomObjectsService,
     CustomRecordsService,
