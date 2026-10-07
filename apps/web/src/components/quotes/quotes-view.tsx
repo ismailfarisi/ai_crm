@@ -1,16 +1,20 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Plus, FileText, Clock, CheckCircle, DollarSign, Sparkles, type LucideIcon } from 'lucide-react';
 import { useQuotes, type Quote } from '@/hooks/use-quotes';
 import { api } from '@/lib/api/endpoints';
 import { Button } from '@/components/ui/button';
+import { Dialog } from '@/components/ui/dialog';
 import { PageHeader } from '@/components/ui/primitives';
 import { QuotesTable } from '@/components/quotes/quotes-table';
 import { CreateQuoteModal } from '@/components/quotes/create-quote-modal';
 import { DocumentPrintModal } from '@/components/documents/document-print-modal';
 import { useOrganization } from '@/hooks/use-organization';
+import { DataViewContainer } from '@/components/views/data-view-container';
+import { KanbanBoard, type KanbanColumnDef } from '@/components/views/kanban-board';
+import { toast } from 'sonner';
 
 const STAT_TONES = {
   brand: 'bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400',
@@ -48,6 +52,8 @@ export function QuotesView() {
   const { data: orgProfile } = useOrganization();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [printingQuote, setPrintingQuote] = useState<Quote | null>(null);
+  const [confirmApproveQuote, setConfirmApproveQuote] = useState<Quote | null>(null);
+  const [search, setSearch] = useState('');
 
   const orgName = orgProfile?.name || 'Your Company';
   const orgAddress = [
@@ -66,6 +72,59 @@ export function QuotesView() {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+
+  const filteredQuotes = useMemo(() => {
+    if (!search.trim()) return quotes;
+    const q = search.toLowerCase();
+    return quotes.filter(
+      (item) =>
+        item.title?.toLowerCase().includes(q) ||
+        item.quoteNumber?.toLowerCase().includes(q) ||
+        item.customerName?.toLowerCase().includes(q),
+    );
+  }, [quotes, search]);
+
+  const QUOTE_STAGES: KanbanColumnDef[] = useMemo(() => {
+    const calcTotal = (status: string) => {
+      const sum = quotes
+        .filter((q) => q.status === status)
+        .reduce((acc, q) => acc + (Number(q.totalAmount) || 0), 0);
+      return `$${sum.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+    };
+
+    return [
+      { key: 'DRAFT', label: 'Quotation (Draft)', summaryTotal: `Total: ${calcTotal('DRAFT')}` },
+      { key: 'AWAITING_APPROVAL', label: 'Awaiting Approval', summaryTotal: `Total: ${calcTotal('AWAITING_APPROVAL')}` },
+      { key: 'APPROVED', label: 'Confirmed', summaryTotal: `Total: ${calcTotal('APPROVED')}` },
+      { key: 'REJECTED', label: 'Rejected', summaryTotal: `Total: ${calcTotal('REJECTED')}` },
+    ];
+  }, [quotes]);
+
+  const handleKanbanMoveStage = async (quoteId: string, nextStageKey: string) => {
+    const quote = quotes.find((q) => q.id === quoteId);
+    if (!quote) return;
+    if (quote.status === nextStageKey) return;
+
+    if (nextStageKey === 'APPROVED') {
+      setConfirmApproveQuote(quote);
+      return;
+    }
+
+    if (nextStageKey === 'REJECTED') {
+      await sendSignal(quote.id, 'REJECT');
+      toast.success(`Quote ${quote.quoteNumber || quote.title} rejected`);
+      return;
+    }
+
+    if (nextStageKey === 'AWAITING_APPROVAL' && quote.status === 'DRAFT') {
+      toast.info(`Quote ${quote.quoteNumber || quote.title} submitted for approval`);
+      return;
+    }
+
+    if (quote.status === 'APPROVED' && nextStageKey === 'DRAFT') {
+      toast.error('Approved quotes cannot be reverted to draft');
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -99,14 +158,53 @@ export function QuotesView() {
         <Stat label="Total Value" value={formattedTotalValue} icon={DollarSign} tone="info" />
       </div>
 
-      <QuotesTable
-        quotes={quotes}
-        isLoading={isLoading}
-        onSignal={async (id, action) => {
-          await sendSignal(id, action);
-        }}
-        onPrint={setPrintingQuote}
-      />
+      <DataViewContainer
+        entityType="quotes"
+        search={search}
+        onSearchChange={setSearch}
+      >
+        {({ viewType }) =>
+          viewType === 'kanban' ? (
+            <KanbanBoard<Quote>
+              columns={QUOTE_STAGES}
+              items={filteredQuotes}
+              getItemId={(q) => q.id}
+              getStageKey={(q) => q.status}
+              onMoveStage={handleKanbanMoveStage}
+              renderCard={(q) => (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-[10px] bg-surface-muted px-1.5 py-0.5 rounded text-ink-muted">
+                      {q.quoteNumber || 'DRAFT'}
+                    </span>
+                    <span className="text-xs font-semibold text-ink">
+                      ${Number(q.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <Link
+                    href={`/quotes/${q.id}`}
+                    className="font-medium text-xs text-ink hover:text-brand line-clamp-1"
+                  >
+                    {q.title}
+                  </Link>
+                  <span className="text-[11px] text-ink-muted line-clamp-1">
+                    {q.customerName || 'No customer'}
+                  </span>
+                </div>
+              )}
+            />
+          ) : (
+            <QuotesTable
+              quotes={filteredQuotes}
+              isLoading={isLoading}
+              onSignal={async (id, action) => {
+                await sendSignal(id, action);
+              }}
+              onPrint={setPrintingQuote}
+            />
+          )
+        }
+      </DataViewContainer>
 
       <CreateQuoteModal
         open={isModalOpen}
@@ -115,6 +213,32 @@ export function QuotesView() {
           await createQuote(payload);
         }}
       />
+
+      {confirmApproveQuote && (
+        <Dialog
+          open={Boolean(confirmApproveQuote)}
+          onClose={() => setConfirmApproveQuote(null)}
+          title="Confirm Quote Approval"
+          description={`Approve quote ${confirmApproveQuote.quoteNumber || confirmApproveQuote.title} for $${Number(confirmApproveQuote.totalAmount || 0).toLocaleString()}? This locks pricing and enables production execution.`}
+        >
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" size="sm" onClick={() => setConfirmApproveQuote(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={async () => {
+                await sendSignal(confirmApproveQuote.id, 'APPROVE');
+                toast.success(`Quote ${confirmApproveQuote.quoteNumber || confirmApproveQuote.title} approved`);
+                setConfirmApproveQuote(null);
+              }}
+            >
+              Approve Quote
+            </Button>
+          </div>
+        </Dialog>
+      )}
 
       {printingQuote && (
         <DocumentPrintModal

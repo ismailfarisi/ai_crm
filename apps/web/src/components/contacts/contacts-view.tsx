@@ -15,7 +15,7 @@ import {
   type ContactStatus,
 } from '@saas/shared';
 import { useSession } from '@/lib/session-context';
-import { useContacts, useDeleteContact } from '@/hooks/use-contacts';
+import { useContacts, useDeleteContact, useUpdateContact } from '@/hooks/use-contacts';
 import { api, queryKeys } from '@/lib/api/endpoints';
 import { formatRelative } from '@/lib/utils';
 import { Can } from '@/components/auth/can';
@@ -26,6 +26,8 @@ import { Badge, EmptyState, PageHeader } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/data-table';
 import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
 import { ContactFormDialog } from './contact-form-dialog';
+import { DataViewContainer } from '@/components/views/data-view-container';
+import { KanbanBoard, type KanbanColumnDef } from '@/components/views/kanban-board';
 
 const STATUS_TONES: Record<ContactStatus, 'brand' | 'success' | 'warning' | 'danger' | 'neutral'> = {
   lead: 'brand',
@@ -74,6 +76,7 @@ export function ContactsView() {
 
   const { data, isPending, isError, error } = useContacts(params);
   const remove = useDeleteContact();
+  const updateContact = useUpdateContact();
 
   // Only fetched when the user may reassign — otherwise the API would 403.
   const { data: team } = useQuery({
@@ -92,6 +95,26 @@ export function ContactsView() {
     if (canSeeTeam) return (team ?? []).filter((member) => member.teamId === user.teamId);
     return [];
   }, [canSeeAll, canSeeTeam, team, user.teamId]);
+
+  const contactStages = useMemo<KanbanColumnDef[]>(() => {
+    return CONTACT_STATUSES.map((statusKey) => {
+      const count = contacts.filter((c) => c.status === statusKey).length;
+      return {
+        key: statusKey,
+        label: CONTACT_STATUS_LABELS[statusKey],
+        summaryTotal: `${count} ${count === 1 ? 'contact' : 'contacts'}`,
+      };
+    });
+  }, [contacts]);
+
+  const handleMoveContactStage = async (contactId: string, nextStageKey: string) => {
+    const contact = contacts.find((c) => c.id === contactId);
+    if (!contact || contact.status === nextStageKey) return;
+    await updateContact.mutateAsync({
+      id: contactId,
+      input: { status: nextStageKey as ContactStatus },
+    });
+  };
 
   const scopeDescription = canSeeAll
     ? "Everyone in your organization's pipeline."
@@ -220,16 +243,11 @@ export function ContactsView() {
           description={error instanceof Error ? error.message : 'Please try again.'}
         />
       ) : (
-        <DataTable
-          columns={columns}
-          data={contacts}
-          isLoading={isPending}
-          getRowId={(row) => row.id}
-          cardTitleKey="fullName"
-          cardSubtitleKey="company"
-          enableRowSelection
-          searchPlaceholder="Search name, email or company…"
-          toolbarActions={
+        <DataViewContainer
+          entityType="contacts"
+          search={search}
+          onSearchChange={setSearch}
+          actionSlot={
             <div className="flex items-center gap-2">
               <Select
                 aria-label="Filter by status"
@@ -255,14 +273,69 @@ export function ContactsView() {
               />
             </div>
           }
-          emptyTitle={debouncedSearch || status || source ? 'No matching contacts' : 'No contacts yet'}
-          emptyDescription={
-            debouncedSearch || status || source
-              ? 'Try a different search or clear the filters.'
-              : 'Add your first contact to start building the pipeline.'
+        >
+          {({ viewType }) =>
+            viewType === 'kanban' ? (
+              <KanbanBoard<ContactDto>
+                columns={contactStages}
+                items={contacts}
+                getItemId={(c) => c.id}
+                getStageKey={(c) => c.status}
+                onMoveStage={handleMoveContactStage}
+                renderCard={(c) => (
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-start justify-between gap-1">
+                      <Link
+                        href={`/contacts/${c.id}`}
+                        className="font-medium text-xs text-ink hover:text-brand line-clamp-1 transition-colors"
+                      >
+                        {c.fullName}
+                      </Link>
+                      <Badge tone={STATUS_TONES[c.status]}>
+                        {CONTACT_STATUS_LABELS[c.status]}
+                      </Badge>
+                    </div>
+                    {(c.company || c.jobTitle) && (
+                      <div className="text-[11px] text-ink-muted line-clamp-1">
+                        {c.company ?? ''}
+                        {c.company && c.jobTitle ? ' · ' : ''}
+                        {c.jobTitle ?? ''}
+                      </div>
+                    )}
+                    {(c.email || c.phone) && (
+                      <div className="space-y-0.5 text-[11px] text-ink-subtle">
+                        {c.email && <p className="truncate">{c.email}</p>}
+                        {c.phone && <p className="truncate">{c.phone}</p>}
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between pt-1 border-t border-border/30 text-[10px] text-ink-subtle">
+                      <span>{c.owner?.fullName ?? 'Unassigned'}</span>
+                      <span>{formatRelative(c.createdAt)}</span>
+                    </div>
+                  </div>
+                )}
+              />
+            ) : (
+              <DataTable
+                columns={columns}
+                data={contacts}
+                isLoading={isPending}
+                getRowId={(row) => row.id}
+                cardTitleKey="fullName"
+                cardSubtitleKey="company"
+                enableRowSelection
+                enableSearch={false}
+                emptyTitle={debouncedSearch || status || source ? 'No matching contacts' : 'No contacts yet'}
+                emptyDescription={
+                  debouncedSearch || status || source
+                    ? 'Try a different search or clear the filters.'
+                    : 'Add your first contact to start building the pipeline.'
+                }
+                emptyIcon={<Users className="size-8 text-ink-muted" />}
+              />
+            )
           }
-          emptyIcon={<Users className="size-8 text-ink-muted" />}
-        />
+        </DataViewContainer>
       )}
 
       <ContactFormDialog
