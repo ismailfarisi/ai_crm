@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Boxes, Database, Settings2, Sparkles, Layers } from 'lucide-react';
+import { Plus, Boxes, Database, Settings2 } from 'lucide-react';
 import type { CustomObjectDefinitionDto } from '@saas/shared';
 import { useCustomObjects } from '@/hooks/use-custom-objects';
 import { Button } from '@/components/ui/button';

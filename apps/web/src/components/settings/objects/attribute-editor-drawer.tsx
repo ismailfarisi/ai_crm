@@ -9,7 +9,7 @@ import {
   type CustomObjectDefinitionDto,
   type CreateCustomAttributePayload,
 } from '@saas/shared';
-import { X, Trash2, Plus, Sparkles, Check } from 'lucide-react';
+import { X, Trash2, Plus } from 'lucide-react';
 import { api, queryKeys } from '@/lib/api/endpoints';
 import { useCustomObject } from '@/hooks/use-custom-objects';
 import { Input, Select } from '@/components/ui/field';
