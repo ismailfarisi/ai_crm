@@ -1,4 +1,7 @@
-import { CustomObjectToolFactoryService } from './custom-object-tool-factory.service';
+import {
+  CustomObjectToolFactoryService,
+  type CustomObject,
+} from './custom-object-tool-factory.service';
 
 describe('CustomObjectToolFactoryService', () => {
   let factory: CustomObjectToolFactoryService;
@@ -8,7 +11,7 @@ describe('CustomObjectToolFactoryService', () => {
   });
 
   it('generates query and create tool schemas for a given custom object', () => {
-    const mockCustomObject: any = {
+    const mockCustomObject: CustomObject = {
       id: 'co-1',
       name: 'Vehicle',
       slug: 'vehicle',
@@ -31,7 +34,7 @@ describe('CustomObjectToolFactoryService', () => {
   });
 
   it('handles slug sanitization with uppercase and special characters', () => {
-    const mockCustomObject: any = {
+    const mockCustomObject: CustomObject = {
       id: 'co-2',
       name: 'Heavy Equipment',
       slug: 'Heavy-Equipment@2026',
@@ -64,7 +67,7 @@ describe('CustomObjectToolFactoryService', () => {
   });
 
   it('handles custom object with slug/name attributes and empty attributes list', () => {
-    const mockWithSlugAttrs: any = {
+    const mockWithSlugAttrs: CustomObject = {
       id: 'co-3',
       name: 'Sensor',
       slug: 'sensor',
@@ -74,7 +77,7 @@ describe('CustomObjectToolFactoryService', () => {
       ],
     };
 
-    const mockEmptyAttrs: any = {
+    const mockEmptyAttrs: CustomObject = {
       id: 'co-4',
       name: 'EmptyObject',
       slug: 'empty_object',

@@ -31,7 +31,7 @@ export type CustomObject =
       slug: string;
       description?: string | null;
       attributes?: CustomObjectAttribute[];
-      [key: string]: any;
+      [key: string]: unknown;
     };
 
 @Injectable()
@@ -64,10 +64,10 @@ export class CustomObjectToolFactoryService {
       const required: string[] = [];
 
       for (const attr of obj.attributes || []) {
-        const rawAttr = attr as Record<string, any>;
-        const key = (rawAttr.key ?? rawAttr.slug) as string | undefined;
-        const label = (rawAttr.label ?? rawAttr.name ?? key) as string | undefined;
-        const normalizedType = String(rawAttr.type || '').toUpperCase();
+        const rawAttr = attr as Record<string, unknown>;
+        const key = typeof rawAttr.key === 'string' ? rawAttr.key : typeof rawAttr.slug === 'string' ? rawAttr.slug : undefined;
+        const label = typeof rawAttr.label === 'string' ? rawAttr.label : typeof rawAttr.name === 'string' ? rawAttr.name : key;
+        const normalizedType = String(rawAttr.type ?? '').toUpperCase();
         const typeMapping =
           normalizedType === 'NUMBER' ? 'number' : normalizedType === 'BOOLEAN' ? 'boolean' : 'string';
 
