@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronRight,
   CircleDot,
+  Database,
   LogOut,
   Menu,
   Moon,
@@ -18,16 +19,24 @@ import {
 import { useSession } from '@/lib/session-context';
 import { cn, initials } from '@/lib/utils';
 import { CORE_ACTION_ITEMS, SECONDARY_SECTIONS } from '@/lib/nav';
+import { useCustomObjects } from '@/hooks/use-custom-objects';
 import { Button } from '@/components/ui/button';
 import { NotificationBell } from './notification-bell';
 import { BillingBanner } from './billing-banner';
 
-function pageTitleFor(pathname: string): string {
+function pageTitleFor(pathname: string, customObjects?: { slug: string; name: string }[]): string {
   const allItems = [...CORE_ACTION_ITEMS, ...SECONDARY_SECTIONS.flatMap((s) => s.items)];
   const match = allItems.find(
     (item) => pathname === item.href || pathname.startsWith(`${item.href}/`),
   );
-  return match?.label ?? 'Dashboard';
+  if (match) return match.label;
+  if (customObjects) {
+    const customMatch = customObjects.find(
+      (obj) => pathname === `/objects/${obj.slug}` || pathname.startsWith(`/objects/${obj.slug}/`),
+    );
+    if (customMatch) return customMatch.name;
+  }
+  return 'Dashboard';
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -36,6 +45,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     Settings: true,
+    'Custom Data': true,
   });
 
   const toggleSection = (title: string) => {
@@ -50,6 +60,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     ...section,
     items: section.items.filter((item) => check(item.rule ?? {})),
   })).filter((section) => section.items.length > 0);
+
+  const { data: customObjects = [] } = useCustomObjects();
+  const activeCustomObjects = customObjects.filter((obj) => !obj.isArchived);
 
   const sidebarContent = (
     <div className="flex flex-1 flex-col overflow-y-auto px-3 py-2 scrollbar-thin">
@@ -93,6 +106,58 @@ export function AppShell({ children }: { children: ReactNode }) {
           );
         })}
       </div>
+
+      {/* Custom Data Collapsible Section */}
+      {activeCustomObjects.length > 0 && (
+        <div className="mt-5 space-y-1">
+          <button
+            type="button"
+            onClick={() => toggleSection('Custom Data')}
+            className="flex w-full items-center justify-between px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-ink-subtle transition-colors hover:text-ink"
+          >
+            <span>Custom Data</span>
+            <ChevronDown
+              className={cn(
+                'size-3.5 text-ink-subtle transition-transform duration-200',
+                openSections['Custom Data'] !== false ? 'rotate-0' : '-rotate-90',
+              )}
+            />
+          </button>
+
+          {openSections['Custom Data'] !== false && (
+            <ul className="space-y-0.5">
+              {activeCustomObjects.map((obj) => {
+                const href = `/objects/${obj.slug}`;
+                const active = pathname === href || pathname.startsWith(`${href}/`);
+
+                return (
+                  <li key={obj.id || obj.slug}>
+                    <Link
+                      href={href}
+                      onClick={() => setMobileOpen(false)}
+                      aria-current={active ? 'page' : undefined}
+                      className={cn(
+                        'flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium transition-all',
+                        active
+                          ? 'bg-surface-muted font-semibold text-ink shadow-2xs'
+                          : 'text-ink-muted hover:bg-surface-muted/70 hover:text-ink',
+                      )}
+                    >
+                      <Database
+                        className={cn(
+                          'size-3.5 shrink-0',
+                          active ? 'text-brand' : 'text-ink-subtle',
+                        )}
+                      />
+                      <span className="truncate">{obj.name}</span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* Secondary Collapsible Sections */}
       {visibleSecondarySections.length > 0 && (
@@ -211,7 +276,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               {session.organization.name}
             </span>
             <ChevronRight className="hidden size-3.5 shrink-0 text-ink-subtle sm:inline" />
-            <span className="truncate font-semibold text-ink">{pageTitleFor(pathname)}</span>
+            <span className="truncate font-semibold text-ink">{pageTitleFor(pathname, customObjects)}</span>
           </div>
 
           <NotificationBell />
