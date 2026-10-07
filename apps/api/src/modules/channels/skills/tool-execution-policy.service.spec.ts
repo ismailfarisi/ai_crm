@@ -44,4 +44,11 @@ describe('ToolExecutionPolicyService', () => {
     expect(result.requiresApproval).toBe(false);
     expect(result.actionClass).toBe('DRAFT_WRITE');
   });
+
+  it('proves create_custom_drafting_table requires approval because it does not start with draft_', () => {
+    const result = policyService.evaluatePolicy('create_custom_drafting_table', true);
+    expect(result.isAutonomous).toBe(false);
+    expect(result.requiresApproval).toBe(true);
+    expect(result.actionClass).toBe('COMMIT_MUTATION');
+  });
 });

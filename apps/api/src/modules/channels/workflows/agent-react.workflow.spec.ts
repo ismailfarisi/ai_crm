@@ -255,6 +255,56 @@ describe('agentReActWorkflow logic', () => {
     expect(mockActivities.commitToolMutationActivity).not.toHaveBeenCalled();
   });
 
+  it('processes multiple queued signals in order', async () => {
+    mockActivities.planReActTurn
+      .mockResolvedValueOnce({
+        thought: 'Action 1',
+        toolCalls: [{ id: 'call-1', name: 'tool1', args: {} }],
+      })
+      .mockResolvedValueOnce({
+        thought: 'Action 2',
+        toolCalls: [{ id: 'call-2', name: 'tool2', args: {} }],
+      })
+      .mockResolvedValueOnce({
+        thought: 'Done',
+        finalAnswer: 'Both actions processed.',
+      });
+
+    mockActivities.executeToolActivity.mockResolvedValue({
+      toolCallId: 'call-X',
+      toolName: 'toolX',
+      isMutating: true,
+      requiresApproval: true,
+      previewPayload: {},
+    });
+
+    mockActivities.commitToolMutationActivity.mockResolvedValue({ success: true });
+
+    // Pre-queue two signals before workflow actually waits
+    mockConditionImpl = async (predicate) => {
+      const handler = mockHandlers.get(approvalSignal);
+      if (handler) {
+        // Only push one signal per check to simulate arriving one by one or pre-queued
+        handler({ approved: true, note: 'Approved signal' });
+      }
+      return predicate();
+    };
+
+    const result = await agentReActWorkflow({
+      organizationId: 'org-123',
+      userId: 'user-456',
+      conversationId: 'conv-789',
+      prompt: 'Queue test',
+    });
+
+    expect(result).toEqual({
+      status: 'COMPLETED',
+      finalResponse: 'Both actions processed.',
+      stepsExecuted: 3,
+    });
+    expect(mockActivities.commitToolMutationActivity).toHaveBeenCalledTimes(2);
+  });
+
   it('handles tool execution with error message fallback', async () => {
     mockActivities.planReActTurn
       .mockResolvedValueOnce({

@@ -24,7 +24,7 @@ local key = KEYS[1]
 local delta = tonumber(ARGV[1])
 local new_val = redis.call('incrbyfloat', key, delta)
 if tonumber(new_val) < 0 then
-  redis.call('set', key, '0')
+  redis.call('set', key, '0', 'KEEPTTL')
   return '0'
 end
 return tostring(new_val)
@@ -54,10 +54,11 @@ export class RedisBudgetGuardService {
     allowed: boolean;
     reservedAmount: number;
     currentSpendUsd: number;
+    periodKey: string;
   }> {
     if (!this.redis) {
       // Degrade gracefully if Redis is unconfigured
-      return { allowed: true, reservedAmount: 0, currentSpendUsd: 0 };
+      return { allowed: true, reservedAmount: 0, currentSpendUsd: 0, periodKey: '' };
     }
 
     try {
@@ -77,11 +78,12 @@ export class RedisBudgetGuardService {
         allowed,
         reservedAmount: allowed ? estimatedCostUsd : 0,
         currentSpendUsd,
+        periodKey: key,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Redis budget check failed, failing open: ${msg}`);
-      return { allowed: true, reservedAmount: 0, currentSpendUsd: 0 };
+      return { allowed: true, reservedAmount: 0, currentSpendUsd: 0, periodKey: '' };
     }
   }
 
@@ -89,11 +91,12 @@ export class RedisBudgetGuardService {
     organizationId: string,
     actualCostUsd: number,
     reservedAmount: number,
+    periodKey?: string,
   ): Promise<void> {
     if (!this.redis || reservedAmount === 0) return;
 
     try {
-      const key = this.getPeriodKey(organizationId);
+      const key = periodKey ?? this.getPeriodKey(organizationId);
       const delta = Number((actualCostUsd - reservedAmount).toFixed(8));
       await this.redis.eval(RECONCILE_LUA, 1, key, String(delta));
     } catch (err) {

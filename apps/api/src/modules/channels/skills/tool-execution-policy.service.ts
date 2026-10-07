@@ -25,7 +25,7 @@ export class ToolExecutionPolicyService {
       };
     }
 
-    if (this.ALWAYS_REQUIRE_APPROVAL.has(toolName) || !toolName.includes('draft')) {
+    if (this.ALWAYS_REQUIRE_APPROVAL.has(toolName) || !toolName.startsWith('draft_')) {
       return {
         isAutonomous: false,
         requiresApproval: true,

@@ -47,9 +47,9 @@ export async function agentReActWorkflow(
   let isDone = false;
   let finalResponse = '';
 
-  let approvalResult: { approved: boolean; note?: string } | null = null;
+  const approvalQueue: Array<{ approved: boolean; note?: string }> = [];
   setHandler(approvalSignal, (signal) => {
-    approvalResult = signal;
+    approvalQueue.push(signal);
   });
 
   const history: Array<{ role: 'user' | 'assistant' | 'tool'; content: string }> = [
@@ -82,9 +82,9 @@ export async function agentReActWorkflow(
 
         if (execution.requiresApproval && execution.isMutating) {
           // Pause workflow and wait up to 48 hours for user signal
-          const approved = await condition(() => approvalResult !== null, '48 hours');
+          const approved = await condition(() => approvalQueue.length > 0, '48 hours');
 
-          const currentApproval = approvalResult as { approved: boolean; note?: string } | null;
+          const currentApproval = approvalQueue.shift();
           if (!approved || !currentApproval?.approved) {
             return {
               status: 'REJECTED',
@@ -103,7 +103,7 @@ export async function agentReActWorkflow(
             role: 'tool',
             content: JSON.stringify(commit),
           });
-          approvalResult = null;
+
         } else {
           history.push({
             role: 'tool',

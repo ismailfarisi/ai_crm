@@ -64,10 +64,10 @@ export class CustomObjectToolFactoryService {
       const required: string[] = [];
 
       for (const attr of obj.attributes || []) {
-        const rawAttr = attr as Record<string, unknown>;
-        const key = typeof rawAttr.key === 'string' ? rawAttr.key : typeof rawAttr.slug === 'string' ? rawAttr.slug : undefined;
-        const label = typeof rawAttr.label === 'string' ? rawAttr.label : typeof rawAttr.name === 'string' ? rawAttr.name : key;
-        const normalizedType = String(rawAttr.type ?? '').toUpperCase();
+        const a = attr as any;
+        const key = a.key ?? a.slug;
+        const label = a.label ?? a.name ?? key;
+        const normalizedType = String(a.type ?? '').toUpperCase();
         const typeMapping =
           normalizedType === 'NUMBER' ? 'number' : normalizedType === 'BOOLEAN' ? 'boolean' : 'string';
 
