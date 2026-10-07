@@ -37,4 +37,11 @@ describe('ToolExecutionPolicyService', () => {
       expect(result.actionClass).toBe('COMMIT_MUTATION');
     }
   });
+
+  it('marks draft staging mutations as DRAFT_WRITE with autonomous execution', () => {
+    const result = policyService.evaluatePolicy('draft_quote_prepare', true);
+    expect(result.isAutonomous).toBe(true);
+    expect(result.requiresApproval).toBe(false);
+    expect(result.actionClass).toBe('DRAFT_WRITE');
+  });
 });

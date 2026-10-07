@@ -25,7 +25,7 @@ export class ToolExecutionPolicyService {
       };
     }
 
-    if (this.ALWAYS_REQUIRE_APPROVAL.has(toolName) || isMutation) {
+    if (this.ALWAYS_REQUIRE_APPROVAL.has(toolName) || !toolName.includes('draft')) {
       return {
         isAutonomous: false,
         requiresApproval: true,
