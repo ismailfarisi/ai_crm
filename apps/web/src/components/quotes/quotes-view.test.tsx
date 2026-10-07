@@ -145,4 +145,17 @@ describe('QuotesView', () => {
     expect(screen.getByText('$6,259.50')).toBeDefined();
     expect(screen.queryByText(/09\.506250/)).toBeNull();
   });
+
+  it('renders Table and Pipeline view switcher buttons', () => {
+    mockUseQuotes.mockReturnValue({
+      quotes: [],
+      isLoading: false,
+      createQuote: vi.fn(),
+      sendSignal: vi.fn(),
+    });
+
+    renderWithClient(<QuotesView />);
+    expect(screen.getByText('Table')).toBeDefined();
+    expect(screen.getByText('Pipeline')).toBeDefined();
+  });
 });
