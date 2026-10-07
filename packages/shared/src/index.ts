@@ -52,3 +52,6 @@ export * from './schemas/platform';
 export * from './templates';
 export * from './views/types';
 export * from './schemas/saved-view';
+export * from './custom-objects/types';
+export * from './schemas/custom-object';
+export * from './rbac/permissions/custom-objects';

@@ -43,6 +43,7 @@ import {
 } from './credits';
 import { auditDomain, AUDIT_PERMISSIONS } from './platform';
 import { templateDomain, TEMPLATE_PERMISSIONS } from './template';
+import { customObjectsDomain, CUSTOM_OBJECT_PERMISSIONS } from './custom-objects';
 
 export type { PermissionDomain, PermissionValues } from './domain';
 
@@ -80,6 +81,8 @@ export {
   auditDomain,
   templateDomain,
   TEMPLATE_PERMISSIONS,
+  customObjectsDomain,
+  CUSTOM_OBJECT_PERMISSIONS,
 };
 
 export const PERMISSION_ACTIONS = ['create', 'read', 'update', 'delete', 'manage'] as const;
@@ -117,6 +120,7 @@ export const PERMISSION_DOMAINS: PermissionDomain[] = [
   taxDomain,
   auditDomain,
   templateDomain,
+  customObjectsDomain,
 ];
 
 /**
@@ -149,6 +153,7 @@ export const PERMISSIONS = {
   ...TAX_PERMISSIONS,
   ...AUDIT_PERMISSIONS,
   ...TEMPLATE_PERMISSIONS,
+  ...CUSTOM_OBJECT_PERMISSIONS,
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
