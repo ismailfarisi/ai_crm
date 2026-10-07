@@ -27,6 +27,7 @@ import { TeamsModule } from '@/modules/teams/teams.module';
 import { TemporalModule } from '@/modules/temporal/temporal.module';
 import { UsersModule } from '@/modules/users/users.module';
 import { SavedViewsModule } from '@/modules/saved-views/saved-views.module';
+import { CustomObjectsModule } from '@/modules/custom-objects/custom-objects.module';
 
 /**
  * The feature module registry, kept out of `app.module.ts` and
@@ -69,6 +70,7 @@ export const FEATURE_MODULES = [
   NotificationsModule,
   BillingModule,
   SavedViewsModule,
+  CustomObjectsModule,
 ];
 
 /**
