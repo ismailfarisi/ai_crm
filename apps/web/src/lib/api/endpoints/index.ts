@@ -23,6 +23,7 @@ import { creditsEndpoints, creditsKeys } from './credits';
 import { platformEndpoints, platformKeys } from './platform';
 import { documentTemplatesEndpoints, documentTemplatesKeys } from './document-templates';
 import { savedViewsEndpoints, savedViewsKeys } from './saved-views';
+import { customObjectsEndpoints, customObjectsKeys } from './custom-objects';
 
 export * from './auth';
 export * from './contacts';
@@ -42,6 +43,7 @@ export * from './credits';
 export * from './platform';
 export * from './document-templates';
 export * from './saved-views';
+export * from './custom-objects';
 
 export const api = {
   ...authEndpoints,
@@ -62,6 +64,7 @@ export const api = {
   ...platformEndpoints,
   ...documentTemplatesEndpoints,
   ...savedViewsEndpoints,
+  ...customObjectsEndpoints,
 };
 
 export const queryKeys = {
@@ -83,4 +86,5 @@ export const queryKeys = {
   ...platformKeys,
   ...documentTemplatesKeys,
   ...savedViewsKeys,
+  ...customObjectsKeys,
 };

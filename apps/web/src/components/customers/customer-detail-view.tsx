@@ -19,6 +19,7 @@ import {
   type CustomerOverviewDto,
 } from '@saas/shared';
 import { useCustomer, useCustomerOverview } from '@/hooks/use-customers';
+import { RelatedCustomRecords } from '@/components/objects/related-custom-records';
 import { Button } from '@/components/ui/button';
 import {
   Badge,
@@ -123,6 +124,11 @@ export function CustomerDetailView({ params }: { params: Promise<{ id: string }>
               />
             </>
           )}
+
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold text-ink">Related Records</h2>
+            <RelatedCustomRecords targetType="customer" targetId={customer.id} />
+          </div>
         </>
       )}
     </div>

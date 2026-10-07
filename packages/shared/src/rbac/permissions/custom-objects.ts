@@ -1,0 +1,67 @@
+import type { PermissionDomain, PermissionValues } from './domain';
+
+export const CUSTOM_OBJECT_PERMISSIONS = {
+  CUSTOM_OBJECT_MANAGE: 'custom_object:manage',
+  CUSTOM_RECORD_READ: 'custom_record:read',
+  CUSTOM_RECORD_READ_ALL: 'custom_record:read_all',
+  CUSTOM_RECORD_CREATE: 'custom_record:create',
+  CUSTOM_RECORD_UPDATE: 'custom_record:update',
+  CUSTOM_RECORD_DELETE: 'custom_record:delete',
+  CUSTOM_RECORD_EXPORT: 'custom_record:export',
+} as const;
+
+type CustomObjectPermission = PermissionValues<typeof CUSTOM_OBJECT_PERMISSIONS>;
+
+export const customObjectsDomain: PermissionDomain<CustomObjectPermission> = {
+  key: 'custom_objects',
+  label: 'Custom Objects & Data',
+  permissions: CUSTOM_OBJECT_PERMISSIONS,
+  descriptions: {
+    [CUSTOM_OBJECT_PERMISSIONS.CUSTOM_OBJECT_MANAGE]:
+      'Create and edit custom object definitions, attributes, and relationships.',
+    [CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_READ]:
+      'View custom records owned by or assigned to the user.',
+    [CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_READ_ALL]:
+      'View all custom records across the entire organization.',
+    [CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_CREATE]:
+      'Create new custom records.',
+    [CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_UPDATE]:
+      'Modify values of custom records.',
+    [CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_DELETE]:
+      'Soft-delete custom records.',
+    [CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_EXPORT]:
+      'Export custom records to CSV or spreadsheet formats.',
+  },
+  groupPermissions: [
+    CUSTOM_OBJECT_PERMISSIONS.CUSTOM_OBJECT_MANAGE,
+    CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_READ,
+    CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_READ_ALL,
+    CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_CREATE,
+    CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_UPDATE,
+    CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_DELETE,
+    CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_EXPORT,
+  ],
+  grants: {
+    admin: [
+      CUSTOM_OBJECT_PERMISSIONS.CUSTOM_OBJECT_MANAGE,
+      CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_READ,
+      CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_READ_ALL,
+      CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_CREATE,
+      CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_UPDATE,
+      CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_DELETE,
+      CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_EXPORT,
+    ],
+    manager: [
+      CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_READ_ALL,
+      CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_CREATE,
+      CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_UPDATE,
+      CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_DELETE,
+      CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_EXPORT,
+    ],
+    member: [
+      CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_READ,
+      CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_CREATE,
+      CUSTOM_OBJECT_PERMISSIONS.CUSTOM_RECORD_UPDATE,
+    ],
+  },
+};
