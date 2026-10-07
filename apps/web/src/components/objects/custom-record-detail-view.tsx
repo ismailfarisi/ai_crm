@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { useCustomRecord } from '@/hooks/use-custom-objects';
-import { Card, PageHeader, Skeleton } from '@/components/ui/primitives';
+import { Button } from '@/components/ui/button';
+import { Card, EmptyState, PageHeader, Skeleton } from '@/components/ui/primitives';
 
 export function CustomRecordDetailView({ slug, id }: { slug: string; id: string }) {
   const { data: record, isLoading } = useCustomRecord(slug, id);
@@ -25,6 +26,16 @@ export function CustomRecordDetailView({ slug, id }: { slug: string; id: string 
           <Skeleton className="h-6 w-48" />
           <Skeleton className="h-24 w-full" />
         </Card>
+      ) : !record ? (
+        <EmptyState
+          title="Record not found"
+          description="The requested custom record could not be found or you lack permission to view it."
+          action={
+            <Link href={`/objects/${slug}`}>
+              <Button variant="outline">Back to list</Button>
+            </Link>
+          }
+        />
       ) : (
         <Card className="p-4 space-y-3">
           <h3 className="font-semibold text-sm text-ink">Attributes</h3>
