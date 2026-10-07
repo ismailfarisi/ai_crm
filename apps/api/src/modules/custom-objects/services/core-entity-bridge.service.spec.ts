@@ -101,7 +101,7 @@ describe('CoreEntityBridgeService', () => {
 
       expect(mockLinkRepo.find).toHaveBeenCalledWith({
         where: { tenantId: 'tenant-1', sourceRecordId: 'rec-1' },
-        relations: ['relationship'],
+        relations: { relationship: true },
         order: { createdAt: 'ASC' },
       });
       expect(result).toEqual([]);
@@ -354,7 +354,10 @@ describe('CoreEntityBridgeService', () => {
           targetRecordId: 'cust-1',
           targetType: 'customer',
         },
-        relations: ['sourceRecord', 'sourceRecord.object', 'relationship'],
+        relations: {
+          sourceRecord: { object: true },
+          relationship: true,
+        },
       });
       expect(result).toEqual(mockLinks);
     });
@@ -369,7 +372,10 @@ describe('CoreEntityBridgeService', () => {
           tenantId: 'tenant-1',
           targetRecordId: 'cust-1',
         },
-        relations: ['sourceRecord', 'sourceRecord.object', 'relationship'],
+        relations: {
+          sourceRecord: { object: true },
+          relationship: true,
+        },
       });
     });
   });

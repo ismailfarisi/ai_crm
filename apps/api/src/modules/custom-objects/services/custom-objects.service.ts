@@ -19,7 +19,7 @@ export class CustomObjectsService {
   async list(tenantId: string): Promise<CustomObjectDefinition[]> {
     return this.objectRepo.find({
       where: { tenantId, isArchived: false },
-      relations: ['attributes', 'relationships'] as any,
+      relations: { attributes: true, relationships: true },
       order: { name: 'ASC' },
     });
   }
@@ -27,7 +27,7 @@ export class CustomObjectsService {
   async getBySlug(tenantId: string, slug: string): Promise<CustomObjectDefinition> {
     const object = await this.objectRepo.findOne({
       where: { tenantId, slug, isArchived: false },
-      relations: ['attributes', 'relationships'] as any,
+      relations: { attributes: true, relationships: true },
     });
     if (!object) throw new NotFoundException(`Custom object '${slug}' not found`);
     return object;

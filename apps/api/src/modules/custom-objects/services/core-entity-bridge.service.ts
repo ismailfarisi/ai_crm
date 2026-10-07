@@ -37,7 +37,7 @@ export class CoreEntityBridgeService {
   async getRecordLinks(tenantId: string, sourceRecordId: string): Promise<any[]> {
     const links = await this.linkRepo.find({
       where: { tenantId, sourceRecordId },
-      relations: ['relationship'] as any,
+      relations: { relationship: true },
       order: { createdAt: 'ASC' },
     });
 
@@ -149,7 +149,10 @@ export class CoreEntityBridgeService {
     }
     return this.linkRepo.find({
       where,
-      relations: ['sourceRecord', 'sourceRecord.object', 'relationship'] as any,
+      relations: {
+        sourceRecord: { object: true },
+        relationship: true,
+      },
     });
   }
 }

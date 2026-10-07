@@ -55,7 +55,7 @@ describe('CustomObjectsService', () => {
       const res = await service.list('tenant-1');
       expect(mockObjectRepo.find).toHaveBeenCalledWith({
         where: { tenantId: 'tenant-1', isArchived: false },
-        relations: ['attributes', 'relationships'],
+        relations: { attributes: true, relationships: true },
         order: { name: 'ASC' },
       });
       expect(res).toEqual([{ id: 'obj-1', name: 'Vehicles' }]);
