@@ -3,7 +3,6 @@ import {
   defineSignal,
   setHandler,
   condition,
-  ApplicationFailure,
 } from '@temporalio/workflow';
 import type {
   AgentReactActivities,
@@ -104,6 +103,7 @@ export async function agentReActWorkflow(
             role: 'tool',
             content: JSON.stringify(commit),
           });
+          approvalResult = null;
         } else {
           history.push({
             role: 'tool',
