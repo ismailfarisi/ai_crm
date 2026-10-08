@@ -163,6 +163,16 @@ export const NODE_PALETTE_ITEMS: NodePaletteItem[] = [
     iconBg: 'bg-info-soft',
     iconColor: 'text-info',
   },
+  {
+    type: 'aiAgentNode',
+    label: 'Autonomous AI Agent',
+    category: 'AI',
+    icon: Sparkles,
+    description: 'Autonomous multi-step ReAct agent with tool execution and HITL approvals',
+    badge: 'Agent',
+    iconBg: 'bg-brand-soft',
+    iconColor: 'text-ink',
+  },
 
   // Human-in-the-Loop
   {
