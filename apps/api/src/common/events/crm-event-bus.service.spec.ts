@@ -1,4 +1,4 @@
-import { CrmEventBusService } from './crm-event-bus.service';
+import { CrmEventBusService, computeChangedFields } from './crm-event-bus.service';
 import type { CrmDomainEvent } from '@saas/shared';
 
 describe('CrmEventBusService', () => {
@@ -82,7 +82,7 @@ describe('CrmEventBusService', () => {
       expect(() => unsubscribe()).not.toThrow();
     });
 
-    it('shields errors so an error in one subscriber does not disrupt other subscribers and does not throw in publish', async () => {
+    it('shields errors so an asynchronous error in one subscriber does not disrupt other subscribers and does not throw in publish', async () => {
       const healthySubscriberReceived: CrmDomainEvent[] = [];
       const failingSubscriber = async () => {
         throw new Error('Subscriber internal failure');
@@ -102,6 +102,34 @@ describe('CrmEventBusService', () => {
         entityId: 'contact-001',
         timestamp: '2026-10-08T12:10:00.000Z',
         snapshot: { before: { id: 'contact-001' }, after: null, changedFields: ['id'] },
+      };
+
+      await expect(service.publish(event)).resolves.not.toThrow();
+      expect(healthySubscriberReceived).toHaveLength(1);
+      expect(healthySubscriberReceived[0]).toEqual(event);
+    });
+
+    it('shields errors when a subscriber throws synchronously without throwing in publish or disrupting peers', async () => {
+      const healthySubscriberReceived: CrmDomainEvent[] = [];
+      const syncThrowingSubscriber = () => {
+        throw new Error('Subscriber synchronous crash');
+      };
+      const healthySubscriber = async (event: CrmDomainEvent) => {
+        healthySubscriberReceived.push(event);
+      };
+
+      // Register sync thrower and healthy subscriber
+      service.subscribe(syncThrowingSubscriber as any);
+      service.subscribe(healthySubscriber);
+
+      const event: CrmDomainEvent = {
+        tenantId: 'tenant-123',
+        eventType: 'record.updated',
+        entityType: 'core',
+        entityName: 'contact',
+        entityId: 'contact-001',
+        timestamp: '2026-10-08T12:12:00.000Z',
+        snapshot: { before: { status: 'LEAD' }, after: { status: 'WON' }, changedFields: ['status'] },
       };
 
       await expect(service.publish(event)).resolves.not.toThrow();
@@ -207,6 +235,32 @@ describe('CrmEventBusService', () => {
       expect(changed).toEqual(['date']);
     });
 
+    it('considers equivalent ISO date strings with differing formatting as identical', () => {
+      const before = {
+        createdAt: '2026-10-08T12:00:00Z',
+        updatedAt: '2026-10-08T12:00:00.000+00:00',
+      };
+      const after = {
+        createdAt: '2026-10-08T12:00:00.000Z',
+        updatedAt: '2026-10-08T12:00:00Z',
+      };
+
+      const changed = service.computeChangedFields(before, after);
+      expect(changed).toEqual([]);
+    });
+
+    it('detects actually differing ISO date strings as changed', () => {
+      const before = {
+        createdAt: '2026-10-08T12:00:00Z',
+      };
+      const after = {
+        createdAt: '2026-10-08T12:00:01Z',
+      };
+
+      const changed = service.computeChangedFields(before, after);
+      expect(changed).toEqual(['createdAt']);
+    });
+
     it('ignores identical keys across primitives, nested objects, and arrays', () => {
       const before = {
         name: 'Acme',
@@ -244,6 +298,13 @@ describe('CrmEventBusService', () => {
 
       const changed = service.computeChangedFields(before, after);
       expect(changed).toEqual(['a', 'm', 'z']);
+    });
+
+    it('works as standalone exported function identically to service method', () => {
+      const before = { status: 'DRAFT', count: 1 };
+      const after = { status: 'ACTIVE', count: 1 };
+
+      expect(computeChangedFields(before, after)).toEqual(['status']);
     });
   });
 });
