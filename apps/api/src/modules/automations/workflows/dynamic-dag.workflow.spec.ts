@@ -8,6 +8,7 @@ const mockActivities = {
   executeCrmMutationActivity: jest.fn(),
   recordNodeResultActivity: jest.fn().mockResolvedValue({ recorded: true }),
 };
+const mockExecuteChild = jest.fn();
 
 jest.mock('@temporalio/workflow', () => {
   const handlers = new Map<any, Function>();
@@ -37,11 +38,14 @@ jest.mock('@temporalio/workflow', () => {
     sleep: jest.fn().mockResolvedValue(undefined),
     defineSignal: (name: string) => ({ name, type: 'signal' }),
     defineQuery: (name: string) => ({ name, type: 'query' }),
+    executeChild: (...args: any[]) =>
+      (global as any).__mockExecuteChild(...args),
   };
 });
 
 (global as any).__mockActivities = mockActivities;
 (global as any).__mockHandlers = mockHandlers;
+(global as any).__mockExecuteChild = mockExecuteChild;
 
 import { dynamicDagWorkflow } from './dynamic-dag.workflow';
 import {
@@ -50,11 +54,13 @@ import {
   getExecutionStateQuery,
   rejectNodeSignal,
 } from './interfaces';
+import { agentReActWorkflow } from '@/modules/channels/workflows/agent-react.workflow';
 
 describe('DynamicDagWorkflow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockHandlers.clear();
+    mockExecuteChild.mockReset();
   });
 
   it('should execute a linear DAG of trigger -> httpRequest -> crmMutate', async () => {
@@ -523,7 +529,7 @@ describe('DynamicDagWorkflow', () => {
     const queryHandler = mockHandlers.get(getExecutionStateQuery);
     expect(queryHandler).toBeDefined();
 
-    const currentState = queryHandler();
+    const currentState = queryHandler!();
     expect(currentState.executionId).toBe('exec-query');
     expect(currentState.status).toBeDefined();
 
@@ -619,4 +625,377 @@ describe('DynamicDagWorkflow', () => {
     expect(result.nodeResults['http-fail'].status).toBe('FAILED');
     expect(result.nodeResults['fallback-email'].status).toBe('SUCCESS');
   });
+
+  it('should execute agentReActWorkflow child workflow for aiAgentNode and pass result to downstream nodes via $json', async () => {
+    mockActivities.executeEmailActivity.mockResolvedValue({
+      success: true,
+      messageId: 'email-ai-agent',
+      to: 'client@acme.com',
+      sentAt: new Date().toISOString(),
+    });
+
+    mockExecuteChild.mockResolvedValueOnce({
+      status: 'COMPLETED',
+      finalResponse: 'Refund of $100 has been processed successfully.',
+      stepsExecuted: 4,
+    });
+
+    const input: DynamicWorkflowInput = {
+      executionId: 'exec-ai-1',
+      workflowId: 'wf-ai-1',
+      tenantId: 'tenant-1',
+      triggerPayload: { customerName: 'Acme Corp', issue: 'Overbilling inquiry' },
+      nodes: [
+        {
+          id: 'trigger',
+          type: 'webhookTrigger',
+          position: { x: 0, y: 0 },
+          data: { label: 'Webhook Trigger', config: {} },
+        },
+        {
+          id: 'node-ai-agent',
+          type: 'aiAgentNode',
+          position: { x: 100, y: 0 },
+          data: {
+            label: 'Support Agent',
+            config: {
+              goal: 'Resolve issue for {{ $trigger.customerName }}: {{ $trigger.issue }}',
+              autoApprove: true,
+            },
+          },
+        },
+        {
+          id: 'node-downstream-email',
+          type: 'sendEmailNode',
+          position: { x: 200, y: 0 },
+          data: {
+            label: 'Notify Client',
+            config: {
+              to: 'client@acme.com',
+              subject: 'Agent Resolution: {{ $json.solution }}',
+            },
+          },
+        },
+      ],
+      edges: [
+        { id: 'e1', source: 'trigger', target: 'node-ai-agent' },
+        { id: 'e2', source: 'node-ai-agent', target: 'node-downstream-email' },
+      ],
+    };
+
+    const result = await dynamicDagWorkflow(input);
+
+    expect(result.status).toBe('COMPLETED');
+    expect(mockExecuteChild).toHaveBeenCalledWith(agentReActWorkflow, {
+      workflowId: 'ai-agent-exec-ai-1-node-ai-agent',
+      args: [
+        {
+          organizationId: 'tenant-1',
+          userId: 'system:ai-agent',
+          conversationId: 'auto-exec-ai-1-node-ai-agent',
+          prompt: 'Resolve issue for Acme Corp: Overbilling inquiry',
+          maxTurns: 10,
+        },
+      ],
+    });
+    expect(result.nodeResults['node-ai-agent'].status).toBe('SUCCESS');
+    expect(result.nodeResults['node-ai-agent'].output).toEqual({
+      success: true,
+      status: 'COMPLETED',
+      solution: 'Refund of $100 has been processed successfully.',
+      stepsTaken: 4,
+      output: {
+        status: 'COMPLETED',
+        finalResponse: 'Refund of $100 has been processed successfully.',
+        stepsExecuted: 4,
+      },
+    });
+    expect(mockActivities.executeEmailActivity).toHaveBeenCalledWith({
+      to: 'client@acme.com',
+      subject: 'Agent Resolution: Refund of $100 has been processed successfully.',
+    });
+  });
+
+  it('should pause on aiAgentNode awaiting approval, record waiting result, and resume on approveNodeSignal', async () => {
+    mockActivities.executeEmailActivity.mockResolvedValue({
+      success: true,
+      messageId: 'email-approved',
+      to: 'ops@acme.com',
+      sentAt: new Date().toISOString(),
+    });
+
+    mockExecuteChild.mockResolvedValueOnce({
+      status: 'AWAITING_APPROVAL',
+      finalResponse: 'Prepared batch payout of $10,000.',
+      stepsExecuted: 2,
+      pendingAction: {
+        tool: { name: 'payoutBatch', args: { amount: 10000 } },
+        preview: { amount: 10000 },
+      },
+    });
+
+    const { condition } = require('@temporalio/workflow');
+    (condition as jest.Mock).mockImplementationOnce(async (predicate) => {
+      const approveSignalHandler = mockHandlers.get(approveNodeSignal)!;
+      approveSignalHandler({
+        nodeId: 'node-ai-agent-approval',
+        approvedBy: 'lead-ops@corp.com',
+        comment: 'Payout verified',
+      });
+      return predicate();
+    });
+
+    const input: DynamicWorkflowInput = {
+      executionId: 'exec-ai-2',
+      workflowId: 'wf-ai-2',
+      tenantId: 'tenant-1',
+      triggerPayload: {},
+      nodes: [
+        {
+          id: 'trigger',
+          type: 'manualTrigger',
+          position: { x: 0, y: 0 },
+          data: { label: 'Start', config: {} },
+        },
+        {
+          id: 'node-ai-agent-approval',
+          type: 'aiAgentNode',
+          position: { x: 100, y: 0 },
+          data: {
+            label: 'Finance Agent',
+            config: {
+              goal: 'Execute batch payout',
+              autoApprove: false,
+              timeoutDuration: '2 days',
+            },
+          },
+        },
+        {
+          id: 'node-on-approved',
+          type: 'sendEmailNode',
+          position: { x: 200, y: 0 },
+          data: {
+            label: 'Send Payout Notification',
+            config: {
+              to: 'ops@acme.com',
+              subject: 'Payout Executed: {{ $json.solution }}',
+            },
+          },
+        },
+      ],
+      edges: [
+        { id: 'e1', source: 'trigger', target: 'node-ai-agent-approval' },
+        {
+          id: 'e2',
+          source: 'node-ai-agent-approval',
+          target: 'node-on-approved',
+          sourceHandle: 'approved',
+        },
+      ],
+    };
+
+    const result = await dynamicDagWorkflow(input);
+
+    expect(result.status).toBe('COMPLETED');
+    expect(mockActivities.recordNodeResultActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        nodeId: 'node-ai-agent-approval',
+        status: 'WAITING',
+      }),
+    );
+    expect(result.nodeResults['node-ai-agent-approval'].status).toBe('SUCCESS');
+    expect(result.nodeResults['node-ai-agent-approval'].output).toEqual(
+      expect.objectContaining({
+        success: true,
+        approved: true,
+        solution: 'Prepared batch payout of $10,000.',
+        approvedBy: 'lead-ops@corp.com',
+      }),
+    );
+    expect(mockActivities.executeEmailActivity).toHaveBeenCalledWith({
+      to: 'ops@acme.com',
+      subject: 'Payout Executed: Prepared batch payout of $10,000.',
+    });
+  });
+
+  it('should handle rejectNodeSignal on aiAgentNode and route to rejected branch', async () => {
+    mockActivities.executeEmailActivity.mockResolvedValue({
+      success: true,
+      messageId: 'email-rejected',
+      to: 'audit@acme.com',
+      sentAt: new Date().toISOString(),
+    });
+
+    mockExecuteChild.mockResolvedValueOnce({
+      status: 'AWAITING_APPROVAL',
+      finalResponse: 'Attempting to delete production records.',
+      stepsExecuted: 1,
+      pendingAction: {
+        tool: { name: 'dropSchema', args: {} },
+        preview: {},
+      },
+    });
+
+    const { condition } = require('@temporalio/workflow');
+    (condition as jest.Mock).mockImplementationOnce(async (predicate) => {
+      const rejectSignalHandler = mockHandlers.get(rejectNodeSignal)!;
+      rejectSignalHandler({
+        nodeId: 'node-ai-agent-reject',
+        rejectedBy: 'sec-ops@corp.com',
+        reason: 'Operation forbidden by policy',
+      });
+      return predicate();
+    });
+
+    const input: DynamicWorkflowInput = {
+      executionId: 'exec-ai-3',
+      workflowId: 'wf-ai-3',
+      tenantId: 'tenant-1',
+      triggerPayload: {},
+      nodes: [
+        {
+          id: 'trigger',
+          type: 'manualTrigger',
+          position: { x: 0, y: 0 },
+          data: { label: 'Start', config: {} },
+        },
+        {
+          id: 'node-ai-agent-reject',
+          type: 'aiAgentNode',
+          position: { x: 100, y: 0 },
+          data: {
+            label: 'Data Purge Agent',
+            config: {
+              goal: 'Purge old records',
+              autoApprove: false,
+            },
+          },
+        },
+        {
+          id: 'node-on-rejected',
+          type: 'sendEmailNode',
+          position: { x: 200, y: 0 },
+          data: {
+            label: 'Send Rejection Audit',
+            config: {
+              to: 'audit@acme.com',
+              subject: 'Agent Rejected: {{ $json.reason }}',
+            },
+          },
+        },
+      ],
+      edges: [
+        { id: 'e1', source: 'trigger', target: 'node-ai-agent-reject' },
+        {
+          id: 'e2',
+          source: 'node-ai-agent-reject',
+          target: 'node-on-rejected',
+          sourceHandle: 'rejected',
+        },
+      ],
+    };
+
+    const result = await dynamicDagWorkflow(input);
+
+    expect(result.status).toBe('COMPLETED');
+    expect(result.nodeResults['node-ai-agent-reject'].status).toBe('SUCCESS');
+    expect(result.nodeResults['node-ai-agent-reject'].output).toEqual(
+      expect.objectContaining({
+        approved: false,
+        error: 'Operation forbidden by policy',
+        rejectedBy: 'sec-ops@corp.com',
+      }),
+    );
+    expect(mockActivities.executeEmailActivity).toHaveBeenCalledWith({
+      to: 'audit@acme.com',
+      subject: 'Agent Rejected: Operation forbidden by policy',
+    });
+  });
+
+  it('should handle SLA timeout on aiAgentNode approval and route to timeout branch', async () => {
+    mockActivities.executeEmailActivity.mockResolvedValue({
+      success: true,
+      messageId: 'email-timeout',
+      to: 'escalations@corp.com',
+      sentAt: new Date().toISOString(),
+    });
+
+    mockExecuteChild.mockResolvedValueOnce({
+      status: 'AWAITING_APPROVAL',
+      finalResponse: 'Requesting permission to issue enterprise license.',
+      stepsExecuted: 2,
+      pendingAction: {
+        tool: { name: 'issueLicense', args: {} },
+        preview: {},
+      },
+    });
+
+    const { condition } = require('@temporalio/workflow');
+    (condition as jest.Mock).mockResolvedValueOnce(false);
+
+    const input: DynamicWorkflowInput = {
+      executionId: 'exec-ai-4',
+      workflowId: 'wf-ai-4',
+      tenantId: 'tenant-1',
+      triggerPayload: {},
+      nodes: [
+        {
+          id: 'trigger',
+          type: 'manualTrigger',
+          position: { x: 0, y: 0 },
+          data: { label: 'Start', config: {} },
+        },
+        {
+          id: 'node-ai-agent-timeout',
+          type: 'aiAgentNode',
+          position: { x: 100, y: 0 },
+          data: {
+            label: 'License Agent',
+            config: {
+              goal: 'Issue license',
+              autoApprove: false,
+              timeoutDuration: '1 hour',
+            },
+          },
+        },
+        {
+          id: 'node-on-timeout',
+          type: 'sendEmailNode',
+          position: { x: 200, y: 0 },
+          data: {
+            label: 'Send SLA Breach',
+            config: {
+              to: 'escalations@corp.com',
+              subject: 'Agent Approval Timed Out',
+            },
+          },
+        },
+      ],
+      edges: [
+        { id: 'e1', source: 'trigger', target: 'node-ai-agent-timeout' },
+        {
+          id: 'e2',
+          source: 'node-ai-agent-timeout',
+          target: 'node-on-timeout',
+          sourceHandle: 'timeout',
+        },
+      ],
+    };
+
+    const result = await dynamicDagWorkflow(input);
+
+    expect(result.status).toBe('COMPLETED');
+    expect(result.nodeResults['node-ai-agent-timeout'].status).toBe('SUCCESS');
+    expect(result.nodeResults['node-ai-agent-timeout'].output).toEqual(
+      expect.objectContaining({
+        status: 'TIMEOUT',
+        approved: false,
+      }),
+    );
+    expect(mockActivities.executeEmailActivity).toHaveBeenCalledWith({
+      to: 'escalations@corp.com',
+      subject: 'Agent Approval Timed Out',
+    });
+  });
 });
+
