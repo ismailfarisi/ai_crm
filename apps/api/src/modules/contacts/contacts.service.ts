@@ -172,7 +172,7 @@ export class ContactsService {
       await this.eventBus.publish({
         tenantId: actor.organizationId,
         eventType: 'record.created',
-        entityType: 'contact',
+        entityType: 'core',
         entityName: 'contact',
         entityId: saved.id,
         actorUserId: actor.id,
@@ -226,7 +226,7 @@ export class ContactsService {
       await this.eventBus.publish({
         tenantId: actor.organizationId,
         eventType: 'record.updated',
-        entityType: 'contact',
+        entityType: 'core',
         entityName: 'contact',
         entityId: contact.id,
         actorUserId: actor.id,
@@ -251,7 +251,7 @@ export class ContactsService {
       await this.eventBus.publish({
         tenantId: actor.organizationId,
         eventType: 'record.deleted',
-        entityType: 'contact',
+        entityType: 'core',
         entityName: 'contact',
         entityId: id,
         actorUserId: actor.id,

@@ -88,7 +88,7 @@ describe('CoreEntityBridgeService', () => {
       expect(result.tenantId).toBe('tenant-1');
     });
 
-    it('publishes record.linked domain event upon creating link', async () => {
+    it('publishes link.created domain event upon creating link', async () => {
       const payload = {
         relationshipId: 'rel-1',
         sourceRecordId: 'rec-1',
@@ -101,7 +101,7 @@ describe('CoreEntityBridgeService', () => {
       expect(mockEventBus.publish).toHaveBeenCalledWith(
         expect.objectContaining({
           tenantId: 'tenant-1',
-          eventType: 'record.linked',
+          eventType: 'link.created',
           entityType: 'custom_object',
           entityName: 'link',
           entityId: 'link-123',
@@ -125,13 +125,13 @@ describe('CoreEntityBridgeService', () => {
       });
     });
 
-    it('publishes record.unlinked domain event upon deleting link', async () => {
+    it('publishes link.deleted domain event upon deleting link when affected > 0', async () => {
       await service.unlink('tenant-1', 'link-123');
 
       expect(mockEventBus.publish).toHaveBeenCalledWith(
         expect.objectContaining({
           tenantId: 'tenant-1',
-          eventType: 'record.unlinked',
+          eventType: 'link.deleted',
           entityType: 'custom_object',
           entityName: 'link',
           entityId: 'link-123',
@@ -142,6 +142,14 @@ describe('CoreEntityBridgeService', () => {
           },
         }),
       );
+    });
+
+    it('does not publish link.deleted event if delete affected count is 0 (phantom unlink protection)', async () => {
+      mockLinkRepo.delete.mockResolvedValue({ affected: 0 });
+
+      await service.unlink('tenant-1', 'link-nonexistent');
+
+      expect(mockEventBus.publish).not.toHaveBeenCalled();
     });
   });
 

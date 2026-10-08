@@ -305,7 +305,7 @@ describe('QuotesService', () => {
         expect.objectContaining({
           tenantId,
           eventType: 'record.created',
-          entityType: 'quote',
+          entityType: 'core',
           entityName: 'quote',
           entityId: result.id,
           snapshot: expect.objectContaining({
@@ -425,7 +425,7 @@ describe('QuotesService', () => {
         expect.objectContaining({
           tenantId,
           eventType: 'record.updated',
-          entityType: 'quote',
+          entityType: 'core',
           entityName: 'quote',
           entityId: quoteId,
           snapshot: expect.objectContaining({

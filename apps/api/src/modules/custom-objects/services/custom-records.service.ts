@@ -100,6 +100,7 @@ export class CustomRecordsService {
     const object = await this.objectsService.getBySlug(tenantId, slug);
 
     const beforeValues = { ...(record.values ?? {}) };
+    const originalOwnerId = record.ownerId;
     const merged = { ...record.values, ...(payload?.values ?? {}) };
     const validatedValues = this.validationService.validate(object.attributes ?? [], merged);
 
@@ -108,6 +109,17 @@ export class CustomRecordsService {
 
     const saved = await this.recordRepo.save(record);
     const changedFields = this.eventBus.computeChangedFields(beforeValues, saved.values);
+
+    const beforeSnapshot: any = { ...beforeValues };
+    const afterSnapshot: any = { ...saved.values };
+
+    if (payload?.ownerId !== undefined && payload.ownerId !== originalOwnerId) {
+      if (!changedFields.includes('ownerId')) {
+        changedFields.push('ownerId');
+      }
+      beforeSnapshot.ownerId = originalOwnerId;
+      afterSnapshot.ownerId = payload.ownerId;
+    }
 
     await this.eventBus.publish({
       tenantId,
@@ -118,9 +130,9 @@ export class CustomRecordsService {
       actorUserId: actor?.id ?? null,
       timestamp: new Date().toISOString(),
       snapshot: {
-        before: beforeValues,
-        after: saved.values,
-        changedFields,
+        before: beforeSnapshot,
+        after: afterSnapshot,
+        changedFields: changedFields.sort(),
       },
     });
 

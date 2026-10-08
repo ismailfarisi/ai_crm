@@ -72,7 +72,7 @@ describe('ContactsService', () => {
         expect.objectContaining({
           tenantId: 'tenant-1',
           eventType: 'record.created',
-          entityType: 'contact',
+          entityType: 'core',
           entityName: 'contact',
           entityId: 'contact-1',
           actorUserId: 'user-1',
@@ -100,7 +100,7 @@ describe('ContactsService', () => {
         expect.objectContaining({
           tenantId: 'tenant-1',
           eventType: 'record.updated',
-          entityType: 'contact',
+          entityType: 'core',
           entityName: 'contact',
           entityId: 'contact-1',
           actorUserId: 'user-1',
@@ -123,7 +123,7 @@ describe('ContactsService', () => {
         expect.objectContaining({
           tenantId: 'tenant-1',
           eventType: 'record.deleted',
-          entityType: 'contact',
+          entityType: 'core',
           entityName: 'contact',
           entityId: 'contact-1',
           actorUserId: 'user-1',

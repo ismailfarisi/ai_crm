@@ -35,7 +35,7 @@ export class CoreEntityBridgeService {
     if (this.eventBus) {
       await this.eventBus.publish({
         tenantId,
-        eventType: 'record.linked',
+        eventType: 'link.created',
         entityType: 'custom_object',
         entityName: 'link',
         entityId: saved.id,
@@ -53,12 +53,12 @@ export class CoreEntityBridgeService {
   }
 
   async unlink(tenantId: string, linkId: string): Promise<void> {
-    await this.linkRepo.delete({ id: linkId, tenantId });
+    const res = await this.linkRepo.delete({ id: linkId, tenantId });
 
-    if (this.eventBus) {
+    if (this.eventBus && res?.affected && res.affected > 0) {
       await this.eventBus.publish({
         tenantId,
-        eventType: 'record.unlinked',
+        eventType: 'link.deleted',
         entityType: 'custom_object',
         entityName: 'link',
         entityId: linkId,

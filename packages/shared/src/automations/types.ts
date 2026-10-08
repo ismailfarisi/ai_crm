@@ -142,10 +142,12 @@ export type CrmDomainEventType =
   | 'record.created'
   | 'record.updated'
   | 'record.deleted'
+  | 'record.linked'
+  | 'record.unlinked'
   | 'link.created'
   | 'link.deleted';
 
-export type CrmDomainEntityType = 'core' | 'custom_object';
+export type CrmDomainEntityType = 'core' | 'custom_object' | 'contact' | 'quote';
 
 export interface CrmDomainEventSnapshot<T = any> {
   before?: T | null;

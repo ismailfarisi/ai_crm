@@ -229,7 +229,7 @@ export class QuotesService {
       await this.eventBus.publish({
         tenantId,
         eventType: 'record.created',
-        entityType: 'quote',
+        entityType: 'core',
         entityName: 'quote',
         entityId: finalQuote.id,
         actorUserId: (payload as any)?.actorUserId ?? null,
@@ -363,7 +363,7 @@ export class QuotesService {
       await this.eventBus.publish({
         tenantId,
         eventType: 'record.updated',
-        entityType: 'quote',
+        entityType: 'core',
         entityName: 'quote',
         entityId: saved.id,
         actorUserId: (payload as any)?.actorUserId ?? null,

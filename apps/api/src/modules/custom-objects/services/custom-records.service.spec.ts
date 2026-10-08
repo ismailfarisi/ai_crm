@@ -322,9 +322,9 @@ describe('CustomRecordsService', () => {
           entityId: 'rec-1',
           actorUserId: 'u-actor',
           snapshot: {
-            before: { serial: '123', color: 'blue' },
-            after: { serial: '123', color: 'red' },
-            changedFields: ['color'],
+            before: { serial: '123', color: 'blue', ownerId: 'u-actor' },
+            after: { serial: '123', color: 'red', ownerId: 'u-new-owner' },
+            changedFields: ['color', 'ownerId'],
           },
         }),
       );
