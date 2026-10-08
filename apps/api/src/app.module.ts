@@ -6,6 +6,7 @@ import { CREDENTIAL_ROUTE_KEY } from '@/common/decorators';
 import { AllExceptionsFilter } from '@/common/filters/all-exceptions.filter';
 import type { AppConfig } from '@/config/configuration';
 import { TenantContextModule } from '@/common/context';
+import { EventsModule } from '@/common/events';
 import { buildConfigModule, buildTypeOrmModule } from '@/config/root-imports';
 import { FEATURE_MODULES } from '@/feature-modules';
 import { DocumentTemplatesModule } from '@/modules/document-templates/document-templates.module';
@@ -16,6 +17,7 @@ import { BillingGuard } from '@/modules/billing/billing.guard';
 @Module({
   imports: [
     TenantContextModule,
+    EventsModule,
 
     buildConfigModule(),
 
