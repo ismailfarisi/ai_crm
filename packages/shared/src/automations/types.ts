@@ -155,8 +155,8 @@ export interface CrmDomainEventSnapshot<T = any> {
 
 export interface CrmDomainEvent<T = any> {
   tenantId: string;
-  eventType: CrmDomainEventType | string;
-  entityType: CrmDomainEntityType | string;
+  eventType: CrmDomainEventType | (string & {});
+  entityType: CrmDomainEntityType | (string & {});
   entityName: string; // e.g. 'contact', 'quote', 'invoice', or custom object slug like 'vehicle'
   entityId: string;
   actorUserId?: string | null;
