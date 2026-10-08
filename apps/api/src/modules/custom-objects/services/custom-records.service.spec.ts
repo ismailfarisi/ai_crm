@@ -10,6 +10,7 @@ describe('CustomRecordsService', () => {
   let mockRepo: any;
   let mockObjectsService: any;
   let mockValidationService: any;
+  let mockEventBus: any;
   let mockQueryBuilder: any;
 
   beforeEach(() => {
@@ -43,7 +44,22 @@ describe('CustomRecordsService', () => {
       validate: vi.fn((attrs, vals) => vals),
     };
 
-    service = new CustomRecordsService(mockRepo as any, mockObjectsService as any, mockValidationService as any);
+    mockEventBus = {
+      publish: vi.fn().mockResolvedValue(undefined),
+      computeChangedFields: vi.fn((before, after) => {
+        const b = before ?? {};
+        const a = after ?? {};
+        const allKeys = Array.from(new Set([...Object.keys(b), ...Object.keys(a)]));
+        return allKeys.filter((k) => b[k] !== a[k]).sort();
+      }),
+    };
+
+    service = new CustomRecordsService(
+      mockRepo as any,
+      mockObjectsService as any,
+      mockValidationService as any,
+      mockEventBus as any,
+    );
   });
 
   describe('create', () => {
@@ -79,6 +95,31 @@ describe('CustomRecordsService', () => {
 
       expect(mockRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ ownerId: 'u-actor' }),
+      );
+    });
+
+    it('publishes record.created domain event with snapshot and changed fields', async () => {
+      await service.create(
+        'tenant-1',
+        'machinery',
+        { ownerId: 'u-1', values: { serial: '123' } },
+        { id: 'u-1', permissions: [PERMISSIONS.CUSTOM_RECORD_CREATE] },
+      );
+
+      expect(mockEventBus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          eventType: 'record.created',
+          entityType: 'custom_object',
+          entityName: 'machinery',
+          entityId: 'rec-1',
+          actorUserId: 'u-1',
+          snapshot: {
+            before: null,
+            after: { serial: '123' },
+            changedFields: ['serial'],
+          },
+        }),
       );
     });
   });
@@ -249,6 +290,45 @@ describe('CustomRecordsService', () => {
       );
       expect(result).toBeDefined();
     });
+
+    it('publishes record.updated domain event with before/after snapshots and diff', async () => {
+      const existing = {
+        id: 'rec-1',
+        tenantId: 'tenant-1',
+        objectId: 'obj-1',
+        ownerId: 'u-actor',
+        values: { serial: '123', color: 'blue' },
+      };
+      mockRepo.findOne.mockResolvedValue(existing);
+
+      await service.update(
+        'tenant-1',
+        'machinery',
+        'rec-1',
+        { values: { color: 'red' }, ownerId: 'u-new-owner' },
+        { id: 'u-actor', permissions: [PERMISSIONS.CUSTOM_RECORD_UPDATE] },
+      );
+
+      expect(mockEventBus.computeChangedFields).toHaveBeenCalledWith(
+        { serial: '123', color: 'blue' },
+        { serial: '123', color: 'red' },
+      );
+      expect(mockEventBus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          eventType: 'record.updated',
+          entityType: 'custom_object',
+          entityName: 'machinery',
+          entityId: 'rec-1',
+          actorUserId: 'u-actor',
+          snapshot: {
+            before: { serial: '123', color: 'blue' },
+            after: { serial: '123', color: 'red' },
+            changedFields: ['color'],
+          },
+        }),
+      );
+    });
   });
 
   describe('delete', () => {
@@ -266,6 +346,38 @@ describe('CustomRecordsService', () => {
       });
 
       expect(mockRepo.softDelete).toHaveBeenCalledWith({ id: 'rec-1', tenantId: 'tenant-1' });
+    });
+
+    it('publishes record.deleted domain event with snapshot and changed fields', async () => {
+      mockRepo.findOne.mockResolvedValue({
+        id: 'rec-1',
+        tenantId: 'tenant-1',
+        objectId: 'obj-1',
+        ownerId: 'u-actor',
+        values: { serial: '123', model: 'X100' },
+      });
+
+      await service.delete('tenant-1', 'machinery', 'rec-1', {
+        id: 'u-actor',
+        permissions: [PERMISSIONS.CUSTOM_RECORD_DELETE],
+      });
+
+      expect(mockRepo.softDelete).toHaveBeenCalledWith({ id: 'rec-1', tenantId: 'tenant-1' });
+      expect(mockEventBus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          eventType: 'record.deleted',
+          entityType: 'custom_object',
+          entityName: 'machinery',
+          entityId: 'rec-1',
+          actorUserId: 'u-actor',
+          snapshot: {
+            before: { serial: '123', model: 'X100' },
+            after: null,
+            changedFields: ['serial', 'model'],
+          },
+        }),
+      );
     });
   });
 });

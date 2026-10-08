@@ -34,6 +34,7 @@ describe('QuotesService', () => {
   >;
   let costingService: jest.Mocked<Partial<CostingService>>;
   let rbacService: jest.Mocked<Partial<RbacService>>;
+  let eventBus: any;
   let mockWorkflowHandle: any;
   let sequenceValue: number;
 
@@ -143,6 +144,16 @@ describe('QuotesService', () => {
         .mockResolvedValue(Buffer.from('%PDF-1.4 mock quote pdf')),
     };
 
+    eventBus = {
+      publish: jest.fn().mockResolvedValue(undefined),
+      computeChangedFields: jest.fn((before, after) => {
+        const b = before ?? {};
+        const a = after ?? {};
+        const allKeys = Array.from(new Set([...Object.keys(b), ...Object.keys(a)]));
+        return allKeys.filter((k) => b[k] !== a[k]).sort();
+      }),
+    };
+
     service = new QuotesService(
       quoteRepo as unknown as Repository<Quote>,
       invoiceRepo as unknown as Repository<Invoice>,
@@ -161,6 +172,7 @@ describe('QuotesService', () => {
       orgRepo as unknown as Repository<Organization>,
       documentTemplatesService as unknown as DocumentTemplatesService,
       pdfRenderer as unknown as DocumentPdfRendererService,
+      eventBus as any,
     );
   });
 
@@ -279,6 +291,30 @@ describe('QuotesService', () => {
       expect(result.workflowId).toBe(`quote-${quoteId}`);
       expect(quoteRepo.save).toHaveBeenCalled();
     });
+
+    it('publishes record.created domain event upon creation', async () => {
+      const payload: CreateQuotePayload = {
+        title: 'Event test quote',
+        customerName: 'Customer Inc',
+        items: [],
+      };
+
+      const result = await service.createQuote(tenantId, payload);
+
+      expect(eventBus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId,
+          eventType: 'record.created',
+          entityType: 'quote',
+          entityName: 'quote',
+          entityId: result.id,
+          snapshot: expect.objectContaining({
+            before: null,
+            after: expect.objectContaining({ id: result.id }),
+          }),
+        }),
+      );
+    });
   });
 
   describe('updateQuote', () => {
@@ -369,6 +405,33 @@ describe('QuotesService', () => {
           discountAmount: 50,
           taxAmount: 45,
           totalAmount: 495,
+        }),
+      );
+    });
+
+    it('publishes record.updated domain event with diff upon update', async () => {
+      quoteRepo.findOne = jest.fn().mockResolvedValue({
+        id: quoteId,
+        tenantId,
+        title: 'Original Title',
+        totalAmount: 100,
+        version: 1,
+      });
+
+      await service.updateQuote(tenantId, quoteId, { title: 'Updated Title' });
+
+      expect(eventBus.computeChangedFields).toHaveBeenCalled();
+      expect(eventBus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId,
+          eventType: 'record.updated',
+          entityType: 'quote',
+          entityName: 'quote',
+          entityId: quoteId,
+          snapshot: expect.objectContaining({
+            before: expect.objectContaining({ title: 'Original Title' }),
+            after: expect.objectContaining({ title: 'Updated Title' }),
+          }),
         }),
       );
     });

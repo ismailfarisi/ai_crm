@@ -2,9 +2,11 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository, type SelectQueryBuilder } from 'typeorm';
+import { CrmEventBusService } from '@/common/events';
 import {
   CONTACT_SOURCES,
   CONTACT_STATUSES,
@@ -25,6 +27,7 @@ import type { ContactQueryDto } from './dto/contact-query.dto';
 export class ContactsService {
   constructor(
     @InjectRepository(Contact) private readonly contacts: Repository<Contact>,
+    @Optional() private readonly eventBus?: CrmEventBusService,
   ) {}
 
   async findOrCreateForChannel(
@@ -163,7 +166,26 @@ export class ContactsService {
     } as Partial<Contact>);
 
     const saved = await this.contacts.save(contact);
-    return this.findOne(actor, saved.id);
+    const result = await this.findOne(actor, saved.id);
+
+    if (this.eventBus) {
+      await this.eventBus.publish({
+        tenantId: actor.organizationId,
+        eventType: 'record.created',
+        entityType: 'contact',
+        entityName: 'contact',
+        entityId: saved.id,
+        actorUserId: actor.id,
+        timestamp: new Date().toISOString(),
+        snapshot: {
+          before: null,
+          after: saved,
+          changedFields: Object.keys(saved ?? {}),
+        },
+      });
+    }
+
+    return result;
   }
 
   async update(
@@ -172,6 +194,7 @@ export class ContactsService {
     input: UpdateContactInput,
   ): Promise<ContactDto> {
     const contact = await this.findEntity(actor, id);
+    const beforeSnapshot = { ...contact };
 
     if (input.ownerId !== undefined) {
       if (this.canSeeEverything(actor)) {
@@ -191,13 +214,55 @@ export class ContactsService {
     }
 
     Object.assign(contact, input);
-    await this.contacts.save(contact);
-    return this.findOne(actor, contact.id);
+    const saved = await this.contacts.save(contact);
+    const result = await this.findOne(actor, contact.id);
+
+    if (this.eventBus) {
+      const afterSnapshot = { ...saved };
+      const changedFields = this.eventBus.computeChangedFields(
+        beforeSnapshot,
+        afterSnapshot,
+      );
+      await this.eventBus.publish({
+        tenantId: actor.organizationId,
+        eventType: 'record.updated',
+        entityType: 'contact',
+        entityName: 'contact',
+        entityId: contact.id,
+        actorUserId: actor.id,
+        timestamp: new Date().toISOString(),
+        snapshot: {
+          before: beforeSnapshot,
+          after: afterSnapshot,
+          changedFields,
+        },
+      });
+    }
+
+    return result;
   }
 
   async remove(actor: AuthenticatedUser, id: string): Promise<void> {
     const contact = await this.findEntity(actor, id);
+    const beforeSnapshot = { ...contact };
     await this.contacts.softRemove(contact);
+
+    if (this.eventBus) {
+      await this.eventBus.publish({
+        tenantId: actor.organizationId,
+        eventType: 'record.deleted',
+        entityType: 'contact',
+        entityName: 'contact',
+        entityId: id,
+        actorUserId: actor.id,
+        timestamp: new Date().toISOString(),
+        snapshot: {
+          before: beforeSnapshot,
+          after: null,
+          changedFields: Object.keys(beforeSnapshot),
+        },
+      });
+    }
   }
 
   async stats(actor: AuthenticatedUser): Promise<ContactStatsDto> {

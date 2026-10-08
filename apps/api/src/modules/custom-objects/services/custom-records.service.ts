@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PERMISSIONS } from '@saas/shared';
+import { CrmEventBusService } from '@/common/events';
 import { CustomRecord } from '../entities/custom-record.entity';
 import { CustomObjectsService } from './custom-objects.service';
 import { RecordValidationService } from './record-validation.service';
@@ -13,6 +14,7 @@ export class CustomRecordsService {
     private readonly recordRepo: Repository<CustomRecord>,
     private readonly objectsService: CustomObjectsService,
     private readonly validationService: RecordValidationService,
+    private readonly eventBus: CrmEventBusService,
   ) {}
 
   async list(tenantId: string, slug: string, params: any, actor: any) {
@@ -73,24 +75,75 @@ export class CustomRecordsService {
       ownerId: payload?.ownerId ?? actor.id,
       values: validatedValues,
     });
-    return this.recordRepo.save(record);
+    const saved = await this.recordRepo.save(record);
+
+    await this.eventBus.publish({
+      tenantId,
+      eventType: 'record.created',
+      entityType: 'custom_object',
+      entityName: slug,
+      entityId: saved.id,
+      actorUserId: actor?.id ?? null,
+      timestamp: new Date().toISOString(),
+      snapshot: {
+        before: null,
+        after: saved.values,
+        changedFields: Object.keys(saved.values ?? {}),
+      },
+    });
+
+    return saved;
   }
 
   async update(tenantId: string, slug: string, id: string, payload: any, actor: any) {
     const record = await this.getById(tenantId, slug, id, actor);
     const object = await this.objectsService.getBySlug(tenantId, slug);
 
+    const beforeValues = { ...(record.values ?? {}) };
     const merged = { ...record.values, ...(payload?.values ?? {}) };
     const validatedValues = this.validationService.validate(object.attributes ?? [], merged);
 
     record.values = validatedValues;
     if (payload?.ownerId !== undefined) record.ownerId = payload.ownerId;
 
-    return this.recordRepo.save(record);
+    const saved = await this.recordRepo.save(record);
+    const changedFields = this.eventBus.computeChangedFields(beforeValues, saved.values);
+
+    await this.eventBus.publish({
+      tenantId,
+      eventType: 'record.updated',
+      entityType: 'custom_object',
+      entityName: slug,
+      entityId: saved.id,
+      actorUserId: actor?.id ?? null,
+      timestamp: new Date().toISOString(),
+      snapshot: {
+        before: beforeValues,
+        after: saved.values,
+        changedFields,
+      },
+    });
+
+    return saved;
   }
 
   async delete(tenantId: string, slug: string, id: string, actor: any) {
-    await this.getById(tenantId, slug, id, actor);
+    const record = await this.getById(tenantId, slug, id, actor);
     await this.recordRepo.softDelete({ id, tenantId });
+
+    await this.eventBus.publish({
+      tenantId,
+      eventType: 'record.deleted',
+      entityType: 'custom_object',
+      entityName: slug,
+      entityId: id,
+      actorUserId: actor?.id ?? null,
+      timestamp: new Date().toISOString(),
+      snapshot: {
+        before: record.values,
+        after: null,
+        changedFields: Object.keys(record.values ?? {}),
+      },
+    });
   }
 }

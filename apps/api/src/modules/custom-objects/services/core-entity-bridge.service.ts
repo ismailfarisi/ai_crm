@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
+import { CrmEventBusService } from '@/common/events';
 import { CustomRecordLink } from '../entities/custom-record-link.entity';
 import { Customer } from '@/modules/customers/entities/customer.entity';
 import { Contact } from '@/modules/contacts/entities/contact.entity';
@@ -20,6 +21,8 @@ export class CoreEntityBridgeService {
     private readonly quoteRepo: Repository<Quote>,
     @InjectRepository(WorkOrder)
     private readonly workOrderRepo: Repository<WorkOrder>,
+    @Optional()
+    private readonly eventBus?: CrmEventBusService,
   ) {}
 
   async link(tenantId: string, payload: any): Promise<CustomRecordLink> {
@@ -27,11 +30,47 @@ export class CoreEntityBridgeService {
       ...payload,
       tenantId,
     } as Partial<CustomRecordLink>);
-    return this.linkRepo.save(link);
+    const saved = await this.linkRepo.save(link);
+
+    if (this.eventBus) {
+      await this.eventBus.publish({
+        tenantId,
+        eventType: 'record.linked',
+        entityType: 'custom_object',
+        entityName: 'link',
+        entityId: saved.id,
+        actorUserId: payload?.actorUserId ?? null,
+        timestamp: new Date().toISOString(),
+        snapshot: {
+          before: null,
+          after: saved,
+          changedFields: ['sourceRecordId', 'targetRecordId', 'targetType'],
+        },
+      });
+    }
+
+    return saved;
   }
 
   async unlink(tenantId: string, linkId: string): Promise<void> {
     await this.linkRepo.delete({ id: linkId, tenantId });
+
+    if (this.eventBus) {
+      await this.eventBus.publish({
+        tenantId,
+        eventType: 'record.unlinked',
+        entityType: 'custom_object',
+        entityName: 'link',
+        entityId: linkId,
+        actorUserId: null,
+        timestamp: new Date().toISOString(),
+        snapshot: {
+          before: { id: linkId },
+          after: null,
+          changedFields: ['id'],
+        },
+      });
+    }
   }
 
   async getRecordLinks(tenantId: string, sourceRecordId: string): Promise<any[]> {

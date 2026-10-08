@@ -4,9 +4,11 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
+import { CrmEventBusService } from '@/common/events';
 import {
   calculateQuoteTotals,
   CreateQuotePayload,
@@ -65,6 +67,8 @@ export class QuotesService {
     private readonly organizationRepository?: Repository<Organization>,
     private readonly documentTemplatesService?: DocumentTemplatesService,
     private readonly pdfRenderer?: DocumentPdfRendererService,
+    @Optional()
+    private readonly eventBus?: CrmEventBusService,
   ) {}
 
   /**
@@ -219,7 +223,26 @@ export class QuotesService {
       savedQuote.workflowId = workflowId;
     }
 
-    return await this.quoteRepository.save(savedQuote);
+    const finalQuote = await this.quoteRepository.save(savedQuote);
+
+    if (this.eventBus) {
+      await this.eventBus.publish({
+        tenantId,
+        eventType: 'record.created',
+        entityType: 'quote',
+        entityName: 'quote',
+        entityId: finalQuote.id,
+        actorUserId: (payload as any)?.actorUserId ?? null,
+        timestamp: new Date().toISOString(),
+        snapshot: {
+          before: null,
+          after: finalQuote,
+          changedFields: Object.keys(finalQuote ?? {}),
+        },
+      });
+    }
+
+    return finalQuote;
   }
 
   async updateQuote(
@@ -228,6 +251,7 @@ export class QuotesService {
     payload: UpdateQuotePayload,
   ): Promise<Quote> {
     const quote = await this.findQuoteById(tenantId, id);
+    const beforeSnapshot = { ...quote };
 
     if (quote.supersededAt) {
       throw new BadRequestException(
@@ -329,6 +353,29 @@ export class QuotesService {
         },
       );
     }
+
+    if (this.eventBus) {
+      const afterSnapshot = { ...saved };
+      const changedFields = this.eventBus.computeChangedFields(
+        beforeSnapshot,
+        afterSnapshot,
+      );
+      await this.eventBus.publish({
+        tenantId,
+        eventType: 'record.updated',
+        entityType: 'quote',
+        entityName: 'quote',
+        entityId: saved.id,
+        actorUserId: (payload as any)?.actorUserId ?? null,
+        timestamp: new Date().toISOString(),
+        snapshot: {
+          before: beforeSnapshot,
+          after: afterSnapshot,
+          changedFields,
+        },
+      });
+    }
+
     return saved;
   }
 

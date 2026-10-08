@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { In } from 'typeorm';
 import { CoreEntityBridgeService } from './core-entity-bridge.service';
+import { CrmEventBusService } from '@/common/events';
 import { CustomRecordLink } from '../entities/custom-record-link.entity';
 import { Customer } from '@/modules/customers/entities/customer.entity';
 import { Contact } from '@/modules/contacts/entities/contact.entity';
@@ -17,8 +18,13 @@ describe('CoreEntityBridgeService', () => {
   let mockContactRepo: any;
   let mockQuoteRepo: any;
   let mockWorkOrderRepo: any;
+  let mockEventBus: any;
 
   beforeEach(async () => {
+    mockEventBus = {
+      publish: vi.fn().mockResolvedValue(undefined),
+    };
+
     mockLinkRepo = {
       find: vi.fn(),
       findOne: vi.fn(),
@@ -55,6 +61,7 @@ describe('CoreEntityBridgeService', () => {
         { provide: getRepositoryToken(Contact), useValue: mockContactRepo },
         { provide: getRepositoryToken(Quote), useValue: mockQuoteRepo },
         { provide: getRepositoryToken(WorkOrder), useValue: mockWorkOrderRepo },
+        { provide: CrmEventBusService, useValue: mockEventBus },
       ],
     }).compile();
 
@@ -80,6 +87,32 @@ describe('CoreEntityBridgeService', () => {
       expect(result.id).toBe('link-123');
       expect(result.tenantId).toBe('tenant-1');
     });
+
+    it('publishes record.linked domain event upon creating link', async () => {
+      const payload = {
+        relationshipId: 'rel-1',
+        sourceRecordId: 'rec-1',
+        targetType: 'core_entity' as const,
+        targetRecordId: 'cust-1',
+      };
+
+      await service.link('tenant-1', payload);
+
+      expect(mockEventBus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          eventType: 'record.linked',
+          entityType: 'custom_object',
+          entityName: 'link',
+          entityId: 'link-123',
+          snapshot: {
+            before: null,
+            after: expect.objectContaining({ id: 'link-123' }),
+            changedFields: ['sourceRecordId', 'targetRecordId', 'targetType'],
+          },
+        }),
+      );
+    });
   });
 
   describe('unlink', () => {
@@ -90,6 +123,25 @@ describe('CoreEntityBridgeService', () => {
         id: 'link-123',
         tenantId: 'tenant-1',
       });
+    });
+
+    it('publishes record.unlinked domain event upon deleting link', async () => {
+      await service.unlink('tenant-1', 'link-123');
+
+      expect(mockEventBus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          eventType: 'record.unlinked',
+          entityType: 'custom_object',
+          entityName: 'link',
+          entityId: 'link-123',
+          snapshot: {
+            before: { id: 'link-123' },
+            after: null,
+            changedFields: ['id'],
+          },
+        }),
+      );
     });
   });
 
