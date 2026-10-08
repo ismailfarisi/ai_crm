@@ -401,7 +401,7 @@ export async function dynamicDagWorkflow(
 
             const conditionMet = await condition(
               () => approvedNodes.has(node.id) || rejectedNodes.has(node.id),
-              timeoutDuration,
+              timeoutDuration as any,
             );
 
             delete executionState.pendingApprovals[node.id];
