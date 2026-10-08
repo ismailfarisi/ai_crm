@@ -40,6 +40,8 @@ const hasInput = args.includes('--input') && inputFile;
 const IGNORED = [
   /ALTER TABLE .* DROP CONSTRAINT "FK_/i,
   /ALTER TABLE .* ADD CONSTRAINT "FK_.*FOREIGN KEY/i,
+  /ALTER TABLE .* DROP CONSTRAINT ".*_fkey"/i,
+  /ALTER TABLE .* ADD CONSTRAINT ".*_fkey".*FOREIGN KEY/i,
   /ALTER TABLE .* DROP CONSTRAINT "CHK_/i,
   /ALTER TABLE .* ADD CONSTRAINT "CHK_/i,
 ];

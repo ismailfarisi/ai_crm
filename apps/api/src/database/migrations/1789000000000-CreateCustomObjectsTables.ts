@@ -26,7 +26,7 @@ export class CreateCustomObjectsTables1789000000000 implements MigrationInterfac
       CREATE TABLE IF NOT EXISTS "custom_attribute_definitions" (
         "id" uuid NOT NULL DEFAULT gen_random_uuid(),
         "tenant_id" uuid NOT NULL,
-        "object_id" uuid NOT NULL REFERENCES "custom_object_definitions"("id") ON DELETE CASCADE,
+        "object_id" uuid NOT NULL,
         "name" character varying(80) NOT NULL,
         "slug" character varying(80) NOT NULL,
         "type" character varying(30) NOT NULL,
@@ -41,6 +41,7 @@ export class CreateCustomObjectsTables1789000000000 implements MigrationInterfac
         "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
         "deletedAt" TIMESTAMP WITH TIME ZONE,
         CONSTRAINT "PK_custom_attribute_definitions_id" PRIMARY KEY ("id"),
+        CONSTRAINT "FK_custom_attribute_definitions_object_id" FOREIGN KEY ("object_id") REFERENCES "custom_object_definitions"("id") ON DELETE CASCADE,
         CONSTRAINT "uq_custom_attributes_object_slug" UNIQUE ("object_id", "slug")
       );
       CREATE INDEX IF NOT EXISTS "idx_custom_attributes_object" ON "custom_attribute_definitions" ("object_id", "sort_order");
@@ -48,9 +49,9 @@ export class CreateCustomObjectsTables1789000000000 implements MigrationInterfac
       CREATE TABLE IF NOT EXISTS "custom_relationship_definitions" (
         "id" uuid NOT NULL DEFAULT gen_random_uuid(),
         "tenant_id" uuid NOT NULL,
-        "source_object_id" uuid NOT NULL REFERENCES "custom_object_definitions"("id") ON DELETE CASCADE,
+        "source_object_id" uuid NOT NULL,
         "target_type" character varying(30) NOT NULL,
-        "target_object_id" uuid REFERENCES "custom_object_definitions"("id") ON DELETE CASCADE,
+        "target_object_id" uuid,
         "target_core_entity" character varying(40),
         "name" character varying(80) NOT NULL,
         "slug" character varying(80) NOT NULL,
@@ -59,19 +60,22 @@ export class CreateCustomObjectsTables1789000000000 implements MigrationInterfac
         "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
         "deletedAt" TIMESTAMP WITH TIME ZONE,
         CONSTRAINT "PK_custom_relationship_definitions_id" PRIMARY KEY ("id"),
+        CONSTRAINT "FK_custom_relationship_definitions_source_object_id" FOREIGN KEY ("source_object_id") REFERENCES "custom_object_definitions"("id") ON DELETE CASCADE,
+        CONSTRAINT "FK_custom_relationship_definitions_target_object_id" FOREIGN KEY ("target_object_id") REFERENCES "custom_object_definitions"("id") ON DELETE CASCADE,
         CONSTRAINT "uq_custom_rel_source_slug" UNIQUE ("source_object_id", "slug")
       );
 
       CREATE TABLE IF NOT EXISTS "custom_records" (
         "id" uuid NOT NULL DEFAULT gen_random_uuid(),
         "tenant_id" uuid NOT NULL,
-        "object_id" uuid NOT NULL REFERENCES "custom_object_definitions"("id") ON DELETE CASCADE,
+        "object_id" uuid NOT NULL,
         "owner_id" uuid,
         "values" jsonb NOT NULL DEFAULT '{}'::jsonb,
         "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
         "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
         "deletedAt" TIMESTAMP WITH TIME ZONE,
-        CONSTRAINT "PK_custom_records_id" PRIMARY KEY ("id")
+        CONSTRAINT "PK_custom_records_id" PRIMARY KEY ("id"),
+        CONSTRAINT "FK_custom_records_object_id" FOREIGN KEY ("object_id") REFERENCES "custom_object_definitions"("id") ON DELETE CASCADE
       );
       CREATE INDEX IF NOT EXISTS "idx_custom_records_tenant_obj" ON "custom_records" ("tenant_id", "object_id", "createdAt" DESC);
       CREATE INDEX IF NOT EXISTS "idx_custom_records_owner" ON "custom_records" ("tenant_id", "owner_id");
@@ -80,12 +84,14 @@ export class CreateCustomObjectsTables1789000000000 implements MigrationInterfac
       CREATE TABLE IF NOT EXISTS "custom_record_links" (
         "id" uuid NOT NULL DEFAULT gen_random_uuid(),
         "tenant_id" uuid NOT NULL,
-        "relationship_id" uuid NOT NULL REFERENCES "custom_relationship_definitions"("id") ON DELETE CASCADE,
-        "source_record_id" uuid NOT NULL REFERENCES "custom_records"("id") ON DELETE CASCADE,
+        "relationship_id" uuid NOT NULL,
+        "source_record_id" uuid NOT NULL,
         "target_type" character varying(30) NOT NULL,
         "target_record_id" uuid NOT NULL,
         "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
         CONSTRAINT "PK_custom_record_links_id" PRIMARY KEY ("id"),
+        CONSTRAINT "FK_custom_record_links_relationship_id" FOREIGN KEY ("relationship_id") REFERENCES "custom_relationship_definitions"("id") ON DELETE CASCADE,
+        CONSTRAINT "FK_custom_record_links_source_record_id" FOREIGN KEY ("source_record_id") REFERENCES "custom_records"("id") ON DELETE CASCADE,
         CONSTRAINT "uq_record_links_unique_edge" UNIQUE ("relationship_id", "source_record_id", "target_record_id")
       );
       CREATE INDEX IF NOT EXISTS "idx_record_links_source" ON "custom_record_links" ("tenant_id", "relationship_id", "source_record_id");
