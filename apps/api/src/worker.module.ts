@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TenantContextModule } from '@/common/context';
+import { EventsModule } from '@/common/events';
 import { buildConfigModule, buildTypeOrmModule } from '@/config/root-imports';
 import { WORKER_FEATURE_MODULES } from '@/feature-modules';
 import { RefreshToken } from '@/modules/auth/entities/refresh-token.entity';
@@ -25,6 +26,7 @@ import { RefreshToken } from '@/modules/auth/entities/refresh-token.entity';
 @Module({
   imports: [
     TenantContextModule,
+    EventsModule,
     buildConfigModule(),
     buildTypeOrmModule(),
     TypeOrmModule.forFeature([RefreshToken]),
