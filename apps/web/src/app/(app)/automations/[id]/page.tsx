@@ -197,6 +197,7 @@ export default function AutomationStudioPage({ params }: PageProps) {
           <TestRunDrawer
             workflow={workflow}
             onExecuteTest={handleExecuteTest}
+            onGetExecution={testRunMutation.getExecution}
             onClose={() => setIsTestRunOpen(false)}
           />
         )}

@@ -2,6 +2,7 @@ export interface ToolCallSpec {
   id: string;
   name: string;
   args: Record<string, unknown>;
+  model?: string;
 }
 
 export interface ToolExecutionResult {
@@ -26,16 +27,22 @@ export interface ReActTurnOutput {
   thought: string;
   toolCalls?: ToolCallSpec[];
   finalAnswer?: string;
+  model?: string;
 }
 
 export interface AgentReactActivities {
+  listAvailableTools(input: {
+    organizationId: string;
+    userId: string;
+    allowedDomains?: string[];
+  }): Promise<Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>>;
   planReActTurn(input: ReActTurnInput): Promise<ReActTurnOutput>;
   executeToolActivity(
     tool: ToolCallSpec,
-    ctx: { organizationId: string; userId: string },
+    ctx: { organizationId: string; userId: string; message: string },
   ): Promise<ToolExecutionResult>;
   commitToolMutationActivity(
     tool: ToolCallSpec,
-    ctx: { organizationId: string; userId: string },
+    ctx: { organizationId: string; userId: string; message: string },
   ): Promise<{ success: boolean; resultSummary: string }>;
 }

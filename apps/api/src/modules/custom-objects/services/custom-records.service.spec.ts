@@ -169,8 +169,29 @@ describe('CustomRecordsService', () => {
       );
 
       expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        "LOWER(r.values->>'serial') LIKE :search",
-        { search: '%abc%' },
+        'LOWER(r.values->>:primaryAttributeSlug) LIKE :search',
+        { primaryAttributeSlug: 'serial', search: '%abc%' },
+      );
+    });
+
+    it('binds an untrusted primary attribute slug as a query value', async () => {
+      const injectedSlug = "serial') OR 1=1 --";
+      mockObjectsService.getBySlug.mockResolvedValueOnce({
+        id: 'obj-1',
+        slug: 'machinery',
+        primaryAttributeSlug: injectedSlug,
+        attributes: [{ slug: 'serial', type: 'text', isRequired: true }],
+      });
+      await service.list(
+        'tenant-1',
+        'machinery',
+        { search: 'ABC' },
+        { id: 'u-actor', permissions: [PERMISSIONS.CUSTOM_RECORD_READ_ALL] },
+      );
+
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+        'LOWER(r.values->>:primaryAttributeSlug) LIKE :search',
+        { primaryAttributeSlug: injectedSlug, search: '%abc%' },
       );
     });
 
@@ -183,12 +204,12 @@ describe('CustomRecordsService', () => {
       );
 
       expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        'r.values @> :filter_status',
-        { filter_status: JSON.stringify({ status: 'active' }) },
+        'r.values @> :filter_0',
+        { filter_0: JSON.stringify({ status: 'active' }) },
       );
       expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        'r.values @> :filter_tier',
-        { filter_tier: JSON.stringify({ tier: 2 }) },
+        'r.values @> :filter_1',
+        { filter_1: JSON.stringify({ tier: 2 }) },
       );
     });
   });

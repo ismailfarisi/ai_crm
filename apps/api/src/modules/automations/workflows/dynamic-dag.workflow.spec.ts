@@ -40,6 +40,8 @@ jest.mock('@temporalio/workflow', () => {
     defineQuery: (name: string) => ({ name, type: 'query' }),
     executeChild: (...args: any[]) =>
       (global as any).__mockExecuteChild(...args),
+    getExternalWorkflowHandle: () => ({ signal: jest.fn().mockResolvedValue(undefined) }),
+    workflowInfo: () => ({ workflowId: 'parent-workflow' }),
   };
 });
 
@@ -54,7 +56,10 @@ import {
   getExecutionStateQuery,
   rejectNodeSignal,
 } from './interfaces';
-import { agentReActWorkflow } from '@/modules/channels/workflows/agent-react.workflow';
+import {
+  agentApprovalRequestedSignal,
+  agentReActWorkflow,
+} from '@/modules/channels/workflows/agent-react.workflow';
 
 describe('DynamicDagWorkflow', () => {
   beforeEach(() => {
@@ -644,6 +649,7 @@ describe('DynamicDagWorkflow', () => {
       executionId: 'exec-ai-1',
       workflowId: 'wf-ai-1',
       tenantId: 'tenant-1',
+      actorUserId: 'user-ai-1',
       triggerPayload: { customerName: 'Acme Corp', issue: 'Overbilling inquiry' },
       nodes: [
         {
@@ -691,9 +697,14 @@ describe('DynamicDagWorkflow', () => {
       args: [
         {
           organizationId: 'tenant-1',
-          userId: 'system:ai-agent',
+          userId: 'user-ai-1',
           conversationId: 'auto-exec-ai-1-node-ai-agent',
           prompt: 'Resolve issue for Acme Corp: Overbilling inquiry',
+          parentWorkflowId: 'parent-workflow',
+          automationNodeId: 'node-ai-agent',
+          autoApprove: true,
+          allowedDomains: undefined,
+          approvalTimeout: '3 days',
           maxTurns: 10,
         },
       ],
@@ -724,25 +735,32 @@ describe('DynamicDagWorkflow', () => {
       sentAt: new Date().toISOString(),
     });
 
-    mockExecuteChild.mockResolvedValueOnce({
-      status: 'AWAITING_APPROVAL',
-      finalResponse: 'Prepared batch payout of $10,000.',
-      stepsExecuted: 2,
-      pendingAction: {
-        tool: { name: 'payoutBatch', args: { amount: 10000 } },
-        preview: { amount: 10000 },
-      },
-    });
-
-    const { condition } = require('@temporalio/workflow');
-    (condition as jest.Mock).mockImplementationOnce(async (predicate) => {
-      const approveSignalHandler = mockHandlers.get(approveNodeSignal)!;
-      approveSignalHandler({
+    mockExecuteChild.mockImplementationOnce(async () => {
+      await mockHandlers.get(agentApprovalRequestedSignal)!({
+        nodeId: 'node-ai-agent-approval',
+        tool: { id: 'call-1', name: 'payoutBatch', args: { amount: 10000 } },
+        preview: { summary: 'Prepared batch payout of $10,000.' },
+      });
+      const pendingState = mockHandlers.get(getExecutionStateQuery)!();
+      expect(pendingState.status).toBe('WAITING_APPROVAL');
+      expect(
+        pendingState.nodeResults['node-ai-agent-approval'].output,
+      ).toEqual({
+        pendingAction: {
+          tool: { id: 'call-1', name: 'payoutBatch', args: { amount: 10000 } },
+          preview: { summary: 'Prepared batch payout of $10,000.' },
+        },
+      });
+      await mockHandlers.get(approveNodeSignal)!({
         nodeId: 'node-ai-agent-approval',
         approvedBy: 'lead-ops@corp.com',
         comment: 'Payout verified',
       });
-      return predicate();
+      return {
+        status: 'COMPLETED',
+        finalResponse: 'Prepared batch payout of $10,000.',
+        stepsExecuted: 2,
+      };
     });
 
     const input: DynamicWorkflowInput = {
@@ -801,6 +819,12 @@ describe('DynamicDagWorkflow', () => {
       expect.objectContaining({
         nodeId: 'node-ai-agent-approval',
         status: 'WAITING',
+        output: {
+          pendingAction: {
+            tool: { id: 'call-1', name: 'payoutBatch', args: { amount: 10000 } },
+            preview: { summary: 'Prepared batch payout of $10,000.' },
+          },
+        },
       }),
     );
     expect(result.nodeResults['node-ai-agent-approval'].status).toBe('SUCCESS');
@@ -826,25 +850,22 @@ describe('DynamicDagWorkflow', () => {
       sentAt: new Date().toISOString(),
     });
 
-    mockExecuteChild.mockResolvedValueOnce({
-      status: 'AWAITING_APPROVAL',
-      finalResponse: 'Attempting to delete production records.',
-      stepsExecuted: 1,
-      pendingAction: {
-        tool: { name: 'dropSchema', args: {} },
+    mockExecuteChild.mockImplementationOnce(async () => {
+      await mockHandlers.get(agentApprovalRequestedSignal)!({
+        nodeId: 'node-ai-agent-reject',
+        tool: { id: 'call-2', name: 'dropSchema', args: {} },
         preview: {},
-      },
-    });
-
-    const { condition } = require('@temporalio/workflow');
-    (condition as jest.Mock).mockImplementationOnce(async (predicate) => {
-      const rejectSignalHandler = mockHandlers.get(rejectNodeSignal)!;
-      rejectSignalHandler({
+      });
+      await mockHandlers.get(rejectNodeSignal)!({
         nodeId: 'node-ai-agent-reject',
         rejectedBy: 'sec-ops@corp.com',
         reason: 'Operation forbidden by policy',
       });
-      return predicate();
+      return {
+        status: 'REJECTED',
+        finalResponse: 'Operation forbidden by policy',
+        stepsExecuted: 1,
+      };
     });
 
     const input: DynamicWorkflowInput = {
@@ -920,18 +941,18 @@ describe('DynamicDagWorkflow', () => {
       sentAt: new Date().toISOString(),
     });
 
-    mockExecuteChild.mockResolvedValueOnce({
-      status: 'AWAITING_APPROVAL',
-      finalResponse: 'Requesting permission to issue enterprise license.',
-      stepsExecuted: 2,
-      pendingAction: {
-        tool: { name: 'issueLicense', args: {} },
+    mockExecuteChild.mockImplementationOnce(async () => {
+      await mockHandlers.get(agentApprovalRequestedSignal)!({
+        nodeId: 'node-ai-agent-timeout',
+        tool: { id: 'call-3', name: 'issueLicense', args: {} },
         preview: {},
-      },
+      });
+      return {
+        status: 'TIMED_OUT',
+        finalResponse: 'Approval for issueLicense timed out.',
+        stepsExecuted: 2,
+      };
     });
-
-    const { condition } = require('@temporalio/workflow');
-    (condition as jest.Mock).mockResolvedValueOnce(false);
 
     const input: DynamicWorkflowInput = {
       executionId: 'exec-ai-4',
@@ -998,4 +1019,3 @@ describe('DynamicDagWorkflow', () => {
     });
   });
 });
-

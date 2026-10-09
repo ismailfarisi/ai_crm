@@ -1,4 +1,11 @@
-import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  Inject,
+  Optional,
+  OnModuleDestroy,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import Redis from 'ioredis';
 
 export const REDIS_CLIENT_TOKEN = 'REDIS_CLIENT_TOKEN';
@@ -7,15 +14,18 @@ const RESERVE_LUA = `
 local key = KEYS[1]
 local estimate = tonumber(ARGV[1])
 local cap = tonumber(ARGV[2])
-local current = tonumber(redis.call('get', key) or '0')
+local ledgerSpend = tonumber(ARGV[3])
+local currentRaw = redis.call('get', key)
+local current = math.max(tonumber(currentRaw or '0'), ledgerSpend)
 
 if (current + estimate) > cap then
+  redis.call('set', key, tostring(current), 'EX', 3024000)
   return {0, tostring(current)}
 else
-  local new_val = redis.call('incrbyfloat', key, estimate)
-  -- 35 day TTL ensures cleanup across month boundaries
-  redis.call('expire', key, 3024000)
-  return {1, tostring(new_val)}
+  local newVal = current + estimate
+  -- 35 day TTL ensures cleanup across month boundaries.
+  redis.call('set', key, tostring(newVal), 'EX', 3024000)
+  return {1, tostring(newVal)}
 end
 `;
 
@@ -31,7 +41,7 @@ return tostring(new_val)
 `;
 
 @Injectable()
-export class RedisBudgetGuardService {
+export class RedisBudgetGuardService implements OnModuleDestroy {
   private readonly logger = new Logger(RedisBudgetGuardService.name);
 
   constructor(
@@ -39,6 +49,12 @@ export class RedisBudgetGuardService {
     @Inject(REDIS_CLIENT_TOKEN)
     private readonly redis: Redis | null,
   ) {}
+
+  onModuleDestroy(): void {
+    if (this.redis) {
+      this.redis.disconnect();
+    }
+  }
 
   private getPeriodKey(organizationId: string): string {
     const d = new Date();
@@ -50,6 +66,7 @@ export class RedisBudgetGuardService {
     organizationId: string,
     estimatedCostUsd: number,
     monthlyCapUsd: number,
+    initialSpendUsd = 0,
   ): Promise<{
     allowed: boolean;
     reservedAmount: number;
@@ -57,8 +74,9 @@ export class RedisBudgetGuardService {
     periodKey: string;
   }> {
     if (!this.redis) {
-      // Degrade gracefully if Redis is unconfigured
-      return { allowed: true, reservedAmount: 0, currentSpendUsd: 0, periodKey: '' };
+      throw new ServiceUnavailableException(
+        'AI budget enforcement is unavailable because Redis is not configured',
+      );
     }
 
     try {
@@ -69,6 +87,7 @@ export class RedisBudgetGuardService {
         key,
         String(estimatedCostUsd),
         String(monthlyCapUsd),
+        String(initialSpendUsd),
       )) as [number, string];
 
       const allowed = res[0] === 1;
@@ -82,8 +101,10 @@ export class RedisBudgetGuardService {
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`Redis budget check failed, failing open: ${msg}`);
-      return { allowed: true, reservedAmount: 0, currentSpendUsd: 0, periodKey: '' };
+      this.logger.error(`Redis budget check failed: ${msg}`);
+      throw new ServiceUnavailableException(
+        'AI budget enforcement is unavailable',
+      );
     }
   }
 
@@ -101,7 +122,10 @@ export class RedisBudgetGuardService {
       await this.redis.eval(RECONCILE_LUA, 1, key, String(delta));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`Redis budget reconciliation failed: ${msg}`);
+      this.logger.error(`Redis budget reconciliation failed: ${msg}`);
+      throw new ServiceUnavailableException(
+        'AI budget reconciliation failed',
+      );
     }
   }
 }

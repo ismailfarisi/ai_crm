@@ -1,11 +1,19 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { AutomationsService } from './automations.service';
 import { AutomationWorkflow } from './entities/automation-workflow.entity';
 import { AutomationExecution } from './entities/automation-execution.entity';
 import { TemporalService } from '../temporal/temporal.service';
-import { approveNodeSignal, rejectNodeSignal } from './workflows/interfaces';
+import {
+  approveNodeSignal,
+  getExecutionStateQuery,
+  rejectNodeSignal,
+} from './workflows/interfaces';
 
 describe('AutomationsService', () => {
   let service: AutomationsService;
@@ -55,6 +63,14 @@ describe('AutomationsService', () => {
   beforeEach(async () => {
     mockWorkflowHandle = {
       signal: jest.fn().mockResolvedValue(undefined),
+      query: jest.fn().mockResolvedValue({
+        status: 'RUNNING',
+        nodeResults: {},
+        pendingApprovals: {},
+        startedAt: '2026-10-08T12:00:00.000Z',
+        finishedAt: null,
+        errorMessage: null,
+      }),
     };
 
     mockTemporalClient = {
@@ -356,6 +372,41 @@ describe('AutomationsService', () => {
       });
     });
 
+    it('returns live Temporal node results, including pending approval details', async () => {
+      const liveState = {
+        status: 'WAITING_APPROVAL' as const,
+        nodeResults: {
+          'agent-node': {
+            status: 'WAITING' as const,
+            startedAt: '2026-10-08T12:00:00.000Z',
+            output: {
+              pendingAction: {
+                tool: 'quote.create',
+                preview: { summary: 'Create quote QT-1' },
+              },
+            },
+          },
+        },
+        pendingApprovals: {},
+        finishedAt: null,
+        errorMessage: null,
+      };
+      mockWorkflowHandle.query.mockResolvedValueOnce(liveState);
+
+      const result = await service.findExecutionById(
+        mockTenantId,
+        'exec-uuid-1',
+      );
+
+      expect(mockWorkflowHandle.query).toHaveBeenCalledWith(
+        getExecutionStateQuery,
+      );
+      expect(result.status).toBe('WAITING_APPROVAL');
+      expect(result.nodeResults['agent-node'].output.pendingAction).toEqual(
+        liveState.nodeResults['agent-node'].output.pendingAction,
+      );
+    });
+
     it('throws NotFoundException when execution does not exist', async () => {
       executionRepo.findOne.mockResolvedValueOnce(null);
       await expect(
@@ -366,6 +417,16 @@ describe('AutomationsService', () => {
 
   describe('signalExecution', () => {
     it('signals APPROVE to temporal workflow', async () => {
+      mockWorkflowHandle.query.mockResolvedValueOnce({
+        status: 'WAITING_APPROVAL',
+        nodeResults: {},
+        pendingApprovals: {
+          'approval-node-1': { nodeId: 'approval-node-1' },
+        },
+        startedAt: '2026-10-08T12:00:00.000Z',
+        finishedAt: null,
+        errorMessage: null,
+      });
       const result = await service.signalExecution(
         mockTenantId,
         'exec-uuid-1',
@@ -376,7 +437,10 @@ describe('AutomationsService', () => {
         },
       );
 
-      expect(result).toEqual(mockExecution);
+      expect(result).toEqual({
+        ...mockExecution,
+        status: 'WAITING_APPROVAL',
+      });
       expect(mockTemporalClient.workflow.getHandle).toHaveBeenCalledWith(
         mockExecution.temporalWorkflowId,
       );
@@ -390,6 +454,16 @@ describe('AutomationsService', () => {
     });
 
     it('signals REJECT to temporal workflow', async () => {
+      mockWorkflowHandle.query.mockResolvedValueOnce({
+        status: 'WAITING_APPROVAL',
+        nodeResults: {},
+        pendingApprovals: {
+          'approval-node-1': { nodeId: 'approval-node-1' },
+        },
+        startedAt: '2026-10-08T12:00:00.000Z',
+        finishedAt: null,
+        errorMessage: null,
+      });
       const result = await service.signalExecution(
         mockTenantId,
         'exec-uuid-1',
@@ -400,7 +474,10 @@ describe('AutomationsService', () => {
         },
       );
 
-      expect(result).toEqual(mockExecution);
+      expect(result).toEqual({
+        ...mockExecution,
+        status: 'WAITING_APPROVAL',
+      });
       expect(mockWorkflowHandle.signal).toHaveBeenCalledWith(
         rejectNodeSignal,
         expect.objectContaining({
@@ -410,20 +487,36 @@ describe('AutomationsService', () => {
       );
     });
 
-    it('handles temporal offline during signal gracefully', async () => {
+    it('surfaces when Temporal cannot deliver a signal', async () => {
+      mockWorkflowHandle.query.mockResolvedValueOnce({
+        status: 'WAITING_APPROVAL',
+        nodeResults: {},
+        pendingApprovals: {
+          node-1: { nodeId: 'node-1' },
+        },
+        startedAt: '2026-10-08T12:00:00.000Z',
+        finishedAt: null,
+        errorMessage: null,
+      });
       mockWorkflowHandle.signal.mockRejectedValueOnce(
         new Error('Connection lost'),
       );
 
-      const result = await service.signalExecution(
-        mockTenantId,
-        'exec-uuid-1',
-        {
+      await expect(
+        service.signalExecution(mockTenantId, 'exec-uuid-1', {
           action: 'APPROVE',
           nodeId: 'node-1',
-        },
-      );
-      expect(result).toEqual(mockExecution);
+        }),
+      ).rejects.toThrow(ServiceUnavailableException);
+    });
+
+    it('rejects decisions for nodes without a pending approval', async () => {
+      await expect(
+        service.signalExecution(mockTenantId, 'exec-uuid-1', {
+          action: 'APPROVE',
+          nodeId: 'future-node',
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('throws NotFoundException if execution not found', async () => {

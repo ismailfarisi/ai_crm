@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type {
@@ -9,7 +15,12 @@ import { AutomationWorkflow } from './entities/automation-workflow.entity';
 import { AutomationExecution } from './entities/automation-execution.entity';
 import { TemporalService } from '../temporal/temporal.service';
 import { dynamicDagWorkflow } from './workflows/dynamic-dag.workflow';
-import { approveNodeSignal, rejectNodeSignal } from './workflows/interfaces';
+import {
+  approveNodeSignal,
+  getExecutionStateQuery,
+  rejectNodeSignal,
+  WorkflowExecutionState,
+} from './workflows/interfaces';
 
 @Injectable()
 export class AutomationsService {
@@ -104,6 +115,7 @@ export class AutomationsService {
     tenantId: string,
     workflowId: string,
     triggerPayload: Record<string, any> = {},
+    actorUserId?: string,
   ): Promise<AutomationExecution> {
     const wf = await this.findWorkflowById(tenantId, workflowId);
 
@@ -128,6 +140,7 @@ export class AutomationsService {
             executionId: savedExec.id,
             workflowId: wf.id,
             tenantId,
+            ...(actorUserId ? { actorUserId } : {}),
             nodes: wf.nodes || [],
             edges: wf.edges || [],
             triggerPayload,
@@ -173,13 +186,9 @@ export class AutomationsService {
     tenantId: string,
     executionId: string,
   ): Promise<AutomationExecution> {
-    const exec = await this.executionRepo.findOne({
-      where: { id: executionId, tenantId },
-    });
-    if (!exec) {
-      throw new NotFoundException(`Execution ${executionId} not found`);
-    }
-    return exec;
+    const execution = await this.findExecutionRecord(tenantId, executionId);
+    const state = await this.getLiveExecutionState(execution);
+    return this.withLiveExecutionState(execution, state);
   }
 
   async signalExecution(
@@ -192,7 +201,13 @@ export class AutomationsService {
       comment?: string;
     },
   ): Promise<AutomationExecution> {
-    const exec = await this.findExecutionById(tenantId, executionId);
+    const exec = await this.findExecutionRecord(tenantId, executionId);
+    const state = await this.getLiveExecutionState(exec);
+    if (!state.pendingApprovals[payload.nodeId]) {
+      throw new BadRequestException(
+        `Node '${payload.nodeId}' has no pending approval`,
+      );
+    }
 
     try {
       const client = this.temporalService.getClient();
@@ -211,8 +226,58 @@ export class AutomationsService {
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Temporal signal dispatch failed: ${errorMsg}`);
+      throw new ServiceUnavailableException(
+        'Unable to deliver the approval decision to the workflow',
+      );
     }
 
-    return exec;
+    return this.withLiveExecutionState(exec, state);
+  }
+
+  private async findExecutionRecord(
+    tenantId: string,
+    executionId: string,
+  ): Promise<AutomationExecution> {
+    const execution = await this.executionRepo.findOne({
+      where: { id: executionId, tenantId },
+    });
+    if (!execution) {
+      throw new NotFoundException(`Execution ${executionId} not found`);
+    }
+    return execution;
+  }
+
+  private async getLiveExecutionState(
+    execution: AutomationExecution,
+  ): Promise<WorkflowExecutionState> {
+    try {
+      const handle = this.temporalService
+        .getClient()
+        .workflow.getHandle(execution.temporalWorkflowId);
+      return await handle.query(getExecutionStateQuery);
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `Temporal state query failed for execution ${execution.id}: ${errorMsg}`,
+      );
+      throw new ServiceUnavailableException(
+        'Unable to retrieve live automation execution state',
+      );
+    }
+  }
+
+  private withLiveExecutionState(
+    execution: AutomationExecution,
+    state: WorkflowExecutionState,
+  ): AutomationExecution {
+    return {
+      ...execution,
+      status: state.status,
+      nodeResults: state.nodeResults,
+      finishedAt: state.finishedAt
+        ? new Date(state.finishedAt)
+        : execution.finishedAt,
+      errorMessage: state.errorMessage ?? execution.errorMessage,
+    };
   }
 }

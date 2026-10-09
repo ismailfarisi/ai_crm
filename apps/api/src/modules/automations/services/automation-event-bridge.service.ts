@@ -285,18 +285,26 @@ export class AutomationEventBridgeService
       );
 
       try {
-        const exec = await this.automationsService.triggerExecution(
-          event.tenantId,
-          wf.id,
-          {
+        const payload = {
             eventType: event.eventType,
             entityId: event.entityId,
             timestamp: event.timestamp,
             payload: event.snapshot?.after ?? event.snapshot?.before ?? {},
             snapshot: event.snapshot,
             event,
-          },
-        );
+          };
+        const exec = event.actorUserId
+          ? await this.automationsService.triggerExecution(
+              event.tenantId,
+              wf.id,
+              payload,
+              event.actorUserId,
+            )
+          : await this.automationsService.triggerExecution(
+              event.tenantId,
+              wf.id,
+              payload,
+            );
         if (exec) {
           triggeredExecutions.push(exec);
         }

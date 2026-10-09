@@ -5,6 +5,7 @@ export interface DynamicWorkflowInput {
   executionId: string;
   workflowId: string;
   tenantId: string;
+  actorUserId?: string;
   nodes: AutomationNode[];
   edges: AutomationEdge[];
   triggerPayload: Record<string, any>;

@@ -3,6 +3,7 @@ import {
   defineSignal,
   setHandler,
   condition,
+  getExternalWorkflowHandle,
 } from '@temporalio/workflow';
 import type {
   AgentReactActivities,
@@ -16,6 +17,14 @@ const activities = proxyActivities<AgentReactActivities>({
     maximumAttempts: 3,
   },
 });
+const commitActivities = proxyActivities<
+  Pick<AgentReactActivities, 'commitToolMutationActivity'>
+>({
+  startToCloseTimeout: '5 minutes',
+  retry: {
+    maximumAttempts: 1,
+  },
+});
 
 export const approvalSignal = defineSignal<[{ approved: boolean; note?: string }]>(
   'agentApprovalSignal',
@@ -26,11 +35,21 @@ export interface AgentReActWorkflowInput {
   userId: string;
   conversationId: string;
   prompt: string;
+  parentWorkflowId?: string;
+  automationNodeId?: string;
+  autoApprove?: boolean;
+  allowedDomains?: string[];
+  approvalTimeout?: string;
   maxTurns?: number;
 }
 
 export interface AgentReActWorkflowOutput {
-  status: 'COMPLETED' | 'AWAITING_APPROVAL' | 'REJECTED' | 'FAILED';
+  status:
+    | 'COMPLETED'
+    | 'AWAITING_APPROVAL'
+    | 'REJECTED'
+    | 'TIMED_OUT'
+    | 'FAILED';
   finalResponse: string;
   stepsExecuted: number;
   pendingAction?: {
@@ -49,7 +68,11 @@ export async function agentReActWorkflow(
 
   const approvalQueue: Array<{ approved: boolean; note?: string }> = [];
   setHandler(approvalSignal, (signal) => {
-    approvalQueue.push(signal);
+    if (signal.approved && approvalQueue.length === 0) {
+      approvalQueue.push(signal);
+    } else if (!signal.approved) {
+      approvalQueue.splice(0, approvalQueue.length, signal);
+    }
   });
 
   const history: Array<{ role: 'user' | 'assistant' | 'tool'; content: string }> = [
@@ -58,13 +81,18 @@ export async function agentReActWorkflow(
 
   while (!isDone && turns < maxTurns) {
     turns++;
+    const availableTools = await activities.listAvailableTools({
+      organizationId: input.organizationId,
+      userId: input.userId,
+      allowedDomains: input.allowedDomains,
+    });
 
     const turn = await activities.planReActTurn({
       organizationId: input.organizationId,
       userId: input.userId,
       prompt: input.prompt,
       conversationHistory: history,
-      availableTools: [],
+      availableTools,
     });
 
     if (turn.finalAnswer && (!turn.toolCalls || turn.toolCalls.length === 0)) {
@@ -74,29 +102,56 @@ export async function agentReActWorkflow(
     }
 
     if (turn.toolCalls && turn.toolCalls.length > 0) {
-      for (const tool of turn.toolCalls) {
+      for (const plannedTool of turn.toolCalls) {
+        const tool = turn.model
+          ? { ...plannedTool, model: turn.model }
+          : plannedTool;
         const execution = await activities.executeToolActivity(tool, {
           organizationId: input.organizationId,
           userId: input.userId,
+          message: input.prompt,
         });
 
         if (execution.requiresApproval && execution.isMutating) {
-          // Pause workflow and wait up to 48 hours for user signal
-          const approved = await condition(() => approvalQueue.length > 0, '48 hours');
+          if (!input.autoApprove) {
+            if (input.parentWorkflowId && input.automationNodeId) {
+              await getExternalWorkflowHandle(input.parentWorkflowId).signal(
+                agentApprovalRequestedSignal,
+                {
+                  nodeId: input.automationNodeId,
+                  tool,
+                  preview: execution.previewPayload ?? {},
+                },
+              );
+            }
 
-          const currentApproval = approvalQueue.shift();
-          if (!approved || !currentApproval?.approved) {
-            return {
-              status: 'REJECTED',
-              finalResponse: `Action ${tool.name} was rejected by user.`,
-              stepsExecuted: turns,
-            };
+            const approved = await condition(
+              () => approvalQueue.length > 0,
+              input.approvalTimeout ?? '48 hours',
+            );
+            const currentApproval = approvalQueue.shift();
+            if (!approved) {
+              return {
+                status: 'TIMED_OUT',
+                finalResponse: `Approval for ${tool.name} timed out.`,
+                stepsExecuted: turns,
+              };
+            }
+            if (!currentApproval?.approved) {
+              return {
+                status: 'REJECTED',
+                finalResponse: currentApproval?.note
+                  ? `Action ${tool.name} was rejected: ${currentApproval.note}`
+                  : `Action ${tool.name} was rejected or approval timed out.`,
+                stepsExecuted: turns,
+              };
+            }
           }
 
-          // User approved -> execute commit
-          const commit = await activities.commitToolMutationActivity(tool, {
+          const commit = await commitActivities.commitToolMutationActivity(tool, {
             organizationId: input.organizationId,
             userId: input.userId,
+            message: input.prompt,
           });
 
           history.push({
@@ -115,8 +170,14 @@ export async function agentReActWorkflow(
   }
 
   return {
-    status: 'COMPLETED',
-    finalResponse: finalResponse || 'Execution finished.',
+    status: isDone ? 'COMPLETED' : 'FAILED',
+    finalResponse:
+      finalResponse ||
+      `Agent stopped after reaching the ${maxTurns}-turn limit without a final answer.`,
     stepsExecuted: turns,
   };
 }
+
+export const agentApprovalRequestedSignal = defineSignal<
+  [{ nodeId: string; tool: ToolCallSpec; preview: Record<string, unknown> }]
+>('agentApprovalRequested');

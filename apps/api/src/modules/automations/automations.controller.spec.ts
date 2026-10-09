@@ -11,9 +11,16 @@ describe('AutomationsController', () => {
   let service: AutomationsService;
 
   const mockUser: AuthenticatedUser = {
-    userId: 'user-123',
+    id: 'user-123',
     organizationId: 'org-tenant-123',
-    role: 'ADMIN',
+    email: 'user@example.com',
+    firstName: 'Test',
+    lastName: 'User',
+    roles: ['admin'],
+    level: 1,
+    isOwner: false,
+    teamId: null,
+    managerId: null,
     permissions: [
       'automation:read',
       'automation:create',
@@ -22,7 +29,6 @@ describe('AutomationsController', () => {
       'automation:execute',
       'automation:approve',
     ],
-    roles: ['admin'],
   };
 
   const mockWorkflow: any = {
@@ -163,6 +169,7 @@ describe('AutomationsController', () => {
         mockUser.organizationId,
         'wf-123',
         payload,
+        mockUser.id,
       );
     });
   });

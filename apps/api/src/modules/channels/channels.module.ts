@@ -58,6 +58,7 @@ import { ChannelsWebhookController } from './channels-webhook.controller';
     ChannelCryptoService,
     AiAgentService,
     ProductionCheckInService,
+    SkillRegistry,
   ],
 })
 export class ChannelsModule {}

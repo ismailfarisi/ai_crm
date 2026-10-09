@@ -32,13 +32,19 @@ export class CustomRecordsService {
     // JSONB Search
     if (params?.search?.trim()) {
       const s = `%${params.search.trim().toLowerCase()}%`;
-      qb.andWhere(`LOWER(r.values->>'${object.primaryAttributeSlug}') LIKE :search`, { search: s });
+      qb.andWhere(
+        `LOWER(r.values->>:primaryAttributeSlug) LIKE :search`,
+        { primaryAttributeSlug: object.primaryAttributeSlug, search: s },
+      );
     }
 
     // JSONB Field Filters
     if (params?.filters && typeof params.filters === 'object') {
-      for (const [key, val] of Object.entries(params.filters)) {
-        qb.andWhere(`r.values @> :filter_${key}`, { [`filter_${key}`]: JSON.stringify({ [key]: val }) });
+      for (const [index, [key, val]] of Object.entries(params.filters).entries()) {
+        const parameter = `filter_${index}`;
+        qb.andWhere(`r.values @> :${parameter}`, {
+          [parameter]: JSON.stringify({ [key]: val }),
+        });
       }
     }
 

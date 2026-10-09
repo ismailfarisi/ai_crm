@@ -21,6 +21,7 @@ export interface ResolvedWorkOrderQuery {
 
 export class WorkOrderQuerySkill implements ChannelSkill<ResolvedWorkOrderQuery> {
   readonly name = CHANNEL_SKILLS.WORK_ORDER_QUERY;
+  readonly isMutating = false;
   readonly description =
     'Query the production floor status: ask what machines or jobs are currently running, check the status of a specific work order, or list delayed jobs.';
   readonly examples = [

@@ -131,6 +131,38 @@ describe('Automation Drawers', () => {
     expect(onExecute).toHaveBeenCalled();
   });
 
+  it('surfaces an AI tool preview when execution is waiting for approval', async () => {
+    const execution: AutomationExecutionDto = {
+      ...sampleExecution,
+      status: 'WAITING_APPROVAL',
+      nodeResults: {
+        'agent-node': {
+          status: 'WAITING',
+          startedAt: '2026-08-17T12:00:00Z',
+          output: {
+            pendingAction: {
+              tool: 'quote.create',
+              preview: { summary: 'Create quote QT-1' },
+            },
+          },
+        },
+      },
+    };
+
+    render(
+      <TestRunDrawer
+        workflow={sampleWorkflow}
+        onExecuteTest={vi.fn().mockResolvedValue(execution)}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('execute-test-btn'));
+    expect(await screen.findByTestId('pending-agent-approval')).toBeDefined();
+    expect(screen.getByText('Approval required')).toBeDefined();
+    expect(screen.getByText(/Create quote QT-1/)).toBeDefined();
+  });
+
   it('renders ExecutionTraceDrawer with timeline results', () => {
     const onClose = vi.fn();
     render(<ExecutionTraceDrawer execution={sampleExecution} onClose={onClose} />);

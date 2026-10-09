@@ -22,6 +22,7 @@ describe('RedisBudgetGuardService', () => {
     mockRedis.eval.mockResolvedValue([1, '12.50']); // [allowed (1=true), new_spend]
 
     const result = await service.checkAndReserve('org-123', 0.05, 50.0);
+    expect(mockRedis.eval.mock.calls[0][0]).toContain('math.max');
     expect(result.allowed).toBe(true);
     expect(result.reservedAmount).toBe(0.05);
     expect(result.currentSpendUsd).toBe(12.5);
@@ -47,38 +48,30 @@ describe('RedisBudgetGuardService', () => {
     );
   });
 
-  it('gracefully degrades and allows execution if Redis is not configured (null)', async () => {
+  it('fails closed if Redis is not configured for an enabled budget', async () => {
     const unconfiguredService = new RedisBudgetGuardService(null);
-    const result = await unconfiguredService.checkAndReserve(
-      'org-123',
-      0.05,
-      50.0,
-    );
-    expect(result.allowed).toBe(true);
-    expect(result.reservedAmount).toBe(0);
-    expect(result.currentSpendUsd).toBe(0);
-
-    // reconcile does nothing if Redis is null
+    await expect(
+      unconfiguredService.checkAndReserve('org-123', 0.05, 50.0),
+    ).rejects.toThrow('AI budget enforcement is unavailable');
     await expect(
       unconfiguredService.reconcile('org-123', 0.03, 0.05),
     ).resolves.not.toThrow();
   });
 
-  it('fails open if Redis throws during checkAndReserve', async () => {
+  it('fails closed if Redis throws during checkAndReserve', async () => {
     mockRedis.eval.mockRejectedValue(new Error('Redis connection timeout'));
 
-    const result = await service.checkAndReserve('org-123', 0.05, 50.0);
-    expect(result.allowed).toBe(true);
-    expect(result.reservedAmount).toBe(0);
-    expect(result.currentSpendUsd).toBe(0);
+    await expect(
+      service.checkAndReserve('org-123', 0.05, 50.0),
+    ).rejects.toThrow('AI budget enforcement is unavailable');
   });
 
-  it('handles error gracefully if Redis throws during reconcile', async () => {
+  it('surfaces a reconciliation failure', async () => {
     mockRedis.eval.mockRejectedValue(new Error('Redis connection error'));
 
     await expect(
       service.reconcile('org-123', 0.03, 0.05),
-    ).resolves.not.toThrow();
+    ).rejects.toThrow('AI budget reconciliation failed');
   });
 
   it('skips reconciliation if reservedAmount is 0', async () => {

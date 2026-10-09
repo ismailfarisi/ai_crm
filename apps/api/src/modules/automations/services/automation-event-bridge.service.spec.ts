@@ -167,6 +167,7 @@ describe('AutomationEventBridgeService', () => {
           snapshot: baseEvent.snapshot,
           event: baseEvent,
         }),
+        'user-1',
       );
     });
 
@@ -197,6 +198,7 @@ describe('AutomationEventBridgeService', () => {
         'tenant-1',
         'wf-fields-match',
         expect.anything(),
+        'user-1',
       );
     });
 
@@ -287,6 +289,7 @@ describe('AutomationEventBridgeService', () => {
         'tenant-1',
         'wf-cond-match',
         expect.anything(),
+        'user-1',
       );
     });
 

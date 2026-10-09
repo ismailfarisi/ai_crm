@@ -1,5 +1,6 @@
 const mockHandlers = new Map<any, Function>();
 const mockActivities = {
+  listAvailableTools: jest.fn(),
   planReActTurn: jest.fn(),
   executeToolActivity: jest.fn(),
   commitToolMutationActivity: jest.fn(),
@@ -11,6 +12,8 @@ let mockConditionImpl: (predicate: () => boolean, timeout?: string) => Promise<b
 jest.mock('@temporalio/workflow', () => {
   return {
     proxyActivities: () => ({
+      listAvailableTools: (...args: any[]) =>
+        (global as any).__mockActivities.listAvailableTools(...args),
       planReActTurn: (...args: any[]) =>
         (global as any).__mockActivities.planReActTurn(...args),
       executeToolActivity: (...args: any[]) =>
@@ -26,6 +29,7 @@ jest.mock('@temporalio/workflow', () => {
     }),
     defineSignal: (name: string) => ({ name, type: 'signal' }),
     defineQuery: (name: string) => ({ name, type: 'query' }),
+    getExternalWorkflowHandle: jest.fn(),
     ApplicationFailure: class ApplicationFailure extends Error {},
   };
 });
@@ -41,6 +45,7 @@ describe('agentReActWorkflow logic', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockHandlers.clear();
+    mockActivities.listAvailableTools.mockResolvedValue([]);
     mockConditionImpl = async (pred) => pred();
   });
 
@@ -111,7 +116,11 @@ describe('agentReActWorkflow logic', () => {
     });
     expect(mockActivities.executeToolActivity).toHaveBeenCalledWith(
       { id: 'call-1', name: 'kbLookup', args: { query: 'pricing' } },
-      { organizationId: 'org-123', userId: 'user-456' },
+      {
+        organizationId: 'org-123',
+        userId: 'user-456',
+        message: 'How much does it cost?',
+      },
     );
     expect(mockActivities.commitToolMutationActivity).not.toHaveBeenCalled();
   });
@@ -169,7 +178,11 @@ describe('agentReActWorkflow logic', () => {
     });
     expect(mockActivities.commitToolMutationActivity).toHaveBeenCalledWith(
       { id: 'refund-call-1', name: 'refundPayment', args: { paymentId: 'pay-999', amount: 50 } },
-      { organizationId: 'org-123', userId: 'user-456' },
+      {
+        organizationId: 'org-123',
+        userId: 'user-456',
+        message: 'Please refund payment pay-999.',
+      },
     );
   });
 
@@ -211,7 +224,7 @@ describe('agentReActWorkflow logic', () => {
 
     expect(result).toEqual({
       status: 'REJECTED',
-      finalResponse: 'Action deleteAccount was rejected by user.',
+      finalResponse: 'Action deleteAccount was rejected: Denied by admin',
       stepsExecuted: 1,
     });
     expect(mockActivities.commitToolMutationActivity).not.toHaveBeenCalled();
@@ -248,8 +261,8 @@ describe('agentReActWorkflow logic', () => {
     });
 
     expect(result).toEqual({
-      status: 'REJECTED',
-      finalResponse: 'Action deleteAccount was rejected by user.',
+      status: 'TIMED_OUT',
+      finalResponse: 'Approval for deleteAccount timed out.',
       stepsExecuted: 1,
     });
     expect(mockActivities.commitToolMutationActivity).not.toHaveBeenCalled();
@@ -371,8 +384,9 @@ describe('agentReActWorkflow logic', () => {
     });
 
     expect(result).toEqual({
-      status: 'COMPLETED',
-      finalResponse: 'Execution finished.',
+      status: 'FAILED',
+      finalResponse:
+        'Agent stopped after reaching the 3-turn limit without a final answer.',
       stepsExecuted: 3,
     });
     expect(mockActivities.planReActTurn).toHaveBeenCalledTimes(3);

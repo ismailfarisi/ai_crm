@@ -102,7 +102,7 @@ export function useDeleteAutomationWorkflow() {
 export function useTestRunAutomation() {
   const { invalidateExecutions } = useInvalidateAutomations();
 
-  return useMutation({
+  const mutation = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload?: Record<string, any> }) =>
       api.automations.testRun(id, payload),
     onSuccess: async (execution, variables) => {
@@ -111,6 +111,12 @@ export function useTestRunAutomation() {
     },
     onError: (error) => toast.error(describe(error, 'Failed to trigger test run')),
   });
+
+  return {
+    ...mutation,
+    getExecution: (executionId: string) =>
+      api.automations.getExecution(executionId),
+  };
 }
 
 export function useSignalAutomationExecution() {
