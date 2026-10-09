@@ -289,7 +289,11 @@ describe('AiService', () => {
           model: 'claude-sonnet-5',
           stopReason: 'end_turn',
         }),
-        generateStructured: jest.fn(),
+        generateStructured: jest.fn().mockResolvedValue({
+          data: { ok: true },
+          usage: { inputTokens: 10, outputTokens: 5 },
+          model: 'claude-sonnet-5',
+        }),
       });
     }
 

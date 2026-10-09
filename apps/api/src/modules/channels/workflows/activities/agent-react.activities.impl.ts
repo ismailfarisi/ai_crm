@@ -127,7 +127,11 @@ export function createAgentReactActivities(deps: {
     async listAvailableTools(input) {
       return deps.tenantContext.runWithTenant(input.organizationId, async () => {
         const { skills, permissions } = await resolveSkills(input, input.allowedDomains);
-        const availableTools = skills.map((skill) => ({
+        const availableTools: Array<{
+          name: string;
+          description: string;
+          inputSchema: Record<string, unknown>;
+        }> = skills.map((skill) => ({
           name: skill.name,
           description: skill.description,
           inputSchema: skill.jsonSchema,

@@ -492,7 +492,7 @@ describe('AutomationsService', () => {
         status: 'WAITING_APPROVAL',
         nodeResults: {},
         pendingApprovals: {
-          node-1: { nodeId: 'node-1' },
+          'node-1': { nodeId: 'node-1' },
         },
         startedAt: '2026-10-08T12:00:00.000Z',
         finishedAt: null,

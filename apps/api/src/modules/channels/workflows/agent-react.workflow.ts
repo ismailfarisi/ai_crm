@@ -58,6 +58,34 @@ export interface AgentReActWorkflowOutput {
   };
 }
 
+function approvalTimeoutToMilliseconds(timeout?: string): number {
+  const value = timeout ?? '48 hours';
+  const match =
+    /^(\d+(?:\.\d+)?)\s*(milliseconds?|seconds?|minutes?|hours?|days?)$/i.exec(
+      value.trim(),
+    );
+  if (!match) {
+    throw new Error(`Invalid approval timeout '${value}'`);
+  }
+
+  const amount = Number(match[1]);
+  const unit = match[2].toLowerCase();
+  const multiplier = unit.startsWith('millisecond')
+    ? 1
+    : unit.startsWith('second')
+      ? 1_000
+      : unit.startsWith('minute')
+        ? 60_000
+        : unit.startsWith('hour')
+          ? 3_600_000
+          : 86_400_000;
+  const duration = amount * multiplier;
+  if (!Number.isFinite(duration) || duration <= 0) {
+    throw new Error(`Invalid approval timeout '${value}'`);
+  }
+  return duration;
+}
+
 export async function agentReActWorkflow(
   input: AgentReActWorkflowInput,
 ): Promise<AgentReActWorkflowOutput> {
@@ -127,7 +155,7 @@ export async function agentReActWorkflow(
 
             const approved = await condition(
               () => approvalQueue.length > 0,
-              input.approvalTimeout ?? '48 hours',
+              approvalTimeoutToMilliseconds(input.approvalTimeout),
             );
             const currentApproval = approvalQueue.shift();
             if (!approved) {

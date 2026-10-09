@@ -63,8 +63,7 @@ export function TestRunDrawer({
 
     let cancelled = false;
     let inFlight = false;
-    let interval: ReturnType<typeof setInterval> | undefined;
-    interval = setInterval(async () => {
+    const interval = setInterval(async () => {
       if (inFlight) return;
       inFlight = true;
       try {
@@ -80,7 +79,7 @@ export function TestRunDrawer({
         }
       } catch (error) {
         if (!cancelled) {
-          if (interval !== undefined) clearInterval(interval);
+          clearInterval(interval);
           setPollingError(
             error instanceof Error
               ? error.message
@@ -94,7 +93,7 @@ export function TestRunDrawer({
 
     return () => {
       cancelled = true;
-      if (interval !== undefined) clearInterval(interval);
+      clearInterval(interval);
     };
   }, [executionResult, onGetExecution]);
 
