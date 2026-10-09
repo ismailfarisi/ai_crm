@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PERMISSIONS } from '@saas/shared';
+import { CrmEventBusService } from '@/common/events';
 import { CustomRecord } from '../entities/custom-record.entity';
 import { CustomObjectsService } from './custom-objects.service';
 import { RecordValidationService } from './record-validation.service';
@@ -13,6 +14,7 @@ export class CustomRecordsService {
     private readonly recordRepo: Repository<CustomRecord>,
     private readonly objectsService: CustomObjectsService,
     private readonly validationService: RecordValidationService,
+    private readonly eventBus: CrmEventBusService,
   ) {}
 
   async list(tenantId: string, slug: string, params: any, actor: any) {
@@ -30,13 +32,19 @@ export class CustomRecordsService {
     // JSONB Search
     if (params?.search?.trim()) {
       const s = `%${params.search.trim().toLowerCase()}%`;
-      qb.andWhere(`LOWER(r.values->>'${object.primaryAttributeSlug}') LIKE :search`, { search: s });
+      qb.andWhere(
+        `LOWER(r.values->>:primaryAttributeSlug) LIKE :search`,
+        { primaryAttributeSlug: object.primaryAttributeSlug, search: s },
+      );
     }
 
     // JSONB Field Filters
     if (params?.filters && typeof params.filters === 'object') {
-      for (const [key, val] of Object.entries(params.filters)) {
-        qb.andWhere(`r.values @> :filter_${key}`, { [`filter_${key}`]: JSON.stringify({ [key]: val }) });
+      for (const [index, [key, val]] of Object.entries(params.filters).entries()) {
+        const parameter = `filter_${index}`;
+        qb.andWhere(`r.values @> :${parameter}`, {
+          [parameter]: JSON.stringify({ [key]: val }),
+        });
       }
     }
 
@@ -73,24 +81,87 @@ export class CustomRecordsService {
       ownerId: payload?.ownerId ?? actor.id,
       values: validatedValues,
     });
-    return this.recordRepo.save(record);
+    const saved = await this.recordRepo.save(record);
+
+    await this.eventBus.publish({
+      tenantId,
+      eventType: 'record.created',
+      entityType: 'custom_object',
+      entityName: slug,
+      entityId: saved.id,
+      actorUserId: actor?.id ?? null,
+      timestamp: new Date().toISOString(),
+      snapshot: {
+        before: null,
+        after: saved.values,
+        changedFields: Object.keys(saved.values ?? {}),
+      },
+    });
+
+    return saved;
   }
 
   async update(tenantId: string, slug: string, id: string, payload: any, actor: any) {
     const record = await this.getById(tenantId, slug, id, actor);
     const object = await this.objectsService.getBySlug(tenantId, slug);
 
+    const beforeValues = { ...(record.values ?? {}) };
+    const originalOwnerId = record.ownerId;
     const merged = { ...record.values, ...(payload?.values ?? {}) };
     const validatedValues = this.validationService.validate(object.attributes ?? [], merged);
 
     record.values = validatedValues;
     if (payload?.ownerId !== undefined) record.ownerId = payload.ownerId;
 
-    return this.recordRepo.save(record);
+    const saved = await this.recordRepo.save(record);
+    const changedFields = this.eventBus.computeChangedFields(beforeValues, saved.values);
+
+    const beforeSnapshot: any = { ...beforeValues };
+    const afterSnapshot: any = { ...saved.values };
+
+    if (payload?.ownerId !== undefined && payload.ownerId !== originalOwnerId) {
+      if (!changedFields.includes('ownerId')) {
+        changedFields.push('ownerId');
+      }
+      beforeSnapshot.ownerId = originalOwnerId;
+      afterSnapshot.ownerId = payload.ownerId;
+    }
+
+    await this.eventBus.publish({
+      tenantId,
+      eventType: 'record.updated',
+      entityType: 'custom_object',
+      entityName: slug,
+      entityId: saved.id,
+      actorUserId: actor?.id ?? null,
+      timestamp: new Date().toISOString(),
+      snapshot: {
+        before: beforeSnapshot,
+        after: afterSnapshot,
+        changedFields: changedFields.sort(),
+      },
+    });
+
+    return saved;
   }
 
   async delete(tenantId: string, slug: string, id: string, actor: any) {
-    await this.getById(tenantId, slug, id, actor);
+    const record = await this.getById(tenantId, slug, id, actor);
     await this.recordRepo.softDelete({ id, tenantId });
+
+    await this.eventBus.publish({
+      tenantId,
+      eventType: 'record.deleted',
+      entityType: 'custom_object',
+      entityName: slug,
+      entityId: id,
+      actorUserId: actor?.id ?? null,
+      timestamp: new Date().toISOString(),
+      snapshot: {
+        before: record.values,
+        after: null,
+        changedFields: Object.keys(record.values ?? {}),
+      },
+    });
   }
 }

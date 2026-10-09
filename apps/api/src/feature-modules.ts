@@ -80,7 +80,8 @@ export const FEATURE_MODULES = [
  * process only needs enough of the graph to satisfy TypeORM's relation
  * closure and its own activities; it currently runs without TeamsModule,
  * MailModule, CatalogModule, AutomationsModule or FinanceModule, and widening
- * it would change what boots in that process. If you add a module here,
+ * CustomObjectsModule is included because the automation agent exposes its
+ * records as permission-filtered tools. If you add another module here,
  * do it because the worker needs it, not for symmetry.
  */
 export const WORKER_FEATURE_MODULES = [
@@ -97,4 +98,5 @@ export const WORKER_FEATURE_MODULES = [
   QuotesModule,
   PurchasingModule,
   InventoryModule,
+  CustomObjectsModule,
 ];

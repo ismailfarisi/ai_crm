@@ -83,6 +83,9 @@ export interface ChannelSkill<
    */
   promptVersion: string;
 
+  /** False for read-only capabilities. Mutating tools require approval by default. */
+  isMutating?: boolean;
+
   /**
    * Turn partial slots into something executable, ask one question, or refuse.
    *

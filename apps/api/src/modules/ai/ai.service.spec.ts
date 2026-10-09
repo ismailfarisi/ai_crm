@@ -26,6 +26,7 @@ function makeService(
     aiConfigService?: any;
     usageLogRepo?: any;
     budgetRepo?: any;
+    redisBudgetGuard?: any;
   } = {},
 ) {
   const savedLogs: any[] = [];
@@ -60,8 +61,44 @@ function makeService(
       save: jest.fn().mockImplementation(async (b) => b),
     } as any);
 
-  const service = new AiService(aiConfigService, usageLogRepo, budgetRepo);
-  return { service, aiConfigService, usageLogRepo, budgetRepo, savedLogs };
+  const redisBudgetGuard =
+    overrides.redisBudgetGuard === null
+      ? undefined
+      : overrides.redisBudgetGuard ||
+        ({
+          checkAndReserve: jest.fn(
+            async (
+              _organizationId: string,
+              estimatedCostUsd: number,
+              cap: number,
+              initialSpendUsd: number,
+            ) => ({
+              allowed: initialSpendUsd + estimatedCostUsd <= cap,
+              reservedAmount:
+                initialSpendUsd + estimatedCostUsd <= cap
+                  ? estimatedCostUsd
+                  : 0,
+              currentSpendUsd: initialSpendUsd + estimatedCostUsd,
+              periodKey: 'ai:budget:test',
+            }),
+          ),
+          reconcile: jest.fn().mockResolvedValue(undefined),
+        } as any);
+
+  const service = new AiService(
+    aiConfigService,
+    usageLogRepo,
+    budgetRepo,
+    redisBudgetGuard,
+  );
+  return {
+    service,
+    aiConfigService,
+    usageLogRepo,
+    budgetRepo,
+    redisBudgetGuard,
+    savedLogs,
+  };
 }
 
 describe('AiService', () => {
@@ -252,7 +289,11 @@ describe('AiService', () => {
           model: 'claude-sonnet-5',
           stopReason: 'end_turn',
         }),
-        generateStructured: jest.fn(),
+        generateStructured: jest.fn().mockResolvedValue({
+          data: { ok: true },
+          usage: { inputTokens: 10, outputTokens: 5 },
+          model: 'claude-sonnet-5',
+        }),
       });
     }
 
@@ -318,7 +359,7 @@ describe('AiService', () => {
       expect(savedLogs[0].errorMessage).toContain('Monthly AI budget');
     });
 
-    it('fails open (allows the call) when the spend-sum query itself errors', async () => {
+    it('fails closed when the spend-sum query itself errors', async () => {
       stubProvider();
       const { service, budgetRepo, usageLogRepo } = makeService();
       budgetRepo.findOne = jest.fn().mockResolvedValue({
@@ -341,7 +382,93 @@ describe('AiService', () => {
           { messages: [{ role: 'user', content: 'hi' }] },
           { organizationId: orgId, userId },
         ),
-      ).resolves.toBeDefined();
+      ).rejects.toThrow('DB hiccup');
+    });
+
+    it('fails closed when Redis is unavailable for an enabled budget', async () => {
+      stubProvider();
+      const { service } = makeService({ redisBudgetGuard: null });
+      service['budgetRepo'].findOne = jest.fn().mockResolvedValue({
+        organizationId: orgId,
+        monthlyBudgetUsd: 10,
+        isEnabled: true,
+      });
+      await expect(
+        service.generateText(
+          'test.feature',
+          { messages: [{ role: 'user', content: 'hi' }] },
+          { organizationId: orgId, userId },
+        ),
+      ).rejects.toThrow('AI budget enforcement is unavailable');
+    });
+
+    it('reserves against system/schema text, images, and provider default output tokens', async () => {
+      stubProvider();
+      const { service, budgetRepo, redisBudgetGuard } = makeService();
+      budgetRepo.findOne = jest.fn().mockResolvedValue({
+        organizationId: orgId,
+        monthlyBudgetUsd: 10,
+        isEnabled: true,
+      });
+
+      await service.generateStructured(
+        'test.feature',
+        {
+          system: 's'.repeat(400),
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'u'.repeat(400) },
+                { type: 'image', mimeType: 'image/png', url: 'https://example.test/image.png' },
+              ],
+            },
+          ],
+          jsonSchema: { type: 'object', description: 'd'.repeat(400) },
+          schemaName: 'test_result',
+        },
+        { organizationId: orgId, userId },
+      );
+
+      expect(redisBudgetGuard.checkAndReserve).toHaveBeenCalledWith(
+        orgId,
+        expect.any(Number),
+        10,
+        0,
+      );
+      const reservedEstimate =
+        redisBudgetGuard.checkAndReserve.mock.calls[0][1];
+      expect(reservedEstimate).toBeGreaterThan(0.07);
+    });
+
+    it('logs provider-reported usage when budget reconciliation fails', async () => {
+      stubProvider();
+      const { service, budgetRepo, redisBudgetGuard, savedLogs } = makeService();
+      budgetRepo.findOne = jest.fn().mockResolvedValue({
+        organizationId: orgId,
+        monthlyBudgetUsd: 10,
+        isEnabled: true,
+      });
+      redisBudgetGuard.reconcile.mockRejectedValue(
+        new Error('Redis reconciliation unavailable'),
+      );
+
+      await expect(
+        service.generateText(
+          'test.feature',
+          { messages: [{ role: 'user', content: 'hi' }] },
+          { organizationId: orgId, userId },
+        ),
+      ).rejects.toThrow('Redis reconciliation unavailable');
+
+      expect(savedLogs).toEqual([
+        expect.objectContaining({
+          inputTokens: 10,
+          outputTokens: 5,
+          model: 'claude-sonnet-5',
+          success: false,
+        }),
+      ]);
     });
   });
 

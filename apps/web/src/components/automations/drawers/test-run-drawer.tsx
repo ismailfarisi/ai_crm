@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   X,
   Play,
@@ -20,6 +20,7 @@ import type { AutomationWorkflowDto, AutomationExecutionDto } from '@saas/shared
 export interface TestRunDrawerProps {
   workflow: AutomationWorkflowDto | null;
   onExecuteTest: (payload: Record<string, any>) => Promise<AutomationExecutionDto | null>;
+  onGetExecution?: (executionId: string) => Promise<AutomationExecutionDto>;
   onClose: () => void;
   className?: string;
 }
@@ -27,6 +28,7 @@ export interface TestRunDrawerProps {
 export function TestRunDrawer({
   workflow,
   onExecuteTest,
+  onGetExecution,
   onClose,
   className,
 }: TestRunDrawerProps) {
@@ -48,6 +50,52 @@ export function TestRunDrawer({
   const [isRunning, setIsRunning] = useState(false);
   const [executionResult, setExecutionResult] = useState<AutomationExecutionDto | null>(null);
   const [selectedNodeResultKey, setSelectedNodeResultKey] = useState<string | null>(null);
+  const [pollingError, setPollingError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (
+      !executionResult ||
+      executionResult.status !== 'RUNNING' ||
+      !onGetExecution
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    let inFlight = false;
+    const interval = setInterval(async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const latest = await onGetExecution(executionResult.id);
+        if (cancelled) return;
+        setPollingError(null);
+        setExecutionResult(latest);
+        if (latest.status === 'WAITING_APPROVAL') {
+          const waitingNodeId = Object.keys(latest.nodeResults).find(
+            (nodeId) => latest.nodeResults[nodeId].status === 'WAITING',
+          );
+          if (waitingNodeId) setSelectedNodeResultKey(waitingNodeId);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          clearInterval(interval);
+          setPollingError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to refresh execution status',
+          );
+        }
+      } finally {
+        inFlight = false;
+      }
+    }, 1000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [executionResult, onGetExecution]);
 
   const handleRun = async () => {
     let payload = {};
@@ -58,6 +106,7 @@ export function TestRunDrawer({
     }
 
     setIsRunning(true);
+    setPollingError(null);
     try {
       const res = await onExecuteTest(payload);
       setExecutionResult(res);
@@ -157,6 +206,39 @@ export function TestRunDrawer({
                 {executionResult.status}
               </span>
             </div>
+
+            {/* Step-by-Step Node Results Timeline */}
+            {executionResult.status === 'WAITING_APPROVAL' &&
+              Object.values(executionResult.nodeResults).some(
+                (result) =>
+                  result.status === 'WAITING' &&
+                  result.output?.pendingAction,
+              ) && (
+                <div
+                  data-testid="pending-agent-approval"
+                  className="rounded-lg border border-brand/40 bg-brand-soft/40 p-3 space-y-1.5"
+                >
+                  <p className="text-xs font-semibold text-ink">
+                    Approval required
+                  </p>
+                  <pre className="text-[11px] text-ink-muted font-mono whitespace-pre-wrap break-words">
+                    {JSON.stringify(
+                      Object.values(executionResult.nodeResults).find(
+                        (result) =>
+                          result.status === 'WAITING' &&
+                          result.output?.pendingAction,
+                      )?.output.pendingAction,
+                      null,
+                      2,
+                    )}
+                  </pre>
+                </div>
+              )}
+            {pollingError && (
+              <p role="alert" className="text-xs text-danger">
+                {pollingError}
+              </p>
+            )}
 
             {/* Step-by-Step Node Results Timeline */}
             <div className="space-y-1.5">

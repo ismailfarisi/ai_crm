@@ -11,6 +11,13 @@ import { ChannelsService } from './modules/channels/channels.service';
 import { QuotesService } from './modules/quotes/quotes.service';
 import { AiAgentService } from './modules/channels/services/ai-agent.service';
 import { TenantContextService } from './common/context/tenant-context.service';
+import { SkillRegistry } from './modules/channels/skills/skill.registry';
+import { RbacService } from './modules/rbac/rbac.service';
+import { createAgentReactActivities } from './modules/channels/workflows/activities/agent-react.activities.impl';
+import { AuditService } from './modules/audit/audit.service';
+import { CustomObjectToolFactoryService } from './modules/custom-objects/services/custom-object-tool-factory.service';
+import { CustomObjectsService } from './modules/custom-objects/services/custom-objects.service';
+import { CustomRecordsService } from './modules/custom-objects/services/custom-records.service';
 
 /**
  * Standalone Temporal worker process — separate from the NestJS API server.
@@ -37,6 +44,16 @@ async function run(): Promise<void> {
       aiAgentService: appContext.get(AiAgentService),
       tenantContext: appContext.get(TenantContextService),
     });
+    const agentReactActivities = createAgentReactActivities({
+      aiService: appContext.get(AiService),
+      rbacService: appContext.get(RbacService),
+      skillRegistry: appContext.get(SkillRegistry),
+      auditService: appContext.get(AuditService),
+      customObjectToolFactory: appContext.get(CustomObjectToolFactoryService),
+      customObjectsService: appContext.get(CustomObjectsService),
+      customRecordsService: appContext.get(CustomRecordsService),
+      tenantContext: appContext.get(TenantContextService),
+    });
 
     const workers = await Promise.all([
       Worker.create({
@@ -58,7 +75,7 @@ async function run(): Promise<void> {
         taskQueue: 'automations-queue',
         workflowsPath:
           require.resolve('./modules/automations/workflows/dynamic-dag.workflow'),
-        activities: automationActivities,
+        activities: { ...automationActivities, ...agentReactActivities },
       }),
       Worker.create({
         connection,

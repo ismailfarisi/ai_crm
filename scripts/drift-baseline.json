@@ -84,6 +84,7 @@
   "DROP INDEX \"public\".\"idx_ai_usage_logs_org_created_at\"",
   "DROP INDEX \"public\".\"idx_ai_usage_logs_organization_id\"",
   "DROP INDEX \"public\".\"idx_channel_conversations_lookup\"",
+  "DROP INDEX \"public\".\"idx_custom_records_values_gin\"",
   "DROP INDEX \"public\".\"uq_goods_receipts_tenant_number\"",
   "DROP INDEX \"public\".\"uq_stock_locations_one_default\"",
   "DROP TYPE \"public\".\"ai_agents_action_type_enum_old\"",

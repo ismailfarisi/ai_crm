@@ -1,10 +1,18 @@
 import {
   condition,
+  executeChild,
+  getExternalWorkflowHandle,
   proxyActivities,
   setHandler,
   sleep,
+  workflowInfo,
 } from '@temporalio/workflow';
-import type { AutomationEdge, AutomationNode } from '@saas/shared';
+import type { AiAgentNodeConfig, AutomationEdge, AutomationNode } from '@saas/shared';
+import {
+  agentApprovalRequestedSignal,
+  agentReActWorkflow,
+  approvalSignal,
+} from '@/modules/channels/workflows/agent-react.workflow';
 import type * as activities from './automation.activities';
 import {
   evaluateExpression,
@@ -48,6 +56,8 @@ export async function dynamicDagWorkflow(
   // In-memory maps for signal coordination
   const approvedNodes = new Map<string, NodeApprovalSignalPayload>();
   const rejectedNodes = new Map<string, NodeRejectionSignalPayload>();
+  let activeAgentNodeId: string | undefined;
+  let activeAgentWorkflowId: string | undefined;
 
   const executionState: WorkflowExecutionState = {
     executionId: input.executionId,
@@ -68,7 +78,17 @@ export async function dynamicDagWorkflow(
     (payload: NodeApprovalSignalPayload | string) => {
       const data: NodeApprovalSignalPayload =
         typeof payload === 'string' ? { nodeId: payload } : payload;
+      if (!executionState.pendingApprovals[data.nodeId]) return;
       approvedNodes.set(data.nodeId, data);
+      if (
+        data.nodeId === activeAgentNodeId &&
+        activeAgentWorkflowId
+      ) {
+        return getExternalWorkflowHandle(activeAgentWorkflowId).signal(
+          approvalSignal,
+          { approved: true, note: data.comment },
+        );
+      }
     },
   );
 
@@ -77,9 +97,53 @@ export async function dynamicDagWorkflow(
     (payload: NodeRejectionSignalPayload | string) => {
       const data: NodeRejectionSignalPayload =
         typeof payload === 'string' ? { nodeId: payload } : payload;
+      if (!executionState.pendingApprovals[data.nodeId]) return;
       rejectedNodes.set(data.nodeId, data);
+      if (
+        data.nodeId === activeAgentNodeId &&
+        activeAgentWorkflowId
+      ) {
+        return getExternalWorkflowHandle(activeAgentWorkflowId).signal(
+          approvalSignal,
+          { approved: false, note: data.reason },
+        );
+      }
     },
   );
+
+  setHandler(agentApprovalRequestedSignal, async (request) => {
+    const node = input.nodes.find((candidate) => candidate.id === request.nodeId);
+    executionState.pendingApprovals[request.nodeId] = {
+      nodeId: request.nodeId,
+      nodeLabel: node?.data?.label ?? 'AI Agent Node',
+      requestedAt: new Date().toISOString(),
+      timeoutDuration:
+        node?.data?.timeoutDuration ?? node?.data?.config?.timeoutDuration,
+      context: { tool: request.tool, preview: request.preview },
+    };
+    executionState.status = 'WAITING_APPROVAL';
+    const pendingAction = {
+      tool: request.tool,
+      preview: request.preview,
+    };
+    executionState.nodeResults[request.nodeId] = {
+      status: 'WAITING',
+      input: node?.data?.config,
+      startedAt: new Date().toISOString(),
+      output: { pendingAction },
+    };
+    await recordNodeResultActivity({
+      executionId: input.executionId,
+      workflowId: input.workflowId,
+      tenantId: input.tenantId,
+      nodeId: request.nodeId,
+      nodeType: node?.type,
+      status: 'WAITING',
+      input: node?.data?.config,
+      output: { pendingAction },
+      startedAt: executionState.nodeResults[request.nodeId].startedAt,
+    });
+  });
 
   // Query handler
   setHandler(getExecutionStateQuery, () => executionState);
@@ -328,6 +392,111 @@ export async function dynamicDagWorkflow(
             nodeOutput = {
               decision: 'TIMEOUT',
               reason: `Approval timed out after ${timeoutDuration}`,
+            };
+          }
+          break;
+        }
+
+        case 'aiAgentNode': {
+          const aiConfig = config as Partial<AiAgentNodeConfig>;
+          const rawGoal = aiConfig.goal || '';
+          const interpolatedGoal =
+            interpolateObject({ goal: rawGoal }, context).goal || rawGoal;
+          const autoApprove = Boolean(
+            aiConfig.autoApprove ?? node.data?.autoApprove ?? false,
+          );
+          const timeoutDuration =
+            node.data?.timeoutDuration ||
+            aiConfig.timeoutDuration ||
+            '3 days';
+
+          const childWorkflowId = `ai-agent-${input.executionId}-${node.id}`;
+          const childConversationId = `auto-${input.executionId}-${node.id}`;
+
+          activeAgentNodeId = node.id;
+          activeAgentWorkflowId = childWorkflowId;
+          const childResult = await executeChild(agentReActWorkflow, {
+            workflowId: childWorkflowId,
+            args: [
+              {
+                organizationId: input.tenantId,
+                userId:
+                  input.actorUserId ??
+                  input.triggerPayload.event?.actorUserId ??
+                  '',
+                conversationId: childConversationId,
+                prompt: interpolatedGoal,
+                parentWorkflowId: workflowInfo().workflowId,
+                automationNodeId: node.id,
+                autoApprove,
+                allowedDomains: aiConfig.allowedDomains,
+                approvalTimeout: timeoutDuration,
+                maxTurns: 10,
+              },
+            ],
+          });
+          activeAgentNodeId = undefined;
+          activeAgentWorkflowId = undefined;
+          delete executionState.pendingApprovals[node.id];
+          executionState.status = 'RUNNING';
+
+          if (childResult.status === 'AWAITING_APPROVAL') {
+            branchHandle = 'approved';
+            nodeOutput = {
+              success: false,
+              status: childResult.status,
+              pendingAction: childResult.pendingAction,
+              solution: childResult.finalResponse,
+              stepsTaken: childResult.stepsExecuted,
+              output: childResult,
+            };
+          } else if (childResult.status === 'REJECTED') {
+            branchHandle = 'rejected';
+            const rejectionData = rejectedNodes.get(node.id);
+            nodeOutput = {
+              success: false,
+              approved: false,
+              status: 'REJECTED',
+              error: childResult.finalResponse,
+              reason: childResult.finalResponse,
+              ...(rejectionData?.rejectedBy
+                ? { rejectedBy: rejectionData.rejectedBy }
+                : {}),
+              output: childResult,
+            };
+          } else if (childResult.status === 'TIMED_OUT') {
+            branchHandle = 'timeout';
+            nodeOutput = {
+              success: false,
+              approved: false,
+              status: 'TIMEOUT',
+              error: childResult.finalResponse,
+              output: childResult,
+            };
+          } else if (childResult.status === 'FAILED') {
+            branchHandle = 'rejected';
+            nodeOutput = {
+              success: false,
+              status: childResult.status,
+              error: childResult.finalResponse,
+              output: childResult,
+            };
+          } else {
+            const approvalData = approvedNodes.get(node.id);
+            if (approvalData) branchHandle = 'approved';
+            nodeOutput = {
+              success: childResult.status === 'COMPLETED',
+              ...(approvalData
+                ? {
+                    approved: true,
+                    approvedBy: approvalData.approvedBy,
+                    comment: approvalData.comment,
+                  }
+                : {}),
+              status: childResult.status,
+              solution: childResult.finalResponse,
+              stepsTaken: childResult.stepsExecuted,
+              output: childResult,
             };
           }
           break;

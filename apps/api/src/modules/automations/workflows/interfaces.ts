@@ -5,6 +5,7 @@ export interface DynamicWorkflowInput {
   executionId: string;
   workflowId: string;
   tenantId: string;
+  actorUserId?: string;
   nodes: AutomationNode[];
   edges: AutomationEdge[];
   triggerPayload: Record<string, any>;
@@ -160,3 +161,11 @@ export interface RecordNodeResultResult {
   executionId: string;
   nodeId: string;
 }
+
+export type {
+  AiAgentNodeConfig,
+  AiAgentNodeResult,
+  AiAgentDomain,
+  AiAgentToolCallRecord,
+  AiAgentUsage,
+} from '@saas/shared';

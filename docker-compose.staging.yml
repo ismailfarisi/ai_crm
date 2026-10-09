@@ -68,6 +68,8 @@ services:
       DB_ADMIN_USERNAME: null
       DB_ADMIN_PASSWORD: null
       TEMPORAL_ADDRESS: temporal:7233
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       # Attachments with the local driver live on a volume: a container
       # rebuild must not take the files with it.
       STORAGE_LOCAL_DIR: /app/storage
@@ -86,6 +88,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       temporal:
         condition: service_started
     env_file:
@@ -96,6 +100,8 @@ services:
       DB_ADMIN_USERNAME: null
       DB_ADMIN_PASSWORD: null
       TEMPORAL_ADDRESS: temporal:7233
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     # No ports — this process doesn't serve HTTP, only consumes Temporal task queues.
 
   web:

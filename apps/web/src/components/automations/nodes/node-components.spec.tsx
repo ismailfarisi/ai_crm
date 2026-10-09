@@ -375,7 +375,7 @@ describe('Automation Node Components', () => {
   });
 
   describe('NODE_TYPES Registry', () => {
-    it('contains all 12 AutomationNodeType entries mapped to React Flow components', () => {
+    it('contains all 13 AutomationNodeType entries mapped to React Flow components', () => {
       const expectedTypes: AutomationNodeType[] = [
         'webhookTrigger',
         'scheduleTrigger',
@@ -386,6 +386,7 @@ describe('Automation Node Components', () => {
         'delayNode',
         'httpRequestNode',
         'aiPromptNode',
+        'aiAgentNode',
         'sendEmailNode',
         'crmMutateNode',
         'approvalNode',
@@ -405,7 +406,7 @@ describe('Automation Node Components', () => {
       expect(screen.getByText('Node Palette')).toBeInTheDocument();
       expect(screen.getByTestId('node-palette-search')).toBeInTheDocument();
 
-      // Check all 12 items are rendered
+      // Check all 13 items are rendered
       NODE_PALETTE_ITEMS.forEach((item) => {
         expect(screen.getByTestId(`palette-item-${item.type}`)).toBeInTheDocument();
       });

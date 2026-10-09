@@ -21,6 +21,7 @@ export type AutomationNodeType =
   | 'delayNode'
   | 'httpRequestNode'
   | 'aiPromptNode'
+  | 'aiAgentNode'
   | 'sendEmailNode'
   | 'crmMutateNode'
   | 'approvalNode';
@@ -132,3 +133,81 @@ export function validateWorkflowGraph(
 
   return { isValid: true, triggerNodeId: triggerNodes[0].id };
 }
+
+// ---------------------------------------------------------------------------
+// CRM Domain Event Contracts
+// ---------------------------------------------------------------------------
+
+export type CrmDomainEventType =
+  | 'record.created'
+  | 'record.updated'
+  | 'record.deleted'
+  | 'record.linked'
+  | 'record.unlinked'
+  | 'link.created'
+  | 'link.deleted';
+
+export type CrmDomainEntityType = 'core' | 'custom_object' | 'contact' | 'quote';
+
+export interface CrmDomainEventSnapshot<T = any> {
+  before?: T | null;
+  after?: T | null;
+  changedFields: string[];
+}
+
+export interface CrmDomainEvent<T = any> {
+  tenantId: string;
+  eventType: CrmDomainEventType | (string & {});
+  entityType: CrmDomainEntityType | (string & {});
+  entityName: string; // e.g. 'contact', 'quote', 'invoice', or custom object slug like 'vehicle'
+  entityId: string;
+  actorUserId?: string | null;
+  timestamp: string;
+  snapshot: CrmDomainEventSnapshot<T>;
+}
+
+// ---------------------------------------------------------------------------
+// AI Agent Node Contracts
+// ---------------------------------------------------------------------------
+
+export type AiAgentDomain =
+  | 'SALES'
+  | 'PRODUCTION'
+  | 'FINANCE'
+  | 'CUSTOM_OBJECTS'
+  | 'GENERAL';
+
+export interface AiAgentNodeConfig {
+  goal: string;
+  allowedDomains?: AiAgentDomain[];
+  autoApprove?: boolean;
+  timeoutDuration?: string;
+}
+
+export interface AiAgentToolCallRecord {
+  id?: string;
+  name: string;
+  args?: Record<string, any>;
+  result?: any;
+  error?: string;
+  [key: string]: any;
+}
+
+export interface AiAgentUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  estimatedCostUsd?: number;
+}
+
+export interface AiAgentNodeResult {
+  success: boolean;
+  solution?: string | null;
+  resultText?: string | null;
+  stepsTaken: number;
+  toolCalls?: AiAgentToolCallRecord[];
+  usage?: AiAgentUsage;
+  estimatedCostUsd?: number;
+  error?: string | null;
+}
+

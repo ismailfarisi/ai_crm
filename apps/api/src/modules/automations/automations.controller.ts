@@ -155,6 +155,7 @@ export class AutomationsController {
       user.organizationId,
       id,
       body,
+      user.id,
     );
   }
 

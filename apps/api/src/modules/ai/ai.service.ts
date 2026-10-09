@@ -1,4 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  Optional,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type { AiBudgetStatusDto } from '@saas/shared';
@@ -15,6 +20,7 @@ import { AiBudget } from './entities/ai-budget.entity';
 import { AiBudgetExceededException } from './exceptions/ai-budget-exceeded.exception';
 import { UpsertAiBudgetDto } from './dto/upsert-ai-budget.dto';
 import { AiConfigService } from './services/ai-config.service';
+import { RedisBudgetGuardService } from './services/redis-budget-guard.service';
 
 export interface AiActor {
   organizationId: string;
@@ -46,6 +52,8 @@ export class AiService {
     private readonly usageLogRepo: Repository<AiUsageLog>,
     @InjectRepository(AiBudget)
     private readonly budgetRepo: Repository<AiBudget>,
+    @Optional()
+    private readonly redisBudgetGuard?: RedisBudgetGuardService,
   ) {}
 
   async isConfigured(organizationId: string): Promise<boolean> {
@@ -69,10 +77,21 @@ export class AiService {
       options.provider,
     );
     const provider = getAiProvider(providerConfig);
+    let reservation:
+      | { reservedAmount: number; periodKey: string }
+      | undefined;
+    let providerCallStarted = false;
+    let actualUsage: { inputTokens: number; outputTokens: number } | undefined;
+    let actualModel: string | undefined;
 
     try {
-      await this.enforceBudget(actor.organizationId);
+      reservation = await this.reserveBudget(actor.organizationId, options);
+      providerCallStarted = true;
       const result = await provider.generateText(options);
+      actualUsage = result.usage;
+      actualModel = result.model;
+      await this.reconcileBudget(reservation, actor.organizationId, result.model, result.usage);
+      reservation = undefined;
       await this.logUsage({
         feature,
         actor,
@@ -84,12 +103,15 @@ export class AiService {
       });
       return result;
     } catch (err) {
+      if (!providerCallStarted) {
+        await this.releaseBudget(reservation, actor.organizationId);
+      }
       await this.logUsage({
         feature,
         actor,
         providerName: provider.name,
-        model: options.model || 'unknown',
-        usage: { inputTokens: 0, outputTokens: 0 },
+        model: actualModel || options.model || 'unknown',
+        usage: actualUsage ?? { inputTokens: 0, outputTokens: 0 },
         durationMs: Date.now() - started,
         success: false,
         errorMessage: err instanceof Error ? err.message : String(err),
@@ -109,10 +131,21 @@ export class AiService {
       options.provider,
     );
     const provider = getAiProvider(providerConfig);
+    let reservation:
+      | { reservedAmount: number; periodKey: string }
+      | undefined;
+    let providerCallStarted = false;
+    let actualUsage: { inputTokens: number; outputTokens: number } | undefined;
+    let actualModel: string | undefined;
 
     try {
-      await this.enforceBudget(actor.organizationId);
+      reservation = await this.reserveBudget(actor.organizationId, options);
+      providerCallStarted = true;
       const result = await provider.generateStructured<T>(options);
+      actualUsage = result.usage;
+      actualModel = result.model;
+      await this.reconcileBudget(reservation, actor.organizationId, result.model, result.usage);
+      reservation = undefined;
       await this.logUsage({
         feature,
         actor,
@@ -124,12 +157,15 @@ export class AiService {
       });
       return result;
     } catch (err) {
+      if (!providerCallStarted) {
+        await this.releaseBudget(reservation, actor.organizationId);
+      }
       await this.logUsage({
         feature,
         actor,
         providerName: provider.name,
-        model: options.model || 'unknown',
-        usage: { inputTokens: 0, outputTokens: 0 },
+        model: actualModel || options.model || 'unknown',
+        usage: actualUsage ?? { inputTokens: 0, outputTokens: 0 },
         durationMs: Date.now() - started,
         success: false,
         errorMessage: err instanceof Error ? err.message : String(err),
@@ -138,39 +174,96 @@ export class AiService {
     }
   }
 
-  /**
-   * Hard-stops further AI calls once an org's current-month spend hits its
-   * configured cap. This is a check-then-act over an async DB round trip, not
-   * transactional — a burst of concurrent calls could each read the same
-   * pre-increment sum and briefly overshoot the cap. Accepted tradeoff given
-   * this app's realistic AI call volume (a handful of concurrent calls per
-   * org), rather than building distributed-lock/atomic-counter machinery.
-   *
-   * Fails open on infrastructure errors (the SUM query itself failing) — a
-   * guard must never become an availability risk for the underlying feature,
-   * consistent with how Temporal/AI-provider failures degrade elsewhere.
-   */
-  private async enforceBudget(organizationId: string): Promise<void> {
-    try {
-      const budget = await this.budgetRepo.findOne({
-        where: { organizationId },
-      });
-      if (!budget || !budget.isEnabled) return;
-
-      const currentSpendUsd = await this.sumCurrentPeriodSpend(organizationId);
-      if (currentSpendUsd >= budget.monthlyBudgetUsd) {
-        throw new AiBudgetExceededException(
-          organizationId,
-          currentSpendUsd,
-          budget.monthlyBudgetUsd,
-        );
-      }
-    } catch (err) {
-      if (err instanceof AiBudgetExceededException) throw err;
-      const msg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(
-        `AI budget check failed, allowing call through (fail-open): ${msg}`,
+  private async reserveBudget(
+    organizationId: string,
+    options: AiGenerateOptions & { jsonSchema?: Record<string, unknown> },
+  ): Promise<{ reservedAmount: number; periodKey: string } | undefined> {
+    const budget = await this.budgetRepo.findOne({ where: { organizationId } });
+    if (!budget?.isEnabled) return undefined;
+    if (!this.redisBudgetGuard) {
+      throw new ServiceUnavailableException(
+        'AI budget enforcement is unavailable because Redis is not configured',
       );
+    }
+
+    const currentSpendUsd = await this.sumCurrentPeriodSpend(organizationId);
+    let inputCharacters =
+      (options.system?.length ?? 0) +
+      (options.jsonSchema ? JSON.stringify(options.jsonSchema).length : 0);
+    let imageCount = 0;
+    for (const message of options.messages) {
+      if (typeof message.content === 'string') {
+        inputCharacters += message.content.length;
+        continue;
+      }
+      for (const block of message.content) {
+        if (block.type === 'text') {
+          inputCharacters += block.text.length;
+        } else {
+          imageCount++;
+        }
+      }
+    }
+    const inputTokens = Math.max(
+      1,
+      Math.ceil(inputCharacters / 4) + imageCount * 4096,
+    );
+    const outputTokens = Math.max(1, options.maxTokens ?? 4096);
+    const estimatedCostUsd = this.estimateCostUsd(
+      options.model ?? '',
+      inputTokens,
+      outputTokens,
+    );
+    const reservation = await this.redisBudgetGuard.checkAndReserve(
+      organizationId,
+      estimatedCostUsd,
+      budget.monthlyBudgetUsd,
+      currentSpendUsd,
+    );
+    if (!reservation.allowed) {
+      throw new AiBudgetExceededException(
+        organizationId,
+        reservation.currentSpendUsd,
+        budget.monthlyBudgetUsd,
+      );
+    }
+    return reservation;
+  }
+
+  private async reconcileBudget(
+    reservation:
+      | { reservedAmount: number; periodKey: string }
+      | undefined,
+    organizationId: string,
+    model: string,
+    usage: { inputTokens: number; outputTokens: number },
+  ): Promise<void> {
+    if (!reservation || !this.redisBudgetGuard) return;
+    await this.redisBudgetGuard.reconcile(
+      organizationId,
+      this.estimateCostUsd(model, usage.inputTokens, usage.outputTokens),
+      reservation.reservedAmount,
+      reservation.periodKey,
+    );
+  }
+
+  private async releaseBudget(
+    reservation:
+      | { reservedAmount: number; periodKey: string }
+      | undefined,
+    organizationId: string,
+  ): Promise<void> {
+    if (!reservation || !this.redisBudgetGuard) return;
+    try {
+      await this.redisBudgetGuard.reconcile(
+        organizationId,
+        0,
+        reservation.reservedAmount,
+        reservation.periodKey,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Failed to release AI budget reservation: ${msg}`);
     }
   }
 

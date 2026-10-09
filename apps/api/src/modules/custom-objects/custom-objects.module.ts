@@ -13,6 +13,7 @@ import { CustomObjectsService } from './services/custom-objects.service';
 import { CustomRecordsService } from './services/custom-records.service';
 import { RecordValidationService } from './services/record-validation.service';
 import { CoreEntityBridgeService } from './services/core-entity-bridge.service';
+import { CustomObjectToolFactoryService } from './services/custom-object-tool-factory.service';
 import { CustomObjectsController } from './controllers/custom-objects.controller';
 import { CustomRecordsController } from './controllers/custom-records.controller';
 import { RecordLinksController } from './controllers/record-links.controller';
@@ -37,11 +38,13 @@ import { RecordLinksController } from './controllers/record-links.controller';
     CustomRecordsService,
     RecordValidationService,
     CoreEntityBridgeService,
+    CustomObjectToolFactoryService,
   ],
   exports: [
     CustomObjectsService,
     CustomRecordsService,
     CoreEntityBridgeService,
+    CustomObjectToolFactoryService,
   ],
 })
 export class CustomObjectsModule {}
