@@ -585,7 +585,11 @@ describe('InventoryService.adjustOnOrder', () => {
       { materialId: 'mat-2', qty: 1 },
     ]);
 
-    expect(lockLog).toEqual(['OnOrder:mat-1', 'OnOrder:mat-2', 'OnOrder:mat-3']);
+    expect(lockLog).toEqual([
+      'OnOrder:mat-1',
+      'OnOrder:mat-2',
+      'OnOrder:mat-3',
+    ]);
   });
 });
 

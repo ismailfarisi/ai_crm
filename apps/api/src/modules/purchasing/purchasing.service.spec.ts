@@ -1,4 +1,8 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PurchasingService } from './purchasing.service';
 
 const tenantId = '11111111-1111-1111-1111-111111111111';
@@ -172,5 +176,97 @@ describe('PurchasingService — suppliers', () => {
       await service.deleteSupplier(tenantId, 'sup-1');
       expect(suppliers[0].deletedAt).toBeInstanceOf(Date);
     });
+  });
+});
+
+describe('PurchasingService — sendToSupplier', () => {
+  const sentAt = new Date('2026-10-01T10:00:00Z');
+
+  function makeSendService(
+    opts: { claim?: 'won' | 'lost'; mail?: 'ok' | 'fail' } = {},
+  ) {
+    const calls: string[] = [];
+    const order = {
+      id: 'po-1',
+      tenantId,
+      poNumber: 'PO-2026-0001',
+      supplierId: acme.id,
+      status: 'APPROVED',
+      totalAmount: 210,
+      currency: 'GBP',
+      deletedAt: null,
+    };
+    const supplierRepo = {
+      findOne: jest.fn(async () => ({
+        ...acme,
+        email: 'orders@papertree.test',
+        contactName: 'Pat',
+      })),
+    };
+    const orderRepo = { findOne: jest.fn(async () => order) };
+    const organizations = { findOne: jest.fn(async () => ({ name: 'Acme' })) };
+    const mail = {
+      sendMail: jest.fn(async () => {
+        calls.push('mail');
+        if (opts.mail === 'fail') throw new Error('SMTP down');
+      }),
+    };
+    const pdf = { generate: jest.fn(async () => Buffer.from('%PDF')) };
+    const lifecycle = {
+      markSent: jest.fn(async () => {
+        calls.push('claim');
+        if (opts.claim === 'lost') {
+          throw new BadRequestException(
+            'PO-2026-0001 is sent and cannot be sent.',
+          );
+        }
+        return { ...order, status: 'SENT', sentAt };
+      }),
+      revertSent: jest.fn(async () => {
+        calls.push('revert');
+      }),
+    };
+
+    const service = new PurchasingService(
+      supplierRepo as any,
+      {} as any,
+      orderRepo as any,
+      {} as any,
+      organizations as any,
+      mail as any,
+      pdf as any,
+      lifecycle as any,
+    );
+    return { service, calls, mail, lifecycle };
+  }
+
+  it('claims the order as sent before emailing it', async () => {
+    const { service, calls } = makeSendService();
+
+    const saved = await service.sendToSupplier(tenantId, 'po-1');
+
+    expect(saved.status).toBe('SENT');
+    expect(calls).toEqual(['claim', 'mail']);
+  });
+
+  it('does not email when another request already claimed the send', async () => {
+    // Two clicks on "send" would otherwise both pass the APPROVED check and
+    // both email the supplier.
+    const { service, mail } = makeSendService({ claim: 'lost' });
+
+    await expect(
+      service.sendToSupplier(tenantId, 'po-1'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(mail.sendMail).not.toHaveBeenCalled();
+  });
+
+  it('puts the order back to approved when the email fails', async () => {
+    const { service, calls, lifecycle } = makeSendService({ mail: 'fail' });
+
+    await expect(service.sendToSupplier(tenantId, 'po-1')).rejects.toThrow(
+      'SMTP down',
+    );
+    expect(calls).toEqual(['claim', 'mail', 'revert']);
+    expect(lifecycle.revertSent).toHaveBeenCalledWith(tenantId, 'po-1', sentAt);
   });
 });

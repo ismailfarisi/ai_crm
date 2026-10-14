@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -80,6 +81,8 @@ const money = (n: number): number => Math.round(n * 100) / 100;
 
 @Injectable()
 export class PurchasingService {
+  private readonly logger = new Logger(PurchasingService.name);
+
   constructor(
     @InjectRepository(Supplier)
     private readonly suppliers: Repository<Supplier>,
@@ -472,9 +475,23 @@ export class PurchasingService {
   /**
    * Emails the order to the supplier and marks it sent.
    *
-   * The status moves only after the mail provider has accepted it. Marking
-   * first and mailing second would leave an order recorded as sent that the
-   * supplier never received, which is the failure that actually costs money.
+   * The send is claimed first: `markSent` locks the order and moves it from
+   * APPROVED to SENT in its own committed transaction, and only the request
+   * that wins that transition emails anybody. Two clicks on "send" (or a
+   * retry racing the original) used to both pass the APPROVED check and both
+   * email the supplier, who would reasonably ship twice.
+   *
+   * The email goes out after the claim has committed, never inside it: an
+   * SMTP call is not something to hold a row lock across, and a transaction
+   * that rolled back after the mail left would be the same double-send by
+   * another route.
+   *
+   * If the email then fails, the claim is undone (`revertSent`) and the error
+   * surfaces, so the order is back at APPROVED and can be sent again rather
+   * than recorded as sent to a supplier who never received it. The revert only
+   * applies while the order is still exactly as this call left it. If the
+   * revert itself fails, the order stays SENT and the failure is logged: the
+   * person sending sees the mail error and can resend the PDF by hand.
    */
   async sendToSupplier(
     tenantId: string,
@@ -500,26 +517,44 @@ export class PurchasingService {
     });
     const from = organization?.name ?? 'our team';
 
-    await this.mail.sendMail({
-      to: supplier.email,
-      subject: `Purchase order ${order.poNumber}`,
-      html: `<p>Hi ${escapeHtml(supplier.contactName ?? supplier.companyName)},</p><p>Please find attached purchase order <strong>${escapeHtml(order.poNumber)}</strong> for ${escapeHtml(order.totalAmount.toFixed(2))} ${escapeHtml(order.currency)}.</p><p>Thanks,<br>${escapeHtml(from)}</p>`,
-      text: `Hi ${supplier.contactName ?? supplier.companyName},
+    // Throws for whichever concurrent request loses; that one sends nothing.
+    const claimed = await this.lifecycle.markSent(tenantId, orderId);
+
+    try {
+      await this.mail.sendMail({
+        to: supplier.email,
+        subject: `Purchase order ${order.poNumber}`,
+        html: `<p>Hi ${escapeHtml(supplier.contactName ?? supplier.companyName)},</p><p>Please find attached purchase order <strong>${escapeHtml(order.poNumber)}</strong> for ${escapeHtml(order.totalAmount.toFixed(2))} ${escapeHtml(order.currency)}.</p><p>Thanks,<br>${escapeHtml(from)}</p>`,
+        text: `Hi ${supplier.contactName ?? supplier.companyName},
 
 Please find attached purchase order ${order.poNumber} for ${order.totalAmount.toFixed(2)} ${order.currency}.
 
 Thanks,
 ${from}`,
-      attachments: [
-        {
-          filename: `${order.poNumber}.pdf`,
-          content: pdf,
-          contentType: 'application/pdf',
-        },
-      ],
-    });
+        attachments: [
+          {
+            filename: `${order.poNumber}.pdf`,
+            content: pdf,
+            contentType: 'application/pdf',
+          },
+        ],
+      });
+    } catch (error) {
+      await this.lifecycle
+        .revertSent(tenantId, orderId, claimed.sentAt)
+        .catch((revertError: unknown) =>
+          this.logger.error(
+            `${order.poNumber} could not be emailed and is still marked sent: ${
+              revertError instanceof Error
+                ? revertError.message
+                : String(revertError)
+            }`,
+          ),
+        );
+      throw error;
+    }
 
-    return this.lifecycle.markSent(tenantId, orderId);
+    return claimed;
   }
 
   /* ------------------------------------------------------------------ *
