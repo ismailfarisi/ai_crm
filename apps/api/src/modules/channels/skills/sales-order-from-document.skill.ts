@@ -297,6 +297,7 @@ export class SalesOrderFromDocumentSkill implements ChannelSkill<ResolvedSalesOr
   ): Promise<SkillOutcome> {
     let quoteId = resolved.quoteId;
     let quoteNumber = resolved.quoteNumber;
+    let needsApproval = true;
     if (!quoteId) {
       if (!resolved.newQuote) {
         throw new Error('Nothing to create: the order has no quote details.');
@@ -309,9 +310,23 @@ export class SalesOrderFromDocumentSkill implements ChannelSkill<ResolvedSalesOr
       });
       quoteId = created.id;
       quoteNumber = created.quoteNumber || quoteNumber;
+      // Idempotency: record the created quote on `resolved` itself. That
+      // object is the conversation's `slots[RESOLVED_KEY]`, and when execute
+      // throws ChannelCommandService writes those slots back before offering
+      // "Reply YES to try again" — so the retry finds `quoteId` set and
+      // retries only the approval instead of raising a second quote.
+      resolved.quoteId = quoteId;
+      resolved.quoteNumber = quoteNumber;
+    } else if (resolved.mode === 'NEW_QUOTE') {
+      // `resolve` never sets a quoteId for NEW_QUOTE, so this quote was made
+      // by an earlier attempt. That attempt may have got as far as approving.
+      const existing = await this.quotes.findQuoteById(ctx.organizationId, quoteId);
+      needsApproval = existing.status !== QuoteStatus.APPROVED;
     }
 
-    await this.quotes.sendSignal(ctx.organizationId, quoteId, 'APPROVE');
+    if (needsApproval) {
+      await this.quotes.sendSignal(ctx.organizationId, quoteId, 'APPROVE');
+    }
     const order = await this.orders.findByQuote(ctx.organizationId, quoteId);
 
     const orderNum = order ? order.orderNumber : '(provisioned)';
