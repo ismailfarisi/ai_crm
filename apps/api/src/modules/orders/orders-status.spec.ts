@@ -103,7 +103,7 @@ describe('OrdersService.setStatus — starting production', () => {
       .spyOn(service, 'get')
       .mockResolvedValue({ ...order, status: 'IN_PRODUCTION' } as never);
 
-    return Object.assign(service, { log, production });
+    return Object.assign(service, { log, planner: production });
   }
 
   it('raises the work orders the status claims exist', async () => {
@@ -118,7 +118,7 @@ describe('OrdersService.setStatus — starting production', () => {
 
     await service.setStatus(tenantId, order.id, 'IN_PRODUCTION', actorId);
 
-    expect(service.production.createFromSalesOrder).toHaveBeenCalledWith(
+    expect(service.planner.createFromSalesOrder).toHaveBeenCalledWith(
       tenantId,
       actorId,
       order.id,
@@ -188,7 +188,7 @@ describe('OrdersService.setStatus — starting production', () => {
 
     await service.setStatus(tenantId, order.id, 'FULFILLED', actorId);
 
-    expect(service.production.createFromSalesOrder).not.toHaveBeenCalled();
+    expect(service.planner.createFromSalesOrder).not.toHaveBeenCalled();
   });
 
   /**
@@ -210,7 +210,7 @@ describe('OrdersService.setStatus — starting production', () => {
     await expect(
       service.setStatus(tenantId, order.id, 'IN_PRODUCTION', actorId),
     ).rejects.toThrow(/changed by someone else/);
-    expect(service.production.createFromSalesOrder).not.toHaveBeenCalled();
+    expect(service.planner.createFromSalesOrder).not.toHaveBeenCalled();
   });
 
   it('puts the status back when nothing could be planned', async () => {
