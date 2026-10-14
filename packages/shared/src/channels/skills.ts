@@ -27,7 +27,8 @@ export type ChannelResultType =
   | 'PURCHASE_ORDER'
   | 'WORK_ORDER'
   | 'DELIVERY_NOTE'
-  | 'SALES_ORDER';
+  | 'SALES_ORDER'
+  | 'CONTACT';
 
 /**
  * The registered skills, as a closed union.

@@ -21,13 +21,16 @@ describe('SkillRegistry', () => {
       {} as any, // deliveryNotes
       {} as any, // orders
       {} as any, // contacts
+      {} as any, // actors
+      {} as any, // channelMessages
+      {} as any, // moduleRef
     );
   });
 
   describe('all', () => {
-    it('contains all 8 skills', () => {
+    it('contains all 10 skills', () => {
       const skills = registry.all();
-      expect(skills).toHaveLength(8);
+      expect(skills).toHaveLength(10);
       expect(skills.map((s) => s.name)).toEqual([
         CHANNEL_SKILLS.QUOTE_APPROVE,
         CHANNEL_SKILLS.QUOTE_CREATE,
@@ -37,6 +40,8 @@ describe('SkillRegistry', () => {
         CHANNEL_SKILLS.WORK_ORDER_QUERY,
         CHANNEL_SKILLS.DELIVERY_DISPATCH,
         CHANNEL_SKILLS.SALES_ORDER_FROM_DOCUMENT,
+        CHANNEL_SKILLS.CHANNEL_THREAD_READ,
+        CHANNEL_SKILLS.CHANNEL_MESSAGE_SEND,
       ]);
     });
   });
@@ -128,18 +133,20 @@ describe('SkillRegistry', () => {
       ]);
     });
 
-    it('returns all 8 skills when user has all required permissions', () => {
+    it('returns all 10 skills when user has all required permissions', () => {
       const allPermissions: Permission[] = [
         PERMISSIONS.QUOTE_APPROVE,
         PERMISSIONS.QUOTE_CREATE,
         PERMISSIONS.PURCHASE_ORDER_CREATE,
         PERMISSIONS.WORK_ORDER_EXECUTE,
         PERMISSIONS.WORK_ORDER_READ,
+        PERMISSIONS.CHANNEL_READ,
+        PERMISSIONS.CHANNEL_SEND,
         PERMISSIONS.DELIVERY_NOTE_DISPATCH,
         PERMISSIONS.SALES_ORDER_UPDATE,
       ];
       const permitted = registry.permittedFor(allPermissions);
-      expect(permitted).toHaveLength(8);
+      expect(permitted).toHaveLength(10);
       expect(permitted.map((s) => s.name)).toEqual([
         CHANNEL_SKILLS.QUOTE_APPROVE,
         CHANNEL_SKILLS.QUOTE_CREATE,
@@ -149,7 +156,16 @@ describe('SkillRegistry', () => {
         CHANNEL_SKILLS.WORK_ORDER_QUERY,
         CHANNEL_SKILLS.DELIVERY_DISPATCH,
         CHANNEL_SKILLS.SALES_ORDER_FROM_DOCUMENT,
+        CHANNEL_SKILLS.CHANNEL_THREAD_READ,
+        CHANNEL_SKILLS.CHANNEL_MESSAGE_SEND,
       ]);
     });
+  });
+
+  it('offers the send tool only to users holding channel:send (Review Focus #5)', () => {
+    const names = (perms: string[]) => registry.permittedFor(perms as any).map((s) => s.name);
+    expect(names(['channel:read'])).toContain('channel_thread.read');
+    expect(names(['channel:read'])).not.toContain('channel_message.send');
+    expect(names(['channel:read', 'channel:send'])).toContain('channel_message.send');
   });
 });

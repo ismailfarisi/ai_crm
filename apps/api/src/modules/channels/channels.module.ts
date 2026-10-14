@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ContactsModule } from '../contacts/contacts.module';
+import { UsersModule } from '../users/users.module';
 import { QuotesModule } from '../quotes/quotes.module';
 import { AiModule } from '../ai/ai.module';
 import { ChannelConfig } from './entities/channel-config.entity';
@@ -22,6 +23,7 @@ import { ChannelIdempotencyService } from './services/channel-idempotency.servic
 import { AiAgentService } from './services/ai-agent.service';
 import { IntentAgentConfigService } from './services/intent-agent-config.service';
 import { ProductionCheckInService } from './services/production-check-in.service';
+import { SkillActorService } from './services/skill-actor.service';
 import { ChannelsService } from './channels.service';
 import { ChannelsController } from './channels.controller';
 import { ChannelsWebhookController } from './channels-webhook.controller';
@@ -39,6 +41,7 @@ import { ChannelsWebhookController } from './channels-webhook.controller';
       IntentAgentConfig,
     ]),
     ContactsModule,
+    UsersModule,
     QuotesModule,
     AiModule,
     PurchasingModule,
@@ -51,6 +54,7 @@ import { ChannelsWebhookController } from './channels-webhook.controller';
     ChannelCryptoService,
     ChannelCommandService,
     ChannelIdempotencyService,
+    SkillActorService,
     SkillRegistry,
     SkillRouterService,
     AiAgentService,
@@ -64,6 +68,7 @@ import { ChannelsWebhookController } from './channels-webhook.controller';
     ProductionCheckInService,
     SkillRegistry,
     ChannelIdempotencyService,
+    SkillActorService,
   ],
 })
 export class ChannelsModule {}

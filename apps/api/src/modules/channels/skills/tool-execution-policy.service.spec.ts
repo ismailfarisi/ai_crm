@@ -51,4 +51,9 @@ describe('ToolExecutionPolicyService', () => {
     expect(result.requiresApproval).toBe(true);
     expect(result.actionClass).toBe('COMMIT_MUTATION');
   });
+
+  it('always requires approval for channel_message.send', () => {
+    const evaluation = new ToolExecutionPolicyService().evaluatePolicy('channel_message.send', true);
+    expect(evaluation).toEqual({ isAutonomous: false, requiresApproval: true, actionClass: 'COMMIT_MUTATION' });
+  });
 });

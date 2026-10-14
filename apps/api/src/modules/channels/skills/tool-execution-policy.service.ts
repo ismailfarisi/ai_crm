@@ -14,6 +14,7 @@ export class ToolExecutionPolicyService {
     'purchase_order_approve',
     'invoice_finalize',
     'record_delete',
+    'channel_message.send',
   ]);
 
   evaluatePolicy(toolName: string, isMutation: boolean): PolicyEvaluation {
