@@ -147,7 +147,7 @@ export async function apiUpload<T>(
  */
 let refreshInFlight: Promise<boolean> | null = null;
 
-function silentRefresh(): Promise<boolean> {
+export function silentRefresh(): Promise<boolean> {
   refreshInFlight ??= fetch(`${API_PUBLIC_URL}/auth/refresh`, {
     method: 'POST',
     credentials: 'include',

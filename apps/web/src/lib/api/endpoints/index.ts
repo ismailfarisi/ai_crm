@@ -24,6 +24,7 @@ import { platformEndpoints, platformKeys } from './platform';
 import { documentTemplatesEndpoints, documentTemplatesKeys } from './document-templates';
 import { savedViewsEndpoints, savedViewsKeys } from './saved-views';
 import { customObjectsEndpoints, customObjectsKeys } from './custom-objects';
+import { assistantEndpoints, assistantKeys } from './assistant';
 
 export * from './auth';
 export * from './contacts';
@@ -44,6 +45,7 @@ export * from './platform';
 export * from './document-templates';
 export * from './saved-views';
 export * from './custom-objects';
+export * from './assistant';
 
 export const api = {
   ...authEndpoints,
@@ -65,6 +67,7 @@ export const api = {
   ...documentTemplatesEndpoints,
   ...savedViewsEndpoints,
   ...customObjectsEndpoints,
+  ...assistantEndpoints,
 };
 
 export const queryKeys = {
@@ -87,4 +90,5 @@ export const queryKeys = {
   ...documentTemplatesKeys,
   ...savedViewsKeys,
   ...customObjectsKeys,
+  ...assistantKeys,
 };
