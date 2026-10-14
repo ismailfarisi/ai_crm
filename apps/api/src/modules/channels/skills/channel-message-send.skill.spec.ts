@@ -10,9 +10,9 @@ import type { SkillContext } from './skill.types';
 const ctx = { organizationId: 'org-1', userId: 'user-1', permissions: [], message: '' } as unknown as SkillContext;
 const acme = { id: 'c-1', fullName: 'Ada Acme', email: 'ada@acme.test', phone: '+971500000001' };
 
-function build(lastMessage: unknown = null) {
+function build(lastMessage: unknown = null, items: unknown[] = [acme]) {
   const contacts = {
-    list: jest.fn().mockResolvedValue({ items: [acme], meta: { total: 1 } }),
+    list: jest.fn().mockResolvedValue({ items, meta: { total: items.length } }),
     findOne: jest.fn(),
   } as unknown as ContactsService;
   const actors = { forContext: jest.fn().mockResolvedValue({ id: 'user-1' }) } as unknown as SkillActorService;
@@ -87,6 +87,42 @@ describe('ChannelMessageSendSkill', () => {
       recipient: 'ada@acme.test',
       body: 'Hello',
     });
-    expect(outcome.resultId).toBe('m-9');
+    expect(outcome.resultId).toBe('c-1');
+  });
+
+  it('keeps the drafted body and provider when the contact is ambiguous', async () => {
+    const { skill } = build(null, [acme, { ...acme, id: 'c-2', fullName: 'Ada Acme Jr' }]);
+    const res = await skill.resolve({ contact: 'Ada', provider: 'EMAIL_SMTP', body: 'Hi there' }, ctx);
+    expect(res.kind).toBe('question');
+    expect(res.kind === 'question' && res.slots).toEqual(
+      expect.objectContaining({ body: 'Hi there', provider: 'EMAIL_SMTP' }),
+    );
+  });
+
+  it('only trusts inbound or sent/delivered history, always tenant and contact scoped', async () => {
+    const { skill, messages } = build(null);
+    await skill.resolve({ contact: 'Acme', provider: 'TELEGRAM', body: 'Hi' }, ctx);
+    const where = (messages.findOne as jest.Mock).mock.calls[0][0].where as any[];
+    expect(where).toHaveLength(2);
+    for (const branch of where) {
+      expect(branch).toEqual(expect.objectContaining({ organizationId: 'org-1', contactId: 'c-1', provider: 'TELEGRAM' }));
+    }
+    expect(where[0].direction).toBe('INBOUND');
+    expect(where[1].direction).toBe('OUTBOUND');
+    expect(where[1].status.value).toEqual(['sent', 'delivered']);
+  });
+
+  it('prefers the contact phone over a different number in history for WhatsApp', async () => {
+    const { skill } = build({ direction: 'OUTBOUND', provider: 'WHATSAPP_META', sender: 'u', recipient: '+999' });
+    const res = await skill.resolve({ contact: 'Acme', provider: 'WHATSAPP_META', body: 'Hi' }, ctx);
+    expect(res.kind === 'resolved' && res.value.recipient).toBe('+971500000001');
+  });
+
+  it('falls back to history for WhatsApp when the contact has no phone', async () => {
+    const { skill } = build({ direction: 'INBOUND', provider: 'WHATSAPP_META', sender: '+555', recipient: 'us' }, [
+      { ...acme, phone: null },
+    ]);
+    const res = await skill.resolve({ contact: 'Acme', provider: 'WHATSAPP_META', body: 'Hi' }, ctx);
+    expect(res.kind === 'resolved' && res.value.recipient).toBe('+555');
   });
 });

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Repository } from 'typeorm';
+import { In, type Repository } from 'typeorm';
 import {
   CHANNEL_SKILLS,
   PERMISSIONS,
@@ -10,7 +10,11 @@ import {
 import type { ContactsService } from '../../contacts/contacts.service';
 import type { ChannelsService } from '../channels.service';
 import { ChannelProviderType } from '../entities/channel-config.entity';
-import type { ChannelMessage } from '../entities/channel-message.entity';
+import {
+  MessageDirection,
+  MessageStatus,
+  type ChannelMessage,
+} from '../entities/channel-message.entity';
 import type { SkillActorService } from '../services/skill-actor.service';
 import { resolveContact } from './channel-contact.resolver';
 import type { ChannelSkill, SkillContext } from './skill.types';
@@ -62,6 +66,9 @@ export class ChannelMessageSendSkill implements ChannelSkill<ResolvedSend> {
     const value = parsed.success ? parsed.data : {};
     const actor = await this.actors.forContext(ctx);
     const contact = await resolveContact(this.contacts, actor, value.contact ?? '');
+    if (contact.kind === 'question') {
+      return { ...contact, slots: { ...slots, ...contact.slots } };
+    }
     if (contact.kind !== 'resolved') return contact;
 
     const body = value.body?.trim();
@@ -69,12 +76,22 @@ export class ChannelMessageSendSkill implements ChannelSkill<ResolvedSend> {
       return { kind: 'question', question: `What should the message to ${contact.value.fullName} say?`, slots };
     }
 
+    // Only history we can trust: anything the contact sent us, or what we
+    // actually delivered. A failed or pending send may carry a bad address.
+    const base = {
+      organizationId: ctx.organizationId,
+      contactId: contact.value.id,
+      ...(value.provider ? { provider: value.provider as ChannelProviderType } : {}),
+    };
     const last = await this.messages.findOne({
-      where: {
-        organizationId: ctx.organizationId,
-        contactId: contact.value.id,
-        ...(value.provider ? { provider: value.provider as ChannelProviderType } : {}),
-      },
+      where: [
+        { ...base, direction: MessageDirection.INBOUND },
+        {
+          ...base,
+          direction: MessageDirection.OUTBOUND,
+          status: In([MessageStatus.SENT, MessageStatus.DELIVERED]),
+        },
+      ],
       order: { createdAt: 'DESC' },
     });
     const provider = (value.provider as ChannelProviderType | undefined) ?? last?.provider;
@@ -86,14 +103,14 @@ export class ChannelMessageSendSkill implements ChannelSkill<ResolvedSend> {
       };
     }
 
-    const fromHistory = last ? (last.direction === 'INBOUND' ? last.sender : last.recipient) : null;
-    const recipient =
-      fromHistory ??
-      (provider === ChannelProviderType.WHATSAPP_META
+    const fromHistory = last ? (last.direction === MessageDirection.INBOUND ? last.sender : last.recipient) : null;
+    const ownAddress =
+      provider === ChannelProviderType.WHATSAPP_META
         ? contact.value.phone
         : provider === ChannelProviderType.EMAIL_SMTP || provider === ChannelProviderType.EMAIL_RESEND
           ? contact.value.email
-          : null);
+          : null;
+    const recipient = ownAddress || fromHistory;
     if (!recipient) {
       return {
         kind: 'refused',
@@ -108,7 +125,7 @@ export class ChannelMessageSendSkill implements ChannelSkill<ResolvedSend> {
   }
 
   async execute(value: ResolvedSend, ctx: SkillContext): Promise<SkillOutcome> {
-    const message = await this.channels().sendMessage(ctx.organizationId, ctx.userId, {
+    await this.channels().sendMessage(ctx.organizationId, ctx.userId, {
       contactId: value.contact.id,
       provider: value.provider,
       recipient: value.recipient,
@@ -117,7 +134,7 @@ export class ChannelMessageSendSkill implements ChannelSkill<ResolvedSend> {
     return {
       reply: `Sent to ${value.contact.fullName} via ${value.provider}.`,
       resultType: 'CONTACT',
-      resultId: message.id,
+      resultId: value.contact.id,
     };
   }
 }
