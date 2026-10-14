@@ -28,6 +28,7 @@ import { TemporalModule } from '@/modules/temporal/temporal.module';
 import { UsersModule } from '@/modules/users/users.module';
 import { SavedViewsModule } from '@/modules/saved-views/saved-views.module';
 import { CustomObjectsModule } from '@/modules/custom-objects/custom-objects.module';
+import { AssistantModule } from '@/modules/assistant/assistant.module';
 
 /**
  * The feature module registry, kept out of `app.module.ts` and
@@ -71,6 +72,7 @@ export const FEATURE_MODULES = [
   BillingModule,
   SavedViewsModule,
   CustomObjectsModule,
+  AssistantModule,
 ];
 
 /**
@@ -99,4 +101,6 @@ export const WORKER_FEATURE_MODULES = [
   PurchasingModule,
   InventoryModule,
   CustomObjectsModule,
+  // assistant turns report their steps through AssistantEventsService
+  AssistantModule,
 ];
