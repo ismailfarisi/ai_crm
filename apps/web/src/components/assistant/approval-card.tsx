@@ -5,15 +5,24 @@ import { ShieldCheck } from 'lucide-react';
 import type { AssistantPendingAction } from '@saas/shared';
 import { Button } from '@/components/ui/button';
 
+export type ApprovalResolution = 'approved' | 'rejected' | 'expired' | 'closed';
+
+const RESOLUTION_LABELS: Record<ApprovalResolution, string> = {
+  approved: 'Approved',
+  rejected: 'Rejected',
+  expired: 'Expired',
+  closed: 'Closed',
+};
+
 interface ApprovalCardProps {
   pendingAction: AssistantPendingAction;
   onDecide: (approved: boolean, note?: string) => void;
   disabled?: boolean;
-  expired?: boolean;
+  resolution?: ApprovalResolution;
   onRetry?: () => void;
 }
 
-export function ApprovalCard({ pendingAction, onDecide, disabled, expired, onRetry }: ApprovalCardProps) {
+export function ApprovalCard({ pendingAction, onDecide, disabled, resolution, onRetry }: ApprovalCardProps) {
   const [rejecting, setRejecting] = useState(false);
   const [note, setNote] = useState('');
   const summary =
@@ -29,10 +38,10 @@ export function ApprovalCard({ pendingAction, onDecide, disabled, expired, onRet
       </div>
       <p className="whitespace-pre-wrap text-ink">{summary}</p>
 
-      {expired ? (
+      {resolution ? (
         <div className="mt-3 flex items-center justify-between">
-          <span className="text-xs text-ink-muted">Expired</span>
-          {onRetry && (
+          <span className="text-xs text-ink-muted">{RESOLUTION_LABELS[resolution]}</span>
+          {resolution === 'expired' && onRetry && (
             <Button size="sm" variant="secondary" onClick={onRetry}>
               Retry
             </Button>

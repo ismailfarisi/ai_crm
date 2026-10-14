@@ -22,8 +22,8 @@ export default function AssistantPage({ searchParams }: { searchParams: Promise<
       permission={PERMISSIONS.ASSISTANT_USE}
       fallback={<p className="text-sm text-ink-muted">You don&apos;t have access to the assistant.</p>}
     >
-      <div className="flex h-[calc(100vh-9rem)] overflow-hidden rounded-2xl border border-border bg-surface">
-        <div className="w-64 shrink-0 overflow-y-auto border-r border-border">
+      <div className="flex h-[calc(100vh-9rem)] flex-col overflow-hidden md:flex-row rounded-2xl border border-border bg-surface">
+        <div className="max-h-40 shrink-0 overflow-y-auto border-b border-border md:max-h-none md:w-64 md:border-b-0 md:border-r">
           <ConversationList
             activeId={conversationId}
             onSelect={setConversationId}

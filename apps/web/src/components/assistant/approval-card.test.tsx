@@ -34,9 +34,22 @@ describe('ApprovalCard', () => {
 
   it('shows Expired with a retry action', () => {
     const onRetry = vi.fn();
-    render(<ApprovalCard pendingAction={pendingAction} onDecide={vi.fn()} expired onRetry={onRetry} />);
+    render(<ApprovalCard pendingAction={pendingAction} onDecide={vi.fn()} resolution="expired" onRetry={onRetry} />);
     expect(screen.getByText(/expired/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /retry/i }));
     expect(onRetry).toHaveBeenCalled();
+  });
+
+  it.each([
+    ['approved', 'Approved'],
+    ['rejected', 'Rejected'],
+    ['expired', 'Expired'],
+    ['closed', 'Closed'],
+  ] as const)('shows the %s label instead of buttons', (resolution, label) => {
+    render(<ApprovalCard pendingAction={pendingAction} onDecide={vi.fn()} resolution={resolution} onRetry={vi.fn()} />);
+    expect(screen.getByText(label)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^approve$/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^reject$/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /retry/i }) !== null).toBe(resolution === 'expired');
   });
 });

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { History, Maximize2, MessageSquarePlus, Sparkles, X } from 'lucide-react';
 import { PERMISSIONS } from '@saas/shared';
@@ -16,8 +17,9 @@ export function AssistantPanel() {
   const { open, setOpen, conversationId, setConversationId, pageContext } = useAssistant();
   const [showHistory, setShowHistory] = useState(false);
   const create = useCreateAssistantConversation();
+  const pathname = usePathname();
 
-  if (!open) return null;
+  if (!open || pathname === '/assistant' || pathname.startsWith('/assistant/')) return null;
 
   const startNew = async () => {
     const conversation = await create.mutateAsync(pageContext ? { context: pageContext } : {});
