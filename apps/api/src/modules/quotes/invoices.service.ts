@@ -31,6 +31,7 @@ import {
 import {
   issueEntryNumber,
   provisionOrderForQuote,
+  provisionOrderForQuoteInTransaction,
 } from '../orders/order-provisioning';
 import { DocumentTemplatesService } from '../document-templates/document-templates.service';
 import { DocumentPdfRendererService } from '../document-templates/document-pdf-renderer.service';
@@ -71,18 +72,27 @@ export class InvoicesService {
   async createFromQuote(
     tenantId: string,
     quote: Quote,
+    /** The caller's transaction, so approval and order commit together. */
+    manager?: EntityManager,
   ): Promise<{
     order: SalesOrder;
     invoice: Invoice | null;
     invoicesRaised: Invoice[];
     isNew: boolean;
   }> {
-    const result = await provisionOrderForQuote(
-      this.dataSource,
-      this.ledger,
-      tenantId,
-      quote.id,
-    );
+    const result = manager
+      ? await provisionOrderForQuoteInTransaction(
+          manager,
+          this.ledger,
+          tenantId,
+          quote.id,
+        )
+      : await provisionOrderForQuote(
+          this.dataSource,
+          this.ledger,
+          tenantId,
+          quote.id,
+        );
     return {
       order: result.order,
       invoice: result.invoices[0] ?? null,
@@ -416,8 +426,15 @@ export class InvoicesService {
       ],
     });
 
-    invoice.sentAt = new Date();
-    const saved = await this.invoiceRepository.save(invoice);
+    // Only the column this method owns. `invoice` was loaded before seconds of
+    // rendering and mailing; saving it whole would write back the paid and
+    // credited amounts and status as they were then, undoing any payment or
+    // credit recorded meanwhile — and reopening the invoice to be paid again.
+    await this.invoiceRepository.update(
+      { id: invoice.id, tenantId },
+      { sentAt: new Date() },
+    );
+    const saved = await this.findById(tenantId, id);
     await this.emitInvoiceEvent(tenantId, saved, 'invoice.sent');
     return saved;
   }

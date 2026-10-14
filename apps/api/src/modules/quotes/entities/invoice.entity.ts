@@ -19,6 +19,9 @@ export enum InvoiceStatus {
 @Index('idx_invoices_tenant_id', ['tenantId'])
 @Index('idx_invoices_quote', ['quoteId'])
 @Index('idx_invoices_sales_order', ['salesOrderId'])
+@Index('uq_invoices_tenant_number', ['tenantId', 'invoiceNumber'], {
+  unique: true,
+})
 // One invoice per billing stage. This took over from the old one-invoice-per-
 // quote index as the thing that stops a raced approval billing twice.
 @Index('uq_invoices_delivery_note', ['deliveryNoteId'], {

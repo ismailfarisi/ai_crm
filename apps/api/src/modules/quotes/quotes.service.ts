@@ -7,7 +7,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { EntityManager, In, Repository } from 'typeorm';
 import { CrmEventBusService } from '@/common/events';
 import {
   calculateQuoteTotals,
@@ -159,12 +159,18 @@ export class QuotesService {
     return formatSequenceNumber('QT', value);
   }
 
+  /**
+   * The quote number always comes from the tenant sequence. A number in the
+   * payload is ignored: the editor posts back the number it *previewed*,
+   * which another user may have taken since, and a hand-typed number can
+   * collide with one the sequence hands out later. `uq_quotes_tenant_number`
+   * backs this up; a collision with an old hand-typed number moves on to the
+   * next value instead of failing the request.
+   */
   async createQuote(
     tenantId: string,
     payload: CreateQuotePayload,
   ): Promise<Quote> {
-    const quoteNumber =
-      payload.quoteNumber || (await this.generateNextQuoteNumber(tenantId));
     const { items } = await this.recost(
       tenantId,
       payload.items || [],
@@ -173,9 +179,8 @@ export class QuotesService {
     const totals = calculateQuoteTotals(items);
     const mode = payload.createdBy || QuoteCreatedBy.HUMAN;
 
-    const quote = this.quoteRepository.create({
+    const fields = {
       tenantId,
-      quoteNumber,
       customerId: payload.customerId || null,
       customerName: payload.customerName || 'General Customer',
       customerEmail: payload.customerEmail || null,
@@ -194,11 +199,33 @@ export class QuotesService {
       notes: payload.notes || null,
       billingSchedule: normaliseSchedule(payload.billingSchedule),
       status: QuoteStatus.DRAFT,
-    });
+      // Set below, and only once a workflow is actually running.
+      workflowId: null,
+    };
 
-    const savedQuote = await this.quoteRepository.save(quote);
+    let savedQuote: Quote | undefined;
+    for (let attempt = 1; !savedQuote; attempt++) {
+      const quoteNumber = await this.generateNextQuoteNumber(tenantId);
+      try {
+        savedQuote = await this.quoteRepository.save(
+          this.quoteRepository.create({ ...fields, quoteNumber }),
+        );
+      } catch (err) {
+        if (
+          attempt < MAX_NUMBER_ATTEMPTS &&
+          isUniqueViolation(err, 'uq_quotes_tenant_number')
+        ) {
+          this.logger.warn(
+            `${quoteNumber} is already in use for tenant ${tenantId}; allocating the next number`,
+          );
+          continue;
+        }
+        throw err;
+      }
+    }
+
     const workflowId = `quote-${savedQuote.id}`;
-
+    let started: string | null = null;
     try {
       const client = this.temporalService.getClient();
       const handle = await client.workflow.start(quoteWorkflow, {
@@ -216,14 +243,20 @@ export class QuotesService {
           },
         ],
       });
-      savedQuote.workflowId = handle.workflowId;
+      started = handle.workflowId;
     } catch (err: unknown) {
+      // Not fatal: approval provisions the order itself. But the row must
+      // not name a workflow that is not running.
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Temporal workflow start deferred/failed: ${msg}`);
-      savedQuote.workflowId = workflowId;
     }
-
-    const finalQuote = await this.quoteRepository.save(savedQuote);
+    if (started) {
+      await this.quoteRepository.update(
+        { id: savedQuote.id, tenantId },
+        { workflowId: started },
+      );
+    }
+    const finalQuote = { ...savedQuote, workflowId: started } as Quote;
 
     if (this.eventBus) {
       await this.eventBus.publish({
@@ -245,100 +278,137 @@ export class QuotesService {
     return finalQuote;
   }
 
+  /**
+   * Edits a quote under a row lock.
+   *
+   * The checks below — superseded, accepted, approved — are made against the
+   * row as it is, not as the editor last loaded it. The customer can accept
+   * while a rep has the editor open; saving the rep's copy used to write
+   * `accepted_at` back to NULL. With the lock, a concurrent acceptance either
+   * commits first (and is seen here) or waits for this edit (and is refused
+   * if the edit killed its link).
+   */
   async updateQuote(
     tenantId: string,
     id: string,
     payload: UpdateQuotePayload,
   ): Promise<Quote> {
-    const quote = await this.findQuoteById(tenantId, id);
-    const beforeSnapshot = { ...quote };
+    const { saved, beforeSnapshot, submittedForApproval } =
+      await this.quoteRepository.manager.transaction(async (manager) => {
+        const repo = manager.getRepository(Quote);
+        const quote = await lockQuote(manager, tenantId, id);
+        const beforeSnapshot = { ...quote };
 
-    if (quote.supersededAt) {
-      throw new BadRequestException(
-        `${quote.quoteNumber ?? 'This quote'} has been replaced by version ${quote.version + 1}. Edit the latest version instead.`,
-      );
-    }
-    // What the customer agrees to. Once they have accepted, changing it would
-    // leave an acceptance on record for terms they never saw; before that, a
-    // change kills the outstanding link so they cannot accept the old terms.
-    const commercialChange = changesCommercialTerms(quote, payload);
-    if (commercialChange && quote.acceptedAt) {
-      throw new BadRequestException(
-        `The customer accepted ${quote.quoteNumber ?? 'this quote'} as it stands. Create a revision to change it.`,
-      );
-    }
-    if (commercialChange) {
-      quote.acceptanceTokenHash = null;
-      quote.acceptanceExpiresAt = null;
-    }
+        if (quote.supersededAt) {
+          throw new BadRequestException(
+            `${quote.quoteNumber ?? 'This quote'} has been replaced by version ${quote.version + 1}. Edit the latest version instead.`,
+          );
+        }
+        // What the customer agrees to. Once they have accepted, changing it would
+        // leave an acceptance on record for terms they never saw; before that, a
+        // change kills the outstanding link so they cannot accept the old terms.
+        const commercialChange = changesCommercialTerms(quote, payload);
+        if (commercialChange && quote.acceptedAt) {
+          throw new BadRequestException(
+            `The customer accepted ${quote.quoteNumber ?? 'this quote'} as it stands. Create a revision to change it.`,
+          );
+        }
 
-    if (payload.billingSchedule !== undefined) {
-      if (await this.orderExists(quote.id)) {
-        throw new BadRequestException(
-          'This quote already has a sales order; change billing on the order instead',
-        );
-      }
-      quote.billingSchedule = normaliseSchedule(payload.billingSchedule);
-    }
+        const nextStatus = payload.status as QuoteStatus | undefined;
+        if (nextStatus !== undefined && nextStatus !== quote.status) {
+          // Approval provisions the order and raises invoices; rejection
+          // tells the workflow. Setting either directly would skip that.
+          if (
+            nextStatus === QuoteStatus.APPROVED ||
+            nextStatus === QuoteStatus.REJECTED
+          ) {
+            throw new BadRequestException(
+              `Use approve or reject to mark ${quote.quoteNumber ?? 'a quote'} ${nextStatus.toLowerCase()}`,
+            );
+          }
+          if (quote.status === QuoteStatus.APPROVED) {
+            throw new BadRequestException(
+              `${quote.quoteNumber ?? 'This quote'} is approved. Create a revision to change it.`,
+            );
+          }
+        }
 
-    if (payload.title !== undefined) {
-      quote.title = payload.title;
-    }
-    if (payload.quoteNumber !== undefined) {
-      quote.quoteNumber = payload.quoteNumber;
-    }
-    if (payload.customerId !== undefined) {
-      quote.customerId = payload.customerId;
-    }
-    if (payload.customerName !== undefined) {
-      quote.customerName = payload.customerName;
-    }
-    if (payload.customerEmail !== undefined) {
-      quote.customerEmail = payload.customerEmail;
-    }
-    if (payload.validUntil !== undefined) {
-      quote.validUntil = payload.validUntil
-        ? new Date(payload.validUntil)
-        : null;
-    }
-    if (payload.paymentTerms !== undefined) {
-      quote.paymentTerms = payload.paymentTerms;
-    }
-    if (payload.currency !== undefined) {
-      quote.currency = payload.currency;
-    }
-    if (payload.termsAndConditions !== undefined) {
-      quote.termsAndConditions = payload.termsAndConditions;
-    }
-    if (payload.notes !== undefined) {
-      quote.notes = payload.notes;
-    }
-    if (payload.prompt !== undefined) {
-      quote.prompt = payload.prompt;
-    }
-    const submittedForApproval =
-      payload.status === QuoteStatus.AWAITING_APPROVAL &&
-      quote.status !== QuoteStatus.AWAITING_APPROVAL;
-    if (payload.status !== undefined) {
-      quote.status = payload.status as QuoteStatus;
-    }
-    // A new customer can mean a new tax treatment, so the lines are re-taxed
-    // even when the items themselves were not sent.
-    if (payload.items !== undefined || payload.customerId !== undefined) {
-      const { items } = await this.recost(
-        tenantId,
-        payload.items ?? quote.items ?? [],
-        quote.customerId,
-      );
-      quote.items = items;
-      const totals = calculateQuoteTotals(items);
-      quote.subtotalAmount = totals.subtotalAmount;
-      quote.discountAmount = totals.discountAmount;
-      quote.taxAmount = totals.taxAmount;
-      quote.totalAmount = totals.totalAmount;
-    }
+        if (commercialChange) {
+          quote.acceptanceTokenHash = null;
+          quote.acceptanceExpiresAt = null;
+        }
 
-    const saved = await this.quoteRepository.save(quote);
+        if (payload.billingSchedule !== undefined) {
+          if (await this.orderExists(quote.id, manager)) {
+            throw new BadRequestException(
+              'This quote already has a sales order; change billing on the order instead',
+            );
+          }
+          quote.billingSchedule = normaliseSchedule(payload.billingSchedule);
+        }
+
+        if (payload.title !== undefined) {
+          quote.title = payload.title;
+        }
+        // `payload.quoteNumber` is deliberately ignored: a document number is
+        // allocated once, from the tenant sequence, and never edited.
+        if (payload.customerId !== undefined) {
+          quote.customerId = payload.customerId;
+        }
+        if (payload.customerName !== undefined) {
+          quote.customerName = payload.customerName;
+        }
+        if (payload.customerEmail !== undefined) {
+          quote.customerEmail = payload.customerEmail;
+        }
+        if (payload.validUntil !== undefined) {
+          quote.validUntil = payload.validUntil
+            ? new Date(payload.validUntil)
+            : null;
+        }
+        if (payload.paymentTerms !== undefined) {
+          quote.paymentTerms = payload.paymentTerms;
+        }
+        if (payload.currency !== undefined) {
+          quote.currency = payload.currency;
+        }
+        if (payload.termsAndConditions !== undefined) {
+          quote.termsAndConditions = payload.termsAndConditions;
+        }
+        if (payload.notes !== undefined) {
+          quote.notes = payload.notes;
+        }
+        if (payload.prompt !== undefined) {
+          quote.prompt = payload.prompt;
+        }
+        const submittedForApproval =
+          nextStatus === QuoteStatus.AWAITING_APPROVAL &&
+          quote.status !== QuoteStatus.AWAITING_APPROVAL;
+        if (nextStatus !== undefined) {
+          quote.status = nextStatus;
+        }
+        // A new customer can mean a new tax treatment, so the lines are re-taxed
+        // even when the items themselves were not sent.
+        if (payload.items !== undefined || payload.customerId !== undefined) {
+          const { items } = await this.recost(
+            tenantId,
+            payload.items ?? quote.items ?? [],
+            quote.customerId,
+          );
+          quote.items = items;
+          const totals = calculateQuoteTotals(items);
+          quote.subtotalAmount = totals.subtotalAmount;
+          quote.discountAmount = totals.discountAmount;
+          quote.taxAmount = totals.taxAmount;
+          quote.totalAmount = totals.totalAmount;
+        }
+
+        // Safe as a whole-entity save: `quote` was read under the lock in
+        // this transaction, so every column it writes back is current.
+        const saved = await repo.save(quote);
+        return { saved, beforeSnapshot, submittedForApproval };
+      });
+
     if (submittedForApproval) {
       await this.notifications.notifyHolders(
         tenantId,
@@ -379,6 +449,21 @@ export class QuotesService {
     return saved;
   }
 
+  /**
+   * Approves or rejects a quote, or passes an override to its workflow.
+   *
+   * Approval and rejection are decided in one transaction on the locked quote
+   * row: its status and `superseded_at` are checked as they are now, only the
+   * columns the decision owns are written (a whole-entity save could write a
+   * concurrent revision's `superseded_at` back to NULL), and an approval
+   * creates the sales order in the same transaction — so a quote is never
+   * approved without its order, and an approve and a reject cannot both win.
+   *
+   * Temporal hears about the decision only after it has committed. Its
+   * `generateInvoiceActivity` runs the same idempotent provisioning and finds
+   * the order already there. A signal that fails is logged, not fatal: the
+   * decision is on record and the order exists either way.
+   */
   async sendSignal(
     tenantId: string,
     quoteId: string,
@@ -386,148 +471,174 @@ export class QuotesService {
     payload?: any,
     actorUserId?: string,
   ): Promise<Quote> {
-    const quote = await this.findQuoteById(tenantId, quoteId);
-    const workflowId = quote.workflowId || `quote-${quote.id}`;
-
     if (action !== 'APPROVE' && action !== 'REJECT' && action !== 'OVERRIDE') {
       throw new BadRequestException(`Invalid signal action: ${action}`);
     }
 
-    // Approval is the commitment, so it is where the floors bite. Saving a
-    // thin draft stays possible — the rep needs to see the number before they
-    // can fix it. Re-cost from the catalog first so the check runs on what
-    // the job actually costs today, not on what was stored when it was drafted.
-    if (action === 'APPROVE') {
-      const { items, violations } = await this.recost(
-        tenantId,
-        quote.items || [],
-        quote.customerId,
-      );
-      quote.items = items;
-      const totals = calculateQuoteTotals(items);
-      quote.subtotalAmount = totals.subtotalAmount;
-      quote.discountAmount = totals.discountAmount;
-      quote.taxAmount = totals.taxAmount;
-      quote.totalAmount = totals.totalAmount;
-
-      await this.assertActorMayApprove(tenantId, actorUserId, violations);
-
-      if (quote.supersededAt) {
-        throw new BadRequestException(
-          `${quote.quoteNumber ?? 'This quote'} has been replaced by a newer revision and cannot be approved`,
-        );
-      }
-      // Checked here, before anything is committed, so a bad schedule is a
-      // clear refusal rather than an approved quote with no order behind it.
-      const problems = quote.billingSchedule?.length
-        ? validateBillingSchedule(quote.billingSchedule)
-        : [];
-      if (problems.length) {
-        throw new BadRequestException(
-          `Fix the billing schedule before approving: ${problems.join(' ')}`,
-        );
-      }
-
-      // The invoice this approval raises is booked at today's rate. Checked
-      // now, so a missing rate refuses the approval instead of approving a
-      // quote whose invoice then silently fails to appear.
-      await fxRateFor(
-        this.quoteRepository.manager,
-        tenantId,
-        quote.currency,
-        new Date(),
-      );
-
-      // Persist the re-costed lines before signalling. The Temporal activity
-      // builds the order from the stored quote, and can run before this
-      // request finishes; it must not see the pre-recost totals.
-      await this.quoteRepository.save(quote);
+    if (action === 'OVERRIDE') {
+      const quote = await this.findQuoteById(tenantId, quoteId);
+      await this.signalWorkflow(quote, action, payload);
+      return quote;
     }
 
-    try {
-      const client = this.temporalService.getClient();
-      const handle = client.workflow.getHandle(workflowId);
+    const { quote, decided, invoicesRaised } =
+      await this.quoteRepository.manager.transaction(async (manager) => {
+        const repo = manager.getRepository(Quote);
+        const quote = await lockQuote(manager, tenantId, quoteId);
+        const name = quote.quoteNumber ?? 'This quote';
 
+        if (quote.supersededAt) {
+          throw new BadRequestException(
+            `${name} has been replaced by a newer revision and cannot be ${action === 'APPROVE' ? 'approved' : 'rejected'}`,
+          );
+        }
+
+        if (action === 'REJECT') {
+          if (quote.status === QuoteStatus.APPROVED) {
+            throw new BadRequestException(
+              `${name} is already approved and has a sales order. Cancel the order instead.`,
+            );
+          }
+          if (quote.status === QuoteStatus.REJECTED) {
+            return { quote, decided: false, invoicesRaised: [] as Invoice[] };
+          }
+          await repo.update(
+            { id: quote.id, tenantId },
+            { status: QuoteStatus.REJECTED },
+          );
+          quote.status = QuoteStatus.REJECTED;
+          return { quote, decided: true, invoicesRaised: [] as Invoice[] };
+        }
+
+        if (quote.status === QuoteStatus.REJECTED) {
+          throw new BadRequestException(
+            `${name} was rejected. Resubmit it for approval first.`,
+          );
+        }
+        if (quote.status === QuoteStatus.APPROVED) {
+          // Already decided; nothing is re-costed or re-signalled. Provisioning
+          // is idempotent, so this only fills in an order that is missing.
+          const { invoicesRaised } = await this.invoicesService.createFromQuote(
+            tenantId,
+            quote,
+            manager,
+          );
+          return { quote, decided: false, invoicesRaised };
+        }
+
+        // Approval is the commitment, so it is where the floors bite. Saving a
+        // thin draft stays possible — the rep needs to see the number before
+        // they can fix it. Re-cost from the catalog first so the check runs on
+        // what the job actually costs today, not on what was stored when it
+        // was drafted.
+        const { items, violations } = await this.recost(
+          tenantId,
+          quote.items || [],
+          quote.customerId,
+        );
+        const totals = calculateQuoteTotals(items);
+        await this.assertActorMayApprove(tenantId, actorUserId, violations);
+
+        // Checked here, before anything is committed, so a bad schedule is a
+        // clear refusal rather than an approved quote with no order behind it.
+        const problems = quote.billingSchedule?.length
+          ? validateBillingSchedule(quote.billingSchedule)
+          : [];
+        if (problems.length) {
+          throw new BadRequestException(
+            `Fix the billing schedule before approving: ${problems.join(' ')}`,
+          );
+        }
+
+        // The invoice this approval raises is booked at today's rate. Checked
+        // now, so a missing rate refuses the approval outright.
+        await fxRateFor(manager, tenantId, quote.currency, new Date());
+
+        const decision = {
+          items,
+          subtotalAmount: totals.subtotalAmount,
+          discountAmount: totals.discountAmount,
+          taxAmount: totals.taxAmount,
+          totalAmount: totals.totalAmount,
+          status: QuoteStatus.APPROVED,
+        };
+        await repo.update({ id: quote.id, tenantId }, decision);
+        Object.assign(quote, decision);
+
+        // Same transaction: if the order cannot be created, the approval
+        // rolls back with it.
+        const { invoicesRaised } = await this.invoicesService.createFromQuote(
+          tenantId,
+          quote,
+          manager,
+        );
+        return { quote, decided: true, invoicesRaised };
+      });
+
+    if (decided) {
+      await this.signalWorkflow(quote, action, payload);
+      // Decided: nobody else needs to be asked.
+      await this.notifications.resolve(tenantId, quote.id);
+    }
+
+    for (const invoice of invoicesRaised) {
+      try {
+        await this.automationEventBridgeService.handleCrmEvent({
+          tenantId,
+          eventType: 'invoice.issued',
+          entityId: invoice.id,
+          data: {
+            invoiceId: invoice.id,
+            invoiceNumber: invoice.invoiceNumber,
+            quoteId: quote.id,
+            amount: invoice.amount,
+            dueDate: invoice.dueDate,
+            customerId: invoice.customerId,
+            customerEmail: invoice.customerEmail,
+          },
+        });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `Failed to emit invoice.issued for invoice ${invoice.id}: ${msg}`,
+        );
+      }
+    }
+
+    return quote;
+  }
+
+  /** Best-effort: the decision is already committed by the time this runs. */
+  private async signalWorkflow(
+    quote: Quote,
+    action: 'APPROVE' | 'REJECT' | 'OVERRIDE',
+    payload?: any,
+  ): Promise<void> {
+    const workflowId = quote.workflowId || `quote-${quote.id}`;
+    try {
+      const handle = this.temporalService
+        .getClient()
+        .workflow.getHandle(workflowId);
       switch (action) {
         case 'APPROVE':
           await handle.signal(approveQuoteSignal);
-          quote.status = QuoteStatus.APPROVED;
           break;
         case 'REJECT':
           await handle.signal(
             rejectQuoteSignal,
             typeof payload === 'string' ? payload : payload?.reason || '',
           );
-          quote.status = QuoteStatus.REJECTED;
           break;
         case 'OVERRIDE':
           await handle.signal(manualOverrideSignal, payload);
           break;
       }
     } catch (err: unknown) {
-      if (err instanceof BadRequestException) throw err;
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(
         `Failed to send signal to workflow ${workflowId}: ${msg}`,
       );
-      if (action === 'APPROVE') {
-        quote.status = QuoteStatus.APPROVED;
-      } else if (action === 'REJECT') {
-        quote.status = QuoteStatus.REJECTED;
-      }
     }
-
-    const savedQuote = await this.quoteRepository.save(quote);
-    if (
-      savedQuote.status === QuoteStatus.APPROVED ||
-      savedQuote.status === QuoteStatus.REJECTED
-    ) {
-      // Decided: nobody else needs to be asked.
-      await this.notifications.resolve(tenantId, savedQuote.id);
-    }
-
-    // Guarantees the order (and whatever its schedule invoices on approval)
-    // exists even if Temporal never picks up the signal, or hasn't finished
-    // `generateInvoiceActivity` by the time this request returns. Both run
-    // the same idempotent provisioning, so whichever gets there first wins.
-    if (savedQuote.status === QuoteStatus.APPROVED) {
-      try {
-        const { invoicesRaised } = await this.invoicesService.createFromQuote(
-          tenantId,
-          savedQuote,
-        );
-        for (const invoice of invoicesRaised) {
-          try {
-            await this.automationEventBridgeService.handleCrmEvent({
-              tenantId,
-              eventType: 'invoice.issued',
-              entityId: invoice.id,
-              data: {
-                invoiceId: invoice.id,
-                invoiceNumber: invoice.invoiceNumber,
-                quoteId: savedQuote.id,
-                amount: invoice.amount,
-                dueDate: invoice.dueDate,
-                customerId: invoice.customerId,
-                customerEmail: invoice.customerEmail,
-              },
-            });
-          } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : String(err);
-            this.logger.warn(
-              `Failed to emit invoice.issued for invoice ${invoice.id}: ${msg}`,
-            );
-          }
-        }
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        this.logger.warn(
-          `Failed to create invoice for quote ${quoteId}: ${msg}`,
-        );
-      }
-    }
-
-    return savedQuote;
   }
 
   /**
@@ -616,10 +727,7 @@ export class QuotesService {
           status: QuoteStatus.DRAFT,
           workflowId: null,
         });
-        const saved = await repo.save(revision);
-        saved.workflowId = `quote-${saved.id}`;
-        await repo.save(saved);
-        return saved;
+        return repo.save(revision);
       })
       .then(async (saved) => {
         // Outside the transaction: a workflow that starts for a revision that
@@ -629,26 +737,37 @@ export class QuotesService {
       });
   }
 
+  /** Records the workflow id only once the workflow is actually running. */
   private async startWorkflow(quote: Quote): Promise<void> {
+    let started: string;
     try {
-      await this.temporalService.getClient().workflow.start(quoteWorkflow, {
-        taskQueue: 'quotes-queue',
-        workflowId: quote.workflowId ?? `quote-${quote.id}`,
-        args: [
-          {
-            quoteId: quote.id,
-            tenantId: quote.tenantId,
-            mode: 'HUMAN',
-            title: quote.title,
-            items: quote.items,
-            totalAmount: Number(quote.totalAmount),
-          },
-        ],
-      });
+      const handle = await this.temporalService
+        .getClient()
+        .workflow.start(quoteWorkflow, {
+          taskQueue: 'quotes-queue',
+          workflowId: `quote-${quote.id}`,
+          args: [
+            {
+              quoteId: quote.id,
+              tenantId: quote.tenantId,
+              mode: 'HUMAN',
+              title: quote.title,
+              items: quote.items,
+              totalAmount: Number(quote.totalAmount),
+            },
+          ],
+        });
+      started = handle.workflowId;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Temporal workflow start deferred/failed: ${msg}`);
+      return;
     }
+    await this.quoteRepository.update(
+      { id: quote.id, tenantId: quote.tenantId },
+      { workflowId: started },
+    );
+    quote.workflowId = started;
   }
 
   private async orderExists(
@@ -805,6 +924,38 @@ export class QuotesService {
     }
     return invoices;
   }
+}
+
+/** How many sequence values createQuote tries before giving up on a clash. */
+const MAX_NUMBER_ATTEMPTS = 5;
+
+/** Reads a quote `FOR UPDATE` inside the caller's transaction. */
+async function lockQuote(
+  manager: EntityManager,
+  tenantId: string,
+  id: string,
+): Promise<Quote> {
+  const quote = await manager
+    .getRepository(Quote)
+    .createQueryBuilder('q')
+    .setLock('pessimistic_write')
+    .where('q.id = :id', { id })
+    .andWhere('q.tenant_id = :tenantId', { tenantId })
+    .getOne();
+  if (!quote) throw new NotFoundException(`Quote with ID ${id} not found`);
+  return quote;
+}
+
+/** A Postgres unique violation, optionally on one named constraint/index. */
+function isUniqueViolation(err: unknown, constraint?: string): boolean {
+  const e = err as {
+    code?: string;
+    constraint?: string;
+    driverError?: { code?: string; constraint?: string };
+  };
+  const code = e?.code ?? e?.driverError?.code;
+  const name = e?.constraint ?? e?.driverError?.constraint;
+  return code === '23505' && (!constraint || name === constraint);
 }
 
 /**

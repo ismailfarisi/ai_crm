@@ -6,6 +6,7 @@ import {
 } from '@saas/shared';
 import {
   provisionOrderForQuote,
+  provisionOrderForQuoteInTransaction,
   raiseStageInvoice,
 } from './order-provisioning';
 
@@ -131,7 +132,7 @@ function makeWorld(quoteOverrides: Record<string, unknown> = {}) {
     ),
   };
 
-  return { tables, sequences, locks, dataSource, ledger };
+  return { tables, sequences, locks, dataSource, ledger, manager };
 }
 
 describe('provisionOrderForQuote', () => {
@@ -284,6 +285,25 @@ describe('provisionOrderForQuote', () => {
     ).rejects.toThrow(/add up to 90%/);
   });
 
+  // Approval marks the quote approved and provisions in one transaction, so
+  // a quote is never left approved with no order behind it.
+  it('can run inside a caller’s transaction instead of opening its own', async () => {
+    const w = makeWorld();
+    const transaction = jest.fn();
+    w.dataSource.transaction = transaction;
+
+    const result = await provisionOrderForQuoteInTransaction(
+      w.manager,
+      w.ledger,
+      tenantId,
+      'q1',
+    );
+
+    expect(transaction).not.toHaveBeenCalled();
+    expect(result.isNew).toBe(true);
+    expect(w.tables.SalesOrder).toHaveLength(1);
+  });
+
   it('does not let one tenant provision another tenant’s quote', async () => {
     const w = makeWorld();
     await expect(
@@ -345,6 +365,28 @@ describe('raiseStageInvoice', () => {
     expect(isNew).toBe(false);
     expect(w.tables.Invoice).toHaveLength(1);
     expect(w.sequences.invoice_number).toBe(1);
+  });
+
+  /**
+   * `OrdersService.cancel` locks the order and then checks for invoices. If
+   * this path billed a stage off an unlocked read of the order, a cancel and
+   * an invoice could each pass their check and both commit: a cancelled
+   * order carrying a live invoice. Order first, then stage — the same order
+   * cancel takes them in, so the two serialise instead of deadlocking.
+   */
+  it('locks the order before the stage, so it serialises with cancel', async () => {
+    const w = staged();
+    await provisionOrderForQuote(w.dataSource, w.ledger, tenantId, 'q1');
+    w.locks.length = 0;
+
+    await raiseStageInvoice(
+      w.dataSource,
+      w.ledger,
+      tenantId,
+      w.tables.BillingScheduleLine[1].id,
+    );
+
+    expect(w.locks).toEqual(['SalesOrder', 'BillingScheduleLine']);
   });
 
   it('refuses to invoice a cancelled order', async () => {

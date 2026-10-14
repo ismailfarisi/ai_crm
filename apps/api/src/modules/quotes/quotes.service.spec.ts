@@ -37,6 +37,7 @@ describe('QuotesService', () => {
   let eventBus: any;
   let mockWorkflowHandle: any;
   let sequenceValue: number;
+  let timeline: string[];
 
   const tenantId = '11111111-1111-1111-1111-111111111111';
   const quoteId = '22222222-2222-2222-2222-222222222222';
@@ -44,7 +45,9 @@ describe('QuotesService', () => {
   beforeEach(() => {
     mockWorkflowHandle = {
       workflowId: `quote-${quoteId}`,
-      signal: jest.fn().mockResolvedValue(undefined),
+      signal: jest.fn().mockImplementation(async () => {
+        timeline.push('signal');
+      }),
     };
 
     sequenceValue = 0;
@@ -74,6 +77,38 @@ describe('QuotesService', () => {
         }),
       } as any,
     };
+    // Targeted writes and the row lock. The locked read goes through
+    // `findOne` lazily, so a test that replaces `findOne` controls it too.
+    timeline = [];
+    quoteRepo.update = jest.fn().mockImplementation(async () => {
+      timeline.push('update');
+      return { affected: 1 };
+    });
+    quoteRepo.createQueryBuilder = jest.fn(() => {
+      const qb: any = {
+        setLock: jest.fn((mode: string) => {
+          timeline.push(`lock:${mode}`);
+          return qb;
+        }),
+        where: jest.fn(() => qb),
+        andWhere: jest.fn(() => qb),
+        getOne: jest.fn(() => quoteRepo.findOne!({} as any)),
+      };
+      return qb;
+    }) as any;
+    const txManager = quoteRepo.manager as any;
+    txManager.getRepository = jest.fn(() => quoteRepo);
+    txManager.transaction = jest.fn(async (cb: (m: unknown) => unknown) => {
+      timeline.push('begin');
+      try {
+        const result = await cb(txManager);
+        timeline.push('commit');
+        return result;
+      } catch (err) {
+        timeline.push('rollback');
+        throw err;
+      }
+    });
 
     invoiceRepo = {
       find: jest.fn().mockResolvedValue([]),
@@ -89,10 +124,16 @@ describe('QuotesService', () => {
     };
 
     invoicesService = {
-      createFromQuote: jest.fn().mockResolvedValue({
-        invoice: { id: 'invoice-1', invoiceNumber: 'INV-2026-0001' } as Invoice,
-        invoicesRaised: [],
-        isNew: false,
+      createFromQuote: jest.fn().mockImplementation(async () => {
+        timeline.push('provision');
+        return {
+          invoice: {
+            id: 'invoice-1',
+            invoiceNumber: 'INV-2026-0001',
+          } as Invoice,
+          invoicesRaised: [],
+          isNew: false,
+        };
       }),
     };
 
@@ -258,7 +299,13 @@ describe('QuotesService', () => {
       expect(result.workflowId).toBe(`quote-${quoteId}`);
     });
 
-    it('preserves custom quoteNumber if provided in payload', async () => {
+    /**
+     * The editor previews the next number and posts it back; another user can
+     * have taken that number in between. Document numbers come from the
+     * tenant sequence only, so they stay unique and gap-free.
+     */
+    it('ignores a client-supplied quoteNumber and allocates from the sequence', async () => {
+      sequenceValue = 6;
       const payload: CreateQuotePayload = {
         title: 'Custom Number Quote',
         quoteNumber: 'CUSTOM-2026-99',
@@ -267,15 +314,61 @@ describe('QuotesService', () => {
 
       await service.createQuote(tenantId, payload);
 
+      const year = new Date().getFullYear();
       expect(quoteRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          quoteNumber: 'CUSTOM-2026-99',
-        }),
+        expect.objectContaining({ quoteNumber: `QT-${year}-0007` }),
       );
-      expect(quoteRepo.manager!.query).not.toHaveBeenCalled();
+      expect(quoteRepo.create).not.toHaveBeenCalledWith(
+        expect.objectContaining({ quoteNumber: 'CUSTOM-2026-99' }),
+      );
     });
 
-    it('handles Temporal start errors gracefully and falls back to deterministic workflowId', async () => {
+    // Numbers typed in by hand before this was locked down can sit ahead of
+    // the sequence. Hitting one moves on to the next number, not a 500.
+    it('moves to the next number when the allocated one is already taken', async () => {
+      sequenceValue = 0;
+      const taken = Object.assign(new Error('duplicate key'), {
+        code: '23505',
+        constraint: 'uq_quotes_tenant_number',
+      });
+      quoteRepo.save = jest
+        .fn()
+        .mockRejectedValueOnce(taken)
+        .mockImplementation(async (q) => ({ id: quoteId, ...q }));
+
+      const result = await service.createQuote(tenantId, {
+        title: 'After a hand-typed number',
+        items: [],
+      });
+
+      const year = new Date().getFullYear();
+      expect(result.quoteNumber).toBe(`QT-${year}-0002`);
+    });
+
+    it('does not swallow other database errors', async () => {
+      quoteRepo.save = jest.fn().mockRejectedValue(new Error('connection lost'));
+
+      await expect(
+        service.createQuote(tenantId, { title: 'x', items: [] }),
+      ).rejects.toThrow('connection lost');
+    });
+
+    it('records the workflow id only once the workflow has started', async () => {
+      const result = await service.createQuote(tenantId, {
+        title: 'Online Quote',
+        items: [],
+      });
+
+      expect(quoteRepo.update).toHaveBeenCalledWith(
+        { id: quoteId, tenantId },
+        { workflowId: `quote-${quoteId}` },
+      );
+      expect(result.workflowId).toBe(`quote-${quoteId}`);
+    });
+
+    // A workflow id on record says a workflow is waiting for a signal. If the
+    // start failed, none is, and the row must not claim otherwise.
+    it('leaves workflowId empty when Temporal could not start the workflow', async () => {
       temporalService.getClient = jest.fn().mockReturnValue({
         workflow: {
           start: jest.fn().mockRejectedValue(new Error('Temporal unavailable')),
@@ -288,8 +381,9 @@ describe('QuotesService', () => {
       };
 
       const result = await service.createQuote(tenantId, payload);
-      expect(result.workflowId).toBe(`quote-${quoteId}`);
-      expect(quoteRepo.save).toHaveBeenCalled();
+      expect(result.workflowId).toBeNull();
+      expect(quoteRepo.save).toHaveBeenCalledTimes(1);
+      expect(quoteRepo.update).not.toHaveBeenCalled();
     });
 
     it('publishes record.created domain event upon creation', async () => {
@@ -443,6 +537,108 @@ describe('QuotesService', () => {
         service.updateQuote(tenantId, 'non-existent', { title: 'Test' }),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
+
+    /**
+     * The customer can accept while a rep has the editor open. Saving the
+     * copy the rep loaded would write `accepted_at` back to NULL. The row is
+     * read under a lock instead, so the edit is judged against the
+     * acceptance — and a price change is refused.
+     */
+    it('judges the edit against the row as locked, so a concurrent acceptance is neither erased nor ignored', async () => {
+      const draft = {
+        id: quoteId,
+        tenantId,
+        quoteNumber: 'QT-2026-0001',
+        status: QuoteStatus.AWAITING_APPROVAL,
+        items: [],
+        acceptedAt: null,
+        supersededAt: null,
+      } as unknown as Quote;
+      const acceptedMeanwhile = {
+        ...draft,
+        acceptedAt: new Date('2026-05-01T10:00:00Z'),
+      };
+      // An unlocked read sees the draft; the locked read sees the acceptance.
+      quoteRepo.findOne = jest.fn().mockResolvedValue({ ...draft });
+      quoteRepo.createQueryBuilder = jest.fn(() => {
+        const qb: any = {
+          setLock: jest.fn(() => qb),
+          where: jest.fn(() => qb),
+          andWhere: jest.fn(() => qb),
+          getOne: jest.fn(async () => ({ ...acceptedMeanwhile })),
+        };
+        return qb;
+      }) as any;
+
+      await expect(
+        service.updateQuote(tenantId, quoteId, { currency: 'EUR' }),
+      ).rejects.toThrow(/accepted/);
+      expect(quoteRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('locks the quote inside a transaction before changing it', async () => {
+      quoteRepo.findOne = jest.fn().mockResolvedValue({
+        id: quoteId,
+        tenantId,
+        status: QuoteStatus.DRAFT,
+        items: [],
+      });
+
+      await service.updateQuote(tenantId, quoteId, { title: 'Renamed' });
+
+      expect(timeline.slice(0, 2)).toEqual(['begin', 'lock:pessimistic_write']);
+      expect(timeline).toContain('commit');
+    });
+
+    it('never renumbers a quote from the payload', async () => {
+      quoteRepo.findOne = jest.fn().mockResolvedValue({
+        id: quoteId,
+        tenantId,
+        quoteNumber: 'QT-2026-0001',
+        status: QuoteStatus.DRAFT,
+        items: [],
+      });
+
+      const saved = await service.updateQuote(tenantId, quoteId, {
+        quoteNumber: 'QT-2026-0002',
+      });
+
+      expect(saved.quoteNumber).toBe('QT-2026-0001');
+    });
+
+    // Approval provisions an order and raises invoices. Setting the status
+    // directly would skip all of that.
+    it.each([QuoteStatus.APPROVED, QuoteStatus.REJECTED])(
+      'refuses to set %s through an edit',
+      async (status) => {
+        quoteRepo.findOne = jest.fn().mockResolvedValue({
+          id: quoteId,
+          tenantId,
+          status: QuoteStatus.AWAITING_APPROVAL,
+          items: [],
+        });
+
+        await expect(
+          service.updateQuote(tenantId, quoteId, { status } as any),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(quoteRepo.save).not.toHaveBeenCalled();
+      },
+    );
+
+    it('refuses to move an approved quote back to draft', async () => {
+      quoteRepo.findOne = jest.fn().mockResolvedValue({
+        id: quoteId,
+        tenantId,
+        status: QuoteStatus.APPROVED,
+        items: [],
+      });
+
+      await expect(
+        service.updateQuote(tenantId, quoteId, {
+          status: QuoteStatus.DRAFT,
+        } as any),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
   });
 
   describe('findQuoteById', () => {
@@ -491,7 +687,8 @@ describe('QuotesService', () => {
 
       const res = await service.sendSignal(tenantId, quoteId, 'APPROVE');
       expect(mockWorkflowHandle.signal).toHaveBeenCalled();
-      expect(quoteRepo.save).toHaveBeenCalledWith(
+      expect(quoteRepo.update).toHaveBeenCalledWith(
+        { id: quoteId, tenantId },
         expect.objectContaining({ status: QuoteStatus.APPROVED }),
       );
       expect(res.status).toBe(QuoteStatus.APPROVED);
@@ -541,10 +738,148 @@ describe('QuotesService', () => {
         reason: 'Price too high',
       });
       expect(mockWorkflowHandle.signal).toHaveBeenCalled();
-      expect(quoteRepo.save).toHaveBeenCalledWith(
-        expect.objectContaining({ status: QuoteStatus.REJECTED }),
+      expect(quoteRepo.update).toHaveBeenCalledWith(
+        { id: quoteId, tenantId },
+        { status: QuoteStatus.REJECTED },
       );
       expect(res.status).toBe(QuoteStatus.REJECTED);
+    });
+
+    describe('as one decision', () => {
+      const pending = (overrides: Partial<Quote> = {}) =>
+        ({
+          id: quoteId,
+          tenantId,
+          quoteNumber: 'QT-2026-0001',
+          status: QuoteStatus.AWAITING_APPROVAL,
+          workflowId: `quote-${quoteId}`,
+          items: [],
+          supersededAt: null,
+          ...overrides,
+        }) as Quote;
+
+      /**
+       * The order and approval commit together, and Temporal only hears about
+       * it afterwards — so the workflow never acts on an approval that then
+       * rolls back, and a quote is never approved with no order behind it.
+       */
+      it('locks, approves and provisions the order in one transaction, then signals', async () => {
+        quoteRepo.findOne = jest.fn().mockResolvedValue(pending());
+
+        await service.sendSignal(tenantId, quoteId, 'APPROVE');
+
+        expect(timeline).toEqual([
+          'begin',
+          'lock:pessimistic_write',
+          'update',
+          'provision',
+          'commit',
+          'signal',
+        ]);
+        expect(invoicesService.createFromQuote).toHaveBeenCalledWith(
+          tenantId,
+          expect.objectContaining({ id: quoteId }),
+          quoteRepo.manager,
+        );
+      });
+
+      it('does not approve a quote whose order could not be created', async () => {
+        quoteRepo.findOne = jest.fn().mockResolvedValue(pending());
+        invoicesService.createFromQuote = jest
+          .fn()
+          .mockRejectedValue(new BadRequestException('Billing schedule invalid'));
+
+        await expect(
+          service.sendSignal(tenantId, quoteId, 'APPROVE'),
+        ).rejects.toThrow('Billing schedule invalid');
+        expect(timeline).toContain('rollback');
+        expect(mockWorkflowHandle.signal).not.toHaveBeenCalled();
+      });
+
+      // Whole-entity saves wrote `superseded_at` back to NULL when a revision
+      // landed mid-approval, resurrecting the replaced quote.
+      it('writes only the fields approval owns', async () => {
+        quoteRepo.findOne = jest.fn().mockResolvedValue(pending());
+
+        await service.sendSignal(tenantId, quoteId, 'APPROVE');
+
+        expect(quoteRepo.save).not.toHaveBeenCalled();
+        const [, patch] = (quoteRepo.update as jest.Mock).mock.calls[0];
+        expect(Object.keys(patch).sort()).toEqual(
+          [
+            'discountAmount',
+            'items',
+            'status',
+            'subtotalAmount',
+            'taxAmount',
+            'totalAmount',
+          ].sort(),
+        );
+      });
+
+      it.each(['APPROVE', 'REJECT'] as const)(
+        'refuses to %s a quote that a revision replaced',
+        async (action) => {
+          quoteRepo.findOne = jest
+            .fn()
+            .mockResolvedValue(pending({ supersededAt: new Date() }));
+
+          await expect(
+            service.sendSignal(tenantId, quoteId, action),
+          ).rejects.toThrow(/replaced/);
+          expect(quoteRepo.update).not.toHaveBeenCalled();
+          expect(mockWorkflowHandle.signal).not.toHaveBeenCalled();
+        },
+      );
+
+      it('refuses to reject a quote that is already approved', async () => {
+        quoteRepo.findOne = jest
+          .fn()
+          .mockResolvedValue(pending({ status: QuoteStatus.APPROVED }));
+
+        await expect(
+          service.sendSignal(tenantId, quoteId, 'REJECT'),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(quoteRepo.update).not.toHaveBeenCalled();
+      });
+
+      it('refuses to approve a rejected quote until it is resubmitted', async () => {
+        quoteRepo.findOne = jest
+          .fn()
+          .mockResolvedValue(pending({ status: QuoteStatus.REJECTED }));
+
+        await expect(
+          service.sendSignal(tenantId, quoteId, 'APPROVE'),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(invoicesService.createFromQuote).not.toHaveBeenCalled();
+      });
+
+      // A second click must not re-cost or re-signal; provisioning is
+      // idempotent, so it only fills in an order that is somehow missing.
+      it('treats approving an approved quote as a no-op apart from provisioning', async () => {
+        quoteRepo.findOne = jest
+          .fn()
+          .mockResolvedValue(pending({ status: QuoteStatus.APPROVED }));
+
+        const res = await service.sendSignal(tenantId, quoteId, 'APPROVE');
+
+        expect(res.status).toBe(QuoteStatus.APPROVED);
+        expect(quoteRepo.update).not.toHaveBeenCalled();
+        expect(invoicesService.createFromQuote).toHaveBeenCalled();
+        expect(mockWorkflowHandle.signal).not.toHaveBeenCalled();
+      });
+
+      it('keeps the approval when Temporal cannot be reached afterwards', async () => {
+        quoteRepo.findOne = jest.fn().mockResolvedValue(pending());
+        mockWorkflowHandle.signal = jest
+          .fn()
+          .mockRejectedValue(new Error('Temporal unavailable'));
+
+        const res = await service.sendSignal(tenantId, quoteId, 'APPROVE');
+
+        expect(res.status).toBe(QuoteStatus.APPROVED);
+        expect(timeline).toContain('commit');
+      });
     });
 
     it('throws BadRequestException on invalid action', async () => {

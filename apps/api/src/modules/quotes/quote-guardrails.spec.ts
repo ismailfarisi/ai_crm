@@ -96,10 +96,24 @@ describe('QuotesService — margin guardrails', () => {
       findOne: jest.fn().mockResolvedValue(storedQuote),
       create: jest.fn().mockImplementation((dto) => ({ id: quoteId, ...dto })),
       save: jest.fn().mockImplementation(async (quote) => quote),
-      manager: {
-        query: jest.fn().mockResolvedValue([{ current_value: 1 }]),
-      } as never,
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
+      // The locked read inside approval/edit transactions.
+      createQueryBuilder: jest.fn(() => {
+        const qb: any = {
+          setLock: () => qb,
+          where: () => qb,
+          andWhere: () => qb,
+          getOne: async () => ({ ...storedQuote }),
+        };
+        return qb;
+      }) as never,
     };
+    const manager: any = {
+      query: jest.fn().mockResolvedValue([{ current_value: 1 }]),
+      getRepository: () => quoteRepo,
+      transaction: (cb: (m: unknown) => unknown) => cb(manager),
+    };
+    (quoteRepo as any).manager = manager;
 
     costingService = {};
     rbacService = {};
@@ -286,7 +300,8 @@ describe('QuotesService — margin guardrails', () => {
       expect(costingService.recostLines).toHaveBeenCalledWith(tenantId, [
         SPOOFED_LINE,
       ]);
-      expect(quoteRepo.save).toHaveBeenCalledWith(
+      expect(quoteRepo.update).toHaveBeenCalledWith(
+        { id: quoteId, tenantId },
         expect.objectContaining({ totalAmount: 1250 }),
       );
     });
