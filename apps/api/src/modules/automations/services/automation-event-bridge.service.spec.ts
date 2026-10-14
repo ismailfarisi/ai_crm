@@ -422,6 +422,45 @@ describe('AutomationEventBridgeService', () => {
       expect(executions).toHaveLength(1);
       expect(executions[0].id).toBe('exec-ok');
     });
+
+    it('passes the outbox event id so a redelivery cannot start the automation twice', async () => {
+      workflowRepo.find.mockResolvedValue([
+        {
+          id: 'wf-1',
+          name: 'Flow',
+          tenantId: 'tenant-1',
+          status: 'ACTIVE',
+          triggerType: 'CRM_EVENT',
+          triggerConfig: { event: '*' },
+        },
+      ]);
+      automationsService.triggerExecution.mockResolvedValue({ id: 'exec-1' });
+
+      await service.handleDomainEvent({ ...baseEvent, eventId: 'evt-1' });
+
+      expect(automationsService.triggerExecution).toHaveBeenCalledWith(
+        'tenant-1',
+        'wf-1',
+        expect.any(Object),
+        'user-1',
+        { sourceEventId: 'evt-1' },
+      );
+    });
+
+    it('still tries every workflow, then fails an outbox delivery so the event is retried', async () => {
+      workflowRepo.find.mockResolvedValue([
+        { id: 'wf-fail', name: 'A', tenantId: 'tenant-1', status: 'ACTIVE', triggerType: 'CRM_EVENT', triggerConfig: { event: '*' } },
+        { id: 'wf-ok', name: 'B', tenantId: 'tenant-1', status: 'ACTIVE', triggerType: 'CRM_EVENT', triggerConfig: { event: '*' } },
+      ]);
+      automationsService.triggerExecution
+        .mockRejectedValueOnce(new Error('Temporal engine unavailable'))
+        .mockResolvedValueOnce({ id: 'exec-ok' });
+
+      await expect(
+        service.handleDomainEvent({ ...baseEvent, eventId: 'evt-2' }),
+      ).rejects.toThrow(/wf-fail/);
+      expect(automationsService.triggerExecution).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('CrmEventBusService Subscription', () => {
@@ -474,6 +513,8 @@ describe('AutomationEventBridgeService', () => {
           eventType: 'record.created',
           entityId: 'quote-999',
         }),
+        undefined,
+        { sourceEventId: expect.any(String) },
       );
     });
 

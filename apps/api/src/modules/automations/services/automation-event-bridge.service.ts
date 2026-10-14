@@ -245,7 +245,7 @@ export class AutomationEventBridgeService
    * active workflows for the tenant, and dispatches executions.
    */
   async handleDomainEvent(
-    event: CrmDomainEvent,
+    event: CrmDomainEvent & { eventId?: string },
   ): Promise<AutomationExecution[]> {
     const workflows = await this.workflowRepo.find({
       where: {
@@ -256,6 +256,7 @@ export class AutomationEventBridgeService
     });
 
     const triggeredExecutions: AutomationExecution[] = [];
+    const failedWorkflowIds: string[] = [];
 
     for (const wf of workflows) {
       const config = wf.triggerConfig;
@@ -293,26 +294,44 @@ export class AutomationEventBridgeService
             snapshot: event.snapshot,
             event,
           };
-        const exec = event.actorUserId
+        const exec = event.eventId
           ? await this.automationsService.triggerExecution(
               event.tenantId,
               wf.id,
               payload,
-              event.actorUserId,
+              event.actorUserId ?? undefined,
+              { sourceEventId: event.eventId },
             )
-          : await this.automationsService.triggerExecution(
-              event.tenantId,
-              wf.id,
-              payload,
-            );
+          : event.actorUserId
+            ? await this.automationsService.triggerExecution(
+                event.tenantId,
+                wf.id,
+                payload,
+                event.actorUserId,
+              )
+            : await this.automationsService.triggerExecution(
+                event.tenantId,
+                wf.id,
+                payload,
+              );
         if (exec) {
           triggeredExecutions.push(exec);
         }
       } catch (err: any) {
+        failedWorkflowIds.push(wf.id);
         this.logger.warn(
           `Failed to trigger automation "${wf.name}" (${wf.id}) for domain event ${event.eventType}: ${err.message}`,
         );
       }
+    }
+
+    // One failing workflow never stops the others. An outbox delivery then
+    // reports the failure so the dispatcher retries the event; triggers keyed
+    // on the event id make the retry re-run only what failed.
+    if (event.eventId && failedWorkflowIds.length > 0) {
+      throw new Error(
+        `Automations failed to start for event ${event.eventId}: ${failedWorkflowIds.join(', ')}`,
+      );
     }
 
     return triggeredExecutions;
