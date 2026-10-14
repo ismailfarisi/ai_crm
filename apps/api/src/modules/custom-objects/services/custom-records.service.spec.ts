@@ -217,6 +217,7 @@ describe('CustomRecordsService', () => {
             changedFields: ['serial'],
           },
         }),
+        { manager: mockManager },
       );
     });
   });
@@ -515,6 +516,7 @@ describe('CustomRecordsService', () => {
             changedFields: ['color', 'ownerId'],
           },
         }),
+        { manager: mockManager },
       );
     });
   });
@@ -585,6 +587,7 @@ describe('CustomRecordsService', () => {
             changedFields: ['serial', 'model'],
           },
         }),
+        { manager: mockManager },
       );
     });
   });

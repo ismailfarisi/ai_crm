@@ -207,8 +207,33 @@ export class QuotesService {
     for (let attempt = 1; !savedQuote; attempt++) {
       const quoteNumber = await this.generateNextQuoteNumber(tenantId);
       try {
-        savedQuote = await this.quoteRepository.save(
-          this.quoteRepository.create({ ...fields, quoteNumber }),
+        // The created event is written with the quote, so it commits with it.
+        // Its snapshot predates the Temporal start, so `workflowId` is null.
+        savedQuote = await this.quoteRepository.manager.transaction(
+          async (manager) => {
+            const repo = manager.getRepository(Quote);
+            const row = await repo.save(
+              repo.create({ ...fields, quoteNumber }),
+            );
+            await this.eventBus?.publish(
+              {
+                tenantId,
+                eventType: 'record.created',
+                entityType: 'core',
+                entityName: 'quote',
+                entityId: row.id,
+                actorUserId: (payload as any)?.actorUserId ?? null,
+                timestamp: new Date().toISOString(),
+                snapshot: {
+                  before: null,
+                  after: row,
+                  changedFields: Object.keys(row ?? {}),
+                },
+              },
+              { manager },
+            );
+            return row;
+          },
         );
       } catch (err) {
         if (
@@ -256,26 +281,7 @@ export class QuotesService {
         { workflowId: started },
       );
     }
-    const finalQuote = { ...savedQuote, workflowId: started } as Quote;
-
-    if (this.eventBus) {
-      await this.eventBus.publish({
-        tenantId,
-        eventType: 'record.created',
-        entityType: 'core',
-        entityName: 'quote',
-        entityId: finalQuote.id,
-        actorUserId: (payload as any)?.actorUserId ?? null,
-        timestamp: new Date().toISOString(),
-        snapshot: {
-          before: null,
-          after: finalQuote,
-          changedFields: Object.keys(finalQuote ?? {}),
-        },
-      });
-    }
-
-    return finalQuote;
+    return { ...savedQuote, workflowId: started } as Quote;
   }
 
   /**
@@ -406,6 +412,31 @@ export class QuotesService {
         // Safe as a whole-entity save: `quote` was read under the lock in
         // this transaction, so every column it writes back is current.
         const saved = await repo.save(quote);
+
+        // Written in this transaction: the event commits with the change.
+        if (this.eventBus) {
+          const afterSnapshot = { ...saved };
+          await this.eventBus.publish(
+            {
+              tenantId,
+              eventType: 'record.updated',
+              entityType: 'core',
+              entityName: 'quote',
+              entityId: saved.id,
+              actorUserId: (payload as any)?.actorUserId ?? null,
+              timestamp: new Date().toISOString(),
+              snapshot: {
+                before: beforeSnapshot,
+                after: afterSnapshot,
+                changedFields: this.eventBus.computeChangedFields(
+                  beforeSnapshot,
+                  afterSnapshot,
+                ),
+              },
+            },
+            { manager },
+          );
+        }
         return { saved, beforeSnapshot, submittedForApproval };
       });
 
@@ -422,28 +453,6 @@ export class QuotesService {
           entityId: saved.id,
         },
       );
-    }
-
-    if (this.eventBus) {
-      const afterSnapshot = { ...saved };
-      const changedFields = this.eventBus.computeChangedFields(
-        beforeSnapshot,
-        afterSnapshot,
-      );
-      await this.eventBus.publish({
-        tenantId,
-        eventType: 'record.updated',
-        entityType: 'core',
-        entityName: 'quote',
-        entityId: saved.id,
-        actorUserId: (payload as any)?.actorUserId ?? null,
-        timestamp: new Date().toISOString(),
-        snapshot: {
-          before: beforeSnapshot,
-          after: afterSnapshot,
-          changedFields,
-        },
-      });
     }
 
     return saved;

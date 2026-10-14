@@ -7,6 +7,7 @@ describe('ContactsService', () => {
   let service: ContactsService;
   let mockContactsRepo: any;
   let mockEventBus: any;
+  let mockEm: any;
 
   const actor: any = {
     id: 'user-1',
@@ -54,6 +55,11 @@ describe('ContactsService', () => {
       }),
     };
 
+    mockEm = { getRepository: vi.fn(() => mockContactsRepo) };
+    mockContactsRepo.manager = {
+      transaction: vi.fn(async (cb: any) => cb(mockEm)),
+    };
+
     service = new ContactsService(mockContactsRepo as any, mockEventBus as any);
   });
 
@@ -81,6 +87,7 @@ describe('ContactsService', () => {
             after: expect.objectContaining({ id: 'contact-1' }),
           }),
         }),
+        { manager: mockEm },
       );
       expect(result.id).toBe('contact-1');
     });
@@ -109,6 +116,7 @@ describe('ContactsService', () => {
             after: expect.objectContaining({ firstName: 'Alice-Updated' }),
           }),
         }),
+        { manager: mockEm },
       );
       expect(result.id).toBe('contact-1');
     });
@@ -132,6 +140,7 @@ describe('ContactsService', () => {
             after: null,
           }),
         }),
+        { manager: mockEm },
       );
     });
   });

@@ -147,7 +147,7 @@ export class CustomRecordsService {
     const object = await this.objectsService.getBySlug(tenantId, slug);
     const validatedValues = this.validationService.validate(object.attributes ?? [], payload?.values ?? {});
 
-    const saved = await this.recordRepo.manager.transaction(async (manager) => {
+    return this.recordRepo.manager.transaction(async (manager) => {
       await this.assertUniqueValues(manager, tenantId, object, validatedValues, null);
 
       const repo = manager.getRepository(CustomRecord);
@@ -157,25 +157,29 @@ export class CustomRecordsService {
         ownerId: payload?.ownerId ?? actor.id,
         values: validatedValues,
       });
-      return repo.save(record);
-    });
+      const saved = await repo.save(record);
 
-    await this.eventBus.publish({
-      tenantId,
-      eventType: 'record.created',
-      entityType: 'custom_object',
-      entityName: slug,
-      entityId: saved.id,
-      actorUserId: actor?.id ?? null,
-      timestamp: new Date().toISOString(),
-      snapshot: {
-        before: null,
-        after: saved.values,
-        changedFields: Object.keys(saved.values ?? {}),
-      },
-    });
+      // Outbox write in the same transaction: the event commits with the record.
+      await this.eventBus.publish(
+        {
+          tenantId,
+          eventType: 'record.created',
+          entityType: 'custom_object',
+          entityName: slug,
+          entityId: saved.id,
+          actorUserId: actor?.id ?? null,
+          timestamp: new Date().toISOString(),
+          snapshot: {
+            before: null,
+            after: saved.values,
+            changedFields: Object.keys(saved.values ?? {}),
+          },
+        },
+        { manager },
+      );
 
-    return saved;
+      return saved;
+    });
   }
 
   async update(tenantId: string, slug: string, id: string, payload: any, actor: any) {
@@ -183,7 +187,7 @@ export class CustomRecordsService {
     const patchInput: Record<string, any> = payload?.values ?? {};
     const ownerChanging = payload?.ownerId !== undefined;
 
-    const { saved, beforeValues, originalOwnerId } = await this.recordRepo.manager.transaction(
+    return this.recordRepo.manager.transaction(
       async (manager) => {
         // Row lock: the merged state we validate (required fields, strict
         // keys) and photograph for the event is the state we write over.
@@ -232,39 +236,43 @@ export class CustomRecordsService {
         record.values = row.values ?? {};
         record.ownerId = row.owner_id ?? null;
         if (row.updatedAt) record.updatedAt = row.updatedAt;
-        return { saved: record, beforeValues, originalOwnerId };
+        const saved = record;
+
+        const changedFields = this.eventBus.computeChangedFields(beforeValues, saved.values);
+
+        const beforeSnapshot: any = { ...beforeValues };
+        const afterSnapshot: any = { ...saved.values };
+
+        if (payload?.ownerId !== undefined && payload.ownerId !== originalOwnerId) {
+          if (!changedFields.includes('ownerId')) {
+            changedFields.push('ownerId');
+          }
+          beforeSnapshot.ownerId = originalOwnerId;
+          afterSnapshot.ownerId = payload.ownerId;
+        }
+
+        // Outbox write in the same transaction: the event commits with the update.
+        await this.eventBus.publish(
+          {
+            tenantId,
+            eventType: 'record.updated',
+            entityType: 'custom_object',
+            entityName: slug,
+            entityId: saved.id,
+            actorUserId: actor?.id ?? null,
+            timestamp: new Date().toISOString(),
+            snapshot: {
+              before: beforeSnapshot,
+              after: afterSnapshot,
+              changedFields: changedFields.sort(),
+            },
+          },
+          { manager },
+        );
+
+        return saved;
       },
     );
-
-    const changedFields = this.eventBus.computeChangedFields(beforeValues, saved.values);
-
-    const beforeSnapshot: any = { ...beforeValues };
-    const afterSnapshot: any = { ...saved.values };
-
-    if (payload?.ownerId !== undefined && payload.ownerId !== originalOwnerId) {
-      if (!changedFields.includes('ownerId')) {
-        changedFields.push('ownerId');
-      }
-      beforeSnapshot.ownerId = originalOwnerId;
-      afterSnapshot.ownerId = payload.ownerId;
-    }
-
-    await this.eventBus.publish({
-      tenantId,
-      eventType: 'record.updated',
-      entityType: 'custom_object',
-      entityName: slug,
-      entityId: saved.id,
-      actorUserId: actor?.id ?? null,
-      timestamp: new Date().toISOString(),
-      snapshot: {
-        before: beforeSnapshot,
-        after: afterSnapshot,
-        changedFields: changedFields.sort(),
-      },
-    });
-
-    return saved;
   }
 
   async delete(tenantId: string, slug: string, id: string, actor: any) {
@@ -278,21 +286,25 @@ export class CustomRecordsService {
           `OR ("target_type" = 'custom_object' AND "target_record_id" = $2))`,
         [tenantId, id],
       );
-    });
 
-    await this.eventBus.publish({
-      tenantId,
-      eventType: 'record.deleted',
-      entityType: 'custom_object',
-      entityName: slug,
-      entityId: id,
-      actorUserId: actor?.id ?? null,
-      timestamp: new Date().toISOString(),
-      snapshot: {
-        before: record.values,
-        after: null,
-        changedFields: Object.keys(record.values ?? {}),
-      },
+      // Outbox write in the same transaction: the event commits with the delete.
+      await this.eventBus.publish(
+        {
+          tenantId,
+          eventType: 'record.deleted',
+          entityType: 'custom_object',
+          entityName: slug,
+          entityId: id,
+          actorUserId: actor?.id ?? null,
+          timestamp: new Date().toISOString(),
+          snapshot: {
+            before: record.values,
+            after: null,
+            changedFields: Object.keys(record.values ?? {}),
+          },
+        },
+        { manager },
+      );
     });
   }
 }

@@ -89,7 +89,7 @@ export class CoreEntityBridgeService {
     payload: CreateCustomRecordLinkPayload,
     actor?: LinkActor,
   ): Promise<CustomRecordLink> {
-    const saved = await this.linkRepo.manager.transaction(async (manager) => {
+    return this.linkRepo.manager.transaction(async (manager) => {
       const relationship = await manager
         .getRepository(CustomRelationshipDefinition)
         .findOne({ where: { id: payload.relationshipId, tenantId } });
@@ -123,34 +123,39 @@ export class CoreEntityBridgeService {
         targetRecordId: payload.targetRecordId,
         targetType: relationship.targetType,
       });
+      let saved: CustomRecordLink;
       try {
-        return await linkRepo.save(link);
+        saved = await linkRepo.save(link);
       } catch (error) {
         if (isUniqueViolation(error)) {
           throw new ConflictException('These records are already linked');
         }
         throw error;
       }
+
+      // Outbox write in the same transaction: the event commits with the link.
+      if (this.eventBus) {
+        await this.eventBus.publish(
+          {
+            tenantId,
+            eventType: 'link.created',
+            entityType: 'custom_object',
+            entityName: 'link',
+            entityId: saved.id,
+            actorUserId: actor?.id ?? null,
+            timestamp: new Date().toISOString(),
+            snapshot: {
+              before: null,
+              after: saved,
+              changedFields: ['sourceRecordId', 'targetRecordId', 'targetType'],
+            },
+          },
+          { manager },
+        );
+      }
+
+      return saved;
     });
-
-    if (this.eventBus) {
-      await this.eventBus.publish({
-        tenantId,
-        eventType: 'link.created',
-        entityType: 'custom_object',
-        entityName: 'link',
-        entityId: saved.id,
-        actorUserId: actor?.id ?? null,
-        timestamp: new Date().toISOString(),
-        snapshot: {
-          before: null,
-          after: saved,
-          changedFields: ['sourceRecordId', 'targetRecordId', 'targetType'],
-        },
-      });
-    }
-
-    return saved;
   }
 
   async unlink(tenantId: string, linkId: string, actor?: LinkActor): Promise<void> {
@@ -164,24 +169,29 @@ export class CoreEntityBridgeService {
       }
     }
 
-    const res = await this.linkRepo.delete({ id: linkId, tenantId });
+    await this.linkRepo.manager.transaction(async (manager) => {
+      const res = await manager.getRepository(CustomRecordLink).delete({ id: linkId, tenantId });
 
-    if (this.eventBus && res?.affected && res.affected > 0) {
-      await this.eventBus.publish({
-        tenantId,
-        eventType: 'link.deleted',
-        entityType: 'custom_object',
-        entityName: 'link',
-        entityId: linkId,
-        actorUserId: actor?.id ?? null,
-        timestamp: new Date().toISOString(),
-        snapshot: {
-          before: { id: linkId },
-          after: null,
-          changedFields: ['id'],
-        },
-      });
-    }
+      if (this.eventBus && res?.affected && res.affected > 0) {
+        await this.eventBus.publish(
+          {
+            tenantId,
+            eventType: 'link.deleted',
+            entityType: 'custom_object',
+            entityName: 'link',
+            entityId: linkId,
+            actorUserId: actor?.id ?? null,
+            timestamp: new Date().toISOString(),
+            snapshot: {
+              before: { id: linkId },
+              after: null,
+              changedFields: ['id'],
+            },
+          },
+          { manager },
+        );
+      }
+    });
   }
 
   /** The target must be a live row, in this tenant, of the kind the relationship names. */

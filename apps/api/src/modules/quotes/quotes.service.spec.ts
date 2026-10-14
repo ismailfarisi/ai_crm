@@ -407,6 +407,8 @@ describe('QuotesService', () => {
             after: expect.objectContaining({ id: result.id }),
           }),
         }),
+        // Written in the same transaction as the quote.
+        { manager: expect.objectContaining({ getRepository: expect.any(Function) }) },
       );
     });
   });
@@ -527,6 +529,8 @@ describe('QuotesService', () => {
             after: expect.objectContaining({ title: 'Updated Title' }),
           }),
         }),
+        // Written in the update's own transaction.
+        { manager: expect.objectContaining({ getRepository: expect.any(Function) }) },
       );
     });
 

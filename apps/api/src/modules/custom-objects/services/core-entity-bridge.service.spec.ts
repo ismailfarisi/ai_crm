@@ -150,6 +150,7 @@ describe('CoreEntityBridgeService', () => {
       expect(created).not.toHaveProperty('id');
       expect(mockEventBus.publish).toHaveBeenCalledWith(
         expect.objectContaining({ actorUserId: 'u-1' }),
+        { manager: mockManager },
       );
     });
 
@@ -231,6 +232,7 @@ describe('CoreEntityBridgeService', () => {
       );
 
       await expect(service.link('tenant-1', payload, actor)).rejects.toThrow(ConflictException);
+      expect(mockEventBus.publish).not.toHaveBeenCalled();
     });
 
     it('publishes link.created domain event upon creating link', async () => {
@@ -249,14 +251,24 @@ describe('CoreEntityBridgeService', () => {
             changedFields: ['sourceRecordId', 'targetRecordId', 'targetType'],
           },
         }),
+        { manager: expect.objectContaining({ getRepository: expect.any(Function) }) },
       );
     });
   });
 
   describe('unlink', () => {
-    it('deletes link scoped to tenant', async () => {
+    let unlinkManager: any;
+
+    beforeEach(() => {
+      unlinkManager = { getRepository: vi.fn(() => mockLinkRepo) };
+      mockLinkRepo.manager = { transaction: vi.fn((cb: any) => cb(unlinkManager)) };
+    });
+
+    it('deletes link scoped to tenant inside a transaction', async () => {
       await service.unlink('tenant-1', 'link-123');
 
+      expect(mockLinkRepo.manager.transaction).toHaveBeenCalledTimes(1);
+      expect(unlinkManager.getRepository).toHaveBeenCalledWith(CustomRecordLink);
       expect(mockLinkRepo.delete).toHaveBeenCalledWith({
         id: 'link-123',
         tenantId: 'tenant-1',
@@ -279,6 +291,7 @@ describe('CoreEntityBridgeService', () => {
             changedFields: ['id'],
           },
         }),
+        { manager: expect.objectContaining({ getRepository: expect.any(Function) }) },
       );
     });
 
