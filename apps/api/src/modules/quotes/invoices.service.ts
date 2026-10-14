@@ -416,8 +416,15 @@ export class InvoicesService {
       ],
     });
 
-    invoice.sentAt = new Date();
-    const saved = await this.invoiceRepository.save(invoice);
+    // Only the column this method owns. `invoice` was loaded before seconds of
+    // rendering and mailing; saving it whole would write back the paid and
+    // credited amounts and status as they were then, undoing any payment or
+    // credit recorded meanwhile — and reopening the invoice to be paid again.
+    await this.invoiceRepository.update(
+      { id: invoice.id, tenantId },
+      { sentAt: new Date() },
+    );
+    const saved = await this.findById(tenantId, id);
     await this.emitInvoiceEvent(tenantId, saved, 'invoice.sent');
     return saved;
   }
