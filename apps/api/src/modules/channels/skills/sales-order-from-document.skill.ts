@@ -27,9 +27,25 @@ const slotSchema = z.object({
   totalAmount: z.number().positive().optional(),
 });
 
+/**
+ * What `execute` creates for a NEW_QUOTE order. Carried in the pending
+ * conversation (jsonb) rather than persisted at resolve time, so a NO or an
+ * expired confirmation leaves nothing behind.
+ */
+export interface PendingNewQuote {
+  title: string;
+  customerName: string;
+  customerEmail?: string;
+  prompt: string;
+  notes: string;
+  totalAmount?: number;
+}
+
 export interface ResolvedSalesOrderFromDocument {
   mode: 'MATCHED_QUOTE' | 'NEW_QUOTE';
-  quoteId: string;
+  /** Null for NEW_QUOTE until `execute` creates it. */
+  quoteId: string | null;
+  newQuote?: PendingNewQuote;
   quoteNumber: string;
   customerPoNumber: string;
   customerName: string;
@@ -177,27 +193,31 @@ export class SalesOrderFromDocumentSkill implements ChannelSkill<ResolvedSalesOr
         data.customerEmail ||
         (ctx.senderIdentifier.includes('@') ? ctx.senderIdentifier : undefined);
 
-      const created = await this.quotes.createQuote(ctx.organizationId, {
-        title: `PO ${customerPo}: ${data.description || 'Customer Order'}`,
-        customerName: data.customerName || 'General Customer',
-        customerEmail,
-        prompt: `Customer PO: ${customerPo}\nOrder: ${data.description || 'Customer order from chat'}\nAmount: ${data.totalAmount || 0}`,
-        notes: `Customer PO: ${customerPo}`,
-        createdBy: QuoteCreatedBy.AI,
-        totalAmount: data.totalAmount,
-      });
-
+      // Resolution only describes the quote. `resolve` runs before the user
+      // has confirmed anything (and again on every collecting turn), so
+      // creating here left an orphaned AI draft behind every NO or expiry.
+      const customerName = data.customerName || 'General Customer';
       return {
         kind: 'resolved',
         value: {
           mode: 'NEW_QUOTE',
-          quoteId: created.id,
-          quoteNumber: created.quoteNumber || '(new)',
+          quoteId: null,
+          newQuote: {
+            title: `PO ${customerPo}: ${data.description || 'Customer Order'}`,
+            customerName,
+            ...(customerEmail ? { customerEmail } : {}),
+            prompt: `Customer PO: ${customerPo}\nOrder: ${data.description || 'Customer order from chat'}\nAmount: ${data.totalAmount || 0}`,
+            notes: `Customer PO: ${customerPo}`,
+            ...(data.totalAmount !== undefined
+              ? { totalAmount: data.totalAmount }
+              : {}),
+          },
+          quoteNumber: '(new)',
           customerPoNumber: customerPo,
-          customerName: created.customerName || data.customerName || 'Customer',
-          totalAmount: created.totalAmount || data.totalAmount || 0,
-          currency: created.currency || 'USD',
-          itemsCount: (created.items || []).length || 1,
+          customerName: data.customerName || 'Customer',
+          totalAmount: data.totalAmount || 0,
+          currency: 'USD',
+          itemsCount: 1,
         },
       };
     }
@@ -259,7 +279,9 @@ export class SalesOrderFromDocumentSkill implements ChannelSkill<ResolvedSalesOr
     const modeDesc =
       resolved.mode === 'MATCHED_QUOTE'
         ? `Create Sales Order for ${resolved.customerName} against ${resolved.customerPoNumber} by approving quote ${resolved.quoteNumber}?`
-        : `Create and provision Sales Order for ${resolved.customerName} from customer ${resolved.customerPoNumber} (Quote ${resolved.quoteNumber})?`;
+        : resolved.quoteId
+          ? `Create and provision Sales Order for ${resolved.customerName} from customer ${resolved.customerPoNumber} (Quote ${resolved.quoteNumber})?`
+          : `Create a new quote and provision a Sales Order for ${resolved.customerName} from customer ${resolved.customerPoNumber}?`;
 
     return (
       `${modeDesc}\n\n` +
@@ -273,21 +295,30 @@ export class SalesOrderFromDocumentSkill implements ChannelSkill<ResolvedSalesOr
     resolved: ResolvedSalesOrderFromDocument,
     ctx: SkillContext,
   ): Promise<SkillOutcome> {
-    await this.quotes.sendSignal(
-      ctx.organizationId,
-      resolved.quoteId,
-      'APPROVE',
-    );
-    const order = await this.orders.findByQuote(
-      ctx.organizationId,
-      resolved.quoteId,
-    );
+    let quoteId = resolved.quoteId;
+    let quoteNumber = resolved.quoteNumber;
+    if (!quoteId) {
+      if (!resolved.newQuote) {
+        throw new Error('Nothing to create: the order has no quote details.');
+      }
+      // Created only now, after the user's YES.
+      const created = await this.quotes.createQuote(ctx.organizationId, {
+        ...resolved.newQuote,
+        customerEmail: resolved.newQuote.customerEmail,
+        createdBy: QuoteCreatedBy.AI,
+      });
+      quoteId = created.id;
+      quoteNumber = created.quoteNumber || quoteNumber;
+    }
+
+    await this.quotes.sendSignal(ctx.organizationId, quoteId, 'APPROVE');
+    const order = await this.orders.findByQuote(ctx.organizationId, quoteId);
 
     const orderNum = order ? order.orderNumber : '(provisioned)';
     return {
-      reply: `Created Sales Order ${orderNum} for ${resolved.customerName} from ${resolved.customerPoNumber} (Quote ${resolved.quoteNumber}).`,
+      reply: `Created Sales Order ${orderNum} for ${resolved.customerName} from ${resolved.customerPoNumber} (Quote ${quoteNumber}).`,
       resultType: 'SALES_ORDER',
-      resultId: order ? order.id : resolved.quoteId,
+      resultId: order ? order.id : quoteId,
     };
   }
 }
