@@ -194,37 +194,62 @@ export class FinanceService {
      * from, which is the point at which it starts costing money rather than
      * looking odd.
      */
-    const existing = await this.accountRepository.count({
-      where: { tenantId },
+    /*
+     * Clearing the old default, saving the account and posting its opening
+     * balance commit together: a failed posting must not leave an account
+     * whose balance the ledger never heard of, nor a tenant whose default was
+     * cleared with nothing to replace it.
+     */
+    return this.accountRepository.manager.transaction(async (manager) => {
+      const accounts = manager.getRepository(FinanceAccount);
+      await this.lockDefaultAccount(manager, tenantId);
+
+      const existing = await accounts.count({ where: { tenantId } });
+      const isDefault = dto.isDefault === true || existing === 0;
+
+      if (isDefault) {
+        await accounts.update(
+          { tenantId, isDefault: true },
+          { isDefault: false },
+        );
+      }
+
+      const openingBalance = Number(dto.balance) || 0;
+
+      const account = accounts.create({
+        tenantId,
+        name: dto.name,
+        accountType: dto.accountType,
+        currency: dto.currency || 'USD',
+        balance: openingBalance,
+        accountNumber: dto.accountNumber || null,
+        isDefault,
+      });
+
+      const saved = await accounts.save(account);
+
+      if (openingBalance !== 0) {
+        await this.postOpeningBalance(tenantId, saved, openingBalance, manager);
+      }
+
+      return saved;
     });
-    const isDefault = dto.isDefault === true || existing === 0;
+  }
 
-    if (isDefault) {
-      await this.accountRepository.update(
-        { tenantId, isDefault: true },
-        { isDefault: false },
-      );
-    }
-
-    const openingBalance = Number(dto.balance) || 0;
-
-    const account = this.accountRepository.create({
-      tenantId,
-      name: dto.name,
-      accountType: dto.accountType,
-      currency: dto.currency || 'USD',
-      balance: openingBalance,
-      accountNumber: dto.accountNumber || null,
-      isDefault,
-    });
-
-    const saved = await this.accountRepository.save(account);
-
-    if (openingBalance !== 0) {
-      await this.postOpeningBalance(tenantId, saved, openingBalance);
-    }
-
-    return saved;
+  /**
+   * Serialises everything that decides which of a tenant's accounts is the
+   * default. Without it two accounts created (or promoted) at once each clear
+   * the flag and then set their own, leaving two defaults. An advisory lock
+   * rather than a row lock because the first account has no row to lock yet.
+   * Released when the transaction ends.
+   */
+  private async lockDefaultAccount(
+    manager: EntityManager,
+    tenantId: string,
+  ): Promise<void> {
+    await manager.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [
+      `finance_accounts:default:${tenantId}`,
+    ]);
   }
 
   /**
@@ -240,29 +265,39 @@ export class FinanceService {
     id: string,
     dto: UpdateFinanceAccountDto,
   ): Promise<FinanceAccount> {
-    const account = await this.accountRepository.findOne({
-      where: { id, tenantId },
+    return this.accountRepository.manager.transaction(async (manager) => {
+      const accounts = manager.getRepository(FinanceAccount);
+      if (dto.isDefault !== undefined) {
+        await this.lockDefaultAccount(manager, tenantId);
+      }
+
+      const account = await accounts.findOne({
+        where: { id, tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!account) {
+        throw new NotFoundException(`Finance account ${id} not found`);
+      }
+
+      // Clearing the old default and setting the new one commit together, so
+      // a failure in between cannot leave the tenant with no default at all.
+      if (dto.isDefault === true) {
+        await accounts.update(
+          { tenantId, isDefault: true },
+          { isDefault: false },
+        );
+        account.isDefault = true;
+      } else if (dto.isDefault === false) {
+        account.isDefault = false;
+      }
+
+      if (dto.name !== undefined) account.name = dto.name;
+      if (dto.accountNumber !== undefined) {
+        account.accountNumber = dto.accountNumber || null;
+      }
+
+      return accounts.save(account);
     });
-    if (!account) {
-      throw new NotFoundException(`Finance account ${id} not found`);
-    }
-
-    if (dto.isDefault === true) {
-      await this.accountRepository.update(
-        { tenantId, isDefault: true },
-        { isDefault: false },
-      );
-      account.isDefault = true;
-    } else if (dto.isDefault === false) {
-      account.isDefault = false;
-    }
-
-    if (dto.name !== undefined) account.name = dto.name;
-    if (dto.accountNumber !== undefined) {
-      account.accountNumber = dto.accountNumber || null;
-    }
-
-    return this.accountRepository.save(account);
   }
 
   /**
@@ -280,10 +315,12 @@ export class FinanceService {
     tenantId: string,
     account: FinanceAccount,
     amount: number,
+    manager: EntityManager = this.journalRepository.manager,
   ): Promise<void> {
     const referenceId = `opening-balance:${account.id}`;
+    const journal = manager.getRepository(JournalEntry);
 
-    const already = await this.journalRepository.findOne({
+    const already = await journal.findOne({
       where: { tenantId, referenceType: 'MANUAL', referenceId },
     });
     if (already) return;
@@ -291,37 +328,41 @@ export class FinanceService {
     // Tenants created before opening balance equity existed have no 3100 in
     // their chart. Provisioning is idempotent, so this only adds what is
     // missing rather than rebuilding the chart.
-    await this.ledger.provisionChartOfAccounts(tenantId);
+    await this.ledger.provisionChartOfAccounts(tenantId, manager);
 
     const debitsCash = amount > 0;
     const magnitude = Math.abs(amount);
 
-    const entry = this.journalRepository.create({
+    const entry = journal.create({
       tenantId,
       entryNumber: `JE-OB-${account.id.slice(0, 8)}`,
       referenceType: 'MANUAL',
       referenceId,
       entryDate: new Date(),
       totalAmount: magnitude,
-      lines: await this.ledger.resolveLines(tenantId, [
-        {
-          financeAccountId: account.id,
-          accountName: account.name,
-          debit: debitsCash ? magnitude : 0,
-          credit: debitsCash ? 0 : magnitude,
-          description: `Opening balance for ${account.name}`,
-        },
-        {
-          role: LEDGER_ROLES.OPENING_BALANCE_EQUITY,
-          accountName: 'Opening balance equity',
-          debit: debitsCash ? 0 : magnitude,
-          credit: debitsCash ? magnitude : 0,
-          description: `Opening balance for ${account.name}`,
-        },
-      ]),
+      lines: await this.ledger.resolveLines(
+        tenantId,
+        [
+          {
+            financeAccountId: account.id,
+            accountName: account.name,
+            debit: debitsCash ? magnitude : 0,
+            credit: debitsCash ? 0 : magnitude,
+            description: `Opening balance for ${account.name}`,
+          },
+          {
+            role: LEDGER_ROLES.OPENING_BALANCE_EQUITY,
+            accountName: 'Opening balance equity',
+            debit: debitsCash ? 0 : magnitude,
+            credit: debitsCash ? magnitude : 0,
+            description: `Opening balance for ${account.name}`,
+          },
+        ],
+        manager,
+      ),
     });
 
-    await this.journalRepository.save(entry);
+    await journal.save(entry);
   }
 
   async transferFunds(

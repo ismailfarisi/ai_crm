@@ -353,6 +353,77 @@ describe('FinanceService', () => {
       ).rejects.toThrow('not found');
     });
 
+    /*
+     * Clearing the old default, saving the account and posting its opening
+     * balance were three separate writes. A failure in the posting left an
+     * account whose balance the ledger never heard of, and two accounts
+     * created at once could both end up the default.
+     */
+    it('creates the account, moves the default and posts the opening balance in one transaction', async () => {
+      await service.createAccount(tenantId, {
+        name: 'Operating Checking',
+        accountType: 'BANK',
+        currency: 'USD',
+        balance: 15000,
+        isDefault: true,
+      });
+
+      expect((accountRepo as any).manager.transaction).toHaveBeenCalledTimes(1);
+      expect(txManager.getRepository).toHaveBeenCalledWith(FinanceAccount);
+      expect(txManager.getRepository).toHaveBeenCalledWith(JournalEntry);
+      // Serialises default changes for the tenant, including the first
+      // account, where there is no existing row to lock.
+      expect(txManager.query).toHaveBeenCalledWith(
+        expect.stringContaining('pg_advisory_xact_lock'),
+        [`finance_accounts:default:${tenantId}`],
+      );
+      // The ledger has to see the uncommitted account to give it a ledger
+      // account, so it must be handed the transaction's manager.
+      expect(ledger.provisionChartOfAccounts).toHaveBeenCalledWith(
+        tenantId,
+        txManager,
+      );
+      expect(ledger.resolveLines).toHaveBeenCalledWith(
+        tenantId,
+        expect.any(Array),
+        txManager,
+      );
+    });
+
+    it('fails the whole creation when the opening balance cannot post', async () => {
+      ledger.resolveLines.mockRejectedValueOnce(new Error('chart missing'));
+
+      await expect(
+        service.createAccount(tenantId, {
+          name: 'Operating Checking',
+          accountType: 'BANK',
+          currency: 'USD',
+          balance: 15000,
+        }),
+      ).rejects.toThrow('chart missing');
+      expect((accountRepo as any).manager.transaction).toHaveBeenCalled();
+    });
+
+    it('moves the default inside a transaction holding the default lock', async () => {
+      (accountRepo.findOne as jest.Mock).mockResolvedValue({
+        id: 'acc-2',
+        tenantId,
+        name: 'Petty Cash',
+        isDefault: false,
+      });
+
+      await service.updateAccount(tenantId, 'acc-2', { isDefault: true });
+
+      expect((accountRepo as any).manager.transaction).toHaveBeenCalledTimes(1);
+      expect(txManager.query).toHaveBeenCalledWith(
+        expect.stringContaining('pg_advisory_xact_lock'),
+        [`finance_accounts:default:${tenantId}`],
+      );
+      expect(accountRepo.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+      );
+    });
+
     it('posts nothing when an account opens at zero', async () => {
       await service.createAccount(tenantId, {
         name: 'Empty Account',
@@ -448,9 +519,7 @@ describe('FinanceService', () => {
     it('moves the money and posts the double entry inside one transaction', async () => {
       const res = await transfer();
 
-      expect((accountRepo as any).manager.transaction).toHaveBeenCalledTimes(
-        1,
-      );
+      expect((accountRepo as any).manager.transaction).toHaveBeenCalledTimes(1);
       expect(txManager.getRepository).toHaveBeenCalledWith(JournalEntry);
       expect(ledger.resolveLines).toHaveBeenCalledWith(
         tenantId,
@@ -499,7 +568,11 @@ describe('FinanceService', () => {
     });
 
     it('locks both accounts FOR UPDATE in id order, whichever way the money goes', async () => {
-      await transfer({ fromAccountId: 'acc-2', toAccountId: 'acc-1', amount: 500 });
+      await transfer({
+        fromAccountId: 'acc-2',
+        toAccountId: 'acc-1',
+        amount: 500,
+      });
 
       const lockedIds = (accountRepo.findOne as jest.Mock).mock.calls
         .filter(([options]) => options.lock)
