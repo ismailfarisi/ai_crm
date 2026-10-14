@@ -295,6 +295,62 @@ This is now resolved platform-wide:
 
 ---
 
+## In-app assistant
+
+Each assistant turn runs `agentReActWorkflow` on `assistant-queue` and streams
+its steps over SSE from `assistant_messages`. Deferred work:
+
+### No token streaming — open
+
+The final answer arrives whole, once the model has finished it. Step rows
+stream as they are written, but the text of a single model response does not.
+Closing it means emitting deltas from the provider adapter and an additional
+row kind for partial text, so a reconnect can replay them.
+
+### No attachments — open
+
+The assistant accepts text only. Attachments are not sent to the model, and
+conversations have no owner mapping in `modules/storage/attachment-owners.ts`.
+
+### Contact resolution does not search by phone — open
+
+Contact resolution in the assistant does not use phone numbers as a search key.
+
+### The assistant module runs in the worker too — by design
+
+The worker loads the assistant module, so the stale-turn sweep cron
+(`AssistantSweepService`, every minute) is registered there as well and is
+inert in that process by design.
+
+### Not yet verified against a live stack — open
+
+The first version was checked with the automated suites only. No database,
+Redis, Temporal or Docker was available when it was written. Still to do on a
+running stack:
+
+- **Migration and drift:** `pnpm migration:run && pnpm migration:generate Probe`
+  must report no changes, and `pnpm check:drift` must pass against the
+  baseline.
+- **Worker pickup:** the Temporal worker picks up jobs on `assistant-queue`.
+- **SSE end to end:** the stream delivers, replays from `seq` and closes when
+  the turn finishes.
+- **Manual E2E, seeded data:**
+  1. Ctrl/⌘J on a contact page shows that contact as the context chip.
+  2. "Show me this contact's last messages and draft a follow-up" returns step
+     rows for the thread read and a drafted message.
+  3. "Send it" produces an approval card with recipient, provider and full text.
+  4. The same conversation in a second tab shows the same card.
+  5. Approving in both tabs quickly: one succeeds, the other shows the "no
+     longer waiting for approval" toast, and one outbound row appears.
+  6. The audit log holds `channel_message.send.executed`, `AI_ASSISTED`,
+     `ASSISTANT` and a non-null message id.
+  7. Toggling the browser offline for 5s mid-turn catches up with no duplicates.
+  8. With the worker stopped, a turn left for five minutes shows "Couldn't
+     finish: The assistant stopped responding". A member without
+     `channel:send` is told it cannot send, and no approval card appears.
+
+---
+
 ## Smaller things found on the way
 
 - **A malformed quote body returns 500, not 400.** `POST /quotes` with a badly
