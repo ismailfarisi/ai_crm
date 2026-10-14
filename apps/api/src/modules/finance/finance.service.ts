@@ -350,74 +350,115 @@ export class FinanceService {
       );
     }
 
-    const fromAccount = await this.accountRepository.findOne({
-      where: { id: dto.fromAccountId, tenantId },
-    });
-    if (!fromAccount) {
-      throw new NotFoundException(
-        `Source account ${dto.fromAccountId} not found`,
+    const amount = dto.amount;
+
+    /*
+     * One transaction for both balances and the journal, so a failure part
+     * way leaves nothing moved. Both rows are locked before the balance is
+     * read — otherwise two transfers out of one account could each pass the
+     * check against the same figure — and they are locked in id order, so a
+     * transfer A→B and a simultaneous B→A cannot each hold one lock while
+     * waiting for the other.
+     */
+    return this.accountRepository.manager.transaction(async (manager) => {
+      const accounts = manager.getRepository(FinanceAccount);
+      const locked = new Map<string, FinanceAccount | null>();
+      for (const id of [dto.fromAccountId, dto.toAccountId].sort()) {
+        locked.set(
+          id,
+          await accounts.findOne({
+            where: { id, tenantId },
+            lock: { mode: 'pessimistic_write' },
+          }),
+        );
+      }
+
+      const fromAccount = locked.get(dto.fromAccountId);
+      if (!fromAccount) {
+        throw new NotFoundException(
+          `Source account ${dto.fromAccountId} not found`,
+        );
+      }
+      const toAccount = locked.get(dto.toAccountId);
+      if (!toAccount) {
+        throw new NotFoundException(
+          `Destination account ${dto.toAccountId} not found`,
+        );
+      }
+
+      const currentBalance = Number(fromAccount.balance);
+      if (currentBalance < amount) {
+        throw new BadRequestException(
+          `Insufficient balance in source account. Available: ${currentBalance}, Required: ${amount}`,
+        );
+      }
+
+      // Relative, never read-modify-write, the same as invoice payments: the
+      // database does the arithmetic on the numeric column.
+      await manager.query(
+        `UPDATE "finance_accounts" SET "balance" = "balance" - $1, "updatedAt" = now()
+         WHERE "id" = $2 AND "tenantId" = $3`,
+        [amount, fromAccount.id, tenantId],
       );
-    }
-
-    const toAccount = await this.accountRepository.findOne({
-      where: { id: dto.toAccountId, tenantId },
-    });
-    if (!toAccount) {
-      throw new NotFoundException(
-        `Destination account ${dto.toAccountId} not found`,
+      await manager.query(
+        `UPDATE "finance_accounts" SET "balance" = "balance" + $1, "updatedAt" = now()
+         WHERE "id" = $2 AND "tenantId" = $3`,
+        [amount, toAccount.id, tenantId],
       );
-    }
 
-    const currentBalance = Number(fromAccount.balance);
-    if (currentBalance < dto.amount) {
-      throw new BadRequestException(
-        `Insufficient balance in source account. Available: ${currentBalance}, Required: ${dto.amount}`,
-      );
-    }
+      const randomSuffix = Math.floor(Math.random() * 1000)
+        .toString()
+        .padStart(3, '0');
+      const entryNumber = `JE-TRF-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}${randomSuffix}`;
 
-    fromAccount.balance = currentBalance - dto.amount;
-    toAccount.balance = Number(toAccount.balance) + dto.amount;
+      const journal = manager.getRepository(JournalEntry);
+      const journalEntry = journal.create({
+        tenantId,
+        entryNumber,
+        referenceType: 'TRANSFER',
+        referenceId: `${fromAccount.id}->${toAccount.id}`,
+        entryDate: new Date(),
+        totalAmount: amount,
+        lines: await this.ledger.resolveLines(
+          tenantId,
+          [
+            {
+              financeAccountId: fromAccount.id,
+              accountName: fromAccount.name,
+              debit: 0,
+              credit: amount,
+              description: dto.description || `Transfer to ${toAccount.name}`,
+            },
+            {
+              financeAccountId: toAccount.id,
+              accountName: toAccount.name,
+              debit: amount,
+              credit: 0,
+              description:
+                dto.description || `Transfer from ${fromAccount.name}`,
+            },
+          ],
+          manager,
+        ),
+      });
 
-    await this.accountRepository.save(fromAccount);
-    await this.accountRepository.save(toAccount);
+      const savedJournal = await journal.save(journalEntry);
 
-    const randomSuffix = Math.floor(Math.random() * 1000)
-      .toString()
-      .padStart(3, '0');
-    const entryNumber = `JE-TRF-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}${randomSuffix}`;
+      // Re-read rather than echo a figure computed here, so the response
+      // carries what the database actually holds.
+      const fromAfter = await accounts.findOne({
+        where: { id: fromAccount.id, tenantId },
+      });
+      const toAfter = await accounts.findOne({
+        where: { id: toAccount.id, tenantId },
+      });
 
-    const journalEntry = this.journalRepository.create({
-      tenantId,
-      entryNumber,
-      referenceType: 'TRANSFER',
-      referenceId: `${fromAccount.id}->${toAccount.id}`,
-      entryDate: new Date(),
-      totalAmount: dto.amount,
-      lines: await this.ledger.resolveLines(tenantId, [
-        {
-          financeAccountId: fromAccount.id,
-          accountName: fromAccount.name,
-          debit: 0,
-          credit: dto.amount,
-          description: dto.description || `Transfer to ${toAccount.name}`,
-        },
-        {
-          financeAccountId: toAccount.id,
-          accountName: toAccount.name,
-          debit: dto.amount,
-          credit: 0,
-          description: dto.description || `Transfer from ${fromAccount.name}`,
-        },
-      ]),
+      return {
+        fromAccount: fromAfter ?? fromAccount,
+        toAccount: toAfter ?? toAccount,
+        journalEntry: savedJournal,
+      };
     });
-
-    const savedJournal = await this.journalRepository.save(journalEntry);
-
-    return {
-      fromAccount,
-      toAccount,
-      journalEntry: savedJournal,
-    };
   }
 
   async recordInvoicePayment(
