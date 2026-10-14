@@ -62,6 +62,19 @@ export const createCustomRecordPayloadSchema = z.object({
 
 export const updateCustomRecordPayloadSchema = createCustomRecordPayloadSchema.partial();
 
+/**
+ * Body of `POST /objects/links`. Only these fields are accepted: the tenant
+ * comes from the caller's context and the target type is derived from the
+ * relationship definition (if supplied it must agree). Unknown keys such as
+ * `tenantId`, `id` or `actorUserId` are stripped.
+ */
+export const createCustomRecordLinkSchema = z.object({
+  relationshipId: z.string().uuid(),
+  sourceRecordId: z.string().uuid(),
+  targetRecordId: z.string().uuid(),
+  targetType: z.enum(['custom_object', 'core_entity']).optional(),
+});
+
 export type CreateCustomObjectPayload = z.infer<typeof createCustomObjectSchema>;
 export type UpdateCustomObjectPayload = z.infer<typeof updateCustomObjectSchema>;
 export type CreateCustomAttributePayload = z.infer<typeof createCustomAttributeSchema>;
@@ -69,3 +82,5 @@ export type UpdateCustomAttributePayload = z.infer<typeof updateCustomAttributeS
 export type CreateCustomRelationshipPayload = z.infer<typeof createCustomRelationshipSchema>;
 export type CreateCustomRecordPayload = z.infer<typeof createCustomRecordPayloadSchema>;
 export type UpdateCustomRecordPayload = z.infer<typeof updateCustomRecordPayloadSchema>;
+export type CreateCustomRecordLinkPayload = z.output<typeof createCustomRecordLinkSchema>;
+export type CreateCustomRecordLinkInput = z.input<typeof createCustomRecordLinkSchema>;
