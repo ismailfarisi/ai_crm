@@ -16,6 +16,7 @@ describe('DocumentTemplatesService', () => {
   let mockOrgRepo: any;
   let mockAiService: any;
   let mockPdfRenderer: any;
+  let mockTxManager: any;
 
   const orgId = 'org-111';
   const userId = 'user-222';
@@ -55,6 +56,15 @@ describe('DocumentTemplatesService', () => {
         Promise.resolve({ id: entity.id || 'tmpl-new', ...entity }),
       ),
       remove: jest.fn((entity) => Promise.resolve(entity)),
+    };
+    // Writes inside the transaction land on the same mock, so the existing
+    // assertions on `mockTemplateRepo.save` hold whether or not one is used.
+    mockTxManager = {
+      query: jest.fn().mockResolvedValue([]),
+      getRepository: jest.fn(() => mockTemplateRepo),
+    };
+    mockTemplateRepo.manager = {
+      transaction: jest.fn((cb: any) => cb(mockTxManager)),
     };
 
     mockOrgRepo = {
@@ -384,6 +394,74 @@ describe('DocumentTemplatesService', () => {
           appliesTo: [],
           isDefault: false,
         }),
+      );
+    });
+
+    it('clears the old default and saves the new one in one transaction, under the tenant default lock', async () => {
+      // Saved separately, a failure between the two left the document type
+      // with no default at all; run concurrently, two setDefaults could each
+      // clear the other's predecessor and both end up default.
+      const targetTemplate: DocumentTemplate = {
+        ...sampleTemplate,
+        id: 'tmpl-2',
+        isDefault: false,
+        appliesTo: [],
+      };
+      mockTemplateRepo.findOne.mockResolvedValue({ ...targetTemplate });
+      mockTemplateRepo.find.mockResolvedValue([{ ...sampleTemplate }]);
+
+      await service.setDefault(orgId, 'tmpl-2', ['INVOICE']);
+
+      expect(mockTemplateRepo.manager.transaction).toHaveBeenCalledTimes(1);
+      expect(mockTxManager.query).toHaveBeenCalledWith(
+        expect.stringContaining('pg_advisory_xact_lock'),
+        [`document_templates:default:${orgId}`],
+      );
+      // The lock is taken before the other templates are read.
+      expect(mockTxManager.query.mock.invocationCallOrder[0]).toBeLessThan(
+        mockTemplateRepo.find.mock.invocationCallOrder[0],
+      );
+      expect(mockTemplateRepo.save).toHaveBeenCalledTimes(2);
+    });
+
+    it('creates a general default by retiring the previous general default', async () => {
+      // At most one general (no document types) default per tenant, which a
+      // partial unique index now enforces.
+      const generalDefault: DocumentTemplate = {
+        ...sampleTemplate,
+        id: 'tmpl-1',
+        isDefault: true,
+        appliesTo: [],
+      };
+      mockTemplateRepo.find.mockResolvedValue([{ ...generalDefault }]);
+
+      await service.create(orgId, userId, {
+        name: 'New house style',
+        isDefault: true,
+        appliesTo: [],
+      });
+
+      expect(mockTemplateRepo.manager.transaction).toHaveBeenCalledTimes(1);
+      expect(mockTemplateRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'tmpl-1', isDefault: false }),
+      );
+    });
+
+    it('makes a template the general default by retiring the previous one', async () => {
+      mockTemplateRepo.findOne.mockResolvedValue({
+        ...sampleTemplate,
+        id: 'tmpl-2',
+        isDefault: false,
+        appliesTo: ['STATEMENT'],
+      });
+      mockTemplateRepo.find.mockResolvedValue([
+        { ...sampleTemplate, id: 'tmpl-1', isDefault: true, appliesTo: [] },
+      ]);
+
+      await service.update(orgId, 'tmpl-2', { isDefault: true, appliesTo: [] });
+
+      expect(mockTemplateRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'tmpl-1', isDefault: false }),
       );
     });
 
