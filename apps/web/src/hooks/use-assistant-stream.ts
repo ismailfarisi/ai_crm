@@ -6,6 +6,7 @@ import type { AssistantConversationDetailDto, AssistantMessageDto, AssistantTurn
 import { ACTIVE_ASSISTANT_TURN_STATUSES } from '@saas/shared';
 import { queryKeys } from '@/lib/api/endpoints';
 import { openEventStream } from '@/lib/api/stream';
+import { ApiError } from '@/lib/api/config';
 
 export function mergeMessages(
   detail: AssistantConversationDetailDto,
@@ -26,13 +27,15 @@ export function mergeMessages(
 }
 
 /** Live transcript for one conversation. Reconnects with backoff and resumes from the last seq. */
-export function useAssistantStream(conversationId: string | null): { connected: boolean } {
+export function useAssistantStream(conversationId: string | null, enabled = true): { connected: boolean } {
   const queryClient = useQueryClient();
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    if (!conversationId) return;
+    if (!conversationId || !enabled) return;
     const key = queryKeys.assistantConversation(conversationId);
+    // Rows arriving before the detail is cached would be discarded, so wait for it.
+    if (!queryClient.getQueryData(key)) return;
     const controller = new AbortController();
     let attempt = 0;
 
@@ -58,8 +61,12 @@ export function useAssistantStream(conversationId: string | null): { connected: 
               );
             },
           });
-        } catch {
+        } catch (error) {
           if (controller.signal.aborted) return;
+          if (error instanceof ApiError && (error.status === 403 || error.status === 404)) {
+            setConnected(false);
+            return;
+          }
         }
         setConnected(false);
         attempt += 1;
@@ -68,7 +75,7 @@ export function useAssistantStream(conversationId: string | null): { connected: 
     };
     void loop();
     return () => controller.abort();
-  }, [conversationId, queryClient]);
+  }, [conversationId, enabled, queryClient]);
 
   return { connected };
 }

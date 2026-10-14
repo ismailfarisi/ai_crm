@@ -32,5 +32,5 @@ export const assistantEndpoints = {
 
 export const assistantKeys = {
   assistantConversations: ['assistant', 'conversations'] as const,
-  assistantConversation: (id: string) => ['assistant', 'conversations', id] as const,
+  assistantConversation: (id: string) => ['assistant', 'conversation', id] as const,
 };
