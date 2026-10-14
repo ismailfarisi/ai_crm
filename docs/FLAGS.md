@@ -24,6 +24,59 @@ nobody observed would be a lie in the one table that exists to be trusted. For
 the months before, the ledger, the documents and their timestamps are the only
 record.
 
+### An audit row is written after its change, not with it — open
+
+`AuditInterceptor` waits for the audit write before the response is released,
+and photographs `after` the moment the handler returns, so the trail cannot
+capture a later change by mistake and a crash can only lose a row inside one
+insert. If the insert fails, `AuditService.record` queues the row in
+`crm_event_outbox` (kind `audit`) with an id chosen up front and the original
+time, and the dispatcher replays it idempotently. A row is dropped only when
+the outbox cannot be written either — the database is down — and that is
+logged.
+
+What is still true: the row is not in the handler's transaction, because an
+interceptor cannot reach it. A change can commit and its audit row then fail
+to land (and fail to queue). And an audit failure still never fails the
+user's request — the change has happened, and a 500 would say it had not.
+Closing the gap means each service recording inside its own transaction.
+
+### CRM events are delivered at least once, through an outbox — open
+
+`CrmEventBusService.publish` writes the event to `crm_event_outbox` and
+returns; a dispatcher in the API process claims rows with
+`FOR UPDATE SKIP LOCKED` under a five-minute lease, runs subscribers under the
+event's tenant, retries failures with exponential backoff (5s doubling to 15
+minutes), and after `EVENT_OUTBOX_MAX_ATTEMPTS` (10) parks the row as `DEAD`
+with its last error. A slow or failing subscriber no longer slows or fails the
+request. The worker writes events but does not dispatch, because it does not
+load the subscribers.
+
+Three things follow:
+
+- **Redelivery is possible**, after a crash or when any one subscriber fails
+  (the event goes to all of them again). Subscribers receive `eventId`, stable
+  across redeliveries, to dedupe on. The automation bridge does not dedupe
+  yet: `triggerExecution` names the Temporal workflow after a fresh execution
+  id, so a redelivered event starts the automation twice. It also swallows its
+  own per-workflow errors, so a failed automation start is never retried.
+  Both are changes to `automation-event-bridge.service.ts` / `automations.service.ts`.
+- **Call sites still publish after their commit**, so a crash between the two
+  loses the event. `publish(event, { manager })` writes it inside the caller's
+  transaction instead; the services have not been switched over.
+- **Dead rows wait for a person.** Requeue them as in `docs/DEPLOYMENT.md`.
+  Delivered rows are pruned after seven days.
+
+### Database connections are bounded and time out — by design
+
+Each process holds at most `DB_POOL_MAX` (10) connections, and every
+connection runs with `statement_timeout` 30s and
+`idle_in_transaction_session_timeout` 60s, all env-configurable, 0 to disable.
+Migrations use their own data source and are exempt. TLS certificate checking
+is `DB_SSL_REJECT_UNAUTHORIZED`, off by default because that is what staging
+has always run with; turn it on once the CA is trusted in the container. The
+migration data source still does not verify regardless.
+
 ### Lint does not block CI — open
 
 `pnpm lint` fails with roughly 300 pre-existing errors (~225 in `apps/api`, ~94
@@ -275,4 +328,12 @@ True of the staging box (`ssh ismail`, `~/ai_crm`), not of the code.
   image. A `docker compose down -v` would take them with it.
 - **Backups** are in `~/backups`, one per sprint (`*_pre_s0.sql.gz` and so on),
   plus `crm_staging_20260915_170632_s6_bad_issue.sql.gz`, kept deliberately as
-  the pre-fix state of the S6 stock bug.
+  the pre-fix state of the S6 stock bug. The `backup` compose service now adds a
+  nightly `pg_dump -Fc` there (`crm_<timestamp>.dump`, 14 days kept; the
+  sprint files are never pruned) — once it has been started with
+  `up -d backup`. The dumps are on the same disk as the database: copying them
+  off the host, and WAL archiving for point-in-time recovery, are the open next
+  steps (`docs/DEPLOYMENT.md`, "Backups").
+- **Temporal is pinned to `auto-setup:1.29.3`**, which is what `latest`
+  resolved to at pinning time. Confirm the running container matches before
+  the first deploy with the pin; never pin lower than what is running.

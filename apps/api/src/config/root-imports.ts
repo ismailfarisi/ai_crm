@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { join } from 'node:path';
 import { configuration, validateEnv, type AppConfig } from './configuration';
 import { TenantRlsSubscriber } from '../database/tenant-rls.subscriber';
+import { pgConnectionOptions } from './database-options';
 
 /**
  * Shared by `AppModule` and `WorkerModule` so the two processes (API server,
@@ -30,7 +31,9 @@ export function buildTypeOrmModule() {
         username: db.username,
         password: db.password,
         database: db.database,
-        ssl: db.ssl ? { rejectUnauthorized: false } : false,
+        // Pool bound, statement / idle-in-transaction timeouts and TLS
+        // verification, all env-configurable — see config/database-options.
+        ...pgConnectionOptions(db),
         // `synchronize` is a development convenience only — production runs
         // migrations. Double-guarded so it can never be on by accident.
         synchronize:

@@ -2,10 +2,11 @@ import {
   CallHandler,
   ExecutionContext,
   Injectable,
+  Logger,
   NestInterceptor,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import { Observable, tap } from 'rxjs';
+import { Observable, concatMap } from 'rxjs';
 import { auditActionFor } from '@saas/shared';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import {
@@ -31,10 +32,27 @@ interface WithId {
  *
  * `before` and `after` are read from the database either side of the handler,
  * so they describe the row rather than whatever shape the controller decided
- * to return.
+ * to return. `after` is read the moment the handler returns, and the row is
+ * written before the response is released, so the client cannot have sent a
+ * follow-up change that the snapshot then captures by mistake.
+ *
+ * What this guarantees, and what it does not:
+ * - The response waits for the audit write. A process that dies after the
+ *   handler committed but before the write finished loses that row — but that
+ *   window is now the length of one insert, not "whenever the event loop gets
+ *   round to it".
+ * - If the insert fails, `AuditService.record` queues the row in the outbox
+ *   and the dispatcher retries it. Only when the outbox write fails too (the
+ *   database is unreachable) is the row dropped, and logged.
+ * - The audit row is not in the handler's transaction — an interceptor cannot
+ *   reach it — so the change and its audit row are not atomic. That is the
+ *   residual gap; closing it means recording from inside each service.
+ * - An audit failure never fails the user's request: the change has happened.
  */
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
+  private readonly logger = new Logger(AuditInterceptor.name);
+
   constructor(private readonly audit: AuditService) {}
 
   async intercept(
@@ -72,13 +90,23 @@ export class AuditInterceptor implements NestInterceptor {
         : null;
 
     return next.handle().pipe(
-      tap({
-        next: (result) => {
-          const subjectId =
-            paramId ?? idFrom((result as WithId | undefined)?.id) ?? null;
-          void this.write(req, user, action, head, subjectId, before, bodyless);
-        },
-        // A failed request changed nothing, so there is nothing to record.
+      // A failed request changed nothing, so there is nothing to record: an
+      // error skips this and propagates untouched.
+      concatMap(async (result) => {
+        const subjectId =
+          paramId ?? idFrom((result as WithId | undefined)?.id) ?? null;
+        try {
+          await this.write(req, user, action, head, subjectId, before, bodyless);
+        } catch (error) {
+          // `record` and `snapshot` do not throw; this is belt and braces so
+          // the trail can never turn a completed change into a 500.
+          this.logger.error(
+            `Audit write failed for ${action}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+        return result;
       }),
     );
   }

@@ -17,7 +17,9 @@ import { BillingGuard } from '@/modules/billing/billing.guard';
 @Module({
   imports: [
     TenantContextModule,
-    EventsModule,
+    // The API drains the event outbox: it is the process that loads the
+    // subscribers (AutomationsModule). The worker imports EventsModule bare.
+    EventsModule.forRoot({ dispatch: true }),
 
     buildConfigModule(),
 

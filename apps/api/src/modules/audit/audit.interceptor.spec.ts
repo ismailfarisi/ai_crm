@@ -55,10 +55,65 @@ describe('AuditInterceptor', () => {
     handler: CallHandler = handlerReturning({ id: QUOTE_ID }),
   ) => {
     const result = await interceptor.intercept(context, handler);
-    await lastValueFrom(result).catch(() => undefined);
-    // The row is written without the request waiting for it.
-    await new Promise((resolve) => setImmediate(resolve));
+    // No extra tick: the row is written before the response is emitted.
+    return lastValueFrom(result).catch(() => undefined);
   };
+
+  it('writes the row before the response is released', async () => {
+    let releasedAfterRecord: boolean | undefined;
+    const result = await interceptor.intercept(
+      contextFor('POST', '/api/v1/quotes'),
+      handlerReturning({ id: QUOTE_ID }),
+    );
+    await new Promise<void>((resolve) =>
+      result.subscribe({
+        next: () => {
+          releasedAfterRecord = audit.record.mock.calls.length === 1;
+        },
+        complete: resolve,
+      }),
+    );
+    expect(releasedAfterRecord).toBe(true);
+  });
+
+  it('photographs `after` straight after the handler, not after a later write', async () => {
+    const id = QUOTE_ID;
+    const store = { status: 'DRAFT' };
+    audit.snapshot.mockImplementation(async () => ({ ...store }));
+    const result = await interceptor.intercept(
+      contextFor('PATCH', `/api/v1/quotes/${id}`, { params: { id } }),
+      {
+        handle: () => {
+          store.status = 'APPROVED';
+          return of({ id });
+        },
+      },
+    );
+    await new Promise<void>((resolve) =>
+      result.subscribe({
+        // A second request changing the row once the first has answered.
+        next: () => {
+          store.status = 'VOID';
+        },
+        complete: resolve,
+      }),
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        before: { status: 'DRAFT' },
+        after: { status: 'APPROVED' },
+      }),
+    );
+  });
+
+  it('still answers the request when the audit write fails', async () => {
+    audit.record.mockRejectedValueOnce(new Error('audit table locked'));
+    const result = await interceptor.intercept(
+      contextFor('POST', '/api/v1/quotes'),
+      handlerReturning({ id: QUOTE_ID }),
+    );
+    await expect(lastValueFrom(result)).resolves.toEqual({ id: QUOTE_ID });
+  });
 
   it('ignores reads', async () => {
     await run(contextFor('GET', '/api/v1/quotes'));

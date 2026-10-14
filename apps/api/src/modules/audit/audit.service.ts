@@ -1,5 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { randomUUID } from 'node:crypto';
+import { EventOutboxService } from '@/common/events/event-outbox.service';
 import {
   Brackets,
   DataSource,
@@ -38,6 +40,15 @@ export interface AuditRecordInput {
   confidence?: number | null;
 }
 
+/** Outbox kind for audit rows whose first insert failed. */
+export const AUDIT_OUTBOX_KIND = 'audit';
+
+interface QueuedAuditRow {
+  row: Record<string, unknown> & { id: string };
+  /** When the change happened, so a late retry is still filed in order. */
+  occurredAt: string;
+}
+
 @Injectable()
 export class AuditService {
   private readonly logger = new Logger(AuditService.name);
@@ -45,17 +56,28 @@ export class AuditService {
   constructor(
     @InjectRepository(AuditLog) private readonly logs: Repository<AuditLog>,
     private readonly dataSource: DataSource,
-  ) {}
+    @Optional() private readonly outbox?: EventOutboxService,
+  ) {
+    this.outbox?.registerHandler(AUDIT_OUTBOX_KIND, (message) =>
+      this.replay(message.payload as QueuedAuditRow),
+    );
+  }
 
   /**
    * Writes one row. Never throws.
    *
    * An audit failure must not fail the request that caused it: the change has
    * already happened, and turning a logging problem into a 500 would tell the
-   * user their invoice was not issued when it was. A dropped row is logged
-   * loudly instead.
+   * user their invoice was not issued when it was.
+   *
+   * A failed insert is not dropped: the row is queued in the outbox and the
+   * dispatcher retries it, with the same id (so a retry after an insert that
+   * did land is a no-op) and the original time. Only if the outbox cannot be
+   * written either — the database is unreachable — is the row lost, loudly.
    */
   async record(input: AuditRecordInput): Promise<void> {
+    let row: QueuedAuditRow['row'] | undefined;
+    const occurredAt = new Date().toISOString();
     try {
       const before = (redactForAudit(input.before ?? null) ?? null) as Record<
         string,
@@ -66,9 +88,10 @@ export class AuditService {
         unknown
       > | null;
       const fields = changedFields(before, after);
-      // `insert` types jsonb columns as deep-partial, which a free-form
-      // record does not satisfy; the shape is checked by `redactForAudit`.
-      await this.logs.insert({
+      row = {
+        // Chosen here rather than by the database so a retry can be
+        // idempotent.
+        id: randomUUID(),
         tenantId: input.tenantId,
         actorId: input.actorId ?? null,
         actorName: input.actorName ?? null,
@@ -86,14 +109,59 @@ export class AuditService {
         model: input.model ?? null,
         promptVersion: input.promptVersion ?? null,
         confidence: input.confidence ?? null,
-      });
+      };
+      // `insert` types jsonb columns as deep-partial, which a free-form
+      // record does not satisfy; the shape is checked by `redactForAudit`.
+      await this.logs.insert(row as never);
     } catch (error) {
-      this.logger.error(
-        `Audit row dropped for ${input.action} on ${input.subjectType}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      await this.queueForRetry(input, row, occurredAt, error);
     }
+  }
+
+  private async queueForRetry(
+    input: AuditRecordInput,
+    row: QueuedAuditRow['row'] | undefined,
+    occurredAt: string,
+    error: unknown,
+  ): Promise<void> {
+    const reason = error instanceof Error ? error.message : String(error);
+    if (row && this.outbox) {
+      try {
+        await this.outbox.enqueue({
+          tenantId: input.tenantId,
+          kind: AUDIT_OUTBOX_KIND,
+          eventType: row.action as string,
+          payload: { row, occurredAt } satisfies QueuedAuditRow,
+        });
+        this.logger.warn(
+          `Audit row for ${input.action} on ${input.subjectType} queued for retry: ${reason}`,
+        );
+        return;
+      } catch (queueError) {
+        this.logger.error(
+          `Audit retry queue unavailable: ${
+            queueError instanceof Error ? queueError.message : String(queueError)
+          }`,
+        );
+      }
+    }
+    this.logger.error(
+      `Audit row dropped for ${input.action} on ${input.subjectType}: ${reason}`,
+    );
+  }
+
+  /** Outbox handler: re-inserts a queued row. Throws so the outbox retries. */
+  private async replay(queued: QueuedAuditRow): Promise<void> {
+    await this.logs
+      .createQueryBuilder()
+      .insert()
+      .into(AuditLog)
+      .values({
+        ...queued.row,
+        createdAt: new Date(queued.occurredAt),
+      } as never)
+      .orIgnore()
+      .execute();
   }
 
   /**
