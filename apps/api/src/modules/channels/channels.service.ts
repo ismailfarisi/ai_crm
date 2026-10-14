@@ -9,7 +9,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import type { AppConfig } from '@/config/configuration';
 import { TenantContextService } from '@/common/context/tenant-context.service';
 import { ContactsService } from '../contacts/contacts.service';
@@ -20,6 +20,7 @@ import {
   ChannelStatus,
 } from './entities/channel-config.entity';
 import {
+  CHANNEL_MESSAGE_EXTERNAL_ID_UNIQUE,
   ChannelMessage,
   MessageAiProcessingStatus,
   MessageDirection,
@@ -27,7 +28,10 @@ import {
 } from './entities/channel-message.entity';
 import { StaffChannelIdentity } from './entities/staff-channel-identity.entity';
 import { ChannelCryptoService } from './services/channel-crypto.service';
-import { ChannelCommandService } from './services/channel-command.service';
+import {
+  ChannelCommandService,
+  type ChannelCommandResult,
+} from './services/channel-command.service';
 import { ChannelDriver } from './interfaces/channel-driver.interface';
 import { MetaWhatsAppDriver } from './drivers/meta-whatsapp.driver';
 import { TelegramDriver } from './drivers/telegram.driver';
@@ -483,7 +487,12 @@ export class ChannelsService {
     provider: ChannelProviderType,
     headers: any,
     body: any,
-  ): Promise<{ ignored?: boolean; success?: boolean; messageId?: string }> {
+  ): Promise<{
+    ignored?: boolean;
+    success?: boolean;
+    messageId?: string;
+    duplicate?: boolean;
+  }> {
     const run = <T>(fn: () => Promise<T>): Promise<T> =>
       this.tenantContext ? this.tenantContext.runWithTenant(orgId, fn) : fn();
 
@@ -511,39 +520,79 @@ export class ChannelsService {
         return { ignored: true };
       }
 
-      // Staff commands (quote approval via chat) are routed here, before any
-      // customer-contact side effect. `handled: false` means this sender has
-      // no linked staff identity and no active linking code — fall through to
-      // the ordinary customer path exactly as before.
-      const commandResult = await this.channelCommandService.handleInboundMessage(
+      // A provider redelivers any webhook it believes failed. The inbound row
+      // is the claim: it carries the provider's message id under a partial
+      // unique index, so a second delivery fails to insert and stops here —
+      // before a staff command (quote approval) runs again or a second AI
+      // workflow starts. The contact is resolved first only so the row can
+      // carry it; find-or-create is itself serialised and idempotent.
+      const contact = await this.contactsService.findOrCreateForChannel(
         orgId,
-        provider,
         parsed.senderIdentifier,
-        parsed.body,
+        provider,
       );
-      if (commandResult.handled) {
-        const contact = await this.contactsService.findOrCreateForChannel(
-          orgId,
-          parsed.senderIdentifier,
-          provider,
-        );
 
-        const inboundMessage = this.messageRepo.create({
-          organizationId: orgId,
-          contactId: contact.id,
+      const externalMessageId = parsed.externalMessageId
+        ? String(parsed.externalMessageId).slice(0, 255)
+        : null;
+
+      let saved: ChannelMessage;
+      try {
+        saved = await this.messageRepo.save(
+          this.messageRepo.create({
+            organizationId: orgId,
+            contactId: contact.id,
+            provider,
+            direction: MessageDirection.INBOUND,
+            sender: parsed.senderIdentifier,
+            recipient: orgId,
+            body: parsed.body,
+            externalMessageId,
+            metadata: {
+              externalId: parsed.externalMessageId,
+              rawPayload: parsed.rawPayload,
+            },
+            status: MessageStatus.RECEIVED,
+          }),
+        );
+      } catch (err: unknown) {
+        if (isDuplicateInboundError(err)) {
+          this.logger.log(
+            `Ignoring redelivered ${provider} message ${externalMessageId}`,
+          );
+          return { success: true, duplicate: true };
+        }
+        throw err;
+      }
+
+      // Staff commands (quote approval via chat) are routed before any
+      // customer-facing AI work. `handled: false` means this sender has no
+      // linked staff identity and no active linking code — fall through to
+      // the ordinary customer path exactly as before.
+      let commandResult: ChannelCommandResult;
+      try {
+        commandResult = await this.channelCommandService.handleInboundMessage(
+          orgId,
           provider,
-          direction: MessageDirection.INBOUND,
-          sender: parsed.senderIdentifier,
-          recipient: orgId,
-          body: parsed.body,
-          metadata: {
-            externalId: parsed.externalMessageId,
-            rawPayload: parsed.rawPayload,
-            staffUserId: commandResult.userId,
-          },
-          status: MessageStatus.RECEIVED,
-        });
-        await this.messageRepo.save(inboundMessage);
+          parsed.senderIdentifier,
+          parsed.body,
+        );
+      } catch (err) {
+        // Nothing was done for this message: release the claim so the
+        // provider's retry is processed rather than silently dropped.
+        await this.messageRepo.delete({ id: saved.id });
+        throw err;
+      }
+
+      if (commandResult.handled) {
+        saved.metadata = {
+          ...saved.metadata,
+          staffUserId: commandResult.userId,
+        };
+        await this.messageRepo.update(
+          { id: saved.id },
+          { metadata: saved.metadata },
+        );
 
         if (commandResult.reply && commandResult.userId) {
           await this.sendMessage(orgId, commandResult.userId, {
@@ -556,29 +605,11 @@ export class ChannelsService {
         return { success: true };
       }
 
-      const contact = await this.contactsService.findOrCreateForChannel(
-        orgId,
-        parsed.senderIdentifier,
-        provider,
+      saved.aiProcessingStatus = MessageAiProcessingStatus.PENDING;
+      await this.messageRepo.update(
+        { id: saved.id },
+        { aiProcessingStatus: MessageAiProcessingStatus.PENDING },
       );
-
-      const message = this.messageRepo.create({
-        organizationId: orgId,
-        contactId: contact.id,
-        provider,
-        direction: MessageDirection.INBOUND,
-        sender: parsed.senderIdentifier,
-        recipient: orgId,
-        body: parsed.body,
-        metadata: {
-          externalId: parsed.externalMessageId,
-          rawPayload: parsed.rawPayload,
-        },
-        status: MessageStatus.RECEIVED,
-        aiProcessingStatus: MessageAiProcessingStatus.PENDING,
-      });
-
-      const saved = await this.messageRepo.save(message);
 
       try {
         const client = this.temporalService.getClient();
@@ -612,9 +643,18 @@ export class ChannelsService {
             signalArgs: [{ messageId: saved.id, body: parsed.body }],
           });
         } else {
+          // Keyed on the provider's message rather than the row, and never
+          // reused: a second start for the same message is rejected.
           await client.workflow.start(channelAiWorkflow, {
             taskQueue: 'channel-ai-queue',
-            workflowId: `channel-ai-${saved.id}`,
+            workflowId: channelAiWorkflowId(
+              orgId,
+              provider,
+              parsed.senderIdentifier,
+              externalMessageId,
+              saved.id,
+            ),
+            workflowIdReusePolicy: 'REJECT_DUPLICATE',
             args: [
               {
                 messageId: saved.id,
@@ -654,4 +694,41 @@ export class ChannelsService {
   ): Promise<void> {
     await this.messageRepo.update({ id: messageId }, patch);
   }
+}
+
+/**
+ * True when an insert lost to the inbound external-id unique index, i.e. the
+ * provider redelivered a message that is already recorded.
+ */
+function isDuplicateInboundError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as {
+    code?: string;
+    constraint?: string;
+    driverError?: { code?: string; constraint?: string };
+  };
+  const code = e.code ?? e.driverError?.code;
+  const constraint = e.constraint ?? e.driverError?.constraint;
+  return code === '23505' && constraint === CHANNEL_MESSAGE_EXTERNAL_ID_UNIQUE;
+}
+
+/**
+ * Deterministic id for the one-shot classification workflow. Derived from the
+ * provider's own message id when there is one, so a second start for the same
+ * message is rejected by Temporal however it comes about. Hashed so sender
+ * addresses and phone numbers do not end up in workflow ids.
+ */
+export function channelAiWorkflowId(
+  orgId: string,
+  provider: ChannelProviderType,
+  senderIdentifier: string,
+  externalMessageId: string | null,
+  rowId: string,
+): string {
+  if (!externalMessageId) return `channel-ai-${rowId}`;
+  const digest = createHash('sha256')
+    .update(`${senderIdentifier}\u0000${externalMessageId}`)
+    .digest('hex')
+    .slice(0, 32);
+  return `channel-ai-${orgId}-${provider}-${digest}`;
 }

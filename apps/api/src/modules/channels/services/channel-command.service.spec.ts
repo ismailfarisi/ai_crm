@@ -6,6 +6,8 @@ import { SkillRegistry } from '../skills/skill.registry';
 import { SkillRouterService } from '../skills/skill-router.service';
 import { CHANNEL_SKILLS, PERMISSIONS } from '@saas/shared';
 import { FindOperator } from 'typeorm';
+import { ChannelLinkCode } from '../entities/channel-link-code.entity';
+import { StaffChannelIdentity } from '../entities/staff-channel-identity.entity';
 
 /**
  * The fake repositories below must honour TypeORM's find operators, not just
@@ -20,6 +22,7 @@ function matchesValue(actual: unknown, expected: unknown): boolean {
     const value = expected.value as unknown;
     if (op === 'not') return !matchesValue(actual, value);
     if (op === 'in') return (value as unknown[]).includes(actual);
+    if (op === 'isNull') return actual == null;
     if (op === 'lessThan')
       return new Date(actual as Date) < new Date(value as Date);
     if (op === 'moreThan')
@@ -57,6 +60,7 @@ interface Options {
   aiError?: Error;
   sendToCustomer?: jest.Mock;
   createPurchaseOrder?: jest.Mock;
+  sendSignal?: jest.Mock;
 }
 
 function makeService(o: Options = {}) {
@@ -104,6 +108,65 @@ function makeService(o: Options = {}) {
       else linkCodes.push(c);
       return c;
     }),
+    // Transactional path: a conditional UPDATE on the code and an
+    // ON CONFLICT DO NOTHING insert of the identity, as Postgres would run them.
+    manager: {
+      transaction: jest.fn(async (cb: (em: any) => Promise<unknown>) => {
+        const em = {
+          getRepository: (entity: unknown) => {
+            if (entity !== ChannelLinkCode) {
+              throw new Error('unexpected repository in link transaction');
+            }
+            return {
+              update: jest.fn(async (criteria: any, patch: any) => {
+                let affected = 0;
+                for (const c of linkCodes) {
+                  if (matchesWhere(c, criteria)) {
+                    Object.assign(c, patch);
+                    affected++;
+                  }
+                }
+                return { affected };
+              }),
+            };
+          },
+          createQueryBuilder: () => {
+            const state: any = {};
+            const qb: any = {
+              insert: () => qb,
+              into: (entity: unknown) => {
+                state.entity = entity;
+                return qb;
+              },
+              values: (v: any) => {
+                state.values = v;
+                return qb;
+              },
+              orIgnore: () => {
+                state.orIgnore = true;
+                return qb;
+              },
+              execute: async () => {
+                if (state.entity !== StaffChannelIdentity || !state.orIgnore) {
+                  throw new Error('expected ON CONFLICT DO NOTHING identity insert');
+                }
+                const v = state.values;
+                const dup = identities.some(
+                  (i) =>
+                    i.organizationId === v.organizationId &&
+                    i.provider === v.provider &&
+                    i.identifier === v.identifier,
+                );
+                if (!dup) identities.push({ id: 'identity-1', ...v });
+                return { identifiers: [], raw: [] };
+              },
+            };
+            return qb;
+          },
+        };
+        return cb(em);
+      }),
+    },
   };
 
   let seq = 0;
@@ -176,10 +239,12 @@ function makeService(o: Options = {}) {
     findQuoteById: jest.fn(async (_t: string, id: string) =>
       quotes.find((q) => q.id === id),
     ),
-    sendSignal: jest.fn(async (_t: string, id: string) => ({
-      ...quotes.find((q) => q.id === id),
-      status: QuoteStatus.APPROVED,
-    })),
+    sendSignal:
+      o.sendSignal ??
+      jest.fn(async (_t: string, id: string) => ({
+        ...quotes.find((q) => q.id === id),
+        status: QuoteStatus.APPROVED,
+      })),
   };
 
   const invoicesService = {
@@ -387,6 +452,35 @@ describe('ChannelCommandService', () => {
       const result = await send(service, 'ABCD2345');
       expect(result.handled).toBe(false);
       expect(identities).toHaveLength(0);
+    });
+
+    it('consumes a code exactly once when it arrives twice concurrently', async () => {
+      const { service, identities, linkCodes } = makeService({
+        linkCodes: [
+          {
+            id: 'code-1',
+            organizationId: orgId,
+            userId,
+            code: 'ABCD2345',
+            consumedAt: null,
+            expiresAt: new Date(Date.now() + 60_000),
+          },
+        ],
+      });
+
+      const results = await Promise.allSettled([
+        send(service, 'ABCD2345'),
+        send(service, 'ABCD2345'),
+      ]);
+
+      const linkedReplies = results.filter(
+        (r) =>
+          r.status === 'fulfilled' &&
+          r.value.reply?.body.includes('now linked'),
+      );
+      expect(linkedReplies).toHaveLength(1);
+      expect(identities).toHaveLength(1);
+      expect(linkCodes[0].consumedAt).not.toBeNull();
     });
   });
 
@@ -621,6 +715,40 @@ describe('ChannelCommandService', () => {
       expect(quotesService.sendSignal).toHaveBeenCalledTimes(1);
       expect(first.reply?.body).toContain('INV-2026-0001');
       expect(second.reply?.body).toContain('already done');
+    });
+
+    it('leaves a failed execution retryable instead of marking it done', async () => {
+      const conversations = awaiting();
+      const sendSignal = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('workflow unavailable'))
+        .mockImplementation(async (_t: string, id: string) => ({
+          ...openQuote,
+          id,
+          status: QuoteStatus.APPROVED,
+        }));
+      const { service } = makeService({
+        identities: [linkedIdentity],
+        conversations,
+        quotes: [openQuote],
+        sendSignal,
+      });
+
+      const first = await send(service, 'yes');
+
+      expect(first.reply?.body).toContain('workflow unavailable');
+      expect(conversations[0].status).toBe('AWAITING_CONFIRM');
+      expect((conversations[0] as any).resolvedAt).toBeNull();
+      expect((conversations[0] as any).idempotencyKey).toBeNull();
+      expect((conversations[0].slots as any)._lastError).toContain(
+        'workflow unavailable',
+      );
+
+      const retry = await send(service, 'yes');
+
+      expect(sendSignal).toHaveBeenCalledTimes(2);
+      expect(retry.reply?.body).toContain('INV-2026-0001');
+      expect(conversations[0].status).toBe('CONFIRMED');
     });
 
     it('reports a half-success honestly when sending the invoice fails', async () => {

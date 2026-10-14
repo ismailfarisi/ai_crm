@@ -8,6 +8,7 @@ import { createChannelAiActivities } from './modules/channels/workflows/activiti
 import { WorkerModule } from './worker.module';
 import { AiService } from './modules/ai/ai.service';
 import { ChannelsService } from './modules/channels/channels.service';
+import { ChannelIdempotencyService } from './modules/channels/services/channel-idempotency.service';
 import { QuotesService } from './modules/quotes/quotes.service';
 import { AiAgentService } from './modules/channels/services/ai-agent.service';
 import { TenantContextService } from './common/context/tenant-context.service';
@@ -43,6 +44,7 @@ async function run(): Promise<void> {
       quotesService: appContext.get(QuotesService),
       aiAgentService: appContext.get(AiAgentService),
       tenantContext: appContext.get(TenantContextService),
+      idempotency: appContext.get(ChannelIdempotencyService),
     });
     const agentReactActivities = createAgentReactActivities({
       aiService: appContext.get(AiService),
@@ -53,6 +55,7 @@ async function run(): Promise<void> {
       customObjectsService: appContext.get(CustomObjectsService),
       customRecordsService: appContext.get(CustomRecordsService),
       tenantContext: appContext.get(TenantContextService),
+      idempotency: appContext.get(ChannelIdempotencyService),
     });
 
     const workers = await Promise.all([

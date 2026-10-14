@@ -30,10 +30,14 @@ function makeService(
     contactsService?: any;
     configService?: any;
     channelCommandService?: any;
+    temporalService?: any;
+    intentAgentConfigService?: any;
+    tenantContext?: any;
   } = {},
 ) {
   const configs: ChannelConfig[] = [];
   const messages: ChannelMessage[] = [];
+  let messageSeq = 0;
 
   const configRepo = overrides.configRepo || {
     find: jest.fn().mockImplementation(async ({ where }) => {
@@ -79,13 +83,41 @@ function makeService(
       });
     }),
     create: jest.fn().mockImplementation((dto) => ({
-      id: 'message-uuid-456',
+      id: `message-uuid-${++messageSeq}`,
       createdAt: new Date(),
       ...dto,
     })),
+    // Mirrors the partial unique index on inbound external message ids.
     save: jest.fn().mockImplementation(async (msg) => {
+      if (
+        msg.externalMessageId &&
+        messages.some(
+          (m: any) =>
+            m.organizationId === msg.organizationId &&
+            m.provider === msg.provider &&
+            m.sender === msg.sender &&
+            m.externalMessageId === msg.externalMessageId,
+        )
+      ) {
+        throw Object.assign(new Error('duplicate key value'), {
+          code: '23505',
+          constraint: 'uq_channel_messages_inbound_external_id',
+        });
+      }
       messages.push(msg);
       return msg;
+    }),
+    update: jest.fn().mockImplementation(async (criteria: any, patch: any) => {
+      const id = typeof criteria === 'string' ? criteria : criteria.id;
+      const row = messages.find((m) => m.id === id);
+      if (row) Object.assign(row, patch);
+      return { affected: row ? 1 : 0 };
+    }),
+    delete: jest.fn().mockImplementation(async (criteria: any) => {
+      const id = typeof criteria === 'string' ? criteria : criteria.id;
+      const idx = messages.findIndex((m) => m.id === id);
+      if (idx >= 0) messages.splice(idx, 1);
+      return { affected: idx >= 0 ? 1 : 0 };
     }),
   };
 
@@ -774,6 +806,173 @@ describe('ChannelsService', () => {
         orgId,
         expect.any(Function),
       );
+    });
+
+    describe('provider redelivery (externalMessageId dedupe)', () => {
+      const telegramUpdate = (text: string, messageId = 777) => ({
+        message: { text, chat: { id: '998877' }, message_id: messageId },
+      });
+      const makeTemporal = () => {
+        const start = jest.fn().mockResolvedValue({ workflowId: 'wf' });
+        const signalWithStart = jest.fn().mockResolvedValue({});
+        return {
+          temporalService: {
+            getClient: () => ({ workflow: { start, signalWithStart } }),
+          },
+          start,
+          signalWithStart,
+        };
+      };
+      const intentAgentConfigService = {
+        getEffective: jest.fn().mockResolvedValue({
+          isEnabled: false,
+          eligibleProviders: [],
+        }),
+      };
+
+      it('stores the provider message id on its own column', async () => {
+        const { service, messages } = makeService();
+        await service.saveConfig(orgId, ChannelProviderType.TELEGRAM, true, {
+          botToken: 'token',
+        });
+        await service.processInboundWebhook(
+          orgId,
+          ChannelProviderType.TELEGRAM,
+          {},
+          telegramUpdate('hello'),
+        );
+        expect((messages[0] as any).externalMessageId).toBe('777');
+      });
+
+      it('processes a redelivered customer message only once', async () => {
+        const temporal = makeTemporal();
+        const { service, messages } = makeService({
+          temporalService: temporal.temporalService,
+          intentAgentConfigService,
+        });
+        await service.saveConfig(orgId, ChannelProviderType.TELEGRAM, true, {
+          botToken: 'token',
+        });
+
+        const first = await service.processInboundWebhook(
+          orgId,
+          ChannelProviderType.TELEGRAM,
+          {},
+          telegramUpdate('need a quote'),
+        );
+        const second = await service.processInboundWebhook(
+          orgId,
+          ChannelProviderType.TELEGRAM,
+          {},
+          telegramUpdate('need a quote'),
+        );
+
+        expect(first.success).toBe(true);
+        expect(second).toEqual(
+          expect.objectContaining({ success: true, duplicate: true }),
+        );
+        expect(messages).toHaveLength(1);
+        expect(temporal.start).toHaveBeenCalledTimes(1);
+      });
+
+      it('does not run a staff command twice when the webhook is redelivered', async () => {
+        const channelCommandService = {
+          handleInboundMessage: jest.fn().mockResolvedValue({
+            handled: true,
+            userId: 'staff-user-1',
+            reply: { body: 'Approved.' },
+          }),
+        };
+        const { service, messages } = makeService({ channelCommandService });
+        await service.saveConfig(orgId, ChannelProviderType.TELEGRAM, true, {
+          botToken: 'token',
+        });
+
+        await service.processInboundWebhook(
+          orgId,
+          ChannelProviderType.TELEGRAM,
+          {},
+          telegramUpdate('yes'),
+        );
+        const second = await service.processInboundWebhook(
+          orgId,
+          ChannelProviderType.TELEGRAM,
+          {},
+          telegramUpdate('yes'),
+        );
+
+        expect(channelCommandService.handleInboundMessage).toHaveBeenCalledTimes(
+          1,
+        );
+        expect(second).toEqual(expect.objectContaining({ duplicate: true }));
+        // one inbound + one reply, not two of each
+        expect(messages).toHaveLength(2);
+        expect((messages[0] as any).metadata.staffUserId).toBe('staff-user-1');
+      });
+
+      it('releases the claim when the command fails so a retry can process it', async () => {
+        const channelCommandService = {
+          handleInboundMessage: jest
+            .fn()
+            .mockRejectedValueOnce(new Error('db blip'))
+            .mockResolvedValueOnce({ handled: false }),
+        };
+        const { service, messages } = makeService({ channelCommandService });
+        await service.saveConfig(orgId, ChannelProviderType.TELEGRAM, true, {
+          botToken: 'token',
+        });
+
+        await expect(
+          service.processInboundWebhook(
+            orgId,
+            ChannelProviderType.TELEGRAM,
+            {},
+            telegramUpdate('hi'),
+          ),
+        ).rejects.toThrow('db blip');
+        const retry = await service.processInboundWebhook(
+          orgId,
+          ChannelProviderType.TELEGRAM,
+          {},
+          telegramUpdate('hi'),
+        );
+
+        expect(retry.success).toBe(true);
+        expect((retry as any).duplicate).toBeUndefined();
+        expect(messages).toHaveLength(1);
+      });
+
+      it('derives the one-shot AI workflow id from the provider message, not a fresh row id', async () => {
+        const a = makeTemporal();
+        const b = makeTemporal();
+        const svcA = makeService({
+          temporalService: a.temporalService,
+          intentAgentConfigService,
+        }).service;
+        const svcB = makeService({
+          temporalService: b.temporalService,
+          intentAgentConfigService,
+        }).service;
+        for (const svc of [svcA, svcB]) {
+          await svc.saveConfig(orgId, ChannelProviderType.TELEGRAM, true, {
+            botToken: 'token',
+          });
+          await svc.processInboundWebhook(
+            orgId,
+            ChannelProviderType.TELEGRAM,
+            {},
+            telegramUpdate('need a quote', 4242),
+          );
+        }
+
+        const idA = a.start.mock.calls[0][1].workflowId;
+        const idB = b.start.mock.calls[0][1].workflowId;
+        expect(idA).toBe(idB);
+        expect(idA).not.toContain('message-uuid');
+        expect(a.start.mock.calls[0][1].workflowIdReusePolicy).toBe(
+          'REJECT_DUPLICATE',
+        );
+      });
     });
   });
 });

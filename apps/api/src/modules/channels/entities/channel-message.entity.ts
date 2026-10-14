@@ -50,7 +50,16 @@ export interface ChannelIntentOption {
   body: string;
 }
 
+/** Name of the partial unique index that dedupes provider redeliveries. */
+export const CHANNEL_MESSAGE_EXTERNAL_ID_UNIQUE =
+  'uq_channel_messages_inbound_external_id';
+
 @Entity('channel_messages')
+@Index(
+  CHANNEL_MESSAGE_EXTERNAL_ID_UNIQUE,
+  ['organizationId', 'provider', 'sender', 'externalMessageId'],
+  { unique: true, where: '"externalMessageId" IS NOT NULL' },
+)
 export class ChannelMessage {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -84,6 +93,17 @@ export class ChannelMessage {
 
   @Column({ type: 'jsonb', default: {} })
   metadata: Record<string, any>;
+
+  /**
+   * The provider's own id for an inbound message (Telegram message_id,
+   * WhatsApp wamid, email Message-ID). Set on inbound rows only. Providers
+   * redeliver webhooks they believe failed; the partial unique index on
+   * (organization, provider, sender, this) turns a redelivery into a no-op
+   * instead of a second AI run or a second staff command. Scoped by sender
+   * because Telegram's message_id is only unique within a chat.
+   */
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  externalMessageId: string | null;
 
   @Column({
     type: 'enum',
