@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'crypto';
-import { In, IsNull, LessThan, Not, Repository } from 'typeorm';
+import { In, IsNull, LessThan, MoreThan, Not, Repository } from 'typeorm';
 import {
   CHANNEL_CONVERSATION_TTL_MS,
   type ChannelSkillName,
@@ -252,22 +252,41 @@ export class ChannelCommandService {
     });
     if (!candidate || candidate.expiresAt.getTime() < Date.now()) return null;
 
-    candidate.consumedAt = new Date();
-    await this.linkCodeRepository.save(candidate);
+    // The read above is only a cheap filter. Consumption is a conditional
+    // UPDATE — still unconsumed, still unexpired — committed together with
+    // the identity it grants, so two deliveries of the same code cannot both
+    // link, and a failure after consuming cannot leave a spent code with no
+    // identity behind it.
+    const linked = await this.linkCodeRepository.manager.transaction(
+      async (em) => {
+        const now = new Date();
+        const consumed = await em.getRepository(ChannelLinkCode).update(
+          {
+            id: candidate.id,
+            organizationId,
+            consumedAt: IsNull(),
+            expiresAt: MoreThan(now),
+          },
+          { consumedAt: now },
+        );
+        if (!consumed.affected) return false;
 
-    const existing = await this.identityRepository.findOne({
-      where: { organizationId, provider, identifier: senderIdentifier },
-    });
-    if (!existing) {
-      await this.identityRepository.save(
-        this.identityRepository.create({
-          organizationId,
-          provider,
-          identifier: senderIdentifier,
-          userId: candidate.userId,
-        }),
-      );
-    }
+        await em
+          .createQueryBuilder()
+          .insert()
+          .into(StaffChannelIdentity)
+          .values({
+            organizationId,
+            provider,
+            identifier: senderIdentifier,
+            userId: candidate.userId,
+          })
+          .orIgnore()
+          .execute();
+        return true;
+      },
+    );
+    if (!linked) return null;
 
     return {
       handled: true,
@@ -344,9 +363,39 @@ export class ChannelCommandService {
       );
     }
 
+    let outcome: Awaited<ReturnType<ChannelSkill['execute']>>;
     try {
       const resolved = conversation.slots[RESOLVED_KEY];
-      const outcome = await skill.execute(resolved as never, ctx);
+      outcome = await skill.execute(resolved as never, ctx);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Skill ${conversation.skillName} failed: ${msg}`);
+      // The claim marked this CONFIRMED before executing. Left there, a
+      // failure would read as "already done" to every later YES and the
+      // command could never be retried. Hand the claim back — only if it is
+      // still ours — with the error recorded on the row.
+      await this.conversations.update(
+        { id: conversation.id, status: 'CONFIRMED' },
+        {
+          status: 'AWAITING_CONFIRM',
+          resolvedAt: null,
+          idempotencyKey: null,
+          // TypeORM's update typing cannot express a free-form jsonb column.
+          slots: {
+            ...conversation.slots,
+            _lastError: msg.slice(0, 500),
+          } as never,
+        },
+      );
+      return this.reply(
+        ctx,
+        `Could not complete that: ${msg}\nReply YES to try again or NO to cancel.`,
+      );
+    }
+
+    // From here the action has happened. A failure in the bookkeeping below
+    // must not hand the claim back — that would let a second YES repeat it.
+    try {
       await this.conversations.update(conversation.id, {
         resultType: outcome.resultType ?? null,
         resultId: outcome.resultId ?? null,
@@ -372,12 +421,13 @@ export class ChannelCommandService {
         promptVersion: conversation.originPromptVersion ?? skill.promptVersion,
         confidence: conversation.confidence,
       });
-      return this.reply(ctx, outcome.reply);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`Skill ${conversation.skillName} failed: ${msg}`);
-      return this.reply(ctx, `Could not complete that: ${msg}`);
+      this.logger.error(
+        `Skill ${conversation.skillName} succeeded but recording its result failed: ${msg}`,
+      );
     }
+    return this.reply(ctx, outcome.reply);
   }
 
   private async continueCollecting(
