@@ -17,7 +17,7 @@ describe('ApprovalCard', () => {
     const onDecide = vi.fn();
     const { rerender } = render(<ApprovalCard pendingAction={pendingAction} onDecide={onDecide} />);
     fireEvent.click(screen.getByRole('button', { name: /approve/i }));
-    expect(onDecide).toHaveBeenCalledWith(true, undefined);
+    expect(onDecide).toHaveBeenCalledWith(true, undefined, 'c2');
     rerender(<ApprovalCard pendingAction={pendingAction} onDecide={onDecide} disabled />);
     expect(screen.getByRole('button', { name: /approve/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /reject/i })).toBeDisabled();
@@ -29,7 +29,7 @@ describe('ApprovalCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /reject/i }));
     fireEvent.change(screen.getByPlaceholderText(/why/i), { target: { value: 'wrong tone' } });
     fireEvent.click(screen.getByRole('button', { name: /confirm reject/i }));
-    expect(onDecide).toHaveBeenCalledWith(false, 'wrong tone');
+    expect(onDecide).toHaveBeenCalledWith(false, 'wrong tone', 'c2');
   });
 
   it('shows Expired with a retry action', () => {

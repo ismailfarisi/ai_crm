@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 interface ComposerProps {
   busy: boolean;
   pageContext: AssistantPageContext | null;
-  onSend: (content: string, context: AssistantPageContext | null) => void;
+  /** A returned promise that rejects puts the text back so nothing typed is lost. */
+  onSend: (content: string, context: AssistantPageContext | null) => Promise<void> | void;
   onStop: () => void;
 }
 
@@ -20,8 +21,9 @@ export function AssistantComposer({ busy, pageContext, onSend, onStop }: Compose
   const submit = () => {
     const content = value.trim();
     if (!content || busy) return;
-    onSend(content, context);
+    const sent = onSend(content, context);
     setValue('');
+    sent?.catch(() => setValue((current) => current || content));
   };
 
   return (

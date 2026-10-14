@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { AlertTriangle, ChevronRight, Loader2, Wrench } from 'lucide-react';
 import type { AssistantMessageDto, AssistantPendingAction, SendAssistantMessagePayload } from '@saas/shared';
-import type { ApprovalResolution } from './approval-card';
 import { cn } from '@/lib/utils';
 import {
   useAssistantConversation,
@@ -14,6 +13,7 @@ import {
 } from '@/hooks/use-assistant';
 import { useAssistantStream } from '@/hooks/use-assistant-stream';
 import { ApprovalCard } from './approval-card';
+import { isApprovalLive, resolutionFor } from './approval-state';
 import { AssistantComposer } from './assistant-composer';
 import { useAssistant } from './assistant-provider';
 
@@ -34,33 +34,6 @@ function StepRow({ message }: { message: AssistantMessageDto }) {
       <pre className="mt-1 whitespace-pre-wrap break-words font-sans">{message.content}</pre>
     </details>
   );
-}
-
-function resolutionFor(
-  message: AssistantMessageDto,
-  messages: AssistantMessageDto[],
-  live: boolean,
-): ApprovalResolution | undefined {
-  if (live) return undefined;
-  const toolName = (message.payload as { tool?: { name?: string } } | null)?.tool?.name ?? message.toolName;
-  const later = messages.filter((m) => m.turnId === message.turnId && m.seq > message.seq);
-  if (
-    later.some(
-      (m) =>
-        (m.role === 'step' && m.content.startsWith('Approved')) ||
-        (m.role === 'tool_result' && toolName && m.toolName === toolName),
-    )
-  ) {
-    return 'approved';
-  }
-  for (const m of later) {
-    if (m.role !== 'status') continue;
-    const status = (m.payload?.turn as { status?: string } | undefined)?.status;
-    if (status === 'REJECTED') return 'rejected';
-    if (status === 'TIMED_OUT') return 'expired';
-    if (status === 'COMPLETED' || status === 'FAILED' || status === 'CANCELLED') return 'closed';
-  }
-  return undefined;
 }
 
 export function AssistantThread({ conversationId, variant }: { conversationId: string; variant: 'panel' | 'page' }) {
@@ -89,9 +62,16 @@ export function AssistantThread({ conversationId, variant }: { conversationId: s
     );
   }
 
-  const sendMessage = (body: SendAssistantMessagePayload) => {
+  // Resolves when sent; rejects on failure (already toasted) so the composer can restore the text.
+  const sendMessage = (body: SendAssistantMessagePayload): Promise<void> => {
     setPending(body.content);
-    send.mutate(body, { onError: () => setPending(null) });
+    return send.mutateAsync(body).then(
+      () => undefined,
+      (error: unknown) => {
+        setPending(null);
+        throw error;
+      },
+    );
   };
 
   return (
@@ -135,7 +115,7 @@ export function AssistantThread({ conversationId, variant }: { conversationId: s
             );
           }
           if (message.role === 'approval') {
-            const isLive = activeTurn?.status === 'AWAITING_APPROVAL' && activeTurn.id === message.turnId;
+            const isLive = isApprovalLive(activeTurn, message);
             const resolution = resolutionFor(message, messages, isLive);
             const original = messages.find((m) => m.role === 'user' && m.turnId === message.turnId);
             const savedContext = original?.payload?.context as SendAssistantMessagePayload['context'] | undefined;
@@ -148,13 +128,18 @@ export function AssistantThread({ conversationId, variant }: { conversationId: s
                 onRetry={
                   original && !busy
                     ? () =>
-                        sendMessage(
+                        void sendMessage(
                           savedContext ? { content: original.content, context: savedContext } : { content: original.content },
-                        )
+                        ).catch(() => undefined)
                     : undefined
                 }
-                onDecide={(approved, note) =>
-                  activeTurn && decide.mutate({ turnId: activeTurn.id, body: note ? { approved, note } : { approved } })
+                onDecide={(approved, note, toolCallId) =>
+                  isLive &&
+                  activeTurn &&
+                  decide.mutate({
+                    turnId: activeTurn.id,
+                    body: note ? { approved, toolCallId, note } : { approved, toolCallId },
+                  })
                 }
               />
             );

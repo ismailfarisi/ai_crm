@@ -16,7 +16,8 @@ const RESOLUTION_LABELS: Record<ApprovalResolution, string> = {
 
 interface ApprovalCardProps {
   pendingAction: AssistantPendingAction;
-  onDecide: (approved: boolean, note?: string) => void;
+  /** `toolCallId` is this card's tool call: a decision is bound to exactly what the card shows. */
+  onDecide: (approved: boolean, note: string | undefined, toolCallId: string) => void;
   disabled?: boolean;
   resolution?: ApprovalResolution;
   onRetry?: () => void;
@@ -58,7 +59,7 @@ export function ApprovalCard({ pendingAction, onDecide, disabled, resolution, on
             onChange={(e) => setNote(e.target.value)}
           />
           <div className="flex gap-2">
-            <Button size="sm" variant="danger" disabled={disabled} onClick={() => onDecide(false, note.trim() || undefined)}>
+            <Button size="sm" variant="danger" disabled={disabled} onClick={() => onDecide(false, note.trim() || undefined, pendingAction.tool.id)}>
               Confirm reject
             </Button>
             <Button size="sm" variant="ghost" disabled={disabled} onClick={() => setRejecting(false)}>
@@ -68,7 +69,7 @@ export function ApprovalCard({ pendingAction, onDecide, disabled, resolution, on
         </div>
       ) : (
         <div className="mt-3 flex gap-2">
-          <Button size="sm" disabled={disabled} onClick={() => onDecide(true, undefined)}>
+          <Button size="sm" disabled={disabled} onClick={() => onDecide(true, undefined, pendingAction.tool.id)}>
             Approve
           </Button>
           <Button size="sm" variant="secondary" disabled={disabled} onClick={() => setRejecting(true)}>
