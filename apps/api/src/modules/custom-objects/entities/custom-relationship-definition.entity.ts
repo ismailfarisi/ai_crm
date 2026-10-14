@@ -5,6 +5,8 @@ import { CustomObjectDefinition } from './custom-object-definition.entity';
 
 @Entity('custom_relationship_definitions')
 @Unique('uq_custom_rel_source_slug', ['sourceObjectId', 'slug'])
+// Target of same-tenant composite FKs (migration 1789500000000).
+@Unique('uq_custom_relationships_tenant_id_id', ['tenantId', 'id'])
 export class CustomRelationshipDefinition extends TenantSoftDeletableEntity {
   @Column({ type: 'uuid', name: 'source_object_id' })
   sourceObjectId: string;
