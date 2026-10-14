@@ -32,6 +32,36 @@ const envSchema = z.object({
     .string()
     .default('false')
     .transform((v) => v === 'true'),
+  // Verify the server's TLS certificate. Defaults to off, which is what every
+  // environment ran with before this setting existed — turn it on only once
+  // the CA is trusted inside the container, or connections will fail.
+  DB_SSL_REJECT_UNAUTHORIZED: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
+  // Connections per process (API and worker each have their own pool). Keep
+  // the sum across processes below Postgres' max_connections.
+  DB_POOL_MAX: z.coerce.number().int().min(1).max(200).default(10),
+  // Server-side guards against a runaway query or a leaked transaction holding
+  // locks. 0 disables. Migrations are exempt: they use their own data source.
+  DB_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(0).default(30_000),
+  DB_IDLE_IN_TRANSACTION_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .default(60_000),
+
+  // Durable delivery of CRM domain events (see common/events). The dispatcher
+  // runs in the API process, which is where the subscribers live; set this to
+  // false to stop it there (events then queue until a dispatcher runs).
+  EVENT_OUTBOX_DISPATCHER: z
+    .string()
+    .default('true')
+    .transform((v) => v === 'true'),
+  EVENT_OUTBOX_POLL_MS: z.coerce.number().int().min(100).default(1000),
+  EVENT_OUTBOX_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(50),
+  // After this many failed deliveries an event is parked as DEAD.
+  EVENT_OUTBOX_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(50).default(10),
 
   // Auth
   JWT_ACCESS_SECRET: z
@@ -238,6 +268,16 @@ export function configuration() {
       synchronize: env.DB_SYNCHRONIZE,
       logging: env.DB_LOGGING,
       ssl: env.DB_SSL,
+      sslRejectUnauthorized: env.DB_SSL_REJECT_UNAUTHORIZED,
+      poolMax: env.DB_POOL_MAX,
+      statementTimeoutMs: env.DB_STATEMENT_TIMEOUT_MS,
+      idleInTransactionTimeoutMs: env.DB_IDLE_IN_TRANSACTION_TIMEOUT_MS,
+    },
+    events: {
+      dispatcherEnabled: env.EVENT_OUTBOX_DISPATCHER,
+      pollMs: env.EVENT_OUTBOX_POLL_MS,
+      batchSize: env.EVENT_OUTBOX_BATCH_SIZE,
+      maxAttempts: env.EVENT_OUTBOX_MAX_ATTEMPTS,
     },
     jwt: {
       accessSecret: env.JWT_ACCESS_SECRET,
