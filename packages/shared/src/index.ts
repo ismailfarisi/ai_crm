@@ -56,4 +56,5 @@ export * from './custom-objects/types';
 export * from './custom-objects/schema-compiler';
 export * from './schemas/custom-object';
 export * from './rbac/permissions/custom-objects';
+export * from './assistant';
 
