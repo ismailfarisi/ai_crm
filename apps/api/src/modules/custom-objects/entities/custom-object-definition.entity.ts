@@ -5,6 +5,8 @@ import { CustomRelationshipDefinition } from './custom-relationship-definition.e
 
 @Entity('custom_object_definitions')
 @Unique('uq_custom_objects_tenant_slug', ['tenantId', 'slug'])
+// Target of same-tenant composite FKs (migration 1789500000000).
+@Unique('uq_custom_objects_tenant_id_id', ['tenantId', 'id'])
 @Index('idx_custom_objects_tenant', ['tenantId', 'isArchived'])
 export class CustomObjectDefinition extends TenantSoftDeletableEntity {
   @Column({ type: 'varchar', length: 80 })
