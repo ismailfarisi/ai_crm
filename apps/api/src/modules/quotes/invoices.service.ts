@@ -31,6 +31,7 @@ import {
 import {
   issueEntryNumber,
   provisionOrderForQuote,
+  provisionOrderForQuoteInTransaction,
 } from '../orders/order-provisioning';
 import { DocumentTemplatesService } from '../document-templates/document-templates.service';
 import { DocumentPdfRendererService } from '../document-templates/document-pdf-renderer.service';
@@ -71,18 +72,27 @@ export class InvoicesService {
   async createFromQuote(
     tenantId: string,
     quote: Quote,
+    /** The caller's transaction, so approval and order commit together. */
+    manager?: EntityManager,
   ): Promise<{
     order: SalesOrder;
     invoice: Invoice | null;
     invoicesRaised: Invoice[];
     isNew: boolean;
   }> {
-    const result = await provisionOrderForQuote(
-      this.dataSource,
-      this.ledger,
-      tenantId,
-      quote.id,
-    );
+    const result = manager
+      ? await provisionOrderForQuoteInTransaction(
+          manager,
+          this.ledger,
+          tenantId,
+          quote.id,
+        )
+      : await provisionOrderForQuote(
+          this.dataSource,
+          this.ledger,
+          tenantId,
+          quote.id,
+        );
     return {
       order: result.order,
       invoice: result.invoices[0] ?? null,
