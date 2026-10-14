@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PERMISSIONS } from '@saas/shared';
 import { CustomRecordsService } from './custom-records.service';
 import { RecordValidationService } from './record-validation.service';
@@ -12,6 +12,11 @@ describe('CustomRecordsService', () => {
   let mockValidationService: any;
   let mockEventBus: any;
   let mockQueryBuilder: any;
+  let mockManager: any;
+  let updatedRow: any;
+
+  const queriesMatching = (re: RegExp) =>
+    mockManager.query.mock.calls.filter(([sql]: [string]) => re.test(sql));
 
   beforeEach(() => {
     mockQueryBuilder = {
@@ -30,6 +35,20 @@ describe('CustomRecordsService', () => {
       findOne: vi.fn(),
       softDelete: vi.fn().mockResolvedValue({ affected: 1 }),
     };
+
+    // Inside a transaction the service uses manager.getRepository(CustomRecord)
+    // (the same mock repo) and raw manager.query for locks / atomic updates.
+    mockManager = {
+      getRepository: vi.fn(() => mockRepo),
+      query: vi.fn(async (sql: string) => {
+        if (/^\s*UPDATE "custom_records"/.test(sql)) {
+          return [[updatedRow], 1];
+        }
+        return [];
+      }),
+    };
+    mockRepo.manager = { transaction: vi.fn((cb: any) => cb(mockManager)) };
+    updatedRow = { values: { serial: '123', color: 'red' }, owner_id: 'u-new-owner' };
 
     mockObjectsService = {
       getBySlug: vi.fn().mockResolvedValue({
@@ -96,6 +115,84 @@ describe('CustomRecordsService', () => {
       expect(mockRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ ownerId: 'u-actor' }),
       );
+    });
+
+    it('inserts inside a transaction', async () => {
+      await service.create(
+        'tenant-1',
+        'machinery',
+        { values: { serial: '123' } },
+        { id: 'u-1', permissions: [PERMISSIONS.CUSTOM_RECORD_CREATE] },
+      );
+      expect(mockRepo.manager.transaction).toHaveBeenCalled();
+      expect(mockRepo.save).toHaveBeenCalled();
+    });
+
+    describe('isUnique enforcement', () => {
+      beforeEach(() => {
+        mockObjectsService.getBySlug.mockResolvedValue({
+          id: 'obj-1',
+          slug: 'machinery',
+          singularName: 'Machine',
+          primaryAttributeSlug: 'serial',
+          attributes: [
+            { slug: 'serial', name: 'Serial', type: 'text', isRequired: true, isUnique: true },
+            { slug: 'tag', name: 'Tag', type: 'text', isRequired: false, isUnique: true },
+            { slug: 'hours', name: 'Hours', type: 'number', isRequired: false, isUnique: false },
+          ],
+        });
+      });
+
+      it('takes an advisory xact lock per unique (tenant, object, attribute, normalized value) before checking', async () => {
+        await service.create(
+          'tenant-1',
+          'machinery',
+          { values: { serial: '  SN-1 ', tag: 'A', hours: 3 } },
+          { id: 'u-1', permissions: [PERMISSIONS.CUSTOM_RECORD_CREATE] },
+        );
+
+        const locks = queriesMatching(/pg_advisory_xact_lock/);
+        expect(locks.map(([, params]: any) => params[0])).toEqual([
+          'custom_record_unique:tenant-1:obj-1:serial:sn-1',
+          'custom_record_unique:tenant-1:obj-1:tag:a',
+        ]);
+        const checks = queriesMatching(/SELECT "id" FROM "custom_records"/);
+        expect(checks).toHaveLength(2);
+        expect(checks[0][0]).toContain('"deletedAt" IS NULL');
+        // Lock is taken before the check for the same attribute.
+        const order = mockManager.query.mock.calls.map(([sql]: [string]) =>
+          /pg_advisory_xact_lock/.test(sql) ? 'lock' : /SELECT "id"/.test(sql) ? 'check' : 'other',
+        );
+        expect(order.slice(0, 4)).toEqual(['lock', 'check', 'lock', 'check']);
+        expect(mockRepo.save).toHaveBeenCalled();
+      });
+
+      it('rejects with 409 and does not insert when the value is taken', async () => {
+        mockManager.query.mockImplementation(async (sql: string) =>
+          /SELECT "id" FROM "custom_records"/.test(sql) ? [{ id: 'rec-other' }] : [],
+        );
+
+        await expect(
+          service.create(
+            'tenant-1',
+            'machinery',
+            { values: { serial: 'SN-1' } },
+            { id: 'u-1', permissions: [PERMISSIONS.CUSTOM_RECORD_CREATE] },
+          ),
+        ).rejects.toThrow(ConflictException);
+        expect(mockRepo.save).not.toHaveBeenCalled();
+        expect(mockEventBus.publish).not.toHaveBeenCalled();
+      });
+
+      it('skips empty values', async () => {
+        await service.create(
+          'tenant-1',
+          'machinery',
+          { values: { serial: 'SN-1', tag: null } },
+          { id: 'u-1', permissions: [PERMISSIONS.CUSTOM_RECORD_CREATE] },
+        );
+        expect(queriesMatching(/pg_advisory_xact_lock/)).toHaveLength(1);
+      });
     });
 
     it('publishes record.created domain event with snapshot and changed fields', async () => {
@@ -281,7 +378,7 @@ describe('CustomRecordsService', () => {
   });
 
   describe('update', () => {
-    it('merges values, validates, and saves', async () => {
+    it('validates the merged state but writes only the patch atomically (values || patch)', async () => {
       const existing = {
         id: 'rec-1',
         tenantId: 'tenant-1',
@@ -299,17 +396,87 @@ describe('CustomRecordsService', () => {
         { id: 'u-actor', permissions: [PERMISSIONS.CUSTOM_RECORD_UPDATE] },
       );
 
+      expect(mockRepo.manager.transaction).toHaveBeenCalled();
+      // Row locked for the read that feeds validation and the audit snapshot.
+      expect(mockRepo.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'rec-1', tenantId: 'tenant-1', objectId: 'obj-1' },
+          lock: { mode: 'pessimistic_write' },
+        }),
+      );
       expect(mockValidationService.validate).toHaveBeenCalledWith(
         [{ slug: 'serial', type: 'text', isRequired: true }],
         { serial: '123', color: 'red' },
       );
-      expect(mockRepo.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          ownerId: 'u-new-owner',
-          values: { serial: '123', color: 'red' },
-        }),
+      // Whole-object save would clobber a concurrent edit to another field.
+      expect(mockRepo.save).not.toHaveBeenCalled();
+      const [update] = queriesMatching(/^\s*UPDATE "custom_records"/);
+      expect(update[0]).toContain('"values" = ("values" || $1::jsonb) - $2::text[]');
+      expect(update[1][0]).toBe(JSON.stringify({ color: 'red' }));
+      expect(update[1][1]).toEqual([]);
+      expect(update[1]).toEqual(expect.arrayContaining(['rec-1', 'tenant-1', 'u-new-owner']));
+      expect(result.values).toEqual({ serial: '123', color: 'red' });
+      expect(result.ownerId).toBe('u-new-owner');
+    });
+
+    it('clears keys explicitly set to null with the jsonb - operator', async () => {
+      mockRepo.findOne.mockResolvedValue({
+        id: 'rec-1',
+        tenantId: 'tenant-1',
+        objectId: 'obj-1',
+        ownerId: 'u-actor',
+        values: { serial: '123', color: 'blue' },
+      });
+      updatedRow = { values: { serial: '123' }, owner_id: 'u-actor' };
+
+      const result = await service.update(
+        'tenant-1',
+        'machinery',
+        'rec-1',
+        { values: { color: null } },
+        { id: 'u-actor', permissions: [PERMISSIONS.CUSTOM_RECORD_UPDATE] },
       );
-      expect(result).toBeDefined();
+
+      const [update] = queriesMatching(/^\s*UPDATE "custom_records"/);
+      expect(update[1][0]).toBe(JSON.stringify({}));
+      expect(update[1][1]).toEqual(['color']);
+      expect(update[0]).not.toContain('"owner_id" =');
+      expect(result.values).toEqual({ serial: '123' });
+    });
+
+    it('rejects with 409 when a unique attribute value is already used by another live record', async () => {
+      mockObjectsService.getBySlug.mockResolvedValue({
+        id: 'obj-1',
+        slug: 'machinery',
+        singularName: 'Machine',
+        primaryAttributeSlug: 'serial',
+        attributes: [{ slug: 'serial', name: 'Serial', type: 'text', isRequired: true, isUnique: true }],
+      });
+      mockRepo.findOne.mockResolvedValue({
+        id: 'rec-1',
+        tenantId: 'tenant-1',
+        objectId: 'obj-1',
+        ownerId: 'u-actor',
+        values: { serial: '123' },
+      });
+      mockManager.query.mockImplementation(async (sql: string) =>
+        /SELECT "id" FROM "custom_records"/.test(sql) ? [{ id: 'rec-2' }] : [],
+      );
+
+      await expect(
+        service.update(
+          'tenant-1',
+          'machinery',
+          'rec-1',
+          { values: { serial: 'SN-9' } },
+          { id: 'u-actor', permissions: [PERMISSIONS.CUSTOM_RECORD_UPDATE] },
+        ),
+      ).rejects.toThrow(ConflictException);
+
+      const [check] = queriesMatching(/SELECT "id" FROM "custom_records"/);
+      // Excludes the record being edited.
+      expect(check[1]).toEqual(expect.arrayContaining(['tenant-1', 'obj-1', 'rec-1', 'serial']));
+      expect(queriesMatching(/^\s*UPDATE/)).toHaveLength(0);
     });
 
     it('publishes record.updated domain event with before/after snapshots and diff', async () => {
@@ -367,6 +534,26 @@ describe('CustomRecordsService', () => {
       });
 
       expect(mockRepo.softDelete).toHaveBeenCalledWith({ id: 'rec-1', tenantId: 'tenant-1' });
+    });
+
+    it('removes links in both directions in the same transaction as the soft delete', async () => {
+      mockRepo.findOne.mockResolvedValue({
+        id: 'rec-1',
+        tenantId: 'tenant-1',
+        objectId: 'obj-1',
+        ownerId: 'u-actor',
+      });
+
+      await service.delete('tenant-1', 'machinery', 'rec-1', {
+        id: 'u-actor',
+        permissions: [PERMISSIONS.CUSTOM_RECORD_DELETE],
+      });
+
+      expect(mockRepo.manager.transaction).toHaveBeenCalledTimes(1);
+      const [del] = queriesMatching(/DELETE FROM "custom_record_links"/);
+      expect(del[0]).toContain('"source_record_id" = $2');
+      expect(del[0]).toContain(`"target_type" = 'custom_object' AND "target_record_id" = $2`);
+      expect(del[1]).toEqual(['tenant-1', 'rec-1']);
     });
 
     it('publishes record.deleted domain event with snapshot and changed fields', async () => {
