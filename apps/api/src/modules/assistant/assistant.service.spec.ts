@@ -1,6 +1,8 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
 import { AssistantService } from './assistant.service';
+import { AssistantTurn } from './entities/assistant-turn.entity';
+import { AssistantMessage } from './entities/assistant-message.entity';
 
 const alice = { id: 'alice', organizationId: 'org-1', permissions: ['assistant:use'] } as any;
 const bob = { id: 'bob', organizationId: 'org-1', permissions: ['assistant:use'] } as any;
@@ -47,6 +49,32 @@ function harness() {
       return take ? rows.slice(0, take) : rows;
     },
     update: async (where: any, patch: any) => Object.assign(messages.find((m) => m.id === where.id), patch),
+  };
+  // The conditional AWAITING_APPROVAL → RUNNING update in decide(): applies the same
+  // predicate the SQL does (status and pending_action->'tool'->>'id').
+  (turnRepo as any).createQueryBuilder = () => {
+    const params: Record<string, unknown> = {};
+    let patch: any = {};
+    const qb: any = {
+      update: () => qb,
+      set: (v: any) => ((patch = v), qb),
+      where: (_sql: string, p: any) => (Object.assign(params, p), qb),
+      andWhere: (_sql: string, p: any) => (Object.assign(params, p), qb),
+      execute: async () => {
+        const t = turns.get(params.id as string);
+        if (!t || t.status !== params.awaiting || t.pendingAction?.tool?.id !== params.toolCallId) return { affected: 0 };
+        Object.assign(t, patch);
+        return { affected: 1 };
+      },
+    };
+    return qb;
+  };
+  (turnRepo as any).manager = {
+    transaction: async (fn: any) =>
+      fn({
+        getRepository: (entity: unknown) =>
+          entity === AssistantTurn ? turnRepo : entity === AssistantMessage ? msgRepo : convRepo,
+      }),
   };
   const workflow = { start: jest.fn().mockResolvedValue({ workflowId: 'wf' }), getHandle: jest.fn() };
   const handle = { signal: jest.fn().mockResolvedValue(undefined), cancel: jest.fn().mockResolvedValue(undefined) };
@@ -97,6 +125,15 @@ describe('AssistantService', () => {
     await expect(h.service.sendMessage(alice, conv.id, { content: 'two' })).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it('creates the turn and the user message in one transaction', async () => {
+    const h = harness();
+    const transaction = jest.spyOn((h.service as any).turns.manager, 'transaction');
+    const conv = await h.service.create(alice, {});
+    const { message, turn } = await h.service.sendMessage(alice, conv.id, { content: 'hi' });
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(h.turns.get(turn.id)).toMatchObject({ userMessageId: message.id, workflowId: `assistant-turn-${turn.id}` });
+  });
+
   it('marks the turn FAILED when the workflow cannot start', async () => {
     const h = harness();
     h.workflow.start.mockRejectedValueOnce(new Error('Temporal client is not initialized'));
@@ -106,17 +143,56 @@ describe('AssistantService', () => {
     expect(h.events.writeStatus).toHaveBeenCalled();
   });
 
-  it('approval is owner-only, only while awaiting, and signals exactly once (Review Focus #2)', async () => {
-    const h = harness();
+  async function awaiting(h: ReturnType<typeof harness>, toolId = 'call-B') {
     const conv = await h.service.create(alice, {});
     const { turn } = await h.service.sendMessage(alice, conv.id, { content: 'send it' });
-    h.turns.get(turn.id).status = 'AWAITING_APPROVAL';
+    Object.assign(h.turns.get(turn.id), {
+      status: 'AWAITING_APPROVAL',
+      pendingAction: { tool: { id: toolId, name: 'channel_message.send', args: {} }, preview: { summary: 'Send' } },
+    });
+    return turn;
+  }
 
-    await expect(h.service.decide(bob, turn.id, { approved: true })).rejects.toBeInstanceOf(NotFoundException);
-    await h.service.decide(alice, turn.id, { approved: true });
-    await expect(h.service.decide(alice, turn.id, { approved: true })).rejects.toBeInstanceOf(ConflictException);
+  it('approval is owner-only, only while awaiting, and signals exactly once (Review Focus #2)', async () => {
+    const h = harness();
+    const turn = await awaiting(h);
+
+    await expect(h.service.decide(bob, turn.id, { approved: true, toolCallId: 'call-B' })).rejects.toBeInstanceOf(NotFoundException);
+    await h.service.decide(alice, turn.id, { approved: true, toolCallId: 'call-B' });
+    await expect(h.service.decide(alice, turn.id, { approved: true, toolCallId: 'call-B' })).rejects.toBeInstanceOf(ConflictException);
     expect(h.handle.signal).toHaveBeenCalledTimes(1);
-    expect(h.handle.signal).toHaveBeenCalledWith(expect.objectContaining({ name: 'agentApprovalSignal' }), { approved: true });
+    expect(h.handle.signal).toHaveBeenCalledWith(expect.objectContaining({ name: 'agentApprovalSignal' }), {
+      approved: true,
+      toolId: 'call-B',
+    });
+  });
+
+  it('a decision for a different tool call than the pending one is a 409 and sends no signal', async () => {
+    const h = harness();
+    const turn = await awaiting(h, 'call-B');
+    await expect(h.service.decide(alice, turn.id, { approved: true, toolCallId: 'call-A' })).rejects.toBeInstanceOf(ConflictException);
+    expect(h.handle.signal).not.toHaveBeenCalled();
+    expect(h.turns.get(turn.id).status).toBe('AWAITING_APPROVAL');
+  });
+
+  it('passes the note through with the tool id', async () => {
+    const h = harness();
+    const turn = await awaiting(h);
+    await h.service.decide(alice, turn.id, { approved: false, toolCallId: 'call-B', note: 'wrong tone' });
+    expect(h.handle.signal).toHaveBeenCalledWith(expect.anything(), { approved: false, toolId: 'call-B', note: 'wrong tone' });
+  });
+
+  it('rolls the turn back to AWAITING_APPROVAL when the signal cannot be delivered', async () => {
+    const h = harness();
+    const turn = await awaiting(h);
+    h.handle.signal.mockRejectedValueOnce(new Error('worker unreachable'));
+    await expect(h.service.decide(alice, turn.id, { approved: true, toolCallId: 'call-B' })).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+    expect(h.turns.get(turn.id).status).toBe('AWAITING_APPROVAL');
+    // And the user can try again.
+    await h.service.decide(alice, turn.id, { approved: true, toolCallId: 'call-B' });
+    expect(h.handle.signal).toHaveBeenCalledTimes(2);
   });
 
   it('cancel marks CANCELLED, writes a status row and cancels the workflow', async () => {

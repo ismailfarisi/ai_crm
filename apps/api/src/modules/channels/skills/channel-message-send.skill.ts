@@ -25,6 +25,11 @@ const slotSchema = z.object({
   contact: z.string().optional(),
   provider: z.enum(PROVIDERS).optional(),
   body: z.string().optional(),
+  /**
+   * Set when the agent pins a resolved send for approval: used as-is instead
+   * of being re-derived from history, so the commit sends where the card said.
+   */
+  recipient: z.string().optional(),
 });
 
 export interface ResolvedSend {
@@ -37,6 +42,8 @@ export interface ResolvedSend {
 export class ChannelMessageSendSkill implements ChannelSkill<ResolvedSend> {
   readonly name = CHANNEL_SKILLS.CHANNEL_MESSAGE_SEND;
   readonly isMutating = true;
+  /** In-app assistant only: never offered to the staff bot or automations. */
+  readonly surfaces = ['assistant'] as const;
   readonly description =
     'Send a WhatsApp, Telegram or email message to one contact. Write the complete final message text in `body`. The user always sees and approves it before it is sent.';
   readonly examples = ['send it', 'reply to Ada on WhatsApp saying the samples ship Monday', 'email Acme the follow-up'];
@@ -103,6 +110,14 @@ export class ChannelMessageSendSkill implements ChannelSkill<ResolvedSend> {
       };
     }
 
+    if (value.recipient !== undefined) {
+      const pinned = value.recipient.trim();
+      if (!pinned) {
+        return { kind: 'refused', reason: `No ${provider} address was given for ${contact.value.fullName}.` };
+      }
+      return { kind: 'resolved', value: { contact: contact.value, provider, recipient: pinned, body } };
+    }
+
     const fromHistory = last ? (last.direction === MessageDirection.INBOUND ? last.sender : last.recipient) : null;
     const ownAddress =
       provider === ChannelProviderType.WHATSAPP_META
@@ -118,6 +133,11 @@ export class ChannelMessageSendSkill implements ChannelSkill<ResolvedSend> {
       };
     }
     return { kind: 'resolved', value: { contact: contact.value, provider, recipient, body } };
+  }
+
+  /** Contact by id, explicit channel and address: re-resolves to exactly this send. */
+  pinArgs(value: ResolvedSend): Record<string, unknown> {
+    return { contact: value.contact.id, provider: value.provider, recipient: value.recipient, body: value.body };
   }
 
   async preview(value: ResolvedSend): Promise<string> {

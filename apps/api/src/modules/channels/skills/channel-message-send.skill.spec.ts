@@ -125,4 +125,50 @@ describe('ChannelMessageSendSkill', () => {
     const res = await skill.resolve({ contact: 'Acme', provider: 'WHATSAPP_META', body: 'Hi' }, ctx);
     expect(res.kind === 'resolved' && res.value.recipient).toBe('+555');
   });
+
+  describe('pinned args', () => {
+    const ada = { ...acme, id: '7f8e1f0a-1111-4222-8333-944455556666' };
+    function pinnedBuild(history: unknown) {
+      const built = build(history, [ada]);
+      const contacts = (built.skill as any).contacts as { findOne: jest.Mock };
+      contacts.findOne.mockResolvedValue(ada);
+      return built;
+    }
+
+    it('pins contact id, provider, recipient and body', async () => {
+      const { skill } = pinnedBuild({ direction: 'INBOUND', sender: 'tg-chat-42', recipient: 'bot' });
+      const res = await skill.resolve({ contact: 'Ada', provider: 'TELEGRAM', body: 'Hi' }, ctx);
+      expect(res.kind).toBe('resolved');
+      expect(skill.pinArgs(res.kind === 'resolved' ? res.value : (null as never))).toEqual({
+        contact: ada.id,
+        provider: 'TELEGRAM',
+        recipient: 'tg-chat-42',
+        body: 'Hi',
+      });
+    });
+
+    it('re-resolves pinned args to the same send even after history changes', async () => {
+      const { skill, messages } = pinnedBuild({ direction: 'INBOUND', sender: 'tg-chat-42', recipient: 'bot' });
+      const first = await skill.resolve({ contact: 'Ada', provider: 'TELEGRAM', body: 'Hi' }, ctx);
+      const pinned = skill.pinArgs(first.kind === 'resolved' ? first.value : (null as never));
+      // A newer message arrives from a different chat during the approval window.
+      (messages.findOne as jest.Mock).mockResolvedValue({ direction: 'INBOUND', sender: 'tg-chat-99', recipient: 'bot' });
+      const again = await skill.resolve(pinned, ctx);
+      expect(again).toEqual(first);
+      expect(await skill.preview(again.kind === 'resolved' ? again.value : (null as never))).toBe(
+        await skill.preview(first.kind === 'resolved' ? first.value : (null as never)),
+      );
+    });
+
+    it('refuses a pinned recipient that is blank', async () => {
+      const { skill } = pinnedBuild(null);
+      const res = await skill.resolve({ contact: ada.id, provider: 'EMAIL_SMTP', recipient: '   ', body: 'Hi' }, ctx);
+      expect(res.kind).toBe('refused');
+    });
+
+    it('is offered on the assistant surface only', () => {
+      const { skill } = build();
+      expect(skill.surfaces).toEqual(['assistant']);
+    });
+  });
 });

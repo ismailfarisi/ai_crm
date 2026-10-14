@@ -57,8 +57,14 @@ export const sendAssistantMessageSchema = z.object({
 });
 export type SendAssistantMessagePayload = z.output<typeof sendAssistantMessageSchema>;
 
+/**
+ * A decision is bound to one tool call: `toolCallId` must equal the pending
+ * action's `tool.id`, so an approval can only ever release the exact action
+ * the user was shown.
+ */
 export const assistantApprovalSchema = z.object({
   approved: z.boolean(),
+  toolCallId: z.string().min(1).max(200),
   note: z.string().trim().max(500).optional(),
 });
 export type AssistantApprovalPayload = z.output<typeof assistantApprovalSchema>;

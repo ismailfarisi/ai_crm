@@ -8,9 +8,10 @@ import { TemporalService } from '../temporal/temporal.service';
 import { AssistantTurn } from './entities/assistant-turn.entity';
 import { AssistantEventsService } from './assistant-events.service';
 
-const STALE_AFTER_MS = 5 * 60_000;
+// Longer than the commit activity's 5-minute timeout, which runs with nothing to emit.
+const STALE_AFTER_MS = 7 * 60_000;
 
-/** A RUNNING turn with no event for 5 minutes has lost its worker. Approval waits are exempt. */
+/** A RUNNING turn with no event for 7 minutes has lost its worker. Approval waits are exempt. */
 @Injectable()
 export class AssistantSweepService {
   private readonly logger = new Logger(AssistantSweepService.name);

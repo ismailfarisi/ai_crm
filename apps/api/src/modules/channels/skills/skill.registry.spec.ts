@@ -168,4 +168,32 @@ describe('SkillRegistry', () => {
     expect(names(['channel:read'])).not.toContain('channel_message.send');
     expect(names(['channel:read', 'channel:send'])).toContain('channel_message.send');
   });
+
+  describe('surfaces', () => {
+    const perms = [
+      PERMISSIONS.QUOTE_APPROVE,
+      PERMISSIONS.WORK_ORDER_READ,
+      PERMISSIONS.CHANNEL_READ,
+      PERMISSIONS.CHANNEL_SEND,
+    ];
+    const channelSkills = [CHANNEL_SKILLS.CHANNEL_THREAD_READ, CHANNEL_SKILLS.CHANNEL_MESSAGE_SEND];
+
+    it('offers the channel skills on the assistant surface only', () => {
+      const on = (surface: 'assistant' | 'channel' | 'automation') =>
+        registry.permittedFor(perms, surface).map((s) => s.name);
+      expect(on('assistant')).toEqual(expect.arrayContaining(channelSkills));
+      for (const surface of ['channel', 'automation'] as const) {
+        for (const name of channelSkills) expect(on(surface)).not.toContain(name);
+      }
+    });
+
+    it('leaves skills without a surface list available everywhere', () => {
+      const unrestricted = registry.all().filter((s) => !s.surfaces).map((s) => s.name);
+      expect(unrestricted).toHaveLength(8);
+      for (const surface of ['assistant', 'channel', 'automation'] as const) {
+        const names = registry.permittedFor(perms, surface).map((s) => s.name);
+        expect(names).toEqual(expect.arrayContaining([CHANNEL_SKILLS.QUOTE_APPROVE, CHANNEL_SKILLS.WORK_ORDER_QUERY]));
+      }
+    });
+  });
 });

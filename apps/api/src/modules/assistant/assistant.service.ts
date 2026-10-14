@@ -117,37 +117,47 @@ export class AssistantService {
     });
     const history = prior.reverse().map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
-    let turn = this.turns.create({
-      tenantId: actor.organizationId,
-      conversationId,
-      status: 'RUNNING',
-      workflowId: '',
-      lastProgressAt: new Date(),
-    });
+    // Turn, user message and conversation update land together or not at
+    // all: a failure part-way must not leave an active turn with no message
+    // (which would block the conversation until the sweep).
+    let turn: AssistantTurn;
+    let message: AssistantMessage;
     try {
-      turn = await this.turns.save(turn);
+      ({ turn, message } = await this.turns.manager.transaction(async (manager) => {
+        const turns = manager.getRepository(AssistantTurn);
+        const messages = manager.getRepository(AssistantMessage);
+        const created = await turns.save(
+          turns.create({
+            tenantId: actor.organizationId,
+            conversationId,
+            status: 'RUNNING',
+            workflowId: '',
+            lastProgressAt: new Date(),
+          }),
+        );
+        const saved = await messages.save(
+          messages.create({
+            tenantId: actor.organizationId,
+            conversationId,
+            turnId: created.id,
+            role: 'user',
+            content: body.content,
+            payload: body.context ? { context: body.context } : null,
+          }),
+        );
+        created.userMessageId = saved.id;
+        created.workflowId = `assistant-turn-${created.id}`;
+        const linked = await turns.save(created);
+
+        if (conversation.title === 'New chat') conversation.title = body.content.slice(0, 60);
+        if (body.context !== undefined) conversation.context = body.context ?? null;
+        await manager.getRepository(AssistantConversation).save(conversation);
+        return { turn: linked, message: saved };
+      }));
     } catch (error) {
       if (isUniqueViolation(error)) throw new ConflictException('The assistant is still working on your last message');
       throw error;
     }
-
-    const message = await this.messages.save(
-      this.messages.create({
-        tenantId: actor.organizationId,
-        conversationId,
-        turnId: turn.id,
-        role: 'user',
-        content: body.content,
-        payload: body.context ? { context: body.context } : null,
-      }),
-    );
-    turn.userMessageId = message.id;
-    turn.workflowId = `assistant-turn-${turn.id}`;
-    turn = await this.turns.save(turn);
-
-    if (conversation.title === 'New chat') conversation.title = body.content.slice(0, 60);
-    if (body.context !== undefined) conversation.context = body.context ?? null;
-    await this.conversations.save(conversation);
 
     try {
       await this.temporal.getClient().workflow.start(agentReActWorkflow, {
@@ -181,17 +191,27 @@ export class AssistantService {
 
   async decide(actor: AuthenticatedUser, turnId: string, body: AssistantApprovalPayload): Promise<AssistantTurnDto> {
     const turn = await this.ownTurn(actor, turnId);
-    // Conditional update is the lock: only one request wins the AWAITING_APPROVAL → RUNNING transition.
-    const { affected } = await this.turns.update(
-      { id: turn.id, status: 'AWAITING_APPROVAL' },
-      { status: 'RUNNING', lastProgressAt: new Date() },
-    );
+    // Conditional update is the lock: only one request wins the AWAITING_APPROVAL → RUNNING
+    // transition, and only for the tool call the user was actually shown. A decision made on
+    // an older card (or a different call in the same turn) matches nothing.
+    const { affected } = await this.turns
+      .createQueryBuilder()
+      .update(AssistantTurn)
+      .set({ status: 'RUNNING', lastProgressAt: new Date() })
+      .where('id = :id', { id: turn.id })
+      .andWhere('status = :awaiting', { awaiting: 'AWAITING_APPROVAL' })
+      .andWhere(`pending_action -> 'tool' ->> 'id' = :toolCallId`, { toolCallId: body.toolCallId })
+      .execute();
     if (!affected) throw new ConflictException('This action is no longer waiting for approval');
     try {
       await this.temporal
         .getClient()
         .workflow.getHandle(turn.workflowId)
-        .signal(approvalSignal, body.note ? { approved: body.approved, note: body.note } : { approved: body.approved });
+        .signal(approvalSignal, {
+          approved: body.approved,
+          toolId: body.toolCallId,
+          ...(body.note ? { note: body.note } : {}),
+        });
     } catch (error) {
       await this.turns.update({ id: turn.id, status: 'RUNNING' }, { status: 'AWAITING_APPROVAL' });
       throw new ServiceUnavailableException('Could not reach the assistant worker; try again');

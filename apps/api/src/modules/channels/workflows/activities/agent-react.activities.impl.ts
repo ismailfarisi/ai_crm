@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Context } from '@temporalio/activity';
+import { ApplicationFailure, Context } from '@temporalio/activity';
 import { PERMISSIONS, type Permission } from '@saas/shared';
 import { AiService } from '@/modules/ai/ai.service';
 import { AuditService } from '@/modules/audit/audit.service';
@@ -14,11 +14,12 @@ import { SkillRegistry } from '../../skills/skill.registry';
 import { ToolExecutionPolicyService } from '../../skills/tool-execution-policy.service';
 import { ChannelIdempotencyService } from '../../services/channel-idempotency.service';
 import type { ChannelSkill, SkillContext } from '../../skills/skill.types';
-import type {
-  AgentActivityCtx,
-  AgentReactActivities,
-  ToolCallSpec,
-  ToolExecutionResult,
+import {
+  APPROVED_ACTION_CHANGED,
+  type AgentActivityCtx,
+  type AgentReactActivities,
+  type ToolCallSpec,
+  type ToolExecutionResult,
 } from './agent-react.activities';
 
 /** The running activity's workflow id, or null when called outside an activity. */
@@ -50,7 +51,7 @@ export function createAgentReactActivities(deps: {
   const policy = new ToolExecutionPolicyService();
 
   const resolveSkills = async (
-    ctx: Pick<AgentActivityCtx, 'organizationId' | 'userId'>,
+    ctx: Pick<AgentActivityCtx, 'organizationId' | 'userId' | 'surface'>,
     allowedDomains?: string[],
   ): Promise<{ skills: ChannelSkill<never>[]; permissions: Permission[] }> => {
     if (!ctx.userId) {
@@ -60,7 +61,11 @@ export function createAgentReactActivities(deps: {
       ctx.userId,
       ctx.organizationId,
     );
-    const skills = deps.skillRegistry.permittedFor(access.permissions);
+    // No surface means an automation: assistant-only skills stay out.
+    const skills = deps.skillRegistry.permittedFor(
+      access.permissions,
+      ctx.surface ?? 'automation',
+    );
     return {
       skills:
         allowedDomains?.length
@@ -234,13 +239,17 @@ export function createAgentReactActivities(deps: {
           },
         );
         const knownNames = new Set(toolNames);
+        // Tool-call ids key approvals and event rows, so they must be unique
+        // within a turn. Assigned here, inside the activity, so the workflow
+        // sees them as recorded results.
+        const seenIds = new Set<string>();
         const toolCalls = (result.data.toolCalls ?? [])
           .filter((call) => knownNames.has(call.name))
-          .map((call) => ({
-            id: call.id || randomUUID(),
-            name: call.name,
-            args: call.args ?? {},
-          }));
+          .map((call) => {
+            const id = call.id && !seenIds.has(call.id) ? call.id : randomUUID();
+            seenIds.add(id);
+            return { id, name: call.name, args: call.args ?? {} };
+          });
         return {
           thought: result.data.thought ?? '',
           model: result.model,
@@ -318,6 +327,9 @@ export function createAgentReactActivities(deps: {
             previewPayload: {
               summary: await skill.preview(resolution.value, skillContext),
             },
+            ...(skill.pinArgs
+              ? { resolvedArgs: skill.pinArgs(resolution.value) }
+              : {}),
           };
         }
 
@@ -394,6 +406,15 @@ export function createAgentReactActivities(deps: {
           throw new Error(
             `Tool '${tool.name}' is read-only and cannot be committed`,
           );
+        }
+        if (ctx.approvedPreview) {
+          const current = await skill.preview(resolution.value, skillContext);
+          if (current !== ctx.approvedPreview.summary) {
+            throw ApplicationFailure.nonRetryable(
+              'This action changed since you approved it — ask again.',
+              APPROVED_ACTION_CHANGED,
+            );
+          }
         }
         const outcome = await skill.execute(resolution.value, skillContext);
         await deps.auditService.record({

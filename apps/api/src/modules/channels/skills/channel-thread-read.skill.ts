@@ -31,6 +31,8 @@ export interface ResolvedThreadRead {
 export class ChannelThreadReadSkill implements ChannelSkill<ResolvedThreadRead> {
   readonly name = CHANNEL_SKILLS.CHANNEL_THREAD_READ;
   readonly isMutating = false;
+  /** In-app assistant only: not offered to the staff bot or automations. */
+  readonly surfaces = ['assistant'] as const;
   readonly description =
     "Read the recent WhatsApp, Telegram or email messages exchanged with one contact. Use before summarising a conversation or drafting a reply.";
   readonly examples = [

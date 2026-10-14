@@ -6,6 +6,7 @@ import {
   getExternalWorkflowHandle,
   isCancellation,
 } from '@temporalio/workflow';
+import { APPROVED_ACTION_CHANGED } from './activities/agent-react.activities';
 import type {
   AgentReactActivities,
   AssistantEventInput,
@@ -29,9 +30,23 @@ const commitActivities = proxyActivities<
   },
 });
 
-export const approvalSignal = defineSignal<[{ approved: boolean; note?: string }]>(
+/**
+ * `toolId` binds a decision to one gated tool call: a signal naming a
+ * different call (or arriving while nothing is awaited) is ignored. Signals
+ * without it — the automation parent's relay — keep the original behaviour.
+ */
+export interface ApprovalSignalPayload {
+  approved: boolean;
+  note?: string;
+  toolId?: string;
+}
+
+export const approvalSignal = defineSignal<[ApprovalSignalPayload]>(
   'agentApprovalSignal',
 );
+
+/** Sends a customer message: never auto-approved, whatever the caller asked for. */
+const ALWAYS_ASK_TOOLS = new Set(['channel_message.send']);
 
 export interface AgentReActWorkflowInput {
   organizationId: string;
@@ -103,6 +118,14 @@ function goalWithContext(input: AgentReActWorkflowInput): string {
   return `${input.prompt}\n\n(The user is currently viewing ${entity} ${label ?? id} (id ${id}).)`;
 }
 
+/** The user-facing message of a commit refused because the approved action changed. */
+function approvedActionChangedMessage(error: unknown): string | null {
+  const cause = (error as { cause?: { type?: unknown; message?: unknown } } | null)?.cause;
+  return cause?.type === APPROVED_ACTION_CHANGED && typeof cause.message === 'string'
+    ? cause.message
+    : null;
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error
     ? error.cause instanceof Error
@@ -135,7 +158,8 @@ export async function agentReActWorkflow(
     if (!input.eventSink || isCancellation(error)) throw error;
     result = {
       status: 'FAILED',
-      finalResponse: 'Something went wrong while working on that.',
+      finalResponse:
+        approvedActionChangedMessage(error) ?? 'Something went wrong while working on that.',
       stepsExecuted: 0,
     };
     await emit({
@@ -164,15 +188,24 @@ async function runAgentLoop(
   let isDone = false;
   let finalResponse = '';
   const goal = goalWithContext(input);
+  // Assistant turns may use assistant-only skills; anything else is an
+  // automation. The field is omitted (not undefined) on the automation path
+  // so its activity inputs keep their original shape.
+  const surface = input.eventSink ? { surface: 'assistant' as const } : {};
   const toolCtx = {
     organizationId: input.organizationId,
     userId: input.userId,
     message: input.prompt,
     ...(input.audit ? { audit: input.audit } : {}),
+    ...surface,
   };
 
-  const approvalQueue: Array<{ approved: boolean; note?: string }> = [];
+  const approvalQueue: ApprovalSignalPayload[] = [];
+  // The gated tool call currently waiting for a decision, if any.
+  let awaitingToolId: string | undefined;
   setHandler(approvalSignal, (signal) => {
+    // Handler-only logic: adds no Temporal commands, so replay is unaffected.
+    if (signal.toolId !== undefined && signal.toolId !== awaitingToolId) return;
     if (signal.approved && approvalQueue.length === 0) {
       approvalQueue.push(signal);
     } else if (!signal.approved) {
@@ -191,6 +224,7 @@ async function runAgentLoop(
       organizationId: input.organizationId,
       userId: input.userId,
       allowedDomains: input.allowedDomains,
+      ...surface,
     });
 
     const turn = await activities.planReActTurn({
@@ -217,7 +251,7 @@ async function runAgentLoop(
 
     if (turn.toolCalls && turn.toolCalls.length > 0) {
       for (const plannedTool of turn.toolCalls) {
-        const tool = turn.model ? { ...plannedTool, model: turn.model } : plannedTool;
+        let tool: ToolCallSpec = turn.model ? { ...plannedTool, model: turn.model } : plannedTool;
         await emit({
           eventKey: `t${turns}:call:${tool.id}`,
           role: 'tool_call',
@@ -228,7 +262,17 @@ async function runAgentLoop(
         const execution = await activities.executeToolActivity(tool, toolCtx);
 
         if (execution.requiresApproval && execution.isMutating) {
-          if (!input.autoApprove) {
+          // What was resolved is what is shown and what is committed: the
+          // skill's pinned args replace the planner's before the approval.
+          if (execution.resolvedArgs) {
+            tool = { ...tool, args: execution.resolvedArgs };
+          }
+          const approvedPreview = execution.previewPayload ?? {};
+          if (!input.autoApprove || ALWAYS_ASK_TOOLS.has(tool.name)) {
+            // Only a decision made while this call is awaited counts: drop any
+            // stray decision that arrived earlier, and bind the wait to its id.
+            approvalQueue.length = 0;
+            awaitingToolId = tool.id;
             if (input.parentWorkflowId && input.automationNodeId) {
               await getExternalWorkflowHandle(input.parentWorkflowId).signal(
                 agentApprovalRequestedSignal,
@@ -255,6 +299,7 @@ async function runAgentLoop(
               () => approvalQueue.length > 0,
               approvalTimeoutToMilliseconds(input.approvalTimeout),
             );
+            awaitingToolId = undefined;
             const currentApproval = approvalQueue.shift();
             if (!approved) {
               return {
@@ -281,7 +326,16 @@ async function runAgentLoop(
             });
           }
 
-          const commit = await commitActivities.commitToolMutationActivity(tool, toolCtx);
+          await emit({
+            eventKey: `t${turns}:committing:${tool.id}`,
+            role: 'step',
+            content: `Running ${tool.name}`,
+            toolName: tool.name,
+          });
+          const commit = await commitActivities.commitToolMutationActivity(
+            tool,
+            input.eventSink ? { ...toolCtx, approvedPreview } : toolCtx,
+          );
           await emit({
             eventKey: `t${turns}:result:${tool.id}`,
             role: 'tool_result',

@@ -474,7 +474,7 @@ export class ChannelCommandService {
   private async startFresh(ctx: SkillContext): Promise<ChannelCommandResult> {
     if (!ctx.message) return this.reply(ctx, this.helpMessage(ctx));
 
-    const candidates = this.registry.permittedFor(ctx.permissions);
+    const candidates = this.registry.permittedFor(ctx.permissions, 'channel');
     if (candidates.length === 0) {
       return this.reply(
         ctx,
@@ -706,7 +706,7 @@ export class ChannelCommandService {
 
   /** Only ever lists capabilities this user actually holds. */
   private helpMessage(ctx: SkillContext): string {
-    const permitted = this.registry.permittedFor(ctx.permissions);
+    const permitted = this.registry.permittedFor(ctx.permissions, 'channel');
     if (permitted.length === 0)
       return "You don't have permission to run any commands here.";
     return `I can help with:\n${permitted

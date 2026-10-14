@@ -34,7 +34,14 @@ describe('assistant contract', () => {
   });
 
   it('caps the approval note', () => {
-    expect(assistantApprovalSchema.safeParse({ approved: false, note: 'n'.repeat(501) }).success).toBe(false);
+    expect(assistantApprovalSchema.safeParse({ approved: false, toolCallId: 'c1', note: 'n'.repeat(501) }).success).toBe(false);
+  });
+
+  it('binds a decision to a tool call id', () => {
+    expect(assistantApprovalSchema.safeParse({ approved: true }).success).toBe(false);
+    expect(assistantApprovalSchema.safeParse({ approved: true, toolCallId: '' }).success).toBe(false);
+    expect(assistantApprovalSchema.safeParse({ approved: true, toolCallId: 'x'.repeat(201) }).success).toBe(false);
+    expect(assistantApprovalSchema.safeParse({ approved: true, toolCallId: 'c1' }).success).toBe(true);
   });
 
   it('exposes the active statuses, permission, audit channel and skill names', () => {

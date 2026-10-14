@@ -398,6 +398,60 @@ describe('agentReActWorkflow logic', () => {
   });
 });
 
+describe('automation path (no event sink)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockActivities.planReActTurn.mockReset();
+    mockActivities.executeToolActivity.mockReset();
+    mockActivities.commitToolMutationActivity.mockReset();
+    mockActivities.listAvailableTools.mockResolvedValue([]);
+  });
+
+  it('keeps the original activity input shapes (no surface, no approvedPreview)', async () => {
+    mockActivities.planReActTurn
+      .mockResolvedValueOnce({ thought: '', toolCalls: [{ id: 'q1', name: 'quote.approve', args: { quote: 'Q-1' } }] })
+      .mockResolvedValueOnce({ thought: '', finalAnswer: 'done' });
+    mockActivities.executeToolActivity.mockResolvedValueOnce({
+      toolCallId: 'q1', toolName: 'quote.approve', isMutating: true, requiresApproval: true, previewPayload: { summary: 'Approve Q-1' },
+    });
+    mockActivities.commitToolMutationActivity.mockResolvedValueOnce({ success: true, resultSummary: 'ok' });
+    mockConditionImpl = async (predicate) => {
+      mockHandlers.get(approvalSignal)!({ approved: true });
+      return predicate();
+    };
+    await agentReActWorkflow({ organizationId: 'o', userId: 'u', conversationId: 'c', prompt: 'p', allowedDomains: ['SALES'] });
+    expect(mockActivities.listAvailableTools).toHaveBeenCalledWith({ organizationId: 'o', userId: 'u', allowedDomains: ['SALES'] });
+    expect(mockActivities.commitToolMutationActivity).toHaveBeenCalledWith(
+      { id: 'q1', name: 'quote.approve', args: { quote: 'Q-1' } },
+      { organizationId: 'o', userId: 'u', message: 'p' },
+    );
+    expect(mockActivities.emitAssistantEventActivity).not.toHaveBeenCalled();
+  });
+
+  it('the parent relay without a tool id still approves (automation approval unchanged)', async () => {
+    const parentSignal = jest.fn().mockResolvedValue(undefined);
+    const { getExternalWorkflowHandle } = jest.requireMock('@temporalio/workflow');
+    getExternalWorkflowHandle.mockReturnValue({ signal: parentSignal });
+    mockActivities.planReActTurn
+      .mockResolvedValueOnce({ thought: '', toolCalls: [{ id: 'q2', name: 'quote.approve', args: {} }] })
+      .mockResolvedValueOnce({ thought: '', finalAnswer: 'done' });
+    mockActivities.executeToolActivity.mockResolvedValueOnce({
+      toolCallId: 'q2', toolName: 'quote.approve', isMutating: true, requiresApproval: true, previewPayload: {},
+    });
+    mockActivities.commitToolMutationActivity.mockResolvedValueOnce({ success: true, resultSummary: 'ok' });
+    mockConditionImpl = async (predicate) => {
+      mockHandlers.get(approvalSignal)!({ approved: true, note: 'relayed' });
+      return predicate();
+    };
+    const result = await agentReActWorkflow({
+      organizationId: 'o', userId: 'u', conversationId: 'c', prompt: 'p', parentWorkflowId: 'parent', automationNodeId: 'n1',
+    });
+    expect(result.status).toBe('COMPLETED');
+    expect(parentSignal).toHaveBeenCalledTimes(1);
+    expect(mockActivities.commitToolMutationActivity).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('assistant event sink', () => {
   const base = {
     organizationId: 'org-1',
@@ -509,6 +563,161 @@ describe('assistant event sink', () => {
     expect(mockActivities.emitAssistantEventActivity.mock.calls.at(-1)![0]).toMatchObject({
       eventKey: 'final', turn: { status: 'FAILED', error: 'AI budget exceeded' },
     });
+  });
+
+  it('passes the assistant surface to tool listing and tool execution', async () => {
+    mockActivities.listAvailableTools.mockClear();
+    mockActivities.planReActTurn
+      .mockResolvedValueOnce({ thought: '', toolCalls: [{ id: 'c1', name: 'channel_thread.read', args: {} }] })
+      .mockResolvedValueOnce({ thought: '', finalAnswer: 'ok' });
+    mockActivities.executeToolActivity.mockResolvedValueOnce({
+      toolCallId: 'c1', toolName: 'channel_thread.read', isMutating: false, requiresApproval: false, output: { reply: 'x' },
+    });
+    await agentReActWorkflow(base);
+    expect(mockActivities.listAvailableTools.mock.calls[0][0]).toMatchObject({ surface: 'assistant' });
+    expect(mockActivities.executeToolActivity.mock.calls[0][1]).toMatchObject({ surface: 'assistant' });
+  });
+
+  it('two gated calls in one turn: an approval carrying the first call id does not release the second', async () => {
+    mockActivities.planReActTurn.mockResolvedValueOnce({
+      thought: '',
+      toolCalls: [
+        { id: 'A', name: 'quote.approve', args: { quote: 'Q-1' } },
+        { id: 'B', name: 'channel_message.send', args: { body: 'Hi' } },
+      ],
+    }).mockResolvedValueOnce({ thought: '', finalAnswer: 'done' });
+    mockActivities.executeToolActivity
+      .mockResolvedValueOnce({ toolCallId: 'A', toolName: 'quote.approve', isMutating: true, requiresApproval: true, previewPayload: { summary: 'Approve Q-1' } })
+      .mockResolvedValueOnce({ toolCallId: 'B', toolName: 'channel_message.send', isMutating: true, requiresApproval: true, previewPayload: { summary: 'Send Hi' } });
+    mockActivities.commitToolMutationActivity.mockResolvedValue({ success: true, resultSummary: 'ok' });
+
+    let waits = 0;
+    mockConditionImpl = async (predicate) => {
+      waits++;
+      // First wait: A's own approval. Second wait (B pending): a replay of A's
+      // approval — a stale card or a duplicate click — must not count.
+      mockHandlers.get(approvalSignal)!({ approved: true, toolId: 'A' });
+      return predicate();
+    };
+    const result = await agentReActWorkflow(base);
+
+    expect(waits).toBe(2);
+    expect(result.status).toBe('TIMED_OUT');
+    expect(result.finalResponse).toBe('Approval for channel_message.send timed out.');
+    expect(mockActivities.commitToolMutationActivity).toHaveBeenCalledTimes(1);
+    expect(mockActivities.commitToolMutationActivity.mock.calls[0][0]).toMatchObject({ id: 'A' });
+  });
+
+  it('two gated calls: each releases only with its own id', async () => {
+    mockActivities.planReActTurn.mockResolvedValueOnce({
+      thought: '',
+      toolCalls: [
+        { id: 'A', name: 'quote.approve', args: {} },
+        { id: 'B', name: 'channel_message.send', args: {} },
+      ],
+    }).mockResolvedValueOnce({ thought: '', finalAnswer: 'done' });
+    mockActivities.executeToolActivity
+      .mockResolvedValueOnce({ toolCallId: 'A', toolName: 'quote.approve', isMutating: true, requiresApproval: true, previewPayload: {} })
+      .mockResolvedValueOnce({ toolCallId: 'B', toolName: 'channel_message.send', isMutating: true, requiresApproval: true, previewPayload: {} });
+    mockActivities.commitToolMutationActivity.mockResolvedValue({ success: true, resultSummary: 'ok' });
+    const ids = ['A', 'B'];
+    mockConditionImpl = async (predicate) => {
+      mockHandlers.get(approvalSignal)!({ approved: true, toolId: ids.shift() });
+      return predicate();
+    };
+    const result = await agentReActWorkflow(base);
+    expect(result.status).toBe('COMPLETED');
+    expect(mockActivities.commitToolMutationActivity.mock.calls.map((c) => c[0].id)).toEqual(['A', 'B']);
+  });
+
+  it('a stray approval while RUNNING does not pre-approve the next gated call', async () => {
+    mockActivities.planReActTurn
+      .mockResolvedValueOnce({ thought: '', toolCalls: [{ id: 'r1', name: 'channel_thread.read', args: {} }] })
+      .mockResolvedValueOnce({ thought: '', toolCalls: [{ id: 's1', name: 'channel_message.send', args: {} }] });
+    mockActivities.executeToolActivity
+      .mockImplementationOnce(async () => {
+        // Arrives while the turn is RUNNING, even naming the upcoming call.
+        mockHandlers.get(approvalSignal)!({ approved: true, toolId: 's1' });
+        return { toolCallId: 'r1', toolName: 'channel_thread.read', isMutating: false, requiresApproval: false, output: { reply: 'x' } };
+      })
+      .mockResolvedValueOnce({ toolCallId: 's1', toolName: 'channel_message.send', isMutating: true, requiresApproval: true, previewPayload: {} });
+    mockConditionImpl = async (predicate) => predicate();
+    const result = await agentReActWorkflow(base);
+    expect(result.status).toBe('TIMED_OUT');
+    expect(mockActivities.commitToolMutationActivity).not.toHaveBeenCalled();
+  });
+
+  it('a stray id-less approval queued before the wait is discarded', async () => {
+    mockActivities.planReActTurn
+      .mockResolvedValueOnce({ thought: '', toolCalls: [{ id: 'r1', name: 'channel_thread.read', args: {} }] })
+      .mockResolvedValueOnce({ thought: '', toolCalls: [{ id: 's1', name: 'channel_message.send', args: {} }] });
+    mockActivities.executeToolActivity
+      .mockImplementationOnce(async () => {
+        mockHandlers.get(approvalSignal)!({ approved: true });
+        return { toolCallId: 'r1', toolName: 'channel_thread.read', isMutating: false, requiresApproval: false, output: { reply: 'x' } };
+      })
+      .mockResolvedValueOnce({ toolCallId: 's1', toolName: 'channel_message.send', isMutating: true, requiresApproval: true, previewPayload: {} });
+    mockConditionImpl = async (predicate) => predicate();
+    const result = await agentReActWorkflow(base);
+    expect(result.status).toBe('TIMED_OUT');
+    expect(mockActivities.commitToolMutationActivity).not.toHaveBeenCalled();
+  });
+
+  it('pins the resolved args into the pending action and the commit, and passes the approved preview', async () => {
+    mockActivities.planReActTurn
+      .mockResolvedValueOnce({ thought: '', toolCalls: [{ id: 'c9', name: 'channel_message.send', args: { contact: 'Ada', body: 'Hi' } }] })
+      .mockResolvedValueOnce({ thought: '', finalAnswer: 'Sent.' });
+    const pinned = { contact: 'contact-uuid', provider: 'WHATSAPP_META', recipient: '+4477', body: 'Hi' };
+    mockActivities.executeToolActivity.mockResolvedValueOnce({
+      toolCallId: 'c9', toolName: 'channel_message.send', isMutating: true, requiresApproval: true,
+      previewPayload: { summary: 'Send to Ada (+4477)' }, resolvedArgs: pinned,
+    });
+    mockActivities.commitToolMutationActivity.mockResolvedValueOnce({ success: true, resultSummary: 'Sent.' });
+    mockConditionImpl = async (predicate) => {
+      mockHandlers.get(approvalSignal)!({ approved: true, toolId: 'c9' });
+      return predicate();
+    };
+    await agentReActWorkflow(base);
+    const events = mockActivities.emitAssistantEventActivity.mock.calls.map((c) => c[0]);
+    expect(events.find((e) => e.role === 'approval').payload.tool.args).toEqual(pinned);
+    const [committedTool, commitCtx] = mockActivities.commitToolMutationActivity.mock.calls[0];
+    expect(committedTool).toMatchObject({ id: 'c9', args: pinned });
+    expect(commitCtx).toMatchObject({ approvedPreview: { summary: 'Send to Ada (+4477)' }, surface: 'assistant' });
+    // A progress step precedes the commit so a long commit is visibly in flight.
+    const keys = events.map((e) => e.eventKey);
+    expect(keys.indexOf('t1:committing:c9')).toBeGreaterThan(keys.indexOf('t1:approved:c9'));
+    expect(events.find((e) => e.eventKey === 't1:committing:c9')).toMatchObject({ role: 'step', content: 'Running channel_message.send' });
+  });
+
+  it('ends FAILED with the commit refusal message when the action changed after approval', async () => {
+    mockActivities.planReActTurn.mockResolvedValueOnce({ thought: '', toolCalls: [{ id: 'c8', name: 'channel_message.send', args: {} }] });
+    mockActivities.executeToolActivity.mockResolvedValueOnce({
+      toolCallId: 'c8', toolName: 'channel_message.send', isMutating: true, requiresApproval: true, previewPayload: { summary: 'x' },
+    });
+    const refusal = Object.assign(new Error('Activity task failed'), {
+      cause: Object.assign(new Error('This action changed since you approved it — ask again.'), { type: 'ApprovedActionChanged' }),
+    });
+    mockActivities.commitToolMutationActivity.mockRejectedValueOnce(refusal);
+    mockConditionImpl = async (predicate) => {
+      mockHandlers.get(approvalSignal)!({ approved: true, toolId: 'c8' });
+      return predicate();
+    };
+    const result = await agentReActWorkflow(base);
+    expect(result).toMatchObject({ status: 'FAILED', finalResponse: 'This action changed since you approved it — ask again.' });
+    expect(mockActivities.emitAssistantEventActivity.mock.calls.at(-1)![0]).toMatchObject({
+      eventKey: 'final', turn: { status: 'FAILED', error: 'This action changed since you approved it — ask again.' },
+    });
+  });
+
+  it('never auto-approves channel_message.send, even when autoApprove is set', async () => {
+    mockActivities.planReActTurn.mockResolvedValueOnce({ thought: '', toolCalls: [{ id: 'c7', name: 'channel_message.send', args: {} }] });
+    mockActivities.executeToolActivity.mockResolvedValueOnce({
+      toolCallId: 'c7', toolName: 'channel_message.send', isMutating: true, requiresApproval: true, previewPayload: {},
+    });
+    mockConditionImpl = async () => false;
+    const result = await agentReActWorkflow({ organizationId: 'o', userId: 'u', conversationId: 'c', prompt: 'p', autoApprove: true });
+    expect(result.status).toBe('TIMED_OUT');
+    expect(mockActivities.commitToolMutationActivity).not.toHaveBeenCalled();
   });
 
   it('emits nothing and still throws on activity failure without a sink (automation path unchanged)', async () => {

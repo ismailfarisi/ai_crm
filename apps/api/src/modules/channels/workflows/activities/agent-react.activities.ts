@@ -10,11 +10,27 @@ export interface ToolAuditProvenance {
   messageId?: string;
 }
 
+/**
+ * ApplicationFailure type thrown by commitToolMutationActivity when the
+ * action no longer matches the preview the user approved.
+ */
+export const APPROVED_ACTION_CHANGED = 'ApprovedActionChanged';
+
+/** Who is driving the agent. Skills may limit themselves to some surfaces. */
+export type AgentSurface = 'assistant' | 'automation';
+
 export interface AgentActivityCtx {
   organizationId: string;
   userId: string;
   message: string;
   audit?: ToolAuditProvenance;
+  /** Absent means 'automation'. */
+  surface?: AgentSurface;
+  /**
+   * The preview the user approved (assistant turns only). The commit
+   * recomputes it and refuses if the action no longer matches.
+   */
+  approvedPreview?: Record<string, unknown>;
 }
 
 export interface AssistantEventInput {
@@ -50,6 +66,11 @@ export interface ToolExecutionResult {
   isMutating: boolean;
   requiresApproval: boolean;
   previewPayload?: Record<string, unknown>;
+  /**
+   * For gated calls: the args the skill resolved to, pinned so the approval
+   * card and the commit act on exactly what was previewed.
+   */
+  resolvedArgs?: Record<string, unknown>;
   output?: Record<string, unknown>;
   errorMessage?: string;
 }
@@ -74,6 +95,8 @@ export interface AgentReactActivities {
     organizationId: string;
     userId: string;
     allowedDomains?: string[];
+    /** Absent means 'automation'. */
+    surface?: AgentSurface;
   }): Promise<Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>>;
   planReActTurn(input: ReActTurnInput): Promise<ReActTurnOutput>;
   executeToolActivity(

@@ -568,6 +568,29 @@ describe('ChannelCommandService', () => {
       expect(prompt).not.toContain(CHANNEL_SKILLS.PURCHASE_ORDER_CREATE);
     });
 
+    it('never offers the assistant-only channel skills to the staff bot', async () => {
+      const { service, aiService } = makeService({
+        identities: [linkedIdentity],
+        permissions: [
+          PERMISSIONS.QUOTE_APPROVE,
+          PERMISSIONS.CHANNEL_READ,
+          PERMISSIONS.CHANNEL_SEND,
+        ],
+        aiResponses: [{ skill: null, confidence: 0.99 }],
+      });
+
+      const result = await send(service, 'message Ada on WhatsApp');
+
+      const prompt =
+        aiService.generateStructured.mock.calls[0][1].messages[0].content;
+      expect(prompt).toContain(CHANNEL_SKILLS.QUOTE_APPROVE);
+      expect(prompt).not.toContain(CHANNEL_SKILLS.CHANNEL_MESSAGE_SEND);
+      expect(prompt).not.toContain(CHANNEL_SKILLS.CHANNEL_THREAD_READ);
+      // The help text lists only what the bot can actually do.
+      expect(result.reply?.body).toContain('I can help with');
+      expect(result.reply?.body).not.toContain('WhatsApp saying');
+    });
+
     it('tells a sender with no permissions that they have none', async () => {
       const { service, aiService } = makeService({
         identities: [linkedIdentity],

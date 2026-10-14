@@ -6,7 +6,7 @@ import { PurchasingService } from '../../purchasing/purchasing.service';
 import { ProductionService } from '../../production/production.service';
 import { DeliveryNotesService } from '../../orders/delivery-notes.service';
 import { OrdersService } from '../../orders/orders.service';
-import type { ChannelSkill } from './skill.types';
+import type { ChannelSkill, SkillSurface } from './skill.types';
 import { QuoteApproveSkill } from './quote-approve.skill';
 import { QuoteCreateSkill } from './quote-create.skill';
 import { PurchaseOrderCreateSkill } from './purchase-order-create.skill';
@@ -93,12 +93,20 @@ export class SkillRegistry {
    * means an unauthorised action cannot be routed to in the first place, and
    * the refusal the user eventually sees is about what they asked for rather
    * than a catalogue of what exists.
+   *
+   * `surface` narrows the list to skills offered there (a skill without
+   * `surfaces` is offered everywhere). Omitting it skips that filter.
    */
-  permittedFor(permissions: Permission[]): ChannelSkill<never>[] {
-    return this.skills.filter((skill) =>
-      skill.requiredPermissions.every((required) =>
-        permissions.includes(required),
-      ),
+  permittedFor(
+    permissions: Permission[],
+    surface?: SkillSurface,
+  ): ChannelSkill<never>[] {
+    return this.skills.filter(
+      (skill) =>
+        (!surface || !skill.surfaces || skill.surfaces.includes(surface)) &&
+        skill.requiredPermissions.every((required) =>
+          permissions.includes(required),
+        ),
     );
   }
 }

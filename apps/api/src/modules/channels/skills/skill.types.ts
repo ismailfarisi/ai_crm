@@ -26,6 +26,12 @@ export interface SkillContext {
 }
 
 /**
+ * Who is asking for a skill: the in-app assistant, the staff chat bot on a
+ * messaging channel, or an automation's AI agent node.
+ */
+export type SkillSurface = 'assistant' | 'channel' | 'automation';
+
+/**
  * One staff chat capability.
  *
  * Mirrors the `ActionHandler` seam the customer-facing agent already uses —
@@ -85,6 +91,20 @@ export interface ChannelSkill<
 
   /** False for read-only capabilities. Mutating tools require approval by default. */
   isMutating?: boolean;
+
+  /**
+   * Where this skill may be offered. Absent means every surface. A skill
+   * missing from a surface is never shown to that surface's router or
+   * planner, and cannot be resolved there either.
+   */
+  surfaces?: ReadonlyArray<SkillSurface>;
+
+  /**
+   * Slots that re-resolve to exactly `resolved`, without consulting state
+   * that may change (latest history, fuzzy name lookups). The agent pins
+   * these before asking for approval, so the commit acts on what was shown.
+   */
+  pinArgs?(resolved: TResolved): Record<string, unknown>;
 
   /**
    * Turn partial slots into something executable, ask one question, or refuse.
