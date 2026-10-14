@@ -25,7 +25,12 @@ export class AssistantEventsService {
 
   async emit(input: AssistantEventInput): Promise<void> {
     const wrote = await this.dataSource.transaction(async (manager) => {
-      const turn = await manager.findOneByOrFail(AssistantTurn, { id: input.turnId });
+      // Row lock: a concurrent cancel/sweep must commit before (or wait for) this write.
+      const turn = await manager.findOne(AssistantTurn, {
+        where: { id: input.turnId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!turn) throw new Error(`Assistant turn ${input.turnId} not found`);
       // A cancelled (or swept) turn's workflow may still be finishing an activity.
       if (TERMINAL.includes(turn.status)) return false;
 
