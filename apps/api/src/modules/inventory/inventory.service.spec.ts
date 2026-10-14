@@ -51,8 +51,25 @@ function makeService(seed: Seed = {}) {
     },
   ];
 
+  // Every lock taken, in order, so tests can check what was locked and when.
+  const lockLog: string[] = [];
+  // What a plain (unlocked) read sees: the order and its lines as they were
+  // when the test began. Locked reads see the live rows. A service that
+  // validates against a plain read is validating against stale data.
+  const stale: Record<string, any[]> = {
+    PurchaseOrder: [{ ...order }],
+    PurchaseOrderLine: orderLines.map((l) => ({ ...l })),
+  };
+
+  const matches = (row: any, where: any) =>
+    Object.entries(where).every(([k, v]) =>
+      v && typeof v === 'object' ? row[k] == null : row[k] === v,
+    );
+
+  const repos = new Map<string, any>();
   const repoFor = (entity: any) => {
     const name = entity?.name ?? entity;
+    if (repos.has(name)) return repos.get(name);
     const store =
       {
         PurchaseOrder: [order],
@@ -68,24 +85,15 @@ function makeService(seed: Seed = {}) {
             ? []
             : [{ tenantId, varianceTolerancePct: seed.tolerance }],
       }[name as string] ?? [];
+    const plain = () => stale[name as string] ?? store;
 
-    return {
+    const repo = {
       findOne: jest.fn(
         async ({ where }: any) =>
-          store.find((row) =>
-            Object.entries(where).every(([k, v]) =>
-              v && typeof v === 'object' ? row[k] == null : row[k] === v,
-            ),
-          ) ?? null,
+          plain().find((row) => matches(row, where)) ?? null,
       ),
       find: jest.fn(async ({ where }: any = {}) =>
-        where
-          ? store.filter((row) =>
-              Object.entries(where).every(([k, v]) =>
-                v && typeof v === 'object' ? row[k] == null : row[k] === v,
-              ),
-            )
-          : store,
+        where ? plain().filter((row) => matches(row, where)) : plain(),
       ),
       create: jest.fn((dto: any) => ({
         id: `${String(name).toLowerCase()}-${store.length + 1}`,
@@ -94,25 +102,67 @@ function makeService(seed: Seed = {}) {
       save: jest.fn(async (row: any) => {
         const arr = store;
         const idx = arr.findIndex((x) => x.id === row.id);
-        if (idx >= 0) arr[idx] = { ...arr[idx], ...row };
+        if (idx >= 0) arr[idx] = Object.assign(arr[idx], row);
         else arr.push(row);
         return row;
       }),
+      update: jest.fn(async (where: any, patch: any) => {
+        const rows = store.filter((row) => matches(row, where));
+        rows.forEach((row) => Object.assign(row, patch));
+        return { affected: rows.length };
+      }),
+      // Parameters are named after the entity's properties, which is what
+      // lets this filter on them.
       createQueryBuilder: jest.fn(() => {
+        const params: Record<string, unknown> = {};
+        let locked = false;
+        let orderKey: string | null = null;
         const b: any = {
-          setLock: () => b,
-          where: () => b,
-          andWhere: () => b,
-          getOne: async () => store[0] ?? null,
+          setLock: () => {
+            locked = true;
+            return b;
+          },
+          where: (_c: string, p?: Record<string, unknown>) => {
+            Object.assign(params, p ?? {});
+            return b;
+          },
+          andWhere: (_c: string, p?: Record<string, unknown>) => {
+            Object.assign(params, p ?? {});
+            return b;
+          },
+          orderBy: (key: string) => {
+            orderKey = key.split('.')[1];
+            return b;
+          },
+          getMany: async () => {
+            const rows = store.filter((row) => matches(row, params));
+            if (orderKey) {
+              const k = orderKey;
+              rows.sort((a, z) => String(a[k]).localeCompare(String(z[k])));
+            }
+            if (locked) {
+              for (const row of rows) {
+                lockLog.push(`${name}:${row.materialId ?? row.id}`);
+              }
+            }
+            return rows;
+          },
+          getOne: async () => (await b.getMany())[0] ?? null,
         };
         return b;
       }),
     };
+    repos.set(name, repo);
+    return repo;
   };
 
   const manager: any = {
     getRepository: jest.fn(repoFor),
     query: jest.fn(async (sql: string, params: any[]) => {
+      // The on-order upsert row-locks the stock row it touches.
+      if (sql.includes('"qty_on_order" +')) {
+        lockLog.push(`OnOrder:${params[1]}`);
+      }
       // Emulate the upsert that guarantees a row exists to lock.
       if (sql.includes('INSERT INTO "stock_items"')) {
         const [t, materialId, locId] = params;
@@ -177,7 +227,17 @@ function makeService(seed: Seed = {}) {
     } as any,
   );
 
-  return { service, order, orderLines, stock, movements, journals, ledger };
+  return {
+    service,
+    order,
+    orderLines,
+    stock,
+    movements,
+    journals,
+    ledger,
+    lockLog,
+    manager,
+  };
 }
 
 describe('InventoryService.receive', () => {
@@ -409,6 +469,123 @@ describe('InventoryService.receive', () => {
 
     expect(stock).toHaveLength(0);
     expect(journals[0].totalAmount).toBe(25);
+  });
+
+  describe('concurrent receipts', () => {
+    const twoMaterials = () => [
+      {
+        id: 'pol-a',
+        tenantId,
+        purchaseOrderId: 'po-1',
+        materialId: 'mat-2',
+        description: 'Board',
+        qtyOrdered: 100,
+        qtyReceived: 0,
+        uom: 'SHEET',
+        unitCost: 1,
+        receivedValueBase: 0,
+      },
+      {
+        id: 'pol-b',
+        tenantId,
+        purchaseOrderId: 'po-1',
+        materialId: 'mat-1',
+        description: 'Magnets',
+        qtyOrdered: 100,
+        qtyReceived: 0,
+        uom: 'EACH',
+        unitCost: 1,
+        receivedValueBase: 0,
+      },
+    ];
+
+    it('checks tolerance against the locked line, not a stale read', async () => {
+      // Another receipt committed 400 of the 500 after this request started:
+      // only a locked read sees it. Against the stale 0, a further 200 would
+      // pass and the order would be received 600 of 500 - double stock and
+      // a double GRNI credit.
+      const { service, orderLines, stock } = makeService();
+      orderLines[0].qtyReceived = 400;
+
+      await expect(
+        service.receive(tenantId, 'po-1', actorId, {
+          lines: [{ purchaseOrderLineId: 'pol-1', qtyReceived: 200 }],
+        }),
+      ).rejects.toThrow(/exceeds the 100 still outstanding/);
+      expect(stock).toHaveLength(0);
+    });
+
+    it('adds to the received quantity and value as they stand under the lock', async () => {
+      const { service, orderLines } = makeService();
+      orderLines[0].qtyReceived = 400;
+      orderLines[0].receivedValueBase = 168;
+
+      await service.receive(tenantId, 'po-1', actorId, {
+        lines: [{ purchaseOrderLineId: 'pol-1', qtyReceived: 100 }],
+      });
+
+      expect(orderLines[0].qtyReceived).toBe(500);
+      expect(orderLines[0].receivedValueBase).toBe(210);
+    });
+
+    it('refuses an order cancelled since the request started', async () => {
+      const { service, order, stock } = makeService();
+      order.status = 'CANCELLED';
+
+      await expect(
+        service.receive(tenantId, 'po-1', actorId, {
+          lines: [{ purchaseOrderLineId: 'pol-1', qtyReceived: 10 }],
+        }),
+      ).rejects.toThrow(/cancelled and cannot receive/);
+      expect(stock).toHaveLength(0);
+    });
+
+    it('refuses an order already closed', async () => {
+      const { service } = makeService({ orderStatus: 'RECEIVED' });
+
+      await expect(
+        service.receive(tenantId, 'po-1', actorId, {
+          lines: [{ purchaseOrderLineId: 'pol-1', qtyReceived: 10 }],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('locks the order, then its lines, then stock in material order', async () => {
+      // One order everywhere - PO, lines by id, stock by material - is what
+      // stops two receipts, or a receipt and an approval, deadlocking.
+      const { service, lockLog } = makeService({ orderLines: twoMaterials() });
+
+      await service.receive(tenantId, 'po-1', actorId, {
+        lines: [
+          { purchaseOrderLineId: 'pol-a', qtyReceived: 10 },
+          { purchaseOrderLineId: 'pol-b', qtyReceived: 10 },
+        ],
+      });
+
+      expect(lockLog).toEqual([
+        'PurchaseOrder:po-1',
+        'PurchaseOrderLine:mat-2',
+        'PurchaseOrderLine:mat-1',
+        'StockItem:mat-1',
+        'StockItem:mat-2',
+        'OnOrder:mat-1',
+        'OnOrder:mat-2',
+      ]);
+    });
+  });
+});
+
+describe('InventoryService.adjustOnOrder', () => {
+  it('touches stock rows in material order whatever order it is given', async () => {
+    const { service, lockLog } = makeService();
+
+    await service.adjustOnOrder(tenantId, [
+      { materialId: 'mat-3', qty: 1 },
+      { materialId: 'mat-1', qty: 1 },
+      { materialId: 'mat-2', qty: 1 },
+    ]);
+
+    expect(lockLog).toEqual(['OnOrder:mat-1', 'OnOrder:mat-2', 'OnOrder:mat-3']);
   });
 });
 
