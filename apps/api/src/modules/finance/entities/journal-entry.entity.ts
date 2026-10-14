@@ -8,7 +8,26 @@ import {
 import type { JournalLineDto, JournalReferenceType } from '@saas/shared';
 import { numericTransformer } from './finance-account.entity';
 
+/**
+ * At most one entry per (tenant, reference) for the postings that are
+ * single by nature: an expense claim's accrual (`referenceId` = claim id) and
+ * its reimbursement (`<claim id>:reimbursement`), and an account's opening
+ * balance (`opening-balance:<account id>`). Other reference types legitimately
+ * post several entries per reference — an invoice's payments and their
+ * reversals, a revaluation and its reversal, a work order's stages — so the
+ * index is partial. Created in migration 1789100000000-EnforceLedgerIntegrity.
+ */
+export const JOURNAL_SINGLE_POSTING_INDEX = 'uq_journal_entries_single_posting';
+
 @Entity('journal_entries')
+@Index(
+  JOURNAL_SINGLE_POSTING_INDEX,
+  ['tenantId', 'referenceType', 'referenceId'],
+  {
+    unique: true,
+    where: `"referenceType" = 'EXPENSE' OR ("referenceType" = 'MANUAL' AND "referenceId" LIKE 'opening-balance:%')`,
+  },
+)
 export class JournalEntry {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -43,6 +62,11 @@ export class JournalEntry {
   @Column({ type: 'timestamptz' })
   entryDate: Date;
 
+  /**
+   * Debits must equal credits (rounded to the cent). Enforced by the
+   * `journal_entries_enforce_balance` trigger as well as `LedgerService`, and
+   * the row is append-only: an UPDATE is refused, corrections post a reversal.
+   */
   @Column({ type: 'jsonb', default: [] })
   lines: JournalLineDto[];
 
