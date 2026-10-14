@@ -41,8 +41,9 @@ export class DocumentTemplatesService {
   async findById(
     organizationId: string,
     id: string,
+    repo: Repository<DocumentTemplate> = this.templateRepo,
   ): Promise<DocumentTemplate> {
-    const template = await this.templateRepo.findOne({
+    const template = await repo.findOne({
       where: { id, tenantId: organizationId },
     });
 
@@ -63,21 +64,23 @@ export class DocumentTemplatesService {
     const appliesTo = dto.appliesTo ?? [];
     const isDefault = dto.isDefault ?? false;
 
-    if (isDefault && appliesTo.length > 0) {
-      await this.unsetDefaultConflict(organizationId, appliesTo);
-    }
+    return this.withDefaultsLocked(organizationId, async (repo) => {
+      if (isDefault) {
+        await this.unsetDefaultConflict(repo, organizationId, appliesTo);
+      }
 
-    const template = this.templateRepo.create({
-      tenantId: organizationId,
-      createdById: userId,
-      name: dto.name,
-      description: dto.description ?? null,
-      isDefault,
-      appliesTo,
-      config: dto.config ?? DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+      const template = repo.create({
+        tenantId: organizationId,
+        createdById: userId,
+        name: dto.name,
+        description: dto.description ?? null,
+        isDefault,
+        appliesTo,
+        config: dto.config ?? DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+      });
+
+      return repo.save(template);
     });
-
-    return this.templateRepo.save(template);
   }
 
   async update(
@@ -85,41 +88,62 @@ export class DocumentTemplatesService {
     id: string,
     dto: UpdateDocumentTemplateDto,
   ): Promise<DocumentTemplate> {
-    const template = await this.findById(organizationId, id);
+    return this.withDefaultsLocked(organizationId, async (repo) => {
+      const template = await this.findById(organizationId, id, repo);
 
-    if (dto.name !== undefined) {
-      template.name = dto.name;
-    }
-    if (dto.description !== undefined) {
-      template.description = dto.description;
-    }
-    if (dto.config !== undefined) {
-      template.config = dto.config;
-    }
-    if (dto.appliesTo !== undefined) {
-      template.appliesTo = dto.appliesTo;
-    }
-
-    if (dto.isDefault !== undefined) {
-      if (dto.isDefault) {
-        const targetTypes = template.appliesTo ?? [];
-        if (targetTypes.length > 0) {
-          await this.unsetDefaultConflict(organizationId, targetTypes, id);
-        }
-        template.isDefault = true;
-      } else {
-        template.isDefault = false;
+      if (dto.name !== undefined) {
+        template.name = dto.name;
       }
-    }
+      if (dto.description !== undefined) {
+        template.description = dto.description;
+      }
+      if (dto.config !== undefined) {
+        template.config = dto.config;
+      }
+      if (dto.appliesTo !== undefined) {
+        template.appliesTo = dto.appliesTo;
+      }
 
-    return this.templateRepo.save(template);
+      if (dto.isDefault !== undefined) {
+        template.isDefault = dto.isDefault;
+      }
+
+      // Becoming a default, or a default changing what it covers, takes
+      // those types (or the general slot) from whichever default held them.
+      if (
+        template.isDefault &&
+        (dto.isDefault === true || dto.appliesTo !== undefined)
+      ) {
+        await this.unsetDefaultConflict(
+          repo,
+          organizationId,
+          template.appliesTo ?? [],
+          id,
+        );
+      }
+
+      return repo.save(template);
+    });
   }
 
   async delete(organizationId: string, id: string): Promise<void> {
-    const template = await this.findById(organizationId, id);
+    // Under the defaults lock: two concurrent deletes of two defaults would
+    // otherwise each see the other as still covering its types.
+    await this.withDefaultsLocked(organizationId, async (repo) => {
+      const template = await this.findById(organizationId, id, repo);
+      await this.assertNotLastDefault(repo, organizationId, template);
+      await repo.remove(template);
+    });
+  }
 
+  private async assertNotLastDefault(
+    repo: Repository<DocumentTemplate>,
+    organizationId: string,
+    template: DocumentTemplate,
+  ): Promise<void> {
+    const id = template.id;
     if (template.isDefault) {
-      const allTemplates = await this.templateRepo.find({
+      const allTemplates = await repo.find({
         where: { tenantId: organizationId },
       });
       const otherDefaults = allTemplates.filter(
@@ -145,8 +169,6 @@ export class DocumentTemplatesService {
         );
       }
     }
-
-    await this.templateRepo.remove(template);
   }
 
   async setDefault(
@@ -154,30 +176,32 @@ export class DocumentTemplatesService {
     id: string,
     docTypes?: DocumentType[],
   ): Promise<DocumentTemplate> {
-    const template = await this.findById(organizationId, id);
+    return this.withDefaultsLocked(organizationId, async (repo) => {
+      const template = await this.findById(organizationId, id, repo);
 
-    if (docTypes && docTypes.length > 0) {
-      template.appliesTo = docTypes;
-    }
-    template.isDefault = true;
+      if (docTypes && docTypes.length > 0) {
+        template.appliesTo = docTypes;
+      }
+      template.isDefault = true;
 
-    const targetTypes = template.appliesTo || [];
-    if (targetTypes.length > 0) {
-      await this.unsetDefaultConflict(organizationId, targetTypes, id);
-    } else {
-      // If template covers all (empty appliesTo), clear isDefault on all other templates
-      const otherTemplates = await this.templateRepo.find({
-        where: { tenantId: organizationId },
-      });
-      for (const other of otherTemplates) {
-        if (other.id !== id && other.isDefault) {
-          other.isDefault = false;
-          await this.templateRepo.save(other);
+      const targetTypes = template.appliesTo || [];
+      if (targetTypes.length > 0) {
+        await this.unsetDefaultConflict(repo, organizationId, targetTypes, id);
+      } else {
+        // If template covers all (empty appliesTo), clear isDefault on all other templates
+        const otherTemplates = await repo.find({
+          where: { tenantId: organizationId },
+        });
+        for (const other of otherTemplates) {
+          if (other.id !== id && other.isDefault) {
+            other.isDefault = false;
+            await repo.save(other);
+          }
         }
       }
-    }
 
-    return this.templateRepo.save(template);
+      return repo.save(template);
+    });
   }
 
   async resolveForDocumentType(
@@ -248,27 +272,66 @@ export class DocumentTemplatesService {
     return this.pdfRenderer.render(docData, config);
   }
 
+  /**
+   * Runs a change to which template is default in one transaction, holding
+   * a per-tenant advisory lock.
+   *
+   * Clearing the old default and saving the new one are two writes; apart,
+   * a failure between them left a document type with no default. And the
+   * invariant ("one default per document type") spans rows, so a row lock
+   * cannot protect it: two concurrent setDefaults would each read the other's
+   * predecessor as the one to clear, and both end up default. The advisory
+   * lock serialises every default change within a tenant. Only the general
+   * scope (no document types) can also be held by a unique index -
+   * `uq_document_templates_general_default`; per-type scopes live in an
+   * array column, which no unique index can express.
+   */
+  private withDefaultsLocked<T>(
+    organizationId: string,
+    work: (repo: Repository<DocumentTemplate>) => Promise<T>,
+  ): Promise<T> {
+    return this.templateRepo.manager.transaction(async (manager) => {
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        `document_templates:default:${organizationId}`,
+      ]);
+      return work(manager.getRepository(DocumentTemplate));
+    });
+  }
+
+  /**
+   * Takes `types` away from every other default template. With no types -
+   * a general default - retires the other general default instead, so there
+   * is never more than one.
+   */
   private async unsetDefaultConflict(
+    repo: Repository<DocumentTemplate>,
     organizationId: string,
     types: DocumentType[],
     excludeId?: string,
   ): Promise<void> {
-    const existingTemplates = await this.templateRepo.find({
-      where: { tenantId: organizationId },
-    });
+    const existingTemplates =
+      (await repo.find({
+        where: { tenantId: organizationId },
+      })) ?? [];
 
     for (const other of existingTemplates) {
-      if (other.id !== excludeId && other.isDefault) {
-        const remaining = (other.appliesTo || []).filter(
-          (t) => !types.includes(t),
-        );
-        if (remaining.length !== (other.appliesTo || []).length) {
-          other.appliesTo = remaining;
-          if (remaining.length === 0) {
-            other.isDefault = false;
-          }
-          await this.templateRepo.save(other);
+      if (other.id === excludeId || !other.isDefault) continue;
+      if (types.length === 0) {
+        if ((other.appliesTo ?? []).length === 0) {
+          other.isDefault = false;
+          await repo.save(other);
         }
+        continue;
+      }
+      const remaining = (other.appliesTo || []).filter(
+        (t) => !types.includes(t),
+      );
+      if (remaining.length !== (other.appliesTo || []).length) {
+        other.appliesTo = remaining;
+        if (remaining.length === 0) {
+          other.isDefault = false;
+        }
+        await repo.save(other);
       }
     }
   }

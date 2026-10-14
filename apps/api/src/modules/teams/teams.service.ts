@@ -70,20 +70,30 @@ export class TeamsService {
       lead = await this.findMemberInOrg(organizationId, input.leadId);
     }
 
-    const team = this.teams.create({
-      tenantId: organizationId,
-      name: input.name.trim(),
-      leadId: lead?.id ?? null,
-    });
-    const saved = await this.teams.save(team);
-
-    // The lead is a member of their own team and reports to nobody below admin.
-    if (lead) {
-      await this.users.update(
-        { id: lead.id },
-        { teamId: saved.id, managerId: null },
+    // The team and its lead's membership commit together: saved apart, a
+    // failure in between left a team led by someone who was not in it.
+    const saved = await this.teams.manager.transaction(async (manager) => {
+      const teams = manager.getRepository(Team);
+      const team = await teams.save(
+        teams.create({
+          tenantId: organizationId,
+          name: input.name.trim(),
+          leadId: lead?.id ?? null,
+        }),
       );
-    }
+
+      // The lead is a member of their own team and reports to nobody below
+      // admin.
+      if (lead) {
+        await manager
+          .getRepository(User)
+          .update(
+            { id: lead.id, tenantId: organizationId },
+            { teamId: team.id, managerId: null },
+          );
+      }
+      return team;
+    });
 
     return this.getTeam(organizationId, saved.id);
   }
@@ -102,27 +112,33 @@ export class TeamsService {
       team.name = input.name.trim();
     }
 
+    let newLead: User | null = null;
     if (input.leadId !== undefined) {
       if (input.leadId === null) {
         // Clear the lead; they stay a member of the team.
         team.leadId = null;
         team.lead = null;
       } else {
-        const newLead = await this.findMemberInOrg(
-          organizationId,
-          input.leadId,
-        );
+        newLead = await this.findMemberInOrg(organizationId, input.leadId);
         team.leadId = newLead.id;
         team.lead = newLead;
-        // New lead joins the team; the previous lead stays a member.
-        await this.users.update(
-          { id: newLead.id },
-          { teamId: team.id, managerId: null },
-        );
       }
     }
 
-    const saved = await this.teams.save(team);
+    // The new lead's membership and the team row commit together, so a team
+    // is never left led by someone outside it.
+    const saved = await this.teams.manager.transaction(async (manager) => {
+      if (newLead) {
+        // New lead joins the team; the previous lead stays a member.
+        await manager
+          .getRepository(User)
+          .update(
+            { id: newLead.id, tenantId: organizationId },
+            { teamId: team.id, managerId: null },
+          );
+      }
+      return manager.getRepository(Team).save(team);
+    });
     return this.getTeam(organizationId, saved.id);
   }
 
@@ -135,12 +151,17 @@ export class TeamsService {
     const team = await this.findTeam(organizationId, teamId);
 
     // Soft delete; members keep existing, their teamId is cleared so nobody is
-    // stranded in a deleted team.
-    await this.users.update(
-      { tenantId: organizationId, teamId: team.id },
-      { teamId: null, managerId: null },
-    );
-    await this.teams.softRemove(team);
+    // stranded in a deleted team. One transaction, so a failure cannot leave
+    // a live team with its members released, or the reverse.
+    await this.teams.manager.transaction(async (manager) => {
+      await manager
+        .getRepository(User)
+        .update(
+          { tenantId: organizationId, teamId: team.id },
+          { teamId: null, managerId: null },
+        );
+      await manager.getRepository(Team).softRemove(team);
+    });
   }
 
   /** Assign a member to a team, or clear it with null. Returns the updated user. */

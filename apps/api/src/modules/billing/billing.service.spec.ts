@@ -95,8 +95,14 @@ describe('BillingService', () => {
     };
 
     tenantContext = {
-      runAsSystem: jest.fn().mockImplementation(async (fn: () => Promise<unknown>) => fn()),
-      runWithTenant: jest.fn().mockImplementation(async (_tenantId: string, fn: () => Promise<unknown>) => fn()),
+      runAsSystem: jest
+        .fn()
+        .mockImplementation(async (fn: () => Promise<unknown>) => fn()),
+      runWithTenant: jest
+        .fn()
+        .mockImplementation(
+          async (_tenantId: string, fn: () => Promise<unknown>) => fn(),
+        ),
       getTenantId: jest.fn().mockReturnValue(null),
       setTenantId: jest.fn(),
       isSystem: jest.fn().mockReturnValue(false),
@@ -115,16 +121,18 @@ describe('BillingService', () => {
 
   describe('handleWebhook & handleWebhookEvent', () => {
     it('executes handleWebhook inside tenantContext.runAsSystem', async () => {
-      const parseSpy = jest.spyOn(service.provider, 'parseWebhook').mockReturnValue({
-        id: 'evt_stripe_1',
-        type: 'checkout.completed',
-        tenantId,
-        checkoutId: 'cs_123',
-        customerId: 'cus_123',
-        subscriptionId: 'sub_123',
-        status: 'ACTIVE',
-        raw: {},
-      });
+      const parseSpy = jest
+        .spyOn(service.provider, 'parseWebhook')
+        .mockReturnValue({
+          id: 'evt_stripe_1',
+          type: 'checkout.completed',
+          tenantId,
+          checkoutId: 'cs_123',
+          customerId: 'cus_123',
+          subscriptionId: 'sub_123',
+          status: 'ACTIVE',
+          raw: {},
+        });
 
       const handleEventSpy = jest.spyOn(service, 'handleWebhookEvent');
 
@@ -141,14 +149,16 @@ describe('BillingService', () => {
 
     it('verifies that handleWebhookEvent wraps database transactions inside runAsSystem', async () => {
       let isInsideSystemContext = false;
-      tenantContext.runAsSystem.mockImplementationOnce(async (fn: () => Promise<unknown>) => {
-        isInsideSystemContext = true;
-        try {
-          return await fn();
-        } finally {
-          isInsideSystemContext = false;
-        }
-      });
+      tenantContext.runAsSystem.mockImplementationOnce(
+        async (fn: () => Promise<unknown>) => {
+          isInsideSystemContext = true;
+          try {
+            return await fn();
+          } finally {
+            isInsideSystemContext = false;
+          }
+        },
+      );
 
       const mockSub: Partial<Subscription> = {
         id: 'sub-row-1',
@@ -293,6 +303,59 @@ describe('BillingService', () => {
       );
     });
 
+    it('locks the subscription row before counting a failed payment', async () => {
+      // Two failure webhooks for the same subscription would otherwise both
+      // read failedPaymentCount = 0, both write 1, and lose a failure.
+      const mockSub: Partial<Subscription> = {
+        id: 'sub-1',
+        tenantId,
+        status: 'PAST_DUE',
+        failedPaymentCount: 1,
+        pastDueSince: new Date(),
+      };
+      subscriptionsRepo.findOne.mockResolvedValue(mockSub);
+
+      await service.handleWebhookEvent({
+        id: 'evt_fail_2',
+        type: 'payment.failed',
+        tenantId,
+        subscriptionId: 'sub_existing',
+        customerId: 'cus_existing',
+        raw: {},
+      });
+
+      expect(subscriptionsRepo.findOne).toHaveBeenCalled();
+      for (const [options] of subscriptionsRepo.findOne.mock.calls) {
+        expect(options).toEqual(
+          expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+        );
+      }
+      expect(mockSub.failedPaymentCount).toBe(2);
+    });
+
+    it('locks the subscription row whichever identifier finds it', async () => {
+      subscriptionsRepo.findOne.mockImplementation(async ({ where }: any) =>
+        where.providerCustomerId
+          ? { id: 'sub-1', tenantId, status: 'ACTIVE', failedPaymentCount: 0 }
+          : null,
+      );
+
+      await service.handleWebhookEvent({
+        id: 'evt_fail_3',
+        type: 'payment.failed',
+        subscriptionId: 'sub_unknown',
+        customerId: 'cus_existing',
+        raw: {},
+      });
+
+      expect(subscriptionsRepo.findOne).toHaveBeenCalledTimes(2);
+      for (const [options] of subscriptionsRepo.findOne.mock.calls) {
+        expect(options).toEqual(
+          expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+        );
+      }
+    });
+
     it('handles payment.succeeded event and resolves payment failure notices', async () => {
       const mockSub: Partial<Subscription> = {
         id: 'sub-1',
@@ -351,7 +414,9 @@ describe('BillingService', () => {
         { tenantId: 'org-1', status: 'ACTIVE' },
         { tenantId: 'org-2', status: 'PAST_DUE' },
       ]);
-      const syncSeatsSpy = jest.spyOn(service, 'syncSeats').mockResolvedValue(undefined);
+      const syncSeatsSpy = jest
+        .spyOn(service, 'syncSeats')
+        .mockResolvedValue(undefined);
 
       await service.syncAllSeats();
 

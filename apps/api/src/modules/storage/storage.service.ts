@@ -55,12 +55,19 @@ export class StorageService {
     return this.driver.get(key);
   }
 
+  /**
+   * Best-effort removal of a stored object; failures are logged, not thrown.
+   *
+   * Not called when an attachment is removed: that soft-deletes the row and
+   * keeps the object, so the row stays restorable (see
+   * `AttachmentsService.remove`). Only call this once nothing can point at
+   * the key any more. There is no job that retries a failed delete, so a
+   * failure here leaves an orphaned object until someone removes it by hand.
+   */
   async delete(key: string): Promise<void> {
     try {
       await this.driver.delete(key);
     } catch (error) {
-      // The row is already gone; an orphaned object is a cleanup job, not a
-      // failed request.
       this.logger.warn(
         `Could not remove stored object ${key}: ${
           error instanceof Error ? error.message : String(error)

@@ -334,19 +334,27 @@ export class BillingService {
       );
       if (!inserted.length || event.type === 'ignored') return;
 
+      // Locked for the rest of the transaction. Everything below is a
+      // read-modify-write of this row - most visibly `failedPaymentCount += 1`
+      // - and two webhooks for the same subscription (distinct event ids, so
+      // the dedupe above lets both through) would otherwise both read the
+      // same count and one failure would be lost.
       const repo = manager.getRepository(Subscription);
+      const lock = { mode: 'pessimistic_write' } as const;
       const sub =
         (event.tenantId
-          ? await repo.findOne({ where: { tenantId: event.tenantId } })
+          ? await repo.findOne({ where: { tenantId: event.tenantId }, lock })
           : null) ??
         (event.subscriptionId
           ? await repo.findOne({
               where: { providerSubscriptionId: event.subscriptionId },
+              lock,
             })
           : null) ??
         (event.customerId
           ? await repo.findOne({
               where: { providerCustomerId: event.customerId },
+              lock,
             })
           : null);
       if (!sub) {
