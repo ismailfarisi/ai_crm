@@ -21,16 +21,23 @@ export class AutoAckActionHandler implements ActionHandler {
       return { autoAcked: false };
     }
 
-    await this.channelsService.sendMessage(
-      ctx.organizationId,
-      SYSTEM_ACTOR_ID,
-      {
-        contactId: ctx.contactId,
-        provider: ctx.provider,
-        recipient: ctx.senderIdentifier,
-        body: template,
-      },
-    );
+    const once =
+      ctx.runOnce ?? (<T>(_step: string, fn: () => Promise<T>) => fn());
+
+    // A retried dispatch must not send the customer the same ack twice.
+    await once('send-ack', async () => {
+      await this.channelsService.sendMessage(
+        ctx.organizationId,
+        SYSTEM_ACTOR_ID,
+        {
+          contactId: ctx.contactId,
+          provider: ctx.provider,
+          recipient: ctx.senderIdentifier,
+          body: template,
+        },
+      );
+      return true;
+    });
 
     return { autoAcked: true };
   }

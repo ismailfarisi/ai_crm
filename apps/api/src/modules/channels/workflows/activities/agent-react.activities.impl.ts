@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { Context } from '@temporalio/activity';
 import { PERMISSIONS, type Permission } from '@saas/shared';
 import { AiService } from '@/modules/ai/ai.service';
 import { AuditService } from '@/modules/audit/audit.service';
@@ -11,6 +12,7 @@ import { RbacService } from '@/modules/rbac/rbac.service';
 import { ChannelProviderType } from '../../entities/channel-config.entity';
 import { SkillRegistry } from '../../skills/skill.registry';
 import { ToolExecutionPolicyService } from '../../skills/tool-execution-policy.service';
+import { ChannelIdempotencyService } from '../../services/channel-idempotency.service';
 import type { ChannelSkill, SkillContext } from '../../skills/skill.types';
 import type {
   AgentReactActivities,
@@ -22,6 +24,15 @@ type AgentActivityContext = {
   organizationId: string;
   userId: string;
   message: string;
+};
+
+/** The running activity's workflow id, or null when called outside an activity. */
+const currentWorkflowId = (): string | null => {
+  try {
+    return Context.current().info.workflowExecution?.workflowId ?? null;
+  } catch {
+    return null;
+  }
 };
 
 const skillDomain = (name: string): string => {
@@ -39,6 +50,7 @@ export function createAgentReactActivities(deps: {
   customObjectsService: CustomObjectsService;
   customRecordsService: CustomRecordsService;
   tenantContext: TenantContextService;
+  idempotency: Pick<ChannelIdempotencyService, 'runOnce'>;
 }): AgentReactActivities {
   const policy = new ToolExecutionPolicyService();
 
@@ -314,18 +326,34 @@ export function createAgentReactActivities(deps: {
           };
         }
 
-        const outcome = await skill.execute(resolution.value, skillContext);
-        return {
-          toolCallId: tool.id,
-          toolName: tool.name,
-          isMutating,
-          requiresApproval: false,
-          output: {
-            reply: outcome.reply,
-            resultType: outcome.resultType,
-            resultId: outcome.resultId,
-          },
+        const run = async (): Promise<ToolExecutionResult> => {
+          const outcome = await skill.execute(resolution.value, skillContext);
+          return {
+            toolCallId: tool.id,
+            toolName: tool.name,
+            isMutating,
+            requiresApproval: false,
+            output: {
+              reply: outcome.reply,
+              resultType: outcome.resultType,
+              resultId: outcome.resultId,
+            },
+          };
         };
+        if (!isMutating) return run();
+
+        // This activity is retried (maximumAttempts 3), including after an
+        // attempt that timed out while the skill was still running. The tool
+        // call id is fixed in workflow history, so (workflow, tool call)
+        // names this one execution: a retry gets the recorded result back
+        // instead of creating the record a second time.
+        const workflowId = currentWorkflowId();
+        if (!workflowId) return run();
+        return deps.idempotency.runOnce(
+          ctx.organizationId,
+          `agent-react:tool:${workflowId}:${tool.id}`,
+          run,
+        );
       });
     },
 
