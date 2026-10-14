@@ -1,5 +1,43 @@
-import { CrmEventBusService, computeChangedFields } from './crm-event-bus.service';
+import type { EntityManager } from 'typeorm';
+import {
+  CRM_EVENT_OUTBOX_KIND,
+  CrmEventBusService,
+  computeChangedFields,
+  type DeliveredCrmDomainEvent,
+} from './crm-event-bus.service';
+import type {
+  EventOutboxService,
+  OutboxHandler,
+  OutboxMessage,
+} from './event-outbox.service';
 import type { CrmDomainEvent } from '@saas/shared';
+
+const sampleEvent = (): CrmDomainEvent => ({
+  tenantId: '11111111-1111-4111-8111-111111111111',
+  eventType: 'record.updated',
+  entityType: 'core',
+  entityName: 'contact',
+  entityId: 'contact-001',
+  actorUserId: 'user-1',
+  timestamp: '2026-10-08T12:00:00.000Z',
+  snapshot: { before: { a: 1 }, after: { a: 2 }, changedFields: ['a'] },
+});
+
+function fakeOutbox() {
+  const handlers = new Map<string, OutboxHandler>();
+  const outbox = {
+    enqueue: jest.fn().mockResolvedValue('evt-1'),
+    registerHandler: jest.fn((kind: string, handler: OutboxHandler) => {
+      handlers.set(kind, handler);
+      return () => handlers.delete(kind);
+    }),
+  };
+  return {
+    outbox: outbox as unknown as EventOutboxService,
+    enqueue: outbox.enqueue,
+    handlerFor: (kind: string) => handlers.get(kind),
+  };
+}
 
 describe('CrmEventBusService', () => {
   let service: CrmEventBusService;
@@ -8,7 +46,112 @@ describe('CrmEventBusService', () => {
     service = new CrmEventBusService();
   });
 
-  describe('publish and subscribe', () => {
+  describe('with the durable outbox', () => {
+    it('persists the event instead of running subscribers inside the request', async () => {
+      const { outbox, enqueue } = fakeOutbox();
+      const bus = new CrmEventBusService(outbox);
+      const subscriber = jest.fn().mockResolvedValue(undefined);
+      bus.subscribe(subscriber);
+
+      const event = sampleEvent();
+      await bus.publish(event);
+
+      expect(enqueue).toHaveBeenCalledWith(
+        {
+          tenantId: event.tenantId,
+          kind: CRM_EVENT_OUTBOX_KIND,
+          eventType: 'record.updated',
+          payload: event,
+        },
+        undefined,
+      );
+      expect(subscriber).not.toHaveBeenCalled();
+    });
+
+    it('joins the caller’s transaction when given its manager', async () => {
+      const { outbox, enqueue } = fakeOutbox();
+      const bus = new CrmEventBusService(outbox);
+      const manager = {} as EntityManager;
+
+      await bus.publish(sampleEvent(), { manager });
+
+      expect(enqueue).toHaveBeenCalledWith(expect.anything(), manager);
+    });
+
+    it('lets an outbox failure inside a transaction roll that transaction back', async () => {
+      const { outbox, enqueue } = fakeOutbox();
+      enqueue.mockRejectedValueOnce(new Error('insert failed'));
+      const bus = new CrmEventBusService(outbox);
+
+      await expect(
+        bus.publish(sampleEvent(), { manager: {} as EntityManager }),
+      ).rejects.toThrow('insert failed');
+    });
+
+    it('never fails an already-committed request when the outbox is down, and still delivers in-process', async () => {
+      const { outbox, enqueue } = fakeOutbox();
+      enqueue.mockRejectedValueOnce(new Error('db down'));
+      const bus = new CrmEventBusService(outbox);
+      const received: DeliveredCrmDomainEvent[] = [];
+      bus.subscribe(async (e) => {
+        received.push(e);
+      });
+
+      await expect(bus.publish(sampleEvent())).resolves.toBeUndefined();
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(received).toHaveLength(1);
+      expect(received[0].eventId).toEqual(expect.any(String));
+    });
+
+    it('delivers a dispatched event to every subscriber with its stable outbox id', async () => {
+      const { outbox, handlerFor } = fakeOutbox();
+      const bus = new CrmEventBusService(outbox);
+      const a = jest.fn().mockResolvedValue(undefined);
+      const b = jest.fn().mockResolvedValue(undefined);
+      bus.subscribe(a);
+      bus.subscribe(b);
+      const event = sampleEvent();
+
+      const message: OutboxMessage = {
+        id: 'evt-42',
+        tenantId: event.tenantId,
+        kind: CRM_EVENT_OUTBOX_KIND,
+        eventType: event.eventType,
+        payload: event,
+        attempts: 1,
+      };
+      await handlerFor(CRM_EVENT_OUTBOX_KIND)!(message);
+
+      expect(a).toHaveBeenCalledWith({ ...event, eventId: 'evt-42' });
+      expect(b).toHaveBeenCalledWith({ ...event, eventId: 'evt-42' });
+    });
+
+    it('reports a failing subscriber to the dispatcher so the event is retried, after the others ran', async () => {
+      const { outbox, handlerFor } = fakeOutbox();
+      const bus = new CrmEventBusService(outbox);
+      const healthy = jest.fn().mockResolvedValue(undefined);
+      bus.subscribe(async () => {
+        throw new Error('automation start failed');
+      });
+      bus.subscribe(healthy);
+      const event = sampleEvent();
+
+      await expect(
+        handlerFor(CRM_EVENT_OUTBOX_KIND)!({
+          id: 'evt-43',
+          tenantId: event.tenantId,
+          kind: CRM_EVENT_OUTBOX_KIND,
+          eventType: event.eventType,
+          payload: event,
+          attempts: 1,
+        }),
+      ).rejects.toThrow(/automation start failed/);
+      expect(healthy).toHaveBeenCalled();
+    });
+  });
+
+  describe('publish and subscribe (in-process, no outbox)', () => {
     it('notifies all registered subscribers with the event', async () => {
       const received1: CrmDomainEvent[] = [];
       const received2: CrmDomainEvent[] = [];
@@ -38,9 +181,9 @@ describe('CrmEventBusService', () => {
       await service.publish(event);
 
       expect(received1).toHaveLength(1);
-      expect(received1[0]).toEqual(event);
+      expect(received1[0]).toEqual({ ...event, eventId: expect.any(String) });
       expect(received2).toHaveLength(1);
-      expect(received2[0]).toEqual(event);
+      expect(received2[0]).toEqual({ ...event, eventId: expect.any(String) });
     });
 
     it('returns an unsubscribe function that correctly detaches the subscriber', async () => {
@@ -106,7 +249,7 @@ describe('CrmEventBusService', () => {
 
       await expect(service.publish(event)).resolves.not.toThrow();
       expect(healthySubscriberReceived).toHaveLength(1);
-      expect(healthySubscriberReceived[0]).toEqual(event);
+      expect(healthySubscriberReceived[0]).toEqual({ ...event, eventId: expect.any(String) });
     });
 
     it('shields errors when a subscriber throws synchronously without throwing in publish or disrupting peers', async () => {
@@ -134,7 +277,7 @@ describe('CrmEventBusService', () => {
 
       await expect(service.publish(event)).resolves.not.toThrow();
       expect(healthySubscriberReceived).toHaveLength(1);
-      expect(healthySubscriberReceived[0]).toEqual(event);
+      expect(healthySubscriberReceived[0]).toEqual({ ...event, eventId: expect.any(String) });
     });
 
     it('handles publish with no subscribers gracefully without error', async () => {

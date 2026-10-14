@@ -1,5 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import type { EntityManager } from 'typeorm';
 import type { CrmDomainEvent } from '@saas/shared';
+import { EventOutboxService, type OutboxMessage } from './event-outbox.service';
 
 const ISO_DATE_REGEX =
   /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
@@ -125,16 +128,44 @@ export function computeChangedFields(
   return changedFields.sort();
 }
 
+/** Outbox kind for CRM domain events. */
+export const CRM_EVENT_OUTBOX_KIND = 'crm_event';
+
+/**
+ * What a subscriber receives: the published event plus `eventId`, which is
+ * the outbox row id and therefore the same on every redelivery. Delivery is
+ * at-least-once, so a subscriber with side effects should dedupe on it.
+ */
+export type DeliveredCrmDomainEvent = CrmDomainEvent & { eventId: string };
+
+export type CrmEventSubscriber = (
+  event: DeliveredCrmDomainEvent,
+) => Promise<void>;
+
+export interface PublishOptions {
+  /**
+   * The caller's transaction. When given, the event is written in it and
+   * commits (or rolls back) with the change it describes.
+   */
+  manager?: EntityManager;
+}
+
 @Injectable()
 export class CrmEventBusService {
   private readonly logger = new Logger(CrmEventBusService.name);
-  private readonly subscribers: Array<(event: CrmDomainEvent) => Promise<void>> = [];
+  private readonly subscribers: CrmEventSubscriber[] = [];
+
+  constructor(@Optional() private readonly outbox?: EventOutboxService) {
+    this.outbox?.registerHandler(CRM_EVENT_OUTBOX_KIND, (message) =>
+      this.deliverFromOutbox(message),
+    );
+  }
 
   /**
    * Registers a subscriber callback for CRM domain events.
    * Returns an idempotent unsubscribe function that removes the subscriber.
    */
-  subscribe(handler: (event: CrmDomainEvent) => Promise<void>): () => void {
+  subscribe(handler: CrmEventSubscriber): () => void {
     this.subscribers.push(handler);
     return () => {
       const index = this.subscribers.indexOf(handler);
@@ -145,13 +176,93 @@ export class CrmEventBusService {
   }
 
   /**
-   * Publishes a CRM domain event to all registered subscribers.
-   * Wraps handler invocations in async closures so both synchronous exceptions
-   * and asynchronous rejections are captured in Promise.allSettled without throwing.
+   * Publishes a CRM domain event.
+   *
+   * With the outbox available (always, inside Nest) this only persists the
+   * event and returns: subscribers run later in the dispatcher, so a slow or
+   * failing subscriber can neither slow down nor fail the request that made
+   * the change, and a failed delivery is retried rather than lost.
+   *
+   * Without a manager the event is written in its own statement — callers
+   * publish after their commit, so a crash between the two can still lose
+   * it. Pass `{ manager }` from inside the transaction to close that gap.
+   *
+   * If the outbox write itself fails outside a transaction, the change has
+   * already committed and must not turn into an error for the user, so the
+   * event is delivered in-process as a best effort and the failure is logged.
+   * Inside a transaction the error is rethrown: Postgres has already aborted
+   * that transaction, and the caller must see it.
    */
-  async publish(event: CrmDomainEvent): Promise<void> {
-    if (this.subscribers.length === 0) {
+  async publish(
+    event: CrmDomainEvent,
+    options: PublishOptions = {},
+  ): Promise<void> {
+    if (!this.outbox) {
+      await this.deliverInProcess({ ...event, eventId: randomUUID() });
       return;
+    }
+
+    try {
+      await this.outbox.enqueue(
+        {
+          tenantId: event.tenantId,
+          kind: CRM_EVENT_OUTBOX_KIND,
+          eventType: event.eventType,
+          payload: event,
+        },
+        options.manager,
+      );
+    } catch (error) {
+      if (options.manager) throw error;
+      this.logger.error(
+        `Could not persist CRM domain event "${event.eventType}" on ${event.entityName}:${event.entityId} to the outbox; delivering in-process without retry: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      setImmediate(
+        () => void this.deliverInProcess({ ...event, eventId: randomUUID() }),
+      );
+    }
+  }
+
+  /**
+   * Outbox handler. Every subscriber runs; if any fails the whole event is
+   * reported failed so the dispatcher retries it — which redelivers to the
+   * subscribers that succeeded too, hence the stable `eventId`.
+   */
+  private async deliverFromOutbox(message: OutboxMessage): Promise<void> {
+    const event: DeliveredCrmDomainEvent = {
+      ...(message.payload as CrmDomainEvent),
+      eventId: message.id,
+    };
+    const failures = await this.runSubscribers(event);
+    if (failures.length) {
+      throw new Error(
+        failures
+          .map((reason) =>
+            reason instanceof Error ? reason.message : String(reason),
+          )
+          .join('; '),
+      );
+    }
+  }
+
+  /** Shielded: failures are logged, never thrown. */
+  private async deliverInProcess(
+    event: DeliveredCrmDomainEvent,
+  ): Promise<void> {
+    await this.runSubscribers(event);
+  }
+
+  /**
+   * Wraps handler invocations in async closures so both synchronous exceptions
+   * and asynchronous rejections are captured in Promise.allSettled.
+   */
+  private async runSubscribers(
+    event: DeliveredCrmDomainEvent,
+  ): Promise<unknown[]> {
+    if (this.subscribers.length === 0) {
+      return [];
     }
 
     const currentSubscribers = [...this.subscribers];
@@ -159,15 +270,18 @@ export class CrmEventBusService {
       currentSubscribers.map(async (handler) => handler(event)),
     );
 
+    const failures: unknown[] = [];
     for (const result of results) {
       if (result.status === 'rejected') {
         const error = result.reason;
+        failures.push(error);
         this.logger.error(
-          `Error executing subscriber for CRM domain event "${event.eventType}" on ${event.entityName}:${event.entityId}: ${error?.message ?? error}`,
+          `Error executing subscriber for CRM domain event "${event.eventType}" on ${event.entityName}:${event.entityId} (event ${event.eventId}): ${error?.message ?? error}`,
           error instanceof Error ? error.stack : undefined,
         );
       }
     }
+    return failures;
   }
 
   /**
