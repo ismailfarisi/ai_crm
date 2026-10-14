@@ -86,3 +86,81 @@ sudo systemctl reload caddy
 ```
 
 Do not automatically revert database migrations during an application rollback. If a migration has run, take a database backup and assess its rollback/data implications before changing schema state.
+## Backups
+
+The `backup` service in `docker-compose.staging.yml` takes a logical backup of the CRM database every night. It is a `postgres:18-alpine` container (so `pg_dump` matches the server) running `scripts/backup/pg-backup-loop.sh`, and it connects with the existing `DB_ADMIN_*` credentials — nothing new to store.
+
+| Setting (in `.env.staging`) | Default | Meaning |
+| --- | --- | --- |
+| `BACKUP_DIR` | `../backups` | Host directory the dumps land in. From `/home/deploy/ai_crm` that is `~/backups`, alongside the existing per-sprint `*.sql.gz` files, which pruning never touches. |
+| `BACKUP_HOUR_UTC` | `2` | Hour of the daily run, UTC. |
+| `BACKUP_RETENTION_DAYS` | `14` | Dumps older than this are deleted — only after a successful run, so a broken backup never removes the good ones. |
+| `BACKUP_UID` / `BACKUP_GID` | `1000` | Owner of the files; set to `id -u` / `id -g` of the deploy user. |
+
+Each run writes `<db>_<UTC timestamp>.dump` (`pg_dump -Fc`, checked with `pg_restore --list` before it is kept) and `globals_<timestamp>.sql` (roles, from `pg_dumpall --globals-only`). Files are mode 600. If no dump is younger than a day when the container starts, it takes one immediately. The container turns unhealthy when the newest dump is more than 26 hours old.
+
+Start it once (and after changing its settings):
+
+```bash
+mkdir -p ~/backups
+docker compose --env-file .env.staging -f docker-compose.staging.yml up -d backup
+docker compose --env-file .env.staging -f docker-compose.staging.yml logs --tail=20 backup
+```
+
+Take one by hand before a risky deploy or migration:
+
+```bash
+docker compose --env-file .env.staging -f docker-compose.staging.yml exec backup \
+  sh -c 'pg_dump -Fc -f "/backups/${PGDATABASE}_manual_$(date -u +%Y%m%dT%H%M%SZ).dump" "$PGDATABASE"'
+```
+
+### Restore
+
+Test a backup by restoring it into a database that does not exist yet — safe at any time, touches nothing live:
+
+```bash
+scripts/backup/restore.sh ~/backups/crm_20261014T020000Z.dump crm_restore_check
+# inspect it, then
+docker compose --env-file .env.staging -f docker-compose.staging.yml exec -T postgres \
+  sh -c 'dropdb -U "$POSTGRES_USER" crm_restore_check'
+```
+
+To replace the live database, stop everything that writes to it, restore, then start them again:
+
+```bash
+docker compose --env-file .env.staging -f docker-compose.staging.yml stop api worker
+scripts/backup/restore.sh ~/backups/<file>.dump "$(sed -n 's/^DB_NAME=//p' .env.staging)" --replace-live
+docker compose --env-file .env.staging -f docker-compose.staging.yml up -d api worker
+```
+
+The restore keeps owners and grants as dumped, so the app role (`DB_USERNAME`) must exist — it does on the same cluster. On a rebuilt cluster, restore `globals_<timestamp>.sql` first with `psql -U "$POSTGRES_USER" -d postgres -f …` inside the postgres container.
+
+### What this does not cover yet
+
+- **The dumps live on the same host as the database.** Losing the disk loses both. The next step is copying `~/backups` off the host daily (an `rclone`/`aws s3 sync` cron to a bucket with object versioning and its own retention).
+- **Recovery point is up to 24 hours.** For point-in-time recovery, add WAL archiving (`archive_mode=on` with `pgBackRest` or `wal-g` to object storage) on top of a periodic base backup. Logical dumps then become the secondary, easy-to-inspect copy.
+- **Temporal's own databases (`temporal`, `temporal_visibility`) are not dumped.** Losing them loses in-flight workflow state, not CRM data; automation executions are recorded in the CRM database.
+
+## Temporal version
+
+Staging pins `temporalio/auto-setup` to `TEMPORAL_VERSION` (default `1.29.3`, which is what `latest` resolved to when it was pinned). `auto-setup` migrates Temporal's schema on start and a schema cannot be downgraded, so before deploying a different pin check what is running:
+
+```bash
+docker compose --env-file .env.staging -f docker-compose.staging.yml images temporal
+docker image inspect --format '{{index .RepoDigests 0}}' "$(docker inspect --format '{{.Image}}' crm_staging_temporal)"
+```
+
+If the container was started from `latest` some time ago, compare its digest with the tags on Docker Hub to find the version it really is.
+
+Never set `TEMPORAL_VERSION` lower than the running version. Upgrade one minor version at a time, after a backup. Local development uses the in-memory CLI dev server (`temporalio/temporal:1.9.1`), which has no such constraint.
+
+## Event outbox
+
+CRM domain events and audit rows whose first insert failed are delivered through the `crm_event_outbox` table (migration `1789600000000-CreateCrmEventOutbox`, applied by the normal migration step). The API process drains it; the worker only writes to it. Rows that exhausted `EVENT_OUTBOX_MAX_ATTEMPTS` are kept as `DEAD` with their last error:
+
+```bash
+docker compose --env-file .env.staging -f docker-compose.staging.yml exec -T postgres \
+  sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT status, kind, count(*) FROM crm_event_outbox GROUP BY 1, 2"'
+```
+
+To retry dead rows after fixing the cause: `UPDATE crm_event_outbox SET status = 'PENDING', attempts = 0, available_at = now() WHERE status = 'DEAD';`.

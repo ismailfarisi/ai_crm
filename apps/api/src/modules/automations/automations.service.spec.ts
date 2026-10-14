@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { WorkflowExecutionAlreadyStartedError } from '@temporalio/client';
 import {
   BadRequestException,
   NotFoundException,
@@ -295,6 +296,139 @@ describe('AutomationsService', () => {
           ],
         }),
       );
+    });
+
+    describe('with a source event id (outbox delivery)', () => {
+      const eventId = '7d1f0b2a-4c1e-4f7a-9a51-2f6f3c1d9e01';
+
+      it('keys the Temporal workflow on the event and records the event on the execution', async () => {
+        executionRepo.findOne.mockResolvedValueOnce(null);
+
+        await service.triggerExecution(mockTenantId, 'wf-uuid-1', {}, undefined, {
+          sourceEventId: eventId,
+        });
+
+        expect(executionRepo.create).toHaveBeenCalledWith(
+          expect.objectContaining({ sourceEventId: eventId }),
+        );
+        expect(mockTemporalClient.workflow.start).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            workflowId: `automation-${mockWorkflow.id}-${eventId}`,
+            workflowIdReusePolicy: 'REJECT_DUPLICATE',
+          }),
+        );
+      });
+
+      it('returns the existing execution without starting again on redelivery', async () => {
+        const started = {
+          ...mockExecution,
+          sourceEventId: eventId,
+          temporalWorkflowId: `automation-${mockWorkflow.id}-${eventId}`,
+        };
+        executionRepo.findOne.mockResolvedValueOnce(started);
+        mockTemporalClient.workflow.start.mockClear();
+        executionRepo.save.mockClear();
+
+        const exec = await service.triggerExecution(
+          mockTenantId,
+          'wf-uuid-1',
+          {},
+          undefined,
+          { sourceEventId: eventId },
+        );
+
+        expect(exec).toBe(started);
+        expect(mockTemporalClient.workflow.start).not.toHaveBeenCalled();
+        expect(executionRepo.save).not.toHaveBeenCalled();
+      });
+
+      it('retries the start for an execution recorded by an earlier failed delivery', async () => {
+        const pending = {
+          ...mockExecution,
+          sourceEventId: eventId,
+          temporalWorkflowId: 'exec-1700000000000',
+        };
+        executionRepo.findOne.mockResolvedValueOnce(pending);
+        executionRepo.save.mockClear();
+
+        await service.triggerExecution(mockTenantId, 'wf-uuid-1', {}, undefined, {
+          sourceEventId: eventId,
+        });
+
+        expect(executionRepo.save).toHaveBeenCalledTimes(1);
+        expect(executionRepo.save).toHaveBeenCalledWith(
+          expect.objectContaining({
+            id: pending.id,
+            temporalWorkflowId: `automation-${mockWorkflow.id}-${eventId}`,
+          }),
+        );
+      });
+
+      it('treats an already-started workflow as started', async () => {
+        executionRepo.findOne.mockResolvedValueOnce(null);
+        mockTemporalClient.workflow.start.mockRejectedValueOnce(
+          new WorkflowExecutionAlreadyStartedError(
+            'already started',
+            `automation-${mockWorkflow.id}-${eventId}`,
+            'dynamicDagWorkflow',
+          ),
+        );
+
+        const exec = await service.triggerExecution(
+          mockTenantId,
+          'wf-uuid-1',
+          {},
+          undefined,
+          { sourceEventId: eventId },
+        );
+
+        expect(exec.temporalWorkflowId).toBe(
+          `automation-${mockWorkflow.id}-${eventId}`,
+        );
+      });
+
+      it('rethrows a failed start so the outbox retries the event', async () => {
+        executionRepo.findOne.mockResolvedValueOnce(null);
+        temporalService.getClient.mockImplementationOnce(() => {
+          throw new Error('Temporal offline');
+        });
+
+        await expect(
+          service.triggerExecution(mockTenantId, 'wf-uuid-1', {}, undefined, {
+            sourceEventId: eventId,
+          }),
+        ).rejects.toThrow('Temporal offline');
+      });
+
+      it('falls back to the row another delivery inserted first', async () => {
+        const raced = {
+          ...mockExecution,
+          sourceEventId: eventId,
+          temporalWorkflowId: `automation-${mockWorkflow.id}-${eventId}`,
+        };
+        executionRepo.findOne
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(raced);
+        executionRepo.save.mockRejectedValueOnce(
+          Object.assign(new Error('duplicate key'), {
+            code: '23505',
+            constraint: 'uq_automation_executions_source_event',
+          }),
+        );
+        mockTemporalClient.workflow.start.mockClear();
+
+        const exec = await service.triggerExecution(
+          mockTenantId,
+          'wf-uuid-1',
+          {},
+          undefined,
+          { sourceEventId: eventId },
+        );
+
+        expect(exec).toBe(raced);
+        expect(mockTemporalClient.workflow.start).not.toHaveBeenCalled();
+      });
     });
 
     it('handles temporal offline gracefully without throwing', async () => {

@@ -33,24 +33,35 @@ export class CreateDraftQuoteActionHandler implements ActionHandler {
       createdBy: 'AI',
     };
 
-    const quote = await this.quotesService.createQuote(
-      ctx.organizationId,
-      payload,
-    );
+    const once =
+      ctx.runOnce ?? (<T>(_step: string, fn: () => Promise<T>) => fn());
+
+    // Each mutation is guarded on its own: a retry after the ack failed must
+    // re-send the ack, not draft a second quote.
+    const quote = await once('create-quote', async () => {
+      const created = await this.quotesService.createQuote(
+        ctx.organizationId,
+        payload,
+      );
+      return { id: created.id };
+    });
 
     let autoAcked = false;
     const template = agent.config?.template;
     if (template && typeof template === 'string') {
-      await this.channelsService.sendMessage(
-        ctx.organizationId,
-        SYSTEM_ACTOR_ID,
-        {
-          contactId: ctx.contactId,
-          provider: ctx.provider,
-          recipient: ctx.senderIdentifier,
-          body: template,
-        },
-      );
+      await once('send-ack', async () => {
+        await this.channelsService.sendMessage(
+          ctx.organizationId,
+          SYSTEM_ACTOR_ID,
+          {
+            contactId: ctx.contactId,
+            provider: ctx.provider,
+            recipient: ctx.senderIdentifier,
+            body: template,
+          },
+        );
+        return true;
+      });
       autoAcked = true;
     }
 

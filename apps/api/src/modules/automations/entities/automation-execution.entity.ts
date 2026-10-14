@@ -21,6 +21,10 @@ export enum AutomationExecutionStatusEnum {
 }
 
 @Entity('automation_executions')
+@Index('uq_automation_executions_source_event', ['workflowId', 'sourceEventId'], {
+  unique: true,
+  where: '"sourceEventId" IS NOT NULL',
+})
 export class AutomationExecution {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -39,6 +43,10 @@ export class AutomationExecution {
   })
   @JoinColumn({ name: 'workflowId' })
   workflow?: AutomationWorkflow;
+
+  /** The outbox event that triggered this run; one run per (workflow, event). */
+  @Column({ type: 'uuid', nullable: true })
+  sourceEventId: string | null;
 
   @Column({ type: 'varchar', length: 150 })
   temporalWorkflowId: string;

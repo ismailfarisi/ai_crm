@@ -37,7 +37,9 @@ services:
       retries: 10
 
   temporal:
-    image: temporalio/temporal:latest
+    # The CLI dev server, pinned (1.9.1 was `latest` when pinned). Its state is
+    # in-memory, so bumping this is safe — it just has to be deliberate.
+    image: temporalio/temporal:1.9.1
     container_name: saas_crm_temporal
     restart: unless-stopped
     command: ["server", "start-dev", "--ip", "0.0.0.0"]

@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { SavedViewsService } from './saved-views.service';
 import { SavedView } from './entities/saved-view.entity';
-import { NotFoundException, ForbiddenException } from '@nestjs/common';
+import { NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
 
 describe('SavedViewsService', () => {
   let service: SavedViewsService;
@@ -27,6 +27,12 @@ describe('SavedViewsService', () => {
       create: jest.fn().mockImplementation((dto) => dto),
       save: jest.fn().mockImplementation((entity) => Promise.resolve({ id: 'view-1', ...entity })),
       softRemove: jest.fn().mockResolvedValue(undefined),
+      update: jest.fn().mockResolvedValue({ affected: 0 }),
+    };
+    mockRepo.manager = {
+      transaction: jest.fn((cb: any) =>
+        cb({ getRepository: () => mockRepo, query: jest.fn().mockResolvedValue([]) }),
+      ),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -114,5 +120,89 @@ describe('SavedViewsService', () => {
       service.delete('tenant-1', 'user-1', 'view-1', true),
     ).resolves.toBeUndefined();
     expect(mockRepo.softRemove).toHaveBeenCalled();
+  });
+
+  describe('single default view per (tenant, user, entity)', () => {
+    let mockManager: any;
+
+    beforeEach(() => {
+      mockRepo.update = jest.fn().mockResolvedValue({ affected: 1 });
+      mockManager = {
+        getRepository: jest.fn(() => mockRepo),
+        query: jest.fn().mockResolvedValue([]),
+      };
+      mockRepo.manager = { transaction: jest.fn((cb: any) => cb(mockManager)) };
+    });
+
+    const lockKeys = () =>
+      mockManager.query.mock.calls
+        .filter(([sql]: [string]) => /pg_advisory_xact_lock/.test(sql))
+        .map(([, params]: [string, string[]]) => params[0]);
+
+    it('creating a default view clears the previous default in the same transaction', async () => {
+      await service.create('tenant-1', 'user-1', {
+        entityType: 'quotes',
+        name: 'Mine',
+        viewType: 'table',
+        isDefault: true,
+        isShared: false,
+        config: {},
+      });
+
+      expect(mockRepo.manager.transaction).toHaveBeenCalled();
+      expect(lockKeys()).toEqual(['saved_view_default:tenant-1:user-1:quotes']);
+      expect(mockRepo.update).toHaveBeenCalledWith(
+        { tenantId: 'tenant-1', userId: 'user-1', entityType: 'quotes', isDefault: true },
+        { isDefault: false },
+      );
+      const clearOrder = mockRepo.update.mock.invocationCallOrder[0];
+      const saveOrder = mockRepo.save.mock.invocationCallOrder[0];
+      expect(clearOrder).toBeLessThan(saveOrder);
+    });
+
+    it('creating a non-default view leaves other defaults alone', async () => {
+      await service.create('tenant-1', 'user-1', {
+        entityType: 'quotes',
+        name: 'Mine',
+        viewType: 'table',
+        isDefault: false,
+        isShared: false,
+        config: {},
+      });
+      expect(mockRepo.update).not.toHaveBeenCalled();
+    });
+
+    it("setting a view as default clears the owner's other default for that entity, excluding itself", async () => {
+      mockRepo.findOne.mockResolvedValue({ ...mockView, userId: 'owner-1' });
+
+      await service.update('tenant-1', 'admin-1', 'view-1', { isDefault: true }, true);
+
+      expect(lockKeys()).toEqual(['saved_view_default:tenant-1:owner-1:quotes']);
+      expect(mockRepo.update).toHaveBeenCalledWith(
+        {
+          tenantId: 'tenant-1',
+          userId: 'owner-1',
+          entityType: 'quotes',
+          isDefault: true,
+          id: expect.anything(),
+        },
+        { isDefault: false },
+      );
+      expect(mockRepo.save).toHaveBeenCalledWith(expect.objectContaining({ isDefault: true }));
+    });
+
+    it('maps a racing duplicate default (unique index) to a 409', async () => {
+      mockRepo.save.mockRejectedValueOnce(Object.assign(new Error('dup'), { code: '23505' }));
+      await expect(
+        service.create('tenant-1', 'user-1', {
+          entityType: 'quotes',
+          name: 'Mine',
+          viewType: 'table',
+          isDefault: true,
+          isShared: false,
+          config: {},
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
   });
 });

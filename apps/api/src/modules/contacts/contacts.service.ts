@@ -38,34 +38,50 @@ export class ContactsService {
     const cleanIdentifier = senderIdentifier.trim();
     const isEmail = cleanIdentifier.includes('@');
     const emailValue = isEmail ? cleanIdentifier.toLowerCase() : null;
+    const lockIdentifier = emailValue ?? cleanIdentifier;
 
-    let contact = await this.contacts.findOne({
-      where: isEmail
-        ? [
-            { tenantId: organizationId, email: emailValue! },
-            { tenantId: organizationId, phone: cleanIdentifier },
-          ]
-        : [
-            { tenantId: organizationId, phone: cleanIdentifier },
-            { tenantId: organizationId, email: cleanIdentifier },
-          ],
-    });
+    // No actor exists on an inbound webhook, so `scoped()` (which applies an
+    // actor's ownership filter) does not apply; the tenant filter is explicit
+    // on every clause instead.
+    //
+    // Check-then-insert would race when a provider delivers two messages
+    // from a new sender at once, creating two contacts. A unique constraint
+    // on email/phone is not an option — existing tenants legitimately hold
+    // duplicates — so the find-or-create is serialised per (tenant,
+    // identifier) with a transaction-scoped advisory lock and re-checked
+    // inside it. The lock is released on commit/rollback.
+    return this.contacts.manager.transaction(async (em) => {
+      await em.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [
+        `contact-channel:${organizationId}:${lockIdentifier}`,
+      ]);
+      const repo = em.getRepository(Contact);
 
-    if (!contact) {
-      contact = this.contacts.create({
-        tenantId: organizationId,
-        firstName: cleanIdentifier || 'Channel Contact',
-        lastName: '',
-        email: isEmail ? emailValue : null,
-        phone: isEmail ? null : cleanIdentifier,
-        source: (CONTACT_SOURCES as readonly string[]).includes(provider)
-          ? (provider as ContactSource)
-          : 'other',
+      const existing = await repo.findOne({
+        where: isEmail
+          ? [
+              { tenantId: organizationId, email: emailValue! },
+              { tenantId: organizationId, phone: cleanIdentifier },
+            ]
+          : [
+              { tenantId: organizationId, phone: cleanIdentifier },
+              { tenantId: organizationId, email: cleanIdentifier },
+            ],
       });
-      contact = await this.contacts.save(contact);
-    }
+      if (existing) return existing;
 
-    return contact;
+      return repo.save(
+        repo.create({
+          tenantId: organizationId,
+          firstName: cleanIdentifier || 'Channel Contact',
+          lastName: '',
+          email: isEmail ? emailValue : null,
+          phone: isEmail ? null : cleanIdentifier,
+          source: (CONTACT_SOURCES as readonly string[]).includes(provider)
+            ? (provider as ContactSource)
+            : 'other',
+        }),
+      );
+    });
   }
 
   async list(
@@ -165,27 +181,31 @@ export class ContactsService {
       ownerId,
     } as Partial<Contact>);
 
-    const saved = await this.contacts.save(contact);
-    const result = await this.findOne(actor, saved.id);
-
-    if (this.eventBus) {
-      await this.eventBus.publish({
-        tenantId: actor.organizationId,
-        eventType: 'record.created',
-        entityType: 'core',
-        entityName: 'contact',
-        entityId: saved.id,
-        actorUserId: actor.id,
-        timestamp: new Date().toISOString(),
-        snapshot: {
-          before: null,
-          after: saved,
-          changedFields: Object.keys(saved ?? {}),
+    // The event is written in the same transaction as the contact, so it
+    // commits with the change or not at all.
+    const saved = await this.contacts.manager.transaction(async (em) => {
+      const row = await em.getRepository(Contact).save(contact);
+      await this.eventBus?.publish(
+        {
+          tenantId: actor.organizationId,
+          eventType: 'record.created',
+          entityType: 'core',
+          entityName: 'contact',
+          entityId: row.id,
+          actorUserId: actor.id,
+          timestamp: new Date().toISOString(),
+          snapshot: {
+            before: null,
+            after: row,
+            changedFields: Object.keys(row ?? {}),
+          },
         },
-      });
-    }
+        { manager: em },
+      );
+      return row;
+    });
 
-    return result;
+    return this.findOne(actor, saved.id);
   }
 
   async update(
@@ -214,55 +234,58 @@ export class ContactsService {
     }
 
     Object.assign(contact, input);
-    const saved = await this.contacts.save(contact);
-    const result = await this.findOne(actor, contact.id);
-
-    if (this.eventBus) {
+    await this.contacts.manager.transaction(async (em) => {
+      const saved = await em.getRepository(Contact).save(contact);
+      if (!this.eventBus) return;
       const afterSnapshot = { ...saved };
-      const changedFields = this.eventBus.computeChangedFields(
-        beforeSnapshot,
-        afterSnapshot,
-      );
-      await this.eventBus.publish({
-        tenantId: actor.organizationId,
-        eventType: 'record.updated',
-        entityType: 'core',
-        entityName: 'contact',
-        entityId: contact.id,
-        actorUserId: actor.id,
-        timestamp: new Date().toISOString(),
-        snapshot: {
-          before: beforeSnapshot,
-          after: afterSnapshot,
-          changedFields,
+      await this.eventBus.publish(
+        {
+          tenantId: actor.organizationId,
+          eventType: 'record.updated',
+          entityType: 'core',
+          entityName: 'contact',
+          entityId: contact.id,
+          actorUserId: actor.id,
+          timestamp: new Date().toISOString(),
+          snapshot: {
+            before: beforeSnapshot,
+            after: afterSnapshot,
+            changedFields: this.eventBus.computeChangedFields(
+              beforeSnapshot,
+              afterSnapshot,
+            ),
+          },
         },
-      });
-    }
+        { manager: em },
+      );
+    });
 
-    return result;
+    return this.findOne(actor, contact.id);
   }
 
   async remove(actor: AuthenticatedUser, id: string): Promise<void> {
     const contact = await this.findEntity(actor, id);
     const beforeSnapshot = { ...contact };
-    await this.contacts.softRemove(contact);
-
-    if (this.eventBus) {
-      await this.eventBus.publish({
-        tenantId: actor.organizationId,
-        eventType: 'record.deleted',
-        entityType: 'core',
-        entityName: 'contact',
-        entityId: id,
-        actorUserId: actor.id,
-        timestamp: new Date().toISOString(),
-        snapshot: {
-          before: beforeSnapshot,
-          after: null,
-          changedFields: Object.keys(beforeSnapshot),
+    await this.contacts.manager.transaction(async (em) => {
+      await em.getRepository(Contact).softRemove(contact);
+      await this.eventBus?.publish(
+        {
+          tenantId: actor.organizationId,
+          eventType: 'record.deleted',
+          entityType: 'core',
+          entityName: 'contact',
+          entityId: id,
+          actorUserId: actor.id,
+          timestamp: new Date().toISOString(),
+          snapshot: {
+            before: beforeSnapshot,
+            after: null,
+            changedFields: Object.keys(beforeSnapshot),
+          },
         },
-      });
-    }
+        { manager: em },
+      );
+    });
   }
 
   async stats(actor: AuthenticatedUser): Promise<ContactStatsDto> {

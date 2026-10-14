@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { WorkflowExecutionAlreadyStartedError } from '@temporalio/client';
 import type {
   CreateAutomationWorkflowPayload,
   UpdateAutomationWorkflowPayload,
@@ -21,6 +22,23 @@ import {
   rejectNodeSignal,
   WorkflowExecutionState,
 } from './workflows/interfaces';
+
+export interface TriggerExecutionOptions {
+  /** Outbox event id: makes the trigger idempotent per (workflow, event). */
+  sourceEventId?: string;
+}
+
+/** `temporalWorkflowId` placeholder until Temporal has accepted the start. */
+const PENDING_WORKFLOW_ID_PREFIX = 'exec-';
+
+const SOURCE_EVENT_UNIQUE = 'uq_automation_executions_source_event';
+
+function isSourceEventConflict(err: unknown): boolean {
+  const e = err as { code?: string; constraint?: string; driverError?: any };
+  const code = e?.code ?? e?.driverError?.code;
+  const constraint = e?.constraint ?? e?.driverError?.constraint;
+  return code === '23505' && constraint === SOURCE_EVENT_UNIQUE;
+}
 
 @Injectable()
 export class AutomationsService {
@@ -116,8 +134,18 @@ export class AutomationsService {
     workflowId: string,
     triggerPayload: Record<string, any> = {},
     actorUserId?: string,
+    options: TriggerExecutionOptions = {},
   ): Promise<AutomationExecution> {
     const wf = await this.findWorkflowById(tenantId, workflowId);
+
+    if (options.sourceEventId) {
+      return this.triggerForEvent(
+        wf,
+        options.sourceEventId,
+        triggerPayload,
+        actorUserId,
+      );
+    }
 
     const exec = this.executionRepo.create({
       tenantId,
@@ -155,6 +183,80 @@ export class AutomationsService {
     }
 
     return savedExec;
+  }
+
+  /**
+   * An outbox delivery is at-least-once, so the same event can arrive more
+   * than once. One execution per (workflow, event) is enforced by
+   * `uq_automation_executions_source_event`, and the Temporal workflow id is
+   * derived from the event so a second start is rejected. A start that fails
+   * is rethrown: the outbox then retries the event, and the retry picks up the
+   * execution row recorded here instead of creating another.
+   */
+  private async triggerForEvent(
+    wf: AutomationWorkflow,
+    sourceEventId: string,
+    triggerPayload: Record<string, any>,
+    actorUserId?: string,
+  ): Promise<AutomationExecution> {
+    const where = { tenantId: wf.tenantId, workflowId: wf.id, sourceEventId };
+    const temporalWorkflowId = `automation-${wf.id}-${sourceEventId}`;
+
+    let exec = await this.executionRepo.findOne({ where });
+    if (!exec) {
+      try {
+        exec = await this.executionRepo.save(
+          this.executionRepo.create({
+            tenantId: wf.tenantId,
+            workflowId: wf.id,
+            sourceEventId,
+            temporalWorkflowId: `${PENDING_WORKFLOW_ID_PREFIX}${Date.now()}`,
+            status: 'RUNNING',
+            triggerPayload,
+            nodeResults: {},
+          }),
+        );
+      } catch (err: unknown) {
+        if (!isSourceEventConflict(err)) throw err;
+        exec = await this.executionRepo.findOne({ where });
+        if (!exec) throw err;
+      }
+    }
+
+    if (!exec.temporalWorkflowId.startsWith(PENDING_WORKFLOW_ID_PREFIX)) {
+      return exec;
+    }
+
+    try {
+      const client = this.temporalService.getClient();
+      await client.workflow.start(dynamicDagWorkflow, {
+        taskQueue: 'automations-queue',
+        workflowId: temporalWorkflowId,
+        workflowIdReusePolicy: 'REJECT_DUPLICATE',
+        args: [
+          {
+            executionId: exec.id,
+            workflowId: wf.id,
+            tenantId: wf.tenantId,
+            ...(actorUserId ? { actorUserId } : {}),
+            nodes: wf.nodes || [],
+            edges: wf.edges || [],
+            triggerPayload: exec.triggerPayload,
+          },
+        ],
+      });
+    } catch (err: unknown) {
+      if (!(err instanceof WorkflowExecutionAlreadyStartedError)) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `Temporal start failed for execution ${exec.id} (event ${sourceEventId}); the event will be retried: ${errorMsg}`,
+        );
+        throw err;
+      }
+    }
+
+    exec.temporalWorkflowId = temporalWorkflowId;
+    return this.executionRepo.save(exec);
   }
 
   async triggerWebhook(

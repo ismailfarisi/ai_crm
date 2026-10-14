@@ -145,16 +145,23 @@ describe('AttachmentsService', () => {
     expect(link.expiresAt).toBe('2026-09-16T09:05:00.000Z');
   });
 
-  it('soft-deletes the row and removes the object', async () => {
+  it('soft-deletes the row and keeps the object it points at', async () => {
+    // A soft-deleted row is still the index of its bytes: removing the
+    // object as well left any restored row pointing at a file that 404s,
+    // and if the object delete failed there was nothing to retry it.
     attachments.findOne.mockResolvedValue({
       id: 'a1',
+      tenantId: 'org1',
       ownerType: 'QUOTE',
       ownerId: OWNER,
       storageKey: 'org1/quote/q1/key',
       filename: 'artwork.pdf',
     });
     await service.remove(asUser([PERMISSIONS.QUOTE_UPDATE]), 'a1');
-    expect(attachments.softDelete).toHaveBeenCalledWith({ id: 'a1' });
-    expect(storage.delete).toHaveBeenCalledWith('org1/quote/q1/key');
+    expect(attachments.softDelete).toHaveBeenCalledWith({
+      id: 'a1',
+      tenantId: 'org1',
+    });
+    expect(storage.delete).not.toHaveBeenCalled();
   });
 });

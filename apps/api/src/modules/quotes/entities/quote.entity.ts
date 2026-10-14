@@ -23,7 +23,10 @@ export enum QuoteStatus {
 
 @Entity('quotes')
 @Index('idx_quotes_tenant_id', ['tenantId'])
-@Index('idx_quotes_tenant_number', ['tenantId', 'quoteNumber'])
+// Revisions carry their own `-R<n>` suffix, so they never share a number.
+@Index('uq_quotes_tenant_number', ['tenantId', 'quoteNumber'], {
+  unique: true,
+})
 @Index('idx_quotes_parent', ['parentQuoteId'])
 @Index('uq_quotes_acceptance_token', ['acceptanceTokenHash'], {
   unique: true,

@@ -30,8 +30,47 @@ services:
       timeout: 5s
       retries: 10
 
+  # Nightly pg_dump of the CRM database into BACKUP_DIR on the host (default
+  # ../backups, i.e. ~/backups next to the checkout), pruned after
+  # BACKUP_RETENTION_DAYS. Same image as the server so pg_dump matches it.
+  # Restore with scripts/backup/restore.sh — see docs/DEPLOYMENT.md.
+  backup:
+    image: postgres:18-alpine
+    container_name: crm_staging_backup
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/usr/local/bin/pg-backup-loop.sh"]
+    # Write as the host user that owns BACKUP_DIR (`id -u` / `id -g` on the
+    # host), so dumps can be read and copied off-host without sudo.
+    user: "${BACKUP_UID:-1000}:${BACKUP_GID:-1000}"
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: ${DB_ADMIN_USERNAME:?DB_ADMIN_USERNAME must be set}
+      PGPASSWORD: ${DB_ADMIN_PASSWORD:?DB_ADMIN_PASSWORD must be set}
+      PGDATABASE: ${DB_NAME}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_HOUR_UTC: ${BACKUP_HOUR_UTC:-2}
+      TZ: UTC
+    volumes:
+      - ${BACKUP_DIR:-../backups}:/backups
+      - ./scripts/backup/pg-backup-loop.sh:/usr/local/bin/pg-backup-loop.sh:ro
+    healthcheck:
+      # Unhealthy once the newest dump is more than 26 hours old.
+      test: ["CMD-SHELL", "find /backups -maxdepth 1 -name '*.dump' -mmin -1560 | grep -q ."]
+      interval: 30m
+      timeout: 10s
+      start_period: 1h
+      retries: 1
+
   temporal:
-    image: temporalio/auto-setup:latest
+    # Pinned: `latest` resolved to 1.29.3 when this was pinned, so the pin
+    # changes nothing on a host that pulled recently. Temporal migrates its
+    # schema on upgrade and cannot go back — bump deliberately, one minor at a
+    # time, after checking the running version (see docs/DEPLOYMENT.md).
+    image: temporalio/auto-setup:${TEMPORAL_VERSION:-1.29.3}
     container_name: crm_staging_temporal
     restart: unless-stopped
     depends_on:

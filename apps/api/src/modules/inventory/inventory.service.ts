@@ -29,6 +29,7 @@ import { JournalEntry } from '../finance/entities/journal-entry.entity';
 import { PurchaseOrder } from '../purchasing/entities/purchase-order.entity';
 import { PurchaseOrderLine } from '../purchasing/entities/purchase-order-line.entity';
 import { PurchasePolicyEntity } from '../purchasing/entities/purchase-policy.entity';
+import { lockPurchaseOrder } from '../purchasing/purchase-order-lock';
 import {
   GoodsReceipt,
   GoodsReceiptLine,
@@ -41,6 +42,18 @@ import { StockMovement } from './entities/stock-movement.entity';
 /** Money to the cent, matching how bills clear GRNI line by line. */
 const money = (n: number): number =>
   Math.round((n + Number.EPSILON) * 100) / 100;
+
+/**
+ * Orders lock keys the same way everywhere, nulls last. Plain code-unit
+ * comparison rather than `localeCompare`, so the order cannot shift with the
+ * process locale between two API instances.
+ */
+const compareKeys = (a: string | null, b: string | null): number => {
+  if (a === b) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  return a < b ? -1 : 1;
+};
 
 export interface StockItemView {
   id: string;
@@ -277,7 +290,12 @@ export class InventoryService {
     lines: { materialId: string | null; qty: number }[],
     manager: EntityManager = this.dataSource.manager,
   ): Promise<void> {
-    const relevant = lines.filter((l) => l.materialId && l.qty !== 0);
+    // Each upsert row-locks the stock row it touches. Sorted so that two
+    // transactions adjusting the same materials take those locks in the same
+    // order instead of deadlocking on each other.
+    const relevant = lines
+      .filter((l) => l.materialId && l.qty !== 0)
+      .sort((a, b) => compareKeys(a.materialId, b.materialId));
     if (relevant.length === 0) return;
 
     const location = await this.ensureDefaultLocation(tenantId, manager);
@@ -470,15 +488,15 @@ export class InventoryService {
     }
 
     return this.dataSource.transaction(async (manager) => {
-      const order = await manager.getRepository(PurchaseOrder).findOne({
-        where: { id: purchaseOrderId, tenantId, deletedAt: IsNull() },
-      });
-      if (!order) {
-        throw new NotFoundException(
-          `Purchase order ${purchaseOrderId} not found`,
-        );
-      }
-      // Receiving against a draft would book in stock nobody authorised buying.
+      // Order, then lines, locked before anything is read from them. Two
+      // receipts against the same line would otherwise both check tolerance
+      // against the same `qtyReceived`, both book stock and credit GRNI, and
+      // the second save would overwrite the first's received quantity.
+      const order = await lockPurchaseOrder(manager, tenantId, purchaseOrderId);
+      // Receiving against a draft would book in stock nobody authorised
+      // buying; against a cancelled or closed order, stock nobody is still
+      // expecting. Checked on the locked row, so a cancellation that commits
+      // while this waits is seen.
       if (!['SENT', 'APPROVED', 'PARTIALLY_RECEIVED'].includes(order.status)) {
         throw new BadRequestException(
           `${order.poNumber} is ${order.status.toLowerCase().replace(/_/g, ' ')} and cannot receive goods.`,
@@ -497,10 +515,28 @@ export class InventoryService {
         .findOne({ where: { tenantId } });
       const tolerance = policy?.varianceTolerancePct ?? 0;
 
-      const orderLines = await manager
-        .getRepository(PurchaseOrderLine)
-        .find({ where: { purchaseOrderId: order.id, tenantId } });
+      const orderLines = order.lines;
       const byId = new Map(orderLines.map((l) => [l.id, l]));
+
+      // Resolve every requested line before touching stock, then work through
+      // them in material order. Stock rows are locked as each movement is
+      // applied, so taking them in the order the request happened to list them
+      // would let two receipts lock the same two materials in opposite orders
+      // and deadlock.
+      const requested = input.lines.map((line) => {
+        const orderLine = byId.get(line.purchaseOrderLineId);
+        if (!orderLine) {
+          throw new BadRequestException(
+            `Line ${line.purchaseOrderLineId} is not on ${order.poNumber}`,
+          );
+        }
+        return { line, orderLine };
+      });
+      requested.sort(
+        (a, b) =>
+          compareKeys(a.orderLine.materialId, b.orderLine.materialId) ||
+          compareKeys(a.orderLine.id, b.orderLine.id),
+      );
 
       const receiptLines: GoodsReceiptLine[] = [];
       /** In base currency: stock and the ledger are kept in it. */
@@ -515,13 +551,7 @@ export class InventoryService {
         new Date(),
       );
 
-      for (const input_line of input.lines) {
-        const orderLine = byId.get(input_line.purchaseOrderLineId);
-        if (!orderLine) {
-          throw new BadRequestException(
-            `Line ${input_line.purchaseOrderLineId} is not on ${order.poNumber}`,
-          );
-        }
+      for (const { line: input_line, orderLine } of requested) {
         if (!(input_line.qtyReceived > 0)) {
           throw new BadRequestException(
             `Received quantity for "${orderLine.description}" must be above zero`,
@@ -685,25 +715,24 @@ export class InventoryService {
       // Whatever arrived is no longer on order.
       await this.adjustOnOrder(
         tenantId,
-        input.lines.map((l) => {
-          const orderLine = byId.get(l.purchaseOrderLineId);
-          return {
-            materialId: orderLine?.materialId ?? null,
-            qty: -l.qtyReceived,
-          };
-        }),
+        requested.map(({ line, orderLine }) => ({
+          materialId: orderLine.materialId,
+          qty: -line.qtyReceived,
+        })),
         manager,
       );
 
-      // Status follows the lines, not the other way round.
-      const refreshed = await manager
-        .getRepository(PurchaseOrderLine)
-        .find({ where: { purchaseOrderId: order.id, tenantId } });
-      const fullyReceived = refreshed.every(
+      // Status follows the lines, not the other way round. The locked lines
+      // are current: every change to them in this transaction was made here.
+      const fullyReceived = orderLines.every(
         (l) => l.qtyReceived >= l.qtyOrdered,
       );
-      order.status = fullyReceived ? 'RECEIVED' : 'PARTIALLY_RECEIVED';
-      await manager.getRepository(PurchaseOrder).save(order);
+      const status = fullyReceived ? 'RECEIVED' : 'PARTIALLY_RECEIVED';
+      // Only the status: saving the whole order would drag its lines along.
+      await manager
+        .getRepository(PurchaseOrder)
+        .update({ id: order.id, tenantId }, { status });
+      order.status = status;
 
       return receipt;
     });

@@ -2,6 +2,7 @@ import { AiService } from '../../../ai/ai.service';
 import { ChannelsService } from '../../channels.service';
 import { QuotesService } from '../../../quotes/quotes.service';
 import { AiAgentService } from '../../services/ai-agent.service';
+import { ChannelIdempotencyService } from '../../services/channel-idempotency.service';
 import { TenantContextService } from '@/common/context/tenant-context.service';
 import {
   MessageAiIntent,
@@ -31,6 +32,7 @@ export function createChannelAiActivities(deps: {
   quotesService: QuotesService;
   aiAgentService: AiAgentService;
   tenantContext: TenantContextService;
+  idempotency: Pick<ChannelIdempotencyService, 'runOnce'>;
 }) {
   const classifier = new IntentClassifierAgent(deps.aiService);
   const actionHandlers = createActionHandlerRegistry({
@@ -107,6 +109,18 @@ export function createChannelAiActivities(deps: {
           const handler = actionHandlers[agent.actionType];
           if (!handler) return { autoAcked: false, reason: 'NO_AGENT' };
 
+          // This activity is retried (maximumAttempts 3), including after an
+          // attempt that timed out while its work was still running. Every
+          // mutation a handler performs is keyed on the inbound message, so
+          // a retry returns what was already done instead of drafting a
+          // second quote or re-sending an ack.
+          const runOnce = <T>(step: string, fn: () => Promise<T>) =>
+            deps.idempotency.runOnce<T>(
+              params.organizationId,
+              `channel-ai:dispatch:${params.messageId}:${step}`,
+              fn,
+            );
+
           const result = await handler.handle(
             {
               organizationId: params.organizationId,
@@ -119,6 +133,7 @@ export function createChannelAiActivities(deps: {
                 confidence: params.confidence,
                 summary: params.summary,
               },
+              runOnce,
             },
             agent,
           );

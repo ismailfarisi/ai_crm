@@ -1,5 +1,9 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { Repository } from 'typeorm';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
+import { QueryFailedError, Repository } from 'typeorm';
 import { ExpensesService } from './expenses.service';
 import { ExpenseClaim } from './entities/expense-claim.entity';
 import { FinanceAccount } from './entities/finance-account.entity';
@@ -28,6 +32,8 @@ describe('ExpensesService', () => {
   let ledgerService: jest.Mocked<Partial<LedgerService>>;
   let mockWorkflowHandle: any;
   let claimSequenceValue: number;
+  let txManager: { getRepository: jest.Mock; query: jest.Mock };
+  let events: string[];
 
   const tenantId = '11111111-1111-1111-1111-111111111111';
   const expenseId = '22222222-2222-2222-2222-222222222222';
@@ -84,6 +90,29 @@ describe('ExpensesService', () => {
       // Nothing posted yet, so the idempotency check always finds nothing.
       findOne: jest.fn().mockResolvedValue(null),
     };
+
+    // A signal's writes happen inside one transaction. The fake hands its
+    // callback a manager distinct from the repositories' own, records when
+    // the transaction "commits", and rethrows so a failure rolls back.
+    events = [];
+    txManager = {
+      getRepository: jest.fn((entity: { name: string }) => {
+        if (entity.name === 'ExpenseClaim') return expenseRepo;
+        if (entity.name === 'FinanceAccount') return accountRepo;
+        return journalRepo;
+      }),
+      query: jest.fn().mockResolvedValue([]),
+    };
+    (expenseRepo.manager as any).transaction = jest.fn(
+      async (work: (m: unknown) => unknown) => {
+        const result = await work(txManager);
+        events.push('commit');
+        return result;
+      },
+    );
+    mockWorkflowHandle.signal.mockImplementation(async () => {
+      events.push('signal');
+    });
 
     temporalService = {
       getClient: jest.fn().mockReturnValue({
@@ -379,10 +408,149 @@ describe('ExpensesService', () => {
           ]),
         }),
       );
-      // Treasury has to move with the ledger, or the two disagree.
-      expect(accountRepo.save).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'acc-1', balance: 800 }),
+      // Treasury has to move with the ledger, or the two disagree — and by a
+      // relative UPDATE, so a concurrent payment into the account is not lost.
+      expect(accountRepo.save).not.toHaveBeenCalled();
+      expect(txManager.query).toHaveBeenCalledWith(
+        expect.stringContaining('"balance" = "balance" - $1'),
+        [4200, 'acc-1', tenantId],
       );
+    });
+
+    /*
+     * The journal, the account deduction and the claim's status used to be
+     * three separate writes, with the Temporal signal sent before any of them.
+     * A failure in between left the books and the claim disagreeing, and two
+     * reimbursements at once could both pass the "already posted" check.
+     */
+    it('posts, deducts and marks the claim paid in one transaction', async () => {
+      expenseRepo.findOne = jest.fn().mockResolvedValue({
+        id: expenseId,
+        tenantId,
+        amount: 4200,
+        claimNumber: 'EXP-2026-0001',
+        status: 'APPROVED',
+        temporalWorkflowId: `expense-${expenseId}`,
+      });
+
+      await service.sendSignal(tenantId, expenseId, {
+        action: 'REIMBURSE',
+        accountId: 'acc-1',
+        reimbursedBy: 'finance-admin',
+      });
+
+      expect((expenseRepo.manager as any).transaction).toHaveBeenCalledTimes(1);
+      expect(txManager.getRepository).toHaveBeenCalledWith(ExpenseClaim);
+      expect(txManager.getRepository).toHaveBeenCalledWith(JournalEntry);
+      expect(ledgerService.resolveLines).toHaveBeenCalledWith(
+        tenantId,
+        expect.any(Array),
+        txManager,
+      );
+      // The claim row is locked before its status is read.
+      expect(expenseRepo.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: expenseId, tenantId },
+          lock: { mode: 'pessimistic_write' },
+        }),
+      );
+      expect(expenseRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'PAID' }),
+      );
+    });
+
+    it('signals the workflow only after the transaction commits', async () => {
+      expenseRepo.findOne = jest.fn().mockResolvedValue({
+        id: expenseId,
+        tenantId,
+        amount: 4200,
+        status: 'APPROVED',
+        temporalWorkflowId: `expense-${expenseId}`,
+      });
+
+      await service.sendSignal(tenantId, expenseId, {
+        action: 'REIMBURSE',
+        accountId: 'acc-1',
+      });
+
+      expect(events).toEqual(['commit', 'signal']);
+    });
+
+    it('does not signal the workflow when the transaction fails', async () => {
+      expenseRepo.findOne = jest.fn().mockResolvedValue({
+        id: expenseId,
+        tenantId,
+        amount: 4200,
+        status: 'APPROVED',
+        temporalWorkflowId: `expense-${expenseId}`,
+      });
+      journalRepo.save = jest.fn().mockRejectedValue(new Error('db down'));
+
+      await expect(
+        service.sendSignal(tenantId, expenseId, {
+          action: 'REIMBURSE',
+          accountId: 'acc-1',
+        }),
+      ).rejects.toThrow('db down');
+      expect(mockWorkflowHandle.signal).not.toHaveBeenCalled();
+    });
+
+    it('refuses to reimburse a claim that is already paid', async () => {
+      expenseRepo.findOne = jest.fn().mockResolvedValue({
+        id: expenseId,
+        tenantId,
+        amount: 4200,
+        status: 'PAID',
+        temporalWorkflowId: `expense-${expenseId}`,
+      });
+
+      await expect(
+        service.sendSignal(tenantId, expenseId, {
+          action: 'REIMBURSE',
+          accountId: 'acc-1',
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(journalRepo.save).not.toHaveBeenCalled();
+      expect(txManager.query).not.toHaveBeenCalled();
+      expect(mockWorkflowHandle.signal).not.toHaveBeenCalled();
+    });
+
+    it('refuses to approve a claim that has already been rejected', async () => {
+      expenseRepo.findOne = jest.fn().mockResolvedValue({
+        id: expenseId,
+        tenantId,
+        amount: 4200,
+        status: 'REJECTED',
+      });
+
+      await expect(
+        service.sendSignal(tenantId, expenseId, { action: 'APPROVE' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(journalRepo.save).not.toHaveBeenCalled();
+    });
+
+    // The partial unique index on journal_entries is the backstop for a
+    // second posting that slips past the in-transaction check.
+    it('turns a duplicate-posting unique violation into a 409', async () => {
+      expenseRepo.findOne = jest.fn().mockResolvedValue({
+        id: expenseId,
+        tenantId,
+        amount: 4200,
+        status: 'SUBMITTED',
+        temporalWorkflowId: `expense-${expenseId}`,
+      });
+      journalRepo.save = jest.fn().mockRejectedValue(
+        new QueryFailedError('INSERT', [], {
+          code: '23505',
+          constraint: 'uq_journal_entries_single_posting',
+          message: 'duplicate key value violates unique constraint',
+        } as unknown as Error),
+      );
+
+      await expect(
+        service.sendSignal(tenantId, expenseId, { action: 'APPROVE' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(mockWorkflowHandle.signal).not.toHaveBeenCalled();
     });
 
     it('refuses to reimburse when the organization has no account to pay from', async () => {

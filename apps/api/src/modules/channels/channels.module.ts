@@ -8,6 +8,7 @@ import { ChannelMessage } from './entities/channel-message.entity';
 import { StaffChannelIdentity } from './entities/staff-channel-identity.entity';
 import { ChannelLinkCode } from './entities/channel-link-code.entity';
 import { ChannelConversation } from './entities/channel-conversation.entity';
+import { ChannelIdempotencyRecord } from './entities/channel-idempotency-record.entity';
 import { PurchasingModule } from '../purchasing/purchasing.module';
 import { ProductionModule } from '../production/production.module';
 import { OrdersModule } from '../orders/orders.module';
@@ -17,6 +18,7 @@ import { AiAgent } from './entities/ai-agent.entity';
 import { IntentAgentConfig } from './entities/intent-agent-config.entity';
 import { ChannelCryptoService } from './services/channel-crypto.service';
 import { ChannelCommandService } from './services/channel-command.service';
+import { ChannelIdempotencyService } from './services/channel-idempotency.service';
 import { AiAgentService } from './services/ai-agent.service';
 import { IntentAgentConfigService } from './services/intent-agent-config.service';
 import { ProductionCheckInService } from './services/production-check-in.service';
@@ -32,6 +34,7 @@ import { ChannelsWebhookController } from './channels-webhook.controller';
       StaffChannelIdentity,
       ChannelLinkCode,
       ChannelConversation,
+      ChannelIdempotencyRecord,
       AiAgent,
       IntentAgentConfig,
     ]),
@@ -47,6 +50,7 @@ import { ChannelsWebhookController } from './channels-webhook.controller';
     ChannelsService,
     ChannelCryptoService,
     ChannelCommandService,
+    ChannelIdempotencyService,
     SkillRegistry,
     SkillRouterService,
     AiAgentService,
@@ -59,6 +63,7 @@ import { ChannelsWebhookController } from './channels-webhook.controller';
     AiAgentService,
     ProductionCheckInService,
     SkillRegistry,
+    ChannelIdempotencyService,
   ],
 })
 export class ChannelsModule {}

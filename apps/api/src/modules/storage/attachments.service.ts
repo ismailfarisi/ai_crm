@@ -160,11 +160,25 @@ export class AttachmentsService {
     };
   }
 
+  /**
+   * Removes an attachment from its record. A soft delete, and the stored
+   * object is deliberately left where it is.
+   *
+   * The row is the only index of the bytes; while it exists, even
+   * soft-deleted, the object is accounted for and the row can be restored
+   * (by un-setting `deletedAt`) to a file that still downloads. Removing the
+   * object here as well broke both: a restored row 404'd, and when the
+   * object delete failed it was only logged, with nothing to retry it. A
+   * purge of objects whose rows have been soft-deleted for some retention
+   * period would be the place to free the space; none exists yet.
+   */
   async remove(user: AuthenticatedUser, id: string): Promise<void> {
     const row = await this.find(user.organizationId, id);
     await this.assertOwner(user, row.ownerType, row.ownerId, 'write');
-    await this.attachments.softDelete({ id: row.id });
-    await this.storage.delete(row.storageKey);
+    await this.attachments.softDelete({
+      id: row.id,
+      tenantId: user.organizationId,
+    });
   }
 
   private async find(tenantId: string, id: string): Promise<Attachment> {

@@ -10,6 +10,13 @@ import type { DocumentTemplateConfig, DocumentType } from '@saas/shared';
 
 @Entity('document_templates')
 @Index('idx_document_templates_tenant', ['tenantId'])
+// One general (no document types) default per tenant. Per-type defaults are
+// kept unique by the service's advisory lock; an array column cannot carry a
+// unique index.
+@Index('uq_document_templates_general_default', ['tenantId'], {
+  unique: true,
+  where: '"is_default" AND cardinality("applies_to") = 0',
+})
 export class DocumentTemplate {
   @PrimaryGeneratedColumn('uuid')
   id: string;

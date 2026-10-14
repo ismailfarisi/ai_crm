@@ -72,6 +72,7 @@ export async function channelAiWorkflow(
   try {
     const dispatchResult = await dispatchAgentActivity({
       organizationId: input.organizationId,
+      messageId: input.messageId,
       provider: input.provider,
       senderIdentifier: input.senderIdentifier,
       contactId: input.contactId,
@@ -183,6 +184,7 @@ export async function channelConversationWorkflow(
     try {
       dispatchResult = await dispatchAgentActivity({
         organizationId: input.organizationId,
+        messageId: message.messageId,
         provider: input.provider,
         senderIdentifier: input.senderIdentifier,
         contactId: input.contactId,

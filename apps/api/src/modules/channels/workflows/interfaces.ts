@@ -50,6 +50,11 @@ export interface PersistClassificationParams {
 
 export interface DispatchAgentParams {
   organizationId: string;
+  /**
+   * The inbound message being acted on. Keys the idempotency guard, so a
+   * retried dispatch never drafts a second quote or re-sends an ack for it.
+   */
+  messageId: string;
   provider: ChannelProviderType;
   senderIdentifier: string;
   contactId: string;

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import type {
   BillingScheduleLineDto,
   SalesOrderDto,
@@ -186,42 +186,91 @@ export class OrdersService {
     status: SalesOrderStatus,
     actorId: string,
   ): Promise<SalesOrderDto> {
-    const order = await this.findOrder(tenantId, id);
     if (status === 'CANCELLED') {
       throw new BadRequestException('Use cancel to cancel an order');
     }
-    if (!NEXT_STATUS[order.status].includes(status)) {
-      throw new BadRequestException(
-        `${order.orderNumber} is ${label(order.status)} and cannot move to ${label(status)}`,
-      );
-    }
-    if (status === 'CLOSED') {
-      const stages = await this.stages.find({
-        where: { salesOrderId: order.id },
-      });
-      // A per-delivery order has no stage invoice; it is billed once the
-      // delivery that completed it has been invoiced.
-      const unbilled = stages.filter(
-        (s) => !s.invoiceId && !(s.trigger === 'ON_DELIVERY' && s.invoicedAt),
-      );
-      if (unbilled.length) {
-        throw new BadRequestException(
-          `${order.orderNumber} still has ${unbilled.length === 1 ? `"${unbilled[0].label}"` : `${unbilled.length} stages`} to invoice`,
-        );
-      }
-    }
-    /*
-     * "Start production" used to flip a badge and raise nothing: the
-     * Production page still read "No work orders", no job existed, nothing was
-     * scheduled and no material was committed — while the order list told the
-     * owner work had started on the floor.
-     *
-     * So it now starts production. Planning is idempotent (a line that already
-     * has a live work order is skipped), and when nothing at all can be
-     * planned the move is refused with the reason, rather than leaving a
-     * status that claims something untrue.
-     */
     if (status === 'IN_PRODUCTION') {
+      return this.startProduction(tenantId, id, actorId);
+    }
+
+    /*
+     * One transaction, with the order locked the way `cancel` locks it: the
+     * checks below are made against the row as it is, and the line quantities
+     * only move once the status move itself has gone through. Before, lines
+     * were marked fulfilled first and the status compare-and-set could then
+     * lose, leaving fulfilled lines on an order that was not.
+     */
+    await this.dataSource.transaction(async (manager) => {
+      const order = await this.lockOrder(manager, tenantId, id);
+      assertTransition(order, status);
+
+      if (status === 'CLOSED') {
+        const stages = await manager
+          .getRepository(BillingScheduleLine)
+          .find({ where: { salesOrderId: order.id } });
+        // A per-delivery order has no stage invoice; it is billed once the
+        // delivery that completed it has been invoiced.
+        const unbilled = stages.filter(
+          (s) =>
+            !s.invoiceId && !(s.trigger === 'ON_DELIVERY' && s.invoicedAt),
+        );
+        if (unbilled.length) {
+          throw new BadRequestException(
+            `${order.orderNumber} still has ${unbilled.length === 1 ? `"${unbilled[0].label}"` : `${unbilled.length} stages`} to invoice`,
+          );
+        }
+      }
+
+      if (status === 'FULFILLED') {
+        const deliveries = await this.countDeliveries(order.id, manager);
+        if (deliveries > 0) {
+          throw new BadRequestException(
+            `${order.orderNumber} ships on delivery notes. Dispatch what is left instead of marking it fulfilled.`,
+          );
+        }
+      }
+
+      await this.moveStatus(manager, order, order.status, status);
+
+      if (status === 'FULFILLED') {
+        await manager
+          .createQueryBuilder()
+          .update(SalesOrderLine)
+          .set({ qtyFulfilled: () => 'qty_ordered' })
+          .where('sales_order_id = :id', { id: order.id })
+          .execute();
+      }
+    });
+    return this.get(tenantId, id);
+  }
+
+  /*
+   * "Start production" used to flip a badge and raise nothing: the
+   * Production page still read "No work orders", no job existed, nothing was
+   * scheduled and no material was committed — while the order list told the
+   * owner work had started on the floor.
+   *
+   * So it now starts production. Planning is idempotent (a line that already
+   * has a live work order is skipped), and when nothing at all can be
+   * planned the move is refused with the reason, rather than leaving a
+   * status that claims something untrue.
+   *
+   * Planning runs in ProductionService's own transactions, so it cannot share
+   * one with the status move. The status is claimed first instead — a
+   * compare-and-set only one of two racing requests can win, so only one of
+   * them plans — and put back if planning fails or finds nothing to make.
+   */
+  private async startProduction(
+    tenantId: string,
+    id: string,
+    actorId: string,
+  ): Promise<SalesOrderDto> {
+    const order = await this.findOrder(tenantId, id);
+    assertTransition(order, 'IN_PRODUCTION');
+    const from = order.status;
+    await this.moveStatus(undefined, order, from, 'IN_PRODUCTION');
+
+    try {
       const planned = await this.production.createFromSalesOrder(
         tenantId,
         actorId,
@@ -242,35 +291,58 @@ export class OrdersService {
           }`,
         );
       }
-    }
-
-    if (status === 'FULFILLED') {
-      const deliveries = await this.countDeliveries(order.id);
-      if (deliveries > 0) {
-        throw new BadRequestException(
-          `${order.orderNumber} ships on delivery notes. Dispatch what is left instead of marking it fulfilled.`,
-        );
-      }
-      await this.lines
+    } catch (err) {
+      // Only undoes our own move: if the order has moved on since (cancelled,
+      // say), the compare-and-set matches nothing and that state stands.
+      await this.orders
         .createQueryBuilder()
-        .update(SalesOrderLine)
-        .set({ qtyFulfilled: () => 'qty_ordered' })
-        .where('sales_order_id = :id', { id: order.id })
+        .update(SalesOrder)
+        .set({ status: from })
+        .where('id = :id', { id: order.id })
+        .andWhere('status = :claimed', { claimed: 'IN_PRODUCTION' })
         .execute();
+      throw err;
     }
-    const updated = await this.orders
-      .createQueryBuilder()
+    return this.get(tenantId, order.id);
+  }
+
+  /** Compare-and-set on the status, so a move made on a stale read fails loudly. */
+  private async moveStatus(
+    manager: EntityManager | undefined,
+    order: SalesOrder,
+    from: SalesOrderStatus,
+    to: SalesOrderStatus,
+  ): Promise<void> {
+    const builder = manager
+      ? manager.createQueryBuilder()
+      : this.orders.createQueryBuilder();
+    const updated = await builder
       .update(SalesOrder)
-      .set({ status })
+      .set({ status: to })
       .where('id = :id', { id: order.id })
-      .andWhere('status = :from', { from: order.status })
+      .andWhere('status = :from', { from })
       .execute();
     if (!updated.affected) {
       throw new BadRequestException(
         `${order.orderNumber} was changed by someone else. Reload and try again.`,
       );
     }
-    return this.get(tenantId, order.id);
+  }
+
+  private async lockOrder(
+    manager: EntityManager,
+    tenantId: string,
+    id: string,
+  ): Promise<SalesOrder> {
+    const order = await manager
+      .getRepository(SalesOrder)
+      .createQueryBuilder('o')
+      .setLock('pessimistic_write')
+      .where('o.id = :id', { id })
+      .andWhere('o.tenant_id = :tenantId', { tenantId })
+      .getOne();
+    if (!order) throw new NotFoundException('Sales order not found');
+    return order;
   }
 
   /**
@@ -331,8 +403,11 @@ export class OrdersService {
       .then((order) => this.get(tenantId, order.id));
   }
 
-  private async countDeliveries(salesOrderId: string): Promise<number> {
-    const rows: { n: string }[] = await this.dataSource.query(
+  private async countDeliveries(
+    salesOrderId: string,
+    manager: Pick<EntityManager, 'query'> = this.dataSource,
+  ): Promise<number> {
+    const rows: { n: string }[] = await manager.query(
       `SELECT COUNT(*) AS n FROM "delivery_notes" WHERE "sales_order_id" = $1 AND "status" <> 'CANCELLED'`,
       [salesOrderId],
     );
@@ -406,6 +481,14 @@ export class OrdersService {
       }),
       createdAt: order.createdAt.toISOString(),
     };
+  }
+}
+
+function assertTransition(order: SalesOrder, to: SalesOrderStatus): void {
+  if (!NEXT_STATUS[order.status].includes(to)) {
+    throw new BadRequestException(
+      `${order.orderNumber} is ${label(order.status)} and cannot move to ${label(to)}`,
+    );
   }
 }
 

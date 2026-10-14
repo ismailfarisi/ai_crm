@@ -17,7 +17,8 @@ import {
 
 describe('FinanceService', () => {
   let service: FinanceService;
-  let ledger: { resolveLines: jest.Mock };
+  let ledger: { resolveLines: jest.Mock; provisionChartOfAccounts: jest.Mock };
+  let txManager: { getRepository: jest.Mock; query: jest.Mock };
   let accountRepo: jest.Mocked<Partial<Repository<FinanceAccount>>>;
   let budgetRepo: jest.Mocked<Partial<Repository<CategoryBudget>>>;
   let recurringRepo: jest.Mocked<Partial<Repository<RecurringExpense>>>;
@@ -40,21 +41,34 @@ describe('FinanceService', () => {
         .mockImplementation(async (acc) => ({ id: 'acc-1', ...acc })),
       update: jest.fn().mockResolvedValue({} as any),
     };
-    // Invoice payments move the balance with a relative UPDATE through the
-    // manager. The fake applies it to whatever `findOne` currently returns,
-    // so the balance assertions still read the effect.
+    // Balances move with a relative UPDATE through the manager. The fake
+    // applies it to whatever `findOne` returns for that account id, so the
+    // balance assertions still read the effect. Anything else (an advisory
+    // lock) is accepted and ignored.
+    const query = jest.fn(async (sql: string, params: unknown[] = []) => {
+      if (!sql.includes('"balance" = "balance"')) return [];
+      const account = await accountRepo.findOne!({
+        where: { id: params[1] as string },
+      });
+      if (account && sql.includes('"balance" = "balance" +')) {
+        account.balance = Number(account.balance) + Number(params[0]);
+      } else if (account && sql.includes('"balance" = "balance" -')) {
+        account.balance = Number(account.balance) - Number(params[0]);
+      }
+      return [];
+    });
+    const getRepository = (entity: { name: string }) =>
+      entity.name === 'JournalEntry' ? journalRepo : accountRepo;
+    // The manager a transaction hands its callback. Distinct from the
+    // repository's own manager so a test can tell work done inside the
+    // transaction from work done outside it.
+    txManager = { getRepository: jest.fn(getRepository), query };
     (accountRepo as any).manager = {
-      getRepository: (entity: { name: string }) =>
-        entity.name === 'JournalEntry' ? journalRepo : accountRepo,
-      query: jest.fn(async (sql: string, params: unknown[]) => {
-        const account = await accountRepo.findOne!({});
-        if (account && sql.includes('"balance" = "balance" +')) {
-          account.balance = Number(account.balance) + Number(params[0]);
-        } else if (account && sql.includes('"balance" = "balance" -')) {
-          account.balance = Number(account.balance) - Number(params[0]);
-        }
-        return [];
-      }),
+      getRepository,
+      query,
+      transaction: jest.fn(async (work: (m: unknown) => unknown) =>
+        work(txManager),
+      ),
     };
 
     budgetRepo = {
@@ -339,6 +353,77 @@ describe('FinanceService', () => {
       ).rejects.toThrow('not found');
     });
 
+    /*
+     * Clearing the old default, saving the account and posting its opening
+     * balance were three separate writes. A failure in the posting left an
+     * account whose balance the ledger never heard of, and two accounts
+     * created at once could both end up the default.
+     */
+    it('creates the account, moves the default and posts the opening balance in one transaction', async () => {
+      await service.createAccount(tenantId, {
+        name: 'Operating Checking',
+        accountType: 'BANK',
+        currency: 'USD',
+        balance: 15000,
+        isDefault: true,
+      });
+
+      expect((accountRepo as any).manager.transaction).toHaveBeenCalledTimes(1);
+      expect(txManager.getRepository).toHaveBeenCalledWith(FinanceAccount);
+      expect(txManager.getRepository).toHaveBeenCalledWith(JournalEntry);
+      // Serialises default changes for the tenant, including the first
+      // account, where there is no existing row to lock.
+      expect(txManager.query).toHaveBeenCalledWith(
+        expect.stringContaining('pg_advisory_xact_lock'),
+        [`finance_accounts:default:${tenantId}`],
+      );
+      // The ledger has to see the uncommitted account to give it a ledger
+      // account, so it must be handed the transaction's manager.
+      expect(ledger.provisionChartOfAccounts).toHaveBeenCalledWith(
+        tenantId,
+        txManager,
+      );
+      expect(ledger.resolveLines).toHaveBeenCalledWith(
+        tenantId,
+        expect.any(Array),
+        txManager,
+      );
+    });
+
+    it('fails the whole creation when the opening balance cannot post', async () => {
+      ledger.resolveLines.mockRejectedValueOnce(new Error('chart missing'));
+
+      await expect(
+        service.createAccount(tenantId, {
+          name: 'Operating Checking',
+          accountType: 'BANK',
+          currency: 'USD',
+          balance: 15000,
+        }),
+      ).rejects.toThrow('chart missing');
+      expect((accountRepo as any).manager.transaction).toHaveBeenCalled();
+    });
+
+    it('moves the default inside a transaction holding the default lock', async () => {
+      (accountRepo.findOne as jest.Mock).mockResolvedValue({
+        id: 'acc-2',
+        tenantId,
+        name: 'Petty Cash',
+        isDefault: false,
+      });
+
+      await service.updateAccount(tenantId, 'acc-2', { isDefault: true });
+
+      expect((accountRepo as any).manager.transaction).toHaveBeenCalledTimes(1);
+      expect(txManager.query).toHaveBeenCalledWith(
+        expect.stringContaining('pg_advisory_xact_lock'),
+        [`finance_accounts:default:${tenantId}`],
+      );
+      expect(accountRepo.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+      );
+    });
+
     it('posts nothing when an account opens at zero', async () => {
       await service.createAccount(tenantId, {
         name: 'Empty Account',
@@ -348,66 +433,6 @@ describe('FinanceService', () => {
       });
 
       expect(journalRepo.save).not.toHaveBeenCalled();
-    });
-
-    it('transfers funds between accounts and records double-entry journal entry', async () => {
-      const fromAcc = {
-        id: 'acc-1',
-        tenantId,
-        name: 'Bank A',
-        balance: 5000,
-        currency: 'USD',
-      } as FinanceAccount;
-      const toAcc = {
-        id: 'acc-2',
-        tenantId,
-        name: 'Bank B',
-        balance: 1000,
-        currency: 'USD',
-      } as FinanceAccount;
-
-      accountRepo.findOne = jest
-        .fn()
-        .mockResolvedValueOnce(fromAcc)
-        .mockResolvedValueOnce(toAcc);
-
-      const transferDto: TransferFundsDto = {
-        fromAccountId: 'acc-1',
-        toAccountId: 'acc-2',
-        amount: 2000,
-        description: 'Fund replenishment',
-      };
-
-      const res = await service.transferFunds(tenantId, transferDto);
-
-      expect(fromAcc.balance).toBe(3000);
-      expect(toAcc.balance).toBe(3000);
-      expect(accountRepo.save).toHaveBeenCalledWith(fromAcc);
-      expect(accountRepo.save).toHaveBeenCalledWith(toAcc);
-      expect(journalRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          tenantId,
-          referenceType: 'TRANSFER',
-          totalAmount: 2000,
-          lines: expect.arrayContaining([
-            expect.objectContaining({
-              financeAccountId: 'acc-1',
-              ledgerAccountId: 'ledger-acc-1',
-              credit: 2000,
-              debit: 0,
-            }),
-            expect.objectContaining({
-              financeAccountId: 'acc-2',
-              ledgerAccountId: 'ledger-acc-2',
-              debit: 2000,
-              credit: 0,
-            }),
-          ]),
-        }),
-      );
-      expect(res.fromAccount.balance).toBe(3000);
-      expect(res.toAccount.balance).toBe(3000);
-      expect(res.journalEntry).toBeDefined();
     });
 
     it('throws BadRequestException on transfer with same source and destination', async () => {
@@ -447,37 +472,137 @@ describe('FinanceService', () => {
         service.transferFunds(tenantId, transferDto),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
+  });
 
-    it('throws BadRequestException when insufficient balance', async () => {
-      const fromAcc = {
-        id: 'acc-1',
-        tenantId,
-        name: 'Bank A',
-        balance: 100,
-        currency: 'USD',
-      } as FinanceAccount;
-      const toAcc = {
-        id: 'acc-2',
-        tenantId,
-        name: 'Bank B',
-        balance: 1000,
-        currency: 'USD',
-      } as FinanceAccount;
+  /*
+   * A transfer used to read both balances, subtract in JavaScript and save the
+   * rows back, outside any transaction. Two transfers out of the same account
+   * at once could both pass the balance check and one debit would simply
+   * vanish; a failure between the two saves and the journal left money moved
+   * with no entry for it.
+   */
+  describe('transferFunds', () => {
+    let store: Record<string, FinanceAccount>;
 
-      accountRepo.findOne = jest
-        .fn()
-        .mockResolvedValueOnce(fromAcc)
-        .mockResolvedValueOnce(toAcc);
-
-      const transferDto: TransferFundsDto = {
+    const transfer = (over: Partial<TransferFundsDto> = {}) =>
+      service.transferFunds(tenantId, {
         fromAccountId: 'acc-1',
         toAccountId: 'acc-2',
-        amount: 500,
-      };
+        amount: 2000,
+        description: 'Fund replenishment',
+        ...over,
+      });
 
+    beforeEach(() => {
+      store = {
+        'acc-1': {
+          id: 'acc-1',
+          tenantId,
+          name: 'Bank A',
+          balance: 5000,
+          currency: 'USD',
+        } as FinanceAccount,
+        'acc-2': {
+          id: 'acc-2',
+          tenantId,
+          name: 'Bank B',
+          balance: 1000,
+          currency: 'USD',
+        } as FinanceAccount,
+      };
+      accountRepo.findOne = jest.fn(
+        async (options: { where: { id: string } }) =>
+          store[options.where.id] ?? null,
+      ) as any;
+    });
+
+    it('moves the money and posts the double entry inside one transaction', async () => {
+      const res = await transfer();
+
+      expect((accountRepo as any).manager.transaction).toHaveBeenCalledTimes(1);
+      expect(txManager.getRepository).toHaveBeenCalledWith(JournalEntry);
+      expect(ledger.resolveLines).toHaveBeenCalledWith(
+        tenantId,
+        expect.any(Array),
+        txManager,
+      );
+      expect(journalRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId,
+          referenceType: 'TRANSFER',
+          totalAmount: 2000,
+          lines: expect.arrayContaining([
+            expect.objectContaining({
+              financeAccountId: 'acc-1',
+              ledgerAccountId: 'ledger-acc-1',
+              credit: 2000,
+              debit: 0,
+            }),
+            expect.objectContaining({
+              financeAccountId: 'acc-2',
+              ledgerAccountId: 'ledger-acc-2',
+              debit: 2000,
+              credit: 0,
+            }),
+          ]),
+        }),
+      );
+      expect(journalRepo.save).toHaveBeenCalled();
+      expect(res.fromAccount.balance).toBe(3000);
+      expect(res.toAccount.balance).toBe(3000);
+      expect(res.journalEntry).toBeDefined();
+    });
+
+    it('moves balances with relative UPDATEs, never by saving a computed figure', async () => {
+      await transfer();
+
+      expect(accountRepo.save).not.toHaveBeenCalled();
+      expect(txManager.query).toHaveBeenCalledWith(
+        expect.stringContaining('"balance" = "balance" - $1'),
+        [2000, 'acc-1', tenantId],
+      );
+      expect(txManager.query).toHaveBeenCalledWith(
+        expect.stringContaining('"balance" = "balance" + $1'),
+        [2000, 'acc-2', tenantId],
+      );
+    });
+
+    it('locks both accounts FOR UPDATE in id order, whichever way the money goes', async () => {
+      await transfer({
+        fromAccountId: 'acc-2',
+        toAccountId: 'acc-1',
+        amount: 500,
+      });
+
+      const lockedIds = (accountRepo.findOne as jest.Mock).mock.calls
+        .filter(([options]) => options.lock)
+        .map(([options]) => {
+          expect(options.lock).toEqual({ mode: 'pessimistic_write' });
+          return options.where.id;
+        });
+      // Sorted, so two opposite transfers cannot each hold one lock and wait
+      // for the other's.
+      expect(lockedIds.slice(0, 2)).toEqual(['acc-1', 'acc-2']);
+    });
+
+    it('checks the balance on the locked row and moves nothing when it is short', async () => {
+      store['acc-1'].balance = 100;
+
+      await expect(transfer({ amount: 500 })).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(txManager.query).not.toHaveBeenCalledWith(
+        expect.stringContaining('"balance" = "balance"'),
+        expect.anything(),
+      );
+      expect(journalRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for an account in another tenant', async () => {
       await expect(
-        service.transferFunds(tenantId, transferDto),
-      ).rejects.toBeInstanceOf(BadRequestException);
+        transfer({ toAccountId: 'acc-elsewhere' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(journalRepo.save).not.toHaveBeenCalled();
     });
   });
 

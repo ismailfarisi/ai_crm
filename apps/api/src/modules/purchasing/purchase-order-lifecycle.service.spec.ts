@@ -51,11 +51,79 @@ function makeService(
     ...seed.order,
   };
 
-  const orders = {
-    findOne: jest.fn(async ({ where }: any) =>
-      where.id === order.id && where.tenantId === tenantId ? order : null,
+  // A plain read sees the order as it was when the test began; a locked read
+  // sees the live row. Transitions decided on a plain read are decided on
+  // stale data.
+  const staleOrder: any = { ...order, lines: order.lines };
+  const lockLog: string[] = [];
+
+  const lockingBuilder = (name: string, rows: () => any[]) => {
+    const params: Record<string, unknown> = {};
+    let locked = false;
+    const b: any = {
+      setLock: () => {
+        locked = true;
+        return b;
+      },
+      where: (_c: string, p?: Record<string, unknown>) => {
+        Object.assign(params, p ?? {});
+        return b;
+      },
+      andWhere: (_c: string, p?: Record<string, unknown>) => {
+        Object.assign(params, p ?? {});
+        return b;
+      },
+      orderBy: () => b,
+      getMany: async () => {
+        const found = rows().filter((r) =>
+          Object.entries(params).every(([k, v]) => r[k] === v),
+        );
+        if (locked) found.forEach((r) => lockLog.push(`${name}:${r.id}`));
+        return found;
+      },
+      getOne: async () => (await b.getMany())[0] ?? null,
+    };
+    return b;
+  };
+
+  const txOrders = {
+    createQueryBuilder: jest.fn(() =>
+      lockingBuilder('PurchaseOrder', () => [order]),
     ),
     save: jest.fn(async (o: any) => o),
+    update: jest.fn(async (where: any, patch: any) => {
+      const hit = Object.entries(where).every(([k, v]) => order[k] === v);
+      if (hit) Object.assign(order, patch);
+      return { affected: hit ? 1 : 0 };
+    }),
+  };
+  const txLines = {
+    createQueryBuilder: jest.fn(() =>
+      lockingBuilder('PurchaseOrderLine', () =>
+        (order.lines ?? []).map((l: any) => ({
+          ...l,
+          tenantId,
+          purchaseOrderId: order.id,
+          qtyOrdered: l.qtyOrdered ?? 0,
+          qtyReceived: l.qtyReceived ?? 0,
+        })),
+      ),
+    ),
+  };
+  const txManager: any = {
+    getRepository: jest.fn((entity: any) =>
+      entity?.name === 'PurchaseOrder' ? txOrders : txLines,
+    ),
+  };
+
+  const orders = {
+    findOne: jest.fn(async ({ where }: any) =>
+      where.id === order.id && where.tenantId === tenantId ? staleOrder : null,
+    ),
+    save: jest.fn(async (o: any) => o),
+    manager: {
+      transaction: jest.fn(async (cb: any) => cb(txManager)),
+    },
   };
   const policies = {
     findOne: jest.fn(async () => seed.policy ?? null),
@@ -83,7 +151,16 @@ function makeService(
     orderLines as any,
     inventory as any,
   );
-  return { service, order, orders, policies, inventory };
+  return {
+    service,
+    order,
+    orders,
+    policies,
+    inventory,
+    txManager,
+    txOrders,
+    lockLog,
+  };
 }
 
 const enforcedPolicy = {
@@ -346,20 +423,26 @@ describe('PurchaseOrderLifecycleService', () => {
     it('commits the outstanding quantity when the order is approved', async () => {
       // From approval the shortage has been dealt with, so the reorder check
       // must stop suggesting it.
-      const { service, inventory } = makeService({ order: awaiting });
+      const { service, inventory, txManager } = makeService({
+        order: awaiting,
+      });
 
       await service.approve(tenantId, 'po-1', {
         userId: approver,
         permissions: ALL,
       });
 
-      expect(inventory.adjustOnOrder).toHaveBeenCalledWith(tenantId, [
-        { materialId: 'mat-1', qty: 500 },
-      ]);
+      expect(inventory.adjustOnOrder).toHaveBeenCalledWith(
+        tenantId,
+        [{ materialId: 'mat-1', qty: 500 }],
+        txManager,
+      );
     });
 
     it('only counts what has not already arrived', async () => {
-      const { service, inventory, order } = makeService({ order: awaiting });
+      const { service, inventory, order, txManager } = makeService({
+        order: awaiting,
+      });
       order.lines[0].qtyReceived = 200;
 
       await service.approve(tenantId, 'po-1', {
@@ -367,13 +450,17 @@ describe('PurchaseOrderLifecycleService', () => {
         permissions: ALL,
       });
 
-      expect(inventory.adjustOnOrder).toHaveBeenCalledWith(tenantId, [
-        { materialId: 'mat-1', qty: 300 },
-      ]);
+      expect(inventory.adjustOnOrder).toHaveBeenCalledWith(
+        tenantId,
+        [{ materialId: 'mat-1', qty: 300 }],
+        txManager,
+      );
     });
 
     it('releases the outstanding quantity when a committed order is cancelled', async () => {
-      const { service, inventory } = makeService({ order: { status: 'SENT' } });
+      const { service, inventory, txManager } = makeService({
+        order: { status: 'SENT' },
+      });
 
       await service.cancel(
         tenantId,
@@ -382,16 +469,18 @@ describe('PurchaseOrderLifecycleService', () => {
         null,
       );
 
-      expect(inventory.adjustOnOrder).toHaveBeenCalledWith(tenantId, [
-        { materialId: 'mat-1', qty: -500 },
-      ]);
+      expect(inventory.adjustOnOrder).toHaveBeenCalledWith(
+        tenantId,
+        [{ materialId: 'mat-1', qty: -500 }],
+        txManager,
+      );
     });
 
     it('closes a partially-received order short and releases the balance', async () => {
       // Without this the order has no exit: it cannot be cancelled (goods have
       // arrived) and cannot complete (the rest is not coming), so its
       // outstanding quantity would count as on order forever.
-      const { service, inventory, order } = makeService({
+      const { service, inventory, order, txManager } = makeService({
         order: { status: 'PARTIALLY_RECEIVED' },
       });
       order.lines[0].qtyReceived = 150;
@@ -407,9 +496,11 @@ describe('PurchaseOrderLifecycleService', () => {
       expect(saved.notes).toContain(
         'Closed short: Supplier discontinued the line',
       );
-      expect(inventory.adjustOnOrder).toHaveBeenCalledWith(tenantId, [
-        { materialId: 'mat-1', qty: -350 },
-      ]);
+      expect(inventory.adjustOnOrder).toHaveBeenCalledWith(
+        tenantId,
+        [{ materialId: 'mat-1', qty: -350 }],
+        txManager,
+      );
     });
 
     it('will not close a draft short', async () => {
@@ -440,6 +531,125 @@ describe('PurchaseOrderLifecycleService', () => {
       );
 
       expect(inventory.adjustOnOrder).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('concurrent transitions', () => {
+    const awaiting = {
+      status: 'AWAITING_APPROVAL' as PurchaseOrderStatus,
+      submittedById: raiser,
+    };
+
+    it('decides an approval on the locked row, so a second approval cannot count stock on order twice', async () => {
+      // Another approver committed first. A plain read still says
+      // AWAITING_APPROVAL; only the locked row says APPROVED.
+      const { service, order, inventory } = makeService({ order: awaiting });
+      order.status = 'APPROVED';
+
+      await expect(
+        service.approve(tenantId, 'po-1', {
+          userId: approver,
+          permissions: ALL,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(inventory.adjustOnOrder).not.toHaveBeenCalled();
+    });
+
+    it('decides a cancellation on the locked row', async () => {
+      const { service, order, inventory } = makeService({
+        order: { status: 'SENT' },
+      });
+      order.status = 'CANCELLED';
+
+      await expect(
+        service.cancel(
+          tenantId,
+          'po-1',
+          { userId: approver, permissions: ALL },
+          null,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(inventory.adjustOnOrder).not.toHaveBeenCalled();
+    });
+
+    it('decides closing short on the locked row', async () => {
+      const { service, order, inventory } = makeService({
+        order: { status: 'PARTIALLY_RECEIVED' },
+      });
+      order.status = 'RECEIVED';
+
+      await expect(
+        service.closeShort(
+          tenantId,
+          'po-1',
+          { userId: approver, permissions: ALL },
+          null,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(inventory.adjustOnOrder).not.toHaveBeenCalled();
+    });
+
+    it('will not mark an order sent twice', async () => {
+      const { service, order } = makeService({ order: { status: 'APPROVED' } });
+      order.status = 'SENT';
+
+      await expect(service.markSent(tenantId, 'po-1')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
+    it('decides a submission on the locked row', async () => {
+      const { service, order } = makeService();
+      order.status = 'AWAITING_APPROVAL';
+
+      await expect(
+        service.submit(tenantId, 'po-1', { userId: raiser, permissions: ALL }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('saves the status and adjusts stock in one transaction, locking the order first', async () => {
+      const { service, orders, txOrders, lockLog } = makeService({
+        order: awaiting,
+      });
+
+      await service.approve(tenantId, 'po-1', {
+        userId: approver,
+        permissions: ALL,
+      });
+
+      expect(orders.manager.transaction).toHaveBeenCalledTimes(1);
+      expect(orders.save).not.toHaveBeenCalled();
+      expect(txOrders.save).toHaveBeenCalled();
+      expect(lockLog).toEqual([
+        'PurchaseOrder:po-1',
+        'PurchaseOrderLine:line-1',
+      ]);
+    });
+  });
+
+  describe('revertSent', () => {
+    it('puts an order back to approved when the claim it made still stands', async () => {
+      const sentAt = new Date('2026-10-01T10:00:00Z');
+      const { service, order } = makeService({ order: { status: 'APPROVED' } });
+      order.status = 'SENT';
+      order.sentAt = sentAt;
+
+      await service.revertSent(tenantId, 'po-1', sentAt);
+
+      expect(order.status).toBe('APPROVED');
+      expect(order.sentAt).toBeNull();
+    });
+
+    it('leaves an order alone once something else has moved it on', async () => {
+      const sentAt = new Date('2026-10-01T10:00:00Z');
+      const { service, order } = makeService({ order: { status: 'APPROVED' } });
+      order.status = 'PARTIALLY_RECEIVED';
+      order.sentAt = sentAt;
+
+      await service.revertSent(tenantId, 'po-1', sentAt);
+
+      expect(order.status).toBe('PARTIALLY_RECEIVED');
+      expect(order.sentAt).toBe(sentAt);
     });
   });
 });

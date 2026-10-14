@@ -13,6 +13,13 @@ export interface ChannelAgentContext {
     confidence: number;
     summary: string;
   };
+  /**
+   * Runs one side effect at most once for this dispatch, returning the
+   * recorded result on a retry. Handlers wrap each mutation (drafting a
+   * quote, sending an ack) separately, so a retry after a later step failed
+   * repeats only that step. Absent outside a Temporal activity.
+   */
+  runOnce?: <T>(step: string, fn: () => Promise<T>) => Promise<T>;
 }
 
 export interface ChannelAgentResult {

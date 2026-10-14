@@ -78,6 +78,7 @@ describe('InvoicesService', () => {
       find: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockImplementation((dto) => ({ ...dto })),
       save: jest.fn().mockImplementation(async (inv) => inv),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
       manager: {
         query: jest.fn().mockImplementation(async () => {
           sequenceValue += 1;
@@ -460,6 +461,37 @@ describe('InvoicesService', () => {
           ],
         }),
       );
+    });
+
+    /**
+     * Rendering and mailing take seconds. A payment recorded in that window
+     * must survive: writing the stale copy back would reset `paidAmount` and
+     * `status`, and let the invoice be paid twice.
+     */
+    it('only writes sentAt, never the stale invoice it loaded before mailing', async () => {
+      const stale = baseInvoice();
+      const paidMeanwhile = {
+        ...baseInvoice(),
+        paidAmount: 1000,
+        status: InvoiceStatus.PAID,
+        sentAt: new Date(),
+      };
+      invoiceRepo.findOne = jest
+        .fn()
+        .mockResolvedValueOnce(stale)
+        .mockResolvedValueOnce(stale)
+        .mockResolvedValue(paidMeanwhile);
+      invoiceRepo.update = jest.fn().mockResolvedValue({ affected: 1 });
+
+      const result = await service.sendToCustomer(tenantId, invoiceId);
+
+      expect(invoiceRepo.save).not.toHaveBeenCalled();
+      expect(invoiceRepo.update).toHaveBeenCalledWith(
+        { id: invoiceId, tenantId },
+        { sentAt: expect.any(Date) },
+      );
+      expect(result.status).toBe(InvoiceStatus.PAID);
+      expect(result.paidAmount).toBe(1000);
     });
   });
 });

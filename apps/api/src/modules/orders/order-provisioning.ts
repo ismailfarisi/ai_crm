@@ -67,137 +67,152 @@ export async function provisionOrderForQuote(
   tenantId: string,
   quoteId: string,
 ): Promise<ProvisionResult> {
-  return dataSource.transaction(async (manager) => {
-    const quote = await manager
-      .getRepository(Quote)
-      .createQueryBuilder('q')
-      .setLock('pessimistic_write')
-      .where('q.id = :quoteId AND q.tenant_id = :tenantId', {
-        quoteId,
-        tenantId,
-      })
-      .getOne();
-    if (!quote) throw new NotFoundException(`Quote ${quoteId} not found`);
+  return dataSource.transaction((manager) =>
+    provisionOrderForQuoteInTransaction(manager, ledger, tenantId, quoteId),
+  );
+}
 
-    const orders = manager.getRepository(SalesOrder);
-    const existing = await orders.findOne({ where: { quoteId: quote.id } });
-    if (existing) {
-      return {
-        order: existing,
-        invoicesRaised: [],
-        invoices: await invoicesForOrder(manager, existing.id),
-        isNew: false,
-      };
-    }
-
-    if (quote.supersededAt) {
-      throw new BadRequestException(
-        `${quote.quoteNumber ?? 'This quote'} has been replaced by a newer revision and cannot become an order`,
-      );
-    }
-
-    const stages = quote.billingSchedule?.length
-      ? quote.billingSchedule
-      : DEFAULT_BILLING_SCHEDULE;
-    const problems = validateBillingSchedule(stages);
-    if (problems.length) {
-      throw new BadRequestException(
-        `The billing schedule on ${quote.quoteNumber ?? 'this quote'} is not valid: ${problems.join(' ')}`,
-      );
-    }
-
-    const number = await allocateNextSequenceValue(
-      manager,
+/**
+ * The same, inside a transaction the caller already holds — so approving a
+ * quote and creating its order commit or roll back together, and a quote can
+ * never end up approved with no order behind it. Re-locking the quote is
+ * harmless when the caller has already locked it in the same transaction.
+ */
+export async function provisionOrderForQuoteInTransaction(
+  manager: EntityManager,
+  ledger: LedgerLines,
+  tenantId: string,
+  quoteId: string,
+): Promise<ProvisionResult> {
+  const quote = await manager
+    .getRepository(Quote)
+    .createQueryBuilder('q')
+    .setLock('pessimistic_write')
+    .where('q.id = :quoteId AND q.tenant_id = :tenantId', {
+      quoteId,
       tenantId,
-      'sales_order_number',
-    );
-    const order = await orders.save(
-      orders.create({
-        tenantId,
-        orderNumber: formatSequenceNumber('SO', number),
-        quoteId: quote.id,
-        quoteNumber: quote.quoteNumber,
-        customerId: quote.customerId,
-        customerName: quote.customerName,
-        customerEmail: quote.customerEmail,
-        status: 'OPEN',
-        currency: quote.currency,
-        paymentTerms: quote.paymentTerms,
-        subtotalAmount: Number(quote.subtotalAmount),
-        discountAmount: Number(quote.discountAmount),
-        taxAmount: Number(quote.taxAmount),
-        totalAmount: Number(quote.totalAmount),
-        notes: quote.notes,
-      }),
-    );
+    })
+    .getOne();
+  if (!quote) throw new NotFoundException(`Quote ${quoteId} not found`);
 
-    const lineRepo = manager.getRepository(SalesOrderLine);
-    const products = (quote.items ?? []).filter(
-      (item) => (item.type ?? 'product') === 'product',
-    );
-    if (products.length) {
-      await lineRepo.save(
-        products.map((item, index) =>
-          lineRepo.create({
-            tenantId,
-            salesOrderId: order.id,
-            sequence: index + 1,
-            quoteLineId: item.id ?? null,
-            catalogItemId: isUuid(item.catalogItemId)
-              ? item.catalogItemId
-              : null,
-            description: item.description || 'Item',
-            uom: item.uom?.slice(0, 40) ?? null,
-            qtyOrdered: Number(item.quantity) || 1,
-            unitPrice: Number(item.unitPrice) || 0,
-            lineTotal: round2(Number(item.subtotal) || 0),
-          }),
-        ),
-      );
-    }
+  const orders = manager.getRepository(SalesOrder);
+  const existing = await orders.findOne({ where: { quoteId: quote.id } });
+  if (existing) {
+    return {
+      order: existing,
+      invoicesRaised: [],
+      invoices: await invoicesForOrder(manager, existing.id),
+      isNew: false,
+    };
+  }
 
-    const amounts = allocateStageAmounts(
-      {
-        subtotalAmount: Number(quote.subtotalAmount),
-        discountAmount: Number(quote.discountAmount),
-        taxAmount: Number(quote.taxAmount),
-        totalAmount: Number(quote.totalAmount),
-      },
-      stages,
+  if (quote.supersededAt) {
+    throw new BadRequestException(
+      `${quote.quoteNumber ?? 'This quote'} has been replaced by a newer revision and cannot become an order`,
     );
-    const stageRepo = manager.getRepository(BillingScheduleLine);
-    const scheduleLines = await stageRepo.save(
-      stages.map((stage, index) =>
-        stageRepo.create({
+  }
+
+  const stages = quote.billingSchedule?.length
+    ? quote.billingSchedule
+    : DEFAULT_BILLING_SCHEDULE;
+  const problems = validateBillingSchedule(stages);
+  if (problems.length) {
+    throw new BadRequestException(
+      `The billing schedule on ${quote.quoteNumber ?? 'this quote'} is not valid: ${problems.join(' ')}`,
+    );
+  }
+
+  const number = await allocateNextSequenceValue(
+    manager,
+    tenantId,
+    'sales_order_number',
+  );
+  const order = await orders.save(
+    orders.create({
+      tenantId,
+      orderNumber: formatSequenceNumber('SO', number),
+      quoteId: quote.id,
+      quoteNumber: quote.quoteNumber,
+      customerId: quote.customerId,
+      customerName: quote.customerName,
+      customerEmail: quote.customerEmail,
+      status: 'OPEN',
+      currency: quote.currency,
+      paymentTerms: quote.paymentTerms,
+      subtotalAmount: Number(quote.subtotalAmount),
+      discountAmount: Number(quote.discountAmount),
+      taxAmount: Number(quote.taxAmount),
+      totalAmount: Number(quote.totalAmount),
+      notes: quote.notes,
+    }),
+  );
+
+  const lineRepo = manager.getRepository(SalesOrderLine);
+  const products = (quote.items ?? []).filter(
+    (item) => (item.type ?? 'product') === 'product',
+  );
+  if (products.length) {
+    await lineRepo.save(
+      products.map((item, index) =>
+        lineRepo.create({
           tenantId,
           salesOrderId: order.id,
           sequence: index + 1,
-          kind: stage.kind,
-          label: stage.label,
-          percent: stage.percent,
-          trigger: stage.trigger,
-          ...amounts[index],
-          invoiceId: null,
-          invoicedAt: null,
+          quoteLineId: item.id ?? null,
+          catalogItemId: isUuid(item.catalogItemId)
+            ? item.catalogItemId
+            : null,
+          description: item.description || 'Item',
+          uom: item.uom?.slice(0, 40) ?? null,
+          qtyOrdered: Number(item.quantity) || 1,
+          unitPrice: Number(item.unitPrice) || 0,
+          lineTotal: round2(Number(item.subtotal) || 0),
         }),
       ),
     );
+  }
 
-    const invoicesRaised: Invoice[] = [];
-    for (const line of scheduleLines) {
-      if (line.trigger !== 'ON_APPROVAL') continue;
-      const { invoice } = await raiseStageInvoiceInTransaction(
-        manager,
-        ledger,
+  const amounts = allocateStageAmounts(
+    {
+      subtotalAmount: Number(quote.subtotalAmount),
+      discountAmount: Number(quote.discountAmount),
+      taxAmount: Number(quote.taxAmount),
+      totalAmount: Number(quote.totalAmount),
+    },
+    stages,
+  );
+  const stageRepo = manager.getRepository(BillingScheduleLine);
+  const scheduleLines = await stageRepo.save(
+    stages.map((stage, index) =>
+      stageRepo.create({
         tenantId,
-        line.id,
-        quote,
-      );
-      invoicesRaised.push(invoice);
-    }
+        salesOrderId: order.id,
+        sequence: index + 1,
+        kind: stage.kind,
+        label: stage.label,
+        percent: stage.percent,
+        trigger: stage.trigger,
+        ...amounts[index],
+        invoiceId: null,
+        invoicedAt: null,
+      }),
+    ),
+  );
 
-    return { order, invoicesRaised, invoices: invoicesRaised, isNew: true };
-  });
+  const invoicesRaised: Invoice[] = [];
+  for (const line of scheduleLines) {
+    if (line.trigger !== 'ON_APPROVAL') continue;
+    const { invoice } = await raiseStageInvoiceInTransaction(
+      manager,
+      ledger,
+      tenantId,
+      line.id,
+      quote,
+    );
+    invoicesRaised.push(invoice);
+  }
+
+  return { order, invoicesRaised, invoices: invoicesRaised, isNew: true };
 }
 
 /**
@@ -222,6 +237,27 @@ async function raiseStageInvoiceInTransaction(
   scheduleLineId: string,
   knownQuote?: Quote,
 ): Promise<{ invoice: Invoice; isNew: boolean }> {
+  // Unlocked, only to learn which order the stage is on; a stage never moves
+  // between orders. Everything decided below is read again under the locks.
+  const located = await manager
+    .getRepository(BillingScheduleLine)
+    .findOne({ where: { id: scheduleLineId, tenantId } });
+  if (!located) throw new NotFoundException('Billing stage not found');
+
+  // Order first, then stage: the order `OrdersService.cancel` takes its lock
+  // in. With the order unlocked, a cancel and this could each pass their
+  // check and both commit — a cancelled order with a live invoice on it.
+  const order = await manager
+    .getRepository(SalesOrder)
+    .createQueryBuilder('o')
+    .setLock('pessimistic_write')
+    .where('o.id = :id AND o.tenant_id = :tenantId', {
+      id: located.salesOrderId,
+      tenantId,
+    })
+    .getOne();
+  if (!order) throw new NotFoundException('Sales order not found');
+
   const stage = await manager
     .getRepository(BillingScheduleLine)
     .createQueryBuilder('s')
@@ -244,10 +280,6 @@ async function raiseStageInvoiceInTransaction(
     );
   }
 
-  const order = await manager
-    .getRepository(SalesOrder)
-    .findOne({ where: { id: stage.salesOrderId, tenantId } });
-  if (!order) throw new NotFoundException('Sales order not found');
   if (order.status === 'CANCELLED') {
     throw new BadRequestException(
       `${order.orderNumber} is cancelled and cannot be invoiced`,

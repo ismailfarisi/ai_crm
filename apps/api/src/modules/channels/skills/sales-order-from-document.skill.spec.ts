@@ -217,18 +217,35 @@ describe('SalesOrderFromDocumentSkill', () => {
         customerName: 'Brightline Ltd',
         customerPoNumber: 'PO-5501',
         description: '100 custom folders',
+        totalAmount: 1200,
       },
       { ...ctx, message: 'PO-5501 from Brightline Ltd for 100 custom folders' },
     );
 
     expect(res.kind).toBe('resolved');
-    if (res.kind === 'resolved') {
-      expect(res.value.mode).toBe('NEW_QUOTE');
-      expect(res.value.customerName).toBe('Brightline Ltd');
-      expect(res.value.customerPoNumber).toBe('PO-5501');
-      expect(res.value.quoteId).toBe('q-2');
-      expect(res.value.totalAmount).toBe(1200);
-    }
+    if (res.kind !== 'resolved') return;
+    expect(res.value.mode).toBe('NEW_QUOTE');
+    expect(res.value.customerName).toBe('Brightline Ltd');
+    expect(res.value.customerPoNumber).toBe('PO-5501');
+    expect(res.value.totalAmount).toBe(1200);
+    // Nothing is persisted before the user confirms: a NO or an expiry must
+    // not leave an orphaned AI draft quote behind.
+    expect(res.value.quoteId).toBeNull();
+    expect(quotesService.createQuote).not.toHaveBeenCalled();
+    // The preview is computed without a persisted quote.
+    const preview = await skill.preview(res.value, ctx);
+    expect(preview).toContain('Brightline Ltd');
+    expect(preview).toContain('PO-5501');
+    // The pending payload survives a jsonb round trip.
+    const carried = JSON.parse(JSON.stringify(res.value));
+
+    quotesService.sendSignal = jest.fn().mockResolvedValue({ id: 'q-2' });
+    ordersService.findByQuote = jest
+      .fn()
+      .mockResolvedValue({ id: 'so-2', orderNumber: 'SO-2026-0002' });
+    const outcome = await skill.execute(carried, ctx);
+
+    expect(quotesService.createQuote).toHaveBeenCalledTimes(1);
     expect(quotesService.createQuote).toHaveBeenCalledWith(
       'org-1',
       expect.objectContaining({
@@ -236,6 +253,89 @@ describe('SalesOrderFromDocumentSkill', () => {
         customerEmail: 'buyer@acme.com',
       }),
     );
+    expect(quotesService.sendSignal).toHaveBeenCalledWith(
+      'org-1',
+      'q-2',
+      'APPROVE',
+    );
+    expect(outcome.reply).toContain('SO-2026-0002');
+    expect(outcome.reply).toContain('QT-2026-0010');
+  });
+
+  it('reuses the quote it already created when a failed approval is retried', async () => {
+    quotesService.findAllQuotes = jest.fn().mockResolvedValue([]);
+    quotesService.createQuote = jest
+      .fn()
+      .mockResolvedValueOnce({ id: 'q-7', quoteNumber: 'QT-2026-0070' })
+      .mockResolvedValueOnce({ id: 'q-8', quoteNumber: 'QT-2026-0080' });
+    ordersService.findByQuote = jest.fn().mockResolvedValue(null);
+
+    const res = await skill.resolve(
+      { customerName: 'Brightline Ltd', customerPoNumber: 'PO-7701', description: 'folders' },
+      { ...ctx, message: 'PO-7701 from Brightline Ltd for folders' },
+    );
+    if (res.kind !== 'resolved') throw new Error('expected resolved');
+
+    quotesService.findQuoteById = jest
+      .fn()
+      .mockResolvedValue({ id: 'q-7', quoteNumber: 'QT-2026-0070', status: 'DRAFT' });
+    // What ChannelCommandService does: the conversation's slots (jsonb) carry
+    // the resolved value; execute gets that object, and on failure the slots
+    // are written back so the next YES re-executes from them.
+    const slots = JSON.parse(JSON.stringify({ resolved: res.value }));
+
+    quotesService.sendSignal = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('approval workflow unavailable'))
+      .mockResolvedValueOnce({ id: 'q-7' });
+    await expect(skill.execute(slots.resolved, ctx)).rejects.toThrow(
+      'approval workflow unavailable',
+    );
+    const persisted = JSON.parse(JSON.stringify(slots));
+
+    ordersService.findByQuote = jest
+      .fn()
+      .mockResolvedValue({ id: 'so-7', orderNumber: 'SO-2026-0007' });
+    const outcome = await skill.execute(persisted.resolved, ctx);
+
+    expect(quotesService.createQuote).toHaveBeenCalledTimes(1);
+    expect(quotesService.sendSignal).toHaveBeenCalledTimes(2);
+    expect(quotesService.sendSignal).toHaveBeenLastCalledWith('org-1', 'q-7', 'APPROVE');
+    expect(outcome.reply).toContain('QT-2026-0070');
+    expect(outcome.reply).toContain('SO-2026-0007');
+  });
+
+  it('does not re-approve on retry when the earlier attempt already provisioned the order', async () => {
+    quotesService.createQuote = jest
+      .fn()
+      .mockResolvedValue({ id: 'q-9', quoteNumber: 'QT-2026-0090' });
+    // Approval went through, then the order lookup failed.
+    quotesService.sendSignal = jest.fn().mockResolvedValue({ id: 'q-9' });
+    quotesService.findQuoteById = jest
+      .fn()
+      .mockResolvedValue({ id: 'q-9', quoteNumber: 'QT-2026-0090', status: 'APPROVED' });
+    ordersService.findByQuote = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('db blip'))
+      .mockResolvedValue({ id: 'so-9', orderNumber: 'SO-2026-0009' });
+
+    const resolved: any = {
+      mode: 'NEW_QUOTE',
+      quoteId: null,
+      newQuote: { title: 'PO X', customerName: 'Acme', prompt: 'p', notes: 'n' },
+      quoteNumber: '(new)',
+      customerPoNumber: 'PO-X',
+      customerName: 'Acme',
+      totalAmount: 0,
+      currency: 'USD',
+      itemsCount: 1,
+    };
+    await expect(skill.execute(resolved, ctx)).rejects.toThrow('db blip');
+    const outcome = await skill.execute(JSON.parse(JSON.stringify(resolved)), ctx);
+
+    expect(quotesService.createQuote).toHaveBeenCalledTimes(1);
+    expect(quotesService.sendSignal).toHaveBeenCalledTimes(1);
+    expect(outcome.resultId).toBe('so-9');
   });
 
   it('refuses staging new quote if lacking QUOTE_CREATE or QUOTE_APPROVE permission', async () => {
@@ -339,9 +439,13 @@ describe('SalesOrderFromDocumentSkill', () => {
     quotesService.sendSignal = jest
       .fn()
       .mockResolvedValue({ id: 'q-2', quoteNumber: 'QT-2026-0010' } as any);
+    quotesService.findQuoteById = jest
+      .fn()
+      .mockResolvedValue({ id: 'q-2', status: 'DRAFT' } as any);
     ordersService.findByQuote = jest.fn().mockResolvedValue(null);
 
     const outcome = await skill.execute(resolved, ctx);
+    expect(quotesService.sendSignal).toHaveBeenCalledWith('org-1', 'q-2', 'APPROVE');
     expect(outcome.resultType).toBe('SALES_ORDER');
     expect(outcome.resultId).toBe('q-2');
     expect(outcome.reply).toContain('(provisioned)');
@@ -468,7 +572,7 @@ describe('SalesOrderFromDocumentSkill', () => {
       message: 'PO-7700 for WhatsApp Client: widgets',
     };
 
-    await skill.resolve(
+    const res = await skill.resolve(
       {
         customerName: 'WhatsApp Client',
         customerPoNumber: 'PO-7700',
@@ -476,6 +580,9 @@ describe('SalesOrderFromDocumentSkill', () => {
       },
       whatsappCtx,
     );
+    expect(quotesService.createQuote).not.toHaveBeenCalled();
+    if (res.kind !== 'resolved') throw new Error('expected resolved');
+    await skill.execute(res.value, whatsappCtx);
 
     expect(quotesService.createQuote).toHaveBeenCalledWith(
       'org-1',
@@ -497,7 +604,7 @@ describe('SalesOrderFromDocumentSkill', () => {
       items: [],
     } as any);
 
-    await skill.resolve(
+    const res = await skill.resolve(
       {
         customerName: 'New Corp',
         customerPoNumber: 'PO-9900',
@@ -506,6 +613,9 @@ describe('SalesOrderFromDocumentSkill', () => {
       },
       { ...ctx, message: 'PO-9900 from New Corp for supplies' },
     );
+    expect(quotesService.createQuote).not.toHaveBeenCalled();
+    if (res.kind !== 'resolved') throw new Error('expected resolved');
+    await skill.execute(res.value, ctx);
 
     expect(quotesService.createQuote).toHaveBeenCalledWith(
       'org-1',
