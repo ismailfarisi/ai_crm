@@ -1,3 +1,42 @@
+import type {
+  AssistantMessageRole,
+  AssistantPendingAction,
+  AssistantTurnStatus,
+  AuditChannel,
+} from '@saas/shared';
+
+export interface ToolAuditProvenance {
+  channel: AuditChannel;
+  messageId?: string;
+}
+
+export interface AgentActivityCtx {
+  organizationId: string;
+  userId: string;
+  message: string;
+  audit?: ToolAuditProvenance;
+}
+
+export interface AssistantEventInput {
+  organizationId: string;
+  conversationId: string;
+  turnId: string;
+  /** Deterministic per workflow step; (turnId, eventKey) is unique so retries are no-ops. */
+  eventKey: string;
+  role: Exclude<AssistantMessageRole, 'user'>;
+  content: string;
+  toolName?: string;
+  payload?: Record<string, unknown>;
+  /** When set, the turn row is updated in the same transaction and a `status` row is also written. */
+  turn?: {
+    status?: AssistantTurnStatus;
+    pendingAction?: AssistantPendingAction | null;
+    steps?: number;
+    model?: string;
+    error?: string;
+  };
+}
+
 export interface ToolCallSpec {
   id: string;
   name: string;
@@ -39,10 +78,12 @@ export interface AgentReactActivities {
   planReActTurn(input: ReActTurnInput): Promise<ReActTurnOutput>;
   executeToolActivity(
     tool: ToolCallSpec,
-    ctx: { organizationId: string; userId: string; message: string },
+    ctx: AgentActivityCtx,
   ): Promise<ToolExecutionResult>;
   commitToolMutationActivity(
     tool: ToolCallSpec,
-    ctx: { organizationId: string; userId: string; message: string },
+    ctx: AgentActivityCtx,
   ): Promise<{ success: boolean; resultSummary: string }>;
+  /** Registered only on assistant-queue; called only when the workflow has an eventSink. */
+  emitAssistantEventActivity(input: AssistantEventInput): Promise<void>;
 }

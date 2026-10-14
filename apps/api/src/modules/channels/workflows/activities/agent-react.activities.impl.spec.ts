@@ -46,20 +46,21 @@ function makeActivities() {
     })),
   };
   const idempotency = makeIdempotency();
+  const auditService = { record: jest.fn() };
   const activities = createAgentReactActivities({
     aiService: {} as any,
     rbacService: {
       resolveAccess: jest.fn().mockResolvedValue({ permissions: [] }),
     } as any,
     skillRegistry: { permittedFor: () => [skill] } as any,
-    auditService: { record: jest.fn() } as any,
+    auditService: auditService as any,
     customObjectToolFactory: {} as any,
     customObjectsService: {} as any,
     customRecordsService: {} as any,
     tenantContext: { runWithTenant: (_t: string, fn: any) => fn() } as any,
     idempotency: idempotency as any,
   });
-  return { activities, skill, idempotency };
+  return { activities, skill, idempotency, auditService };
 }
 
 const ctx = { organizationId: 'org-1', userId: 'user-1', message: 'draft it' };
@@ -95,5 +96,30 @@ describe('executeToolActivity idempotency', () => {
     const keys = idempotency.runOnce.mock.calls.map((c) => c[1]);
     expect(keys[0]).toContain('agent-wf-1');
     expect(keys[0]).toContain('call-1');
+  });
+});
+
+describe('commitToolMutationActivity provenance', () => {
+  it('records assistant provenance on committed mutations', async () => {
+    const { activities, auditService } = makeActivities();
+    await activities.commitToolMutationActivity(tool, {
+      ...ctx,
+      audit: { channel: 'ASSISTANT', messageId: 'msg-1' },
+    });
+    expect(auditService.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        origin: 'AI_ASSISTED',
+        channel: 'ASSISTANT',
+        messageId: 'msg-1',
+      }),
+    );
+  });
+
+  it('keeps SYSTEM provenance when no audit context is given', async () => {
+    const { activities, auditService } = makeActivities();
+    await activities.commitToolMutationActivity(tool, ctx);
+    expect(auditService.record).toHaveBeenCalledWith(
+      expect.objectContaining({ channel: 'SYSTEM', messageId: null }),
+    );
   });
 });

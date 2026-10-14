@@ -15,16 +15,11 @@ import { ToolExecutionPolicyService } from '../../skills/tool-execution-policy.s
 import { ChannelIdempotencyService } from '../../services/channel-idempotency.service';
 import type { ChannelSkill, SkillContext } from '../../skills/skill.types';
 import type {
+  AgentActivityCtx,
   AgentReactActivities,
   ToolCallSpec,
   ToolExecutionResult,
 } from './agent-react.activities';
-
-type AgentActivityContext = {
-  organizationId: string;
-  userId: string;
-  message: string;
-};
 
 /** The running activity's workflow id, or null when called outside an activity. */
 const currentWorkflowId = (): string | null => {
@@ -51,11 +46,11 @@ export function createAgentReactActivities(deps: {
   customRecordsService: CustomRecordsService;
   tenantContext: TenantContextService;
   idempotency: Pick<ChannelIdempotencyService, 'runOnce'>;
-}): AgentReactActivities {
+}): Omit<AgentReactActivities, 'emitAssistantEventActivity'> {
   const policy = new ToolExecutionPolicyService();
 
   const resolveSkills = async (
-    ctx: Pick<AgentActivityContext, 'organizationId' | 'userId'>,
+    ctx: Pick<AgentActivityCtx, 'organizationId' | 'userId'>,
     allowedDomains?: string[],
   ): Promise<{ skills: ChannelSkill<never>[]; permissions: Permission[] }> => {
     if (!ctx.userId) {
@@ -76,7 +71,7 @@ export function createAgentReactActivities(deps: {
   };
 
   const makeContext = (
-    input: AgentActivityContext,
+    input: AgentActivityCtx,
     permissions: Permission[],
   ): SkillContext => ({
     organizationId: input.organizationId,
@@ -94,7 +89,7 @@ export function createAgentReactActivities(deps: {
 
   const resolveTool = async (
     tool: ToolCallSpec,
-    ctx: AgentActivityContext,
+    ctx: AgentActivityCtx,
   ) => {
     const { skills, permissions } = await resolveSkills(ctx);
     const skill = findSkill(skills, tool.name);
@@ -108,7 +103,7 @@ export function createAgentReactActivities(deps: {
 
   const resolveCustomObjectTool = async (
     toolName: string,
-    ctx: Pick<AgentActivityContext, 'organizationId' | 'userId'>,
+    ctx: Pick<AgentActivityCtx, 'organizationId' | 'userId'>,
   ): Promise<{ object: CustomObjectDefinition; permissions: Permission[] } | null> => {
     const isQuery = toolName.startsWith('query_custom_');
     const isCreate = toolName.startsWith('create_custom_');
@@ -259,7 +254,7 @@ export function createAgentReactActivities(deps: {
 
     async executeToolActivity(
       tool: ToolCallSpec,
-      ctx: AgentActivityContext,
+      ctx: AgentActivityCtx,
     ): Promise<ToolExecutionResult> {
       return deps.tenantContext.runWithTenant(ctx.organizationId, async () => {
         const customTool = await resolveCustomObjectTool(tool.name, ctx);
@@ -380,7 +375,8 @@ export function createAgentReactActivities(deps: {
             actorId: ctx.userId,
             summary: `Created ${customTool.object.singularName} via AI`,
             origin: 'AI_ASSISTED',
-            channel: 'SYSTEM',
+            channel: ctx.audit?.channel ?? 'SYSTEM',
+            messageId: ctx.audit?.messageId ?? null,
             model: tool.model,
             promptVersion: 'custom-object/1',
           });
@@ -408,7 +404,8 @@ export function createAgentReactActivities(deps: {
           actorId: ctx.userId,
           summary: outcome.reply,
           origin: 'AI_ASSISTED',
-          channel: 'SYSTEM',
+          channel: ctx.audit?.channel ?? 'SYSTEM',
+          messageId: ctx.audit?.messageId ?? null,
           model: tool.model,
           promptVersion: skill.promptVersion,
         });

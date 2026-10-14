@@ -4,6 +4,7 @@ const mockActivities = {
   planReActTurn: jest.fn(),
   executeToolActivity: jest.fn(),
   commitToolMutationActivity: jest.fn(),
+  emitAssistantEventActivity: jest.fn(),
 };
 
 let mockConditionImpl: (predicate: () => boolean, timeout?: string) => Promise<boolean> =
@@ -20,6 +21,8 @@ jest.mock('@temporalio/workflow', () => {
         (global as any).__mockActivities.executeToolActivity(...args),
       commitToolMutationActivity: (...args: any[]) =>
         (global as any).__mockActivities.commitToolMutationActivity(...args),
+      emitAssistantEventActivity: (...args: any[]) =>
+        (global as any).__mockActivities.emitAssistantEventActivity(...args),
     }),
     setHandler: (def: any, handler: Function) => {
       (global as any).__mockHandlers.set(def, handler);
@@ -31,6 +34,7 @@ jest.mock('@temporalio/workflow', () => {
     defineQuery: (name: string) => ({ name, type: 'query' }),
     getExternalWorkflowHandle: jest.fn(),
     ApplicationFailure: class ApplicationFailure extends Error {},
+    isCancellation: (e: unknown) => (e as any)?.name === 'CancelledFailure',
   };
 });
 
@@ -46,6 +50,7 @@ describe('agentReActWorkflow logic', () => {
     jest.clearAllMocks();
     mockHandlers.clear();
     mockActivities.listAvailableTools.mockResolvedValue([]);
+    mockActivities.emitAssistantEventActivity.mockResolvedValue(undefined);
     mockConditionImpl = async (pred) => pred();
   });
 
@@ -390,5 +395,127 @@ describe('agentReActWorkflow logic', () => {
       stepsExecuted: 3,
     });
     expect(mockActivities.planReActTurn).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('assistant event sink', () => {
+  const base = {
+    organizationId: 'org-1',
+    userId: 'user-1',
+    conversationId: 'conv-1',
+    prompt: 'send Ada the update',
+    eventSink: { conversationId: 'conv-1', turnId: 'turn-1' },
+    audit: { channel: 'ASSISTANT' as const, messageId: 'msg-user-1' },
+  };
+
+  beforeEach(() => {
+    // Earlier tests may leave unconsumed mockResolvedValueOnce queues behind.
+    mockActivities.planReActTurn.mockReset();
+    mockActivities.executeToolActivity.mockReset();
+    mockActivities.commitToolMutationActivity.mockReset();
+    mockActivities.emitAssistantEventActivity.mockReset();
+    mockActivities.emitAssistantEventActivity.mockResolvedValue(undefined);
+  });
+
+  it('passes history and page context to the planner', async () => {
+    mockActivities.planReActTurn.mockResolvedValueOnce({ thought: '', finalAnswer: 'ok' });
+    await agentReActWorkflow({
+      ...base,
+      history: [{ role: 'user', content: 'earlier' }, { role: 'assistant', content: 'reply' }],
+      pageContext: { entity: 'quote', id: 'q-1', label: 'Q-1042' },
+    });
+    const call = mockActivities.planReActTurn.mock.calls[0][0];
+    expect(call.conversationHistory.slice(0, 2)).toEqual([
+      { role: 'user', content: 'earlier' },
+      { role: 'assistant', content: 'reply' },
+    ]);
+    expect(call.prompt).toContain('quote Q-1042 (id q-1)');
+  });
+
+  it('emits tool_call, tool_result and a final assistant message with COMPLETED', async () => {
+    mockActivities.planReActTurn
+      .mockResolvedValueOnce({ thought: 'look it up', toolCalls: [{ id: 'c1', name: 'channel_thread.read', args: { contact: 'Ada' } }] })
+      .mockResolvedValueOnce({ thought: '', finalAnswer: 'Ada asked about samples.' });
+    mockActivities.executeToolActivity.mockResolvedValueOnce({
+      toolCallId: 'c1', toolName: 'channel_thread.read', isMutating: false, requiresApproval: false,
+      output: { reply: 'Messages with Ada…' },
+    });
+    await agentReActWorkflow(base);
+    const events = mockActivities.emitAssistantEventActivity.mock.calls.map((c) => c[0]);
+    expect(events.map((e) => [e.eventKey, e.role])).toEqual([
+      ['t1:thought', 'step'],
+      ['t1:call:c1', 'tool_call'],
+      ['t1:result:c1', 'tool_result'],
+      ['final', 'assistant'],
+    ]);
+    expect(events.at(-1)).toMatchObject({ content: 'Ada asked about samples.', turn: { status: 'COMPLETED', steps: 2 } });
+    expect(mockActivities.executeToolActivity.mock.calls[0][1]).toMatchObject({ audit: base.audit });
+  });
+
+  it('emits an approval event with the pending action, then commits with provenance after approval', async () => {
+    mockActivities.planReActTurn
+      .mockResolvedValueOnce({ thought: '', toolCalls: [{ id: 'c2', name: 'channel_message.send', args: { body: 'Hi' } }] })
+      .mockResolvedValueOnce({ thought: '', finalAnswer: 'Sent.' });
+    mockActivities.executeToolActivity.mockResolvedValueOnce({
+      toolCallId: 'c2', toolName: 'channel_message.send', isMutating: true, requiresApproval: true,
+      previewPayload: { summary: 'Send to Ada…' },
+    });
+    mockActivities.commitToolMutationActivity.mockResolvedValueOnce({ success: true, resultSummary: 'Sent to Ada.' });
+    mockConditionImpl = async () => {
+      mockHandlers.get(approvalSignal)!({ approved: true });
+      return true;
+    };
+    await agentReActWorkflow(base);
+    const events = mockActivities.emitAssistantEventActivity.mock.calls.map((c) => c[0]);
+    const approval = events.find((e) => e.role === 'approval');
+    expect(approval).toMatchObject({
+      eventKey: 't1:approval:c2',
+      turn: { status: 'AWAITING_APPROVAL', pendingAction: { tool: { id: 'c2', name: 'channel_message.send' }, preview: { summary: 'Send to Ada…' } } },
+    });
+    expect(events.find((e) => e.eventKey === 't1:approved:c2')).toMatchObject({ turn: { status: 'RUNNING', pendingAction: null } });
+    expect(mockActivities.commitToolMutationActivity.mock.calls[0][1]).toMatchObject({ audit: base.audit });
+  });
+
+  it('ends REJECTED with a final event when the user rejects', async () => {
+    mockActivities.planReActTurn.mockResolvedValueOnce({ thought: '', toolCalls: [{ id: 'c3', name: 'channel_message.send', args: {} }] });
+    mockActivities.executeToolActivity.mockResolvedValueOnce({
+      toolCallId: 'c3', toolName: 'channel_message.send', isMutating: true, requiresApproval: true, previewPayload: {},
+    });
+    mockConditionImpl = async () => {
+      mockHandlers.get(approvalSignal)!({ approved: false, note: 'wrong tone' });
+      return true;
+    };
+    const result = await agentReActWorkflow(base);
+    expect(result.status).toBe('REJECTED');
+    const last = mockActivities.emitAssistantEventActivity.mock.calls.at(-1)![0];
+    expect(last).toMatchObject({ eventKey: 'final', role: 'assistant', turn: { status: 'REJECTED', pendingAction: null } });
+  });
+
+  it('ends TIMED_OUT with a final event when nobody answers', async () => {
+    mockActivities.planReActTurn.mockResolvedValueOnce({ thought: '', toolCalls: [{ id: 'c4', name: 'channel_message.send', args: {} }] });
+    mockActivities.executeToolActivity.mockResolvedValueOnce({
+      toolCallId: 'c4', toolName: 'channel_message.send', isMutating: true, requiresApproval: true, previewPayload: {},
+    });
+    mockConditionImpl = async () => false;
+    const result = await agentReActWorkflow({ ...base, approvalTimeout: '24 hours' });
+    expect(result.status).toBe('TIMED_OUT');
+    expect(mockActivities.emitAssistantEventActivity.mock.calls.at(-1)![0]).toMatchObject({ turn: { status: 'TIMED_OUT' } });
+  });
+
+  it('records FAILED and returns (does not throw) when an activity fails', async () => {
+    mockActivities.planReActTurn.mockRejectedValueOnce(new Error('AI budget exceeded'));
+    const result = await agentReActWorkflow(base);
+    expect(result.status).toBe('FAILED');
+    expect(mockActivities.emitAssistantEventActivity.mock.calls.at(-1)![0]).toMatchObject({
+      eventKey: 'final', turn: { status: 'FAILED', error: 'AI budget exceeded' },
+    });
+  });
+
+  it('emits nothing and still throws on activity failure without a sink (automation path unchanged)', async () => {
+    mockActivities.planReActTurn.mockRejectedValueOnce(new Error('boom'));
+    await expect(
+      agentReActWorkflow({ organizationId: 'o', userId: 'u', conversationId: 'c', prompt: 'p' }),
+    ).rejects.toThrow('boom');
+    expect(mockActivities.emitAssistantEventActivity).not.toHaveBeenCalled();
   });
 });
