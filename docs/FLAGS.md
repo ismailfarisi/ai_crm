@@ -316,6 +316,35 @@ conversations have no owner mapping in `modules/storage/attachment-owners.ts`.
 
 Contact resolution in the assistant does not use phone numbers as a search key.
 
+### Customer messages always need approval; channel skills are assistant-only — by design
+
+`channel_message.send` always waits for an explicit Approve: it is in
+`ToolExecutionPolicyService.ALWAYS_REQUIRE_APPROVAL`, and the workflow ignores
+`autoApprove` for it. Both channel skills (`channel_thread.read`,
+`channel_message.send`) declare `surfaces: ['assistant']`, so the staff chat
+bot and automation AI nodes are never offered them.
+
+An approval is bound to the tool call it was shown for (`toolCallId` in the
+request, `toolId` in the signal), and the send is pinned at preview time
+(contact id, provider, recipient, body). Before sending, the commit recomputes
+the preview and refuses with "This action changed since you approved it — ask
+again." if it differs.
+
+### Each open stream polls every 5 seconds — open
+
+The SSE stream does not close when a turn finishes: it stays open until the
+client disconnects, with a 15s heartbeat and a 5s database poll as a fallback
+to Redis pub/sub. Every open panel or tab therefore costs one small query
+every five seconds. Closing idle streams (or polling only while a turn is
+active) is deferred.
+
+### Stale-turn threshold is 7 minutes — by design
+
+A `RUNNING` turn with no event for 7 minutes is failed by the sweep. The
+commit activity may run for up to 5 minutes with nothing to emit (a
+"Running <tool>" step is written just before it), so the threshold sits
+above that.
+
 ### The assistant module runs in the worker too — by design
 
 The worker loads the assistant module, so the stale-turn sweep cron
@@ -332,8 +361,8 @@ running stack:
   must report no changes, and `pnpm check:drift` must pass against the
   baseline.
 - **Worker pickup:** the Temporal worker picks up jobs on `assistant-queue`.
-- **SSE end to end:** the stream delivers, replays from `seq` and closes when
-  the turn finishes.
+- **SSE end to end:** the stream delivers, replays from `seq`, and stays
+  open (heartbeat 15s, poll 5s) after the turn finishes.
 - **Manual E2E, seeded data:**
   1. Ctrl/⌘J on a contact page shows that contact as the context chip.
   2. "Show me this contact's last messages and draft a follow-up" returns step
@@ -345,7 +374,7 @@ running stack:
   6. The audit log holds `channel_message.send.executed`, `AI_ASSISTED`,
      `ASSISTANT` and a non-null message id.
   7. Toggling the browser offline for 5s mid-turn catches up with no duplicates.
-  8. With the worker stopped, a turn left for five minutes shows "Couldn't
+  8. With the worker stopped, a turn left for seven minutes shows "Couldn't
      finish: The assistant stopped responding". A member without
      `channel:send` is told it cannot send, and no approval card appears.
 

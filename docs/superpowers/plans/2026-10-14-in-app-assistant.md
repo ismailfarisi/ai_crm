@@ -19,7 +19,7 @@
 5. **Auth on the stream is the httpOnly cookie** (`credentials: 'include'`), because the web app has no bearer token in JS. Still `fetch` + `ReadableStream`, not `EventSource`, to reuse the silent-refresh path.
 6. **Assistant routes are added to `AUDIT_BODYLESS_PREFIXES`**, not `AUDIT_SUBJECTS`. The actions are still audited; chat bodies are not copied into the audit trail.
 7. **Audit `messageId`** on AI commits is the user message that started the turn (stored on the turn).
-8. **Stale threshold is 5 minutes, not 2.** One planning activity may legitimately take up to 135s (45s timeout × 3 retries) without emitting anything, so 2 minutes would fail healthy turns.
+8. **Stale threshold is 7 minutes, not 2** (5 originally; raised to 7 in the final review to exceed the 5-minute commit timeout). One planning activity may legitimately take up to 135s (45s timeout × 3 retries) without emitting anything, so 2 minutes would fail healthy turns.
 
 ## Global Constraints
 
@@ -29,7 +29,7 @@
 - New tenant tables: `tenant_id uuid`, `ENABLE` + `FORCE ROW LEVEL SECURITY`, `tenant_isolation_policy` (exact SQL in Task 4).
 - Chat turns run on Temporal task queue `assistant-queue`, workflow id `assistant-turn-<turnId>`, `approvalTimeout: '24 hours'`, `maxTurns: 6`.
 - History passed to a turn: last 20 rows with role `user` or `assistant`.
-- Stale sweep: `RUNNING` turns with `last_progress_at` older than 5 minutes become `FAILED`; `AWAITING_APPROVAL` is exempt. Every emitted event bumps `last_progress_at`.
+- Stale sweep: `RUNNING` turns with `last_progress_at` older than 7 minutes become `FAILED`; `AWAITING_APPROVAL` is exempt. Every emitted event bumps `last_progress_at`. (Raised from 5 in the final review: the commit activity's timeout is 5 minutes and it emits nothing while running, so a "Running <tool>" step is emitted just before it.)
 - `channel_message.send` always requires approval.
 - Message content limit 4000 chars; approval note 500; title 200.
 - SSE heartbeat every 15s; poll fallback every 5s.
