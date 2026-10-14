@@ -1,15 +1,19 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, QueryFailedError, Repository } from 'typeorm';
 import { ExpenseClaim } from './entities/expense-claim.entity';
 import { FinanceAccount } from './entities/finance-account.entity';
 import { CategoryBudget } from './entities/category-budget.entity';
-import { JournalEntry } from './entities/journal-entry.entity';
+import {
+  JOURNAL_SINGLE_POSTING_INDEX,
+  JournalEntry,
+} from './entities/journal-entry.entity';
 import { LedgerService } from './ledger.service';
 import { TemporalService } from '../temporal/temporal.service';
 import { AiService } from '../ai/ai.service';
@@ -37,6 +41,21 @@ import {
   allocateNextSequenceValue,
   formatSequenceNumber,
 } from '../../database/tenant-sequence.util';
+
+const POSTGRES_UNIQUE_VIOLATION = '23505';
+
+/** A second posting for a reference the database allows only one of. */
+function isDuplicatePosting(err: unknown): boolean {
+  if (!(err instanceof QueryFailedError)) return false;
+  const driverError = (err.driverError ?? {}) as {
+    code?: string;
+    constraint?: string;
+  };
+  return (
+    driverError.code === POSTGRES_UNIQUE_VIOLATION &&
+    driverError.constraint === JOURNAL_SINGLE_POSTING_INDEX
+  );
+}
 
 @Injectable()
 export class ExpensesService {
@@ -180,9 +199,6 @@ export class ExpensesService {
     id: string,
     dto: SignalExpenseDto,
   ): Promise<ExpenseClaim> {
-    const claim = await this.findById(tenantId, id);
-    const workflowId = claim.temporalWorkflowId || `expense-${claim.id}`;
-
     if (
       dto.action !== 'APPROVE' &&
       dto.action !== 'REJECT' &&
@@ -191,6 +207,122 @@ export class ExpensesService {
       throw new BadRequestException(`Invalid signal action: ${dto.action}`);
     }
 
+    /*
+     * The status change, the journal entries and the account deduction
+     * commit together or not at all. The claim row is locked first and its
+     * status read under that lock, so two reimbursements of the same claim
+     * queue rather than both passing the "already posted" check — the second
+     * finds it PAID and is refused.
+     *
+     * Posting happens here, not in the workflow. The workflow's
+     * `postJournalEntryActivity` only ever logged and returned a synthetic id,
+     * so an approved claim never reached the ledger whether Temporal was
+     * healthy or not. Doing it on the same path as every other posting site
+     * keeps the books right regardless of whether the workflow ran, and both
+     * entries are idempotent on `referenceId` — enforced by the partial unique
+     * index `uq_journal_entries_single_posting` — so a retry or a later
+     * workflow replay cannot double them.
+     */
+    let claim: ExpenseClaim;
+    try {
+      claim = await this.expenseRepository.manager.transaction(
+        async (manager) => {
+          const claims = manager.getRepository(ExpenseClaim);
+          const locked = await claims.findOne({
+            where: { id, tenantId },
+            lock: { mode: 'pessimistic_write' },
+          });
+          if (!locked) {
+            throw new NotFoundException(
+              `Expense claim with ID ${id} not found`,
+            );
+          }
+
+          if (ExpensesService.FINAL_STATUSES.includes(locked.status)) {
+            throw new ConflictException(
+              `Expense claim ${locked.claimNumber || locked.id} is already ${locked.status.toLowerCase()} and cannot be ${ExpensesService.ACTION_PAST[dto.action]}`,
+            );
+          }
+
+          this.applyTransition(locked, dto);
+
+          if (locked.status === 'APPROVED') {
+            await this.postExpenseAccrual(tenantId, locked, manager);
+          } else if (locked.status === 'PAID') {
+            // A claim can be reimbursed straight from submitted, so make sure
+            // the cost is accrued before it is settled.
+            await this.postExpenseAccrual(tenantId, locked, manager);
+            await this.postExpenseReimbursement(
+              tenantId,
+              locked,
+              dto.accountId,
+              manager,
+            );
+          }
+
+          return claims.save(locked);
+        },
+      );
+    } catch (err: unknown) {
+      if (isDuplicatePosting(err)) {
+        throw new ConflictException(
+          'This expense claim has already been posted to the ledger',
+        );
+      }
+      throw err;
+    }
+
+    // Only once the books have committed: a signal is not transactional, and
+    // a workflow told "reimbursed" for a payment that then rolled back would
+    // carry on as if it had happened.
+    await this.signalWorkflow(claim, dto);
+
+    return claim;
+  }
+
+  /** Once paid or rejected, a claim takes no further signals. */
+  private static readonly FINAL_STATUSES: readonly ExpenseStatus[] = [
+    'PAID',
+    'REJECTED',
+  ];
+
+  private static readonly ACTION_PAST: Record<
+    SignalExpenseDto['action'],
+    string
+  > = {
+    APPROVE: 'approved',
+    REJECT: 'rejected',
+    REIMBURSE: 'reimbursed',
+  };
+
+  private applyTransition(claim: ExpenseClaim, dto: SignalExpenseDto): void {
+    switch (dto.action) {
+      case 'APPROVE':
+        claim.status = 'APPROVED';
+        claim.approvedById = dto.approvedBy || 'manager';
+        claim.approvedAt = new Date();
+        break;
+      case 'REJECT':
+        claim.status = 'REJECTED';
+        claim.rejectionReason = dto.reason || 'Expense rejected';
+        break;
+      case 'REIMBURSE':
+        claim.status = 'PAID';
+        claim.reimbursedAt = new Date();
+        break;
+    }
+  }
+
+  /**
+   * Tells the approval workflow what happened. Best effort: the claim and the
+   * books are already committed and are the record, so a Temporal outage is
+   * logged rather than failing a request whose effects have already landed.
+   */
+  private async signalWorkflow(
+    claim: ExpenseClaim,
+    dto: SignalExpenseDto,
+  ): Promise<void> {
+    const workflowId = claim.temporalWorkflowId || `expense-${claim.id}`;
     try {
       const client = this.temporalService.getClient();
       const handle = client.workflow.getHandle(workflowId);
@@ -201,17 +333,12 @@ export class ExpensesService {
             approvedBy: dto.approvedBy,
             notes: dto.notes,
           });
-          claim.status = 'APPROVED';
-          claim.approvedById = dto.approvedBy || 'manager';
-          claim.approvedAt = new Date();
           break;
         case 'REJECT':
           await handle.signal(rejectExpenseSignal, {
             rejectedBy: dto.rejectedBy,
             reason: dto.reason,
           });
-          claim.status = 'REJECTED';
-          claim.rejectionReason = dto.reason || 'Expense rejected';
           break;
         case 'REIMBURSE':
           await handle.signal(reimburseExpenseSignal, {
@@ -219,46 +346,12 @@ export class ExpensesService {
             reimbursedBy: dto.reimbursedBy,
             notes: dto.notes,
           });
-          claim.status = 'PAID';
-          claim.reimbursedAt = new Date();
           break;
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Temporal signal deferred/failed: ${msg}`);
-
-      // Fallback state transition
-      if (dto.action === 'APPROVE') {
-        claim.status = 'APPROVED';
-        claim.approvedById = dto.approvedBy || 'manager';
-        claim.approvedAt = new Date();
-      } else if (dto.action === 'REJECT') {
-        claim.status = 'REJECTED';
-        claim.rejectionReason = dto.reason || 'Expense rejected';
-      } else if (dto.action === 'REIMBURSE') {
-        claim.status = 'PAID';
-        claim.reimbursedAt = new Date();
-      }
     }
-
-    // Posting happens here, not in the workflow. The workflow's
-    // `postJournalEntryActivity` only ever logged and returned a synthetic id,
-    // so an approved claim never reached the ledger whether Temporal was
-    // healthy or not: the P&L showed no expense and the bank balance never
-    // moved. Doing it on the same path as every other posting site — payables,
-    // credit notes, inventory — keeps the books right regardless of whether
-    // the workflow ran, and both entries are idempotent on `referenceId` so a
-    // retry or a later workflow replay cannot double them.
-    if (claim.status === 'APPROVED') {
-      await this.postExpenseAccrual(tenantId, claim);
-    } else if (claim.status === 'PAID') {
-      // A claim can be reimbursed straight from submitted, so make sure the
-      // cost is accrued before it is settled.
-      await this.postExpenseAccrual(tenantId, claim);
-      await this.postExpenseReimbursement(tenantId, claim, dto.accountId);
-    }
-
-    return this.expenseRepository.save(claim);
   }
 
   /**
@@ -272,44 +365,50 @@ export class ExpensesService {
   private async postExpenseAccrual(
     tenantId: string,
     claim: ExpenseClaim,
+    manager: EntityManager = this.journalRepository.manager,
   ): Promise<void> {
     const amount = Number(claim.amount) || 0;
     if (amount <= 0) return;
 
+    const journal = manager.getRepository(JournalEntry);
     const referenceId = claim.id;
-    const already = await this.journalRepository.findOne({
+    const already = await journal.findOne({
       where: { tenantId, referenceType: 'EXPENSE', referenceId },
     });
     if (already) return;
 
     const label = claim.claimNumber || claim.id;
 
-    const entry = this.journalRepository.create({
+    const entry = journal.create({
       tenantId,
       entryNumber: `JE-EXP-${label}`,
       referenceType: 'EXPENSE',
       referenceId,
       entryDate: claim.expenseDate ? new Date(claim.expenseDate) : new Date(),
       totalAmount: amount,
-      lines: await this.ledger.resolveLines(tenantId, [
-        {
-          role: LEDGER_ROLES.OPERATING_EXPENSE,
-          accountName: claim.category || 'Operating expense',
-          debit: amount,
-          credit: 0,
-          description: `Expense claim ${label} — ${claim.category ?? 'uncategorised'}`,
-        },
-        {
-          role: LEDGER_ROLES.ACCOUNTS_PAYABLE,
-          accountName: 'Accounts payable',
-          debit: 0,
-          credit: amount,
-          description: `Payable for expense claim ${label}`,
-        },
-      ]),
+      lines: await this.ledger.resolveLines(
+        tenantId,
+        [
+          {
+            role: LEDGER_ROLES.OPERATING_EXPENSE,
+            accountName: claim.category || 'Operating expense',
+            debit: amount,
+            credit: 0,
+            description: `Expense claim ${label} — ${claim.category ?? 'uncategorised'}`,
+          },
+          {
+            role: LEDGER_ROLES.ACCOUNTS_PAYABLE,
+            accountName: 'Accounts payable',
+            debit: 0,
+            credit: amount,
+            description: `Payable for expense claim ${label}`,
+          },
+        ],
+        manager,
+      ),
     });
 
-    await this.journalRepository.save(entry);
+    await journal.save(entry);
   }
 
   /**
@@ -323,57 +422,74 @@ export class ExpensesService {
   private async postExpenseReimbursement(
     tenantId: string,
     claim: ExpenseClaim,
-    accountId?: string,
+    accountId: string | undefined,
+    manager: EntityManager = this.journalRepository.manager,
   ): Promise<void> {
     const amount = Number(claim.amount) || 0;
     if (amount <= 0) return;
 
+    const journal = manager.getRepository(JournalEntry);
     const referenceId = `${claim.id}:reimbursement`;
-    const already = await this.journalRepository.findOne({
+    const already = await journal.findOne({
       where: { tenantId, referenceType: 'EXPENSE', referenceId },
     });
     if (already) return;
 
-    const account = await this.resolveReimbursementAccount(tenantId, accountId);
+    const account = await this.resolveReimbursementAccount(
+      tenantId,
+      accountId,
+      manager,
+    );
     const label = claim.claimNumber || claim.id;
 
-    const entry = this.journalRepository.create({
+    const entry = journal.create({
       tenantId,
       entryNumber: `JE-EXPPAY-${label}`,
       referenceType: 'EXPENSE',
       referenceId,
       entryDate: new Date(),
       totalAmount: amount,
-      lines: await this.ledger.resolveLines(tenantId, [
-        {
-          role: LEDGER_ROLES.ACCOUNTS_PAYABLE,
-          accountName: 'Accounts payable',
-          debit: amount,
-          credit: 0,
-          description: `Settlement of expense claim ${label}`,
-        },
-        {
-          financeAccountId: account.id,
-          accountName: account.name,
-          debit: 0,
-          credit: amount,
-          description: `Reimbursement of expense claim ${label}`,
-        },
-      ]),
+      lines: await this.ledger.resolveLines(
+        tenantId,
+        [
+          {
+            role: LEDGER_ROLES.ACCOUNTS_PAYABLE,
+            accountName: 'Accounts payable',
+            debit: amount,
+            credit: 0,
+            description: `Settlement of expense claim ${label}`,
+          },
+          {
+            financeAccountId: account.id,
+            accountName: account.name,
+            debit: 0,
+            credit: amount,
+            description: `Reimbursement of expense claim ${label}`,
+          },
+        ],
+        manager,
+      ),
     });
 
-    await this.journalRepository.save(entry);
+    await journal.save(entry);
 
-    account.balance = Number(account.balance) - amount;
-    await this.accountRepository.save(account);
+    // Relative, never read-modify-write: a payment landing in the same
+    // account meanwhile would otherwise be lost from the balance.
+    await manager.query(
+      `UPDATE "finance_accounts" SET "balance" = "balance" - $1, "updatedAt" = now()
+       WHERE "id" = $2 AND "tenantId" = $3`,
+      [amount, account.id, tenantId],
+    );
   }
 
   private async resolveReimbursementAccount(
     tenantId: string,
-    accountId?: string,
+    accountId: string | undefined,
+    manager: EntityManager,
   ): Promise<FinanceAccount> {
+    const repo = manager.getRepository(FinanceAccount);
     if (accountId) {
-      const named = await this.accountRepository.findOne({
+      const named = await repo.findOne({
         where: { id: accountId, tenantId },
       });
       if (!named) {
@@ -382,7 +498,7 @@ export class ExpensesService {
       return named;
     }
 
-    const accounts = await this.accountRepository.find({
+    const accounts = await repo.find({
       where: { tenantId },
       order: { isDefault: 'DESC', createdAt: 'ASC' },
     });
