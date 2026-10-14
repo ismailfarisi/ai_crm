@@ -18,6 +18,7 @@ import {
   Receipt,
   ReceiptText,
   ShieldCheck,
+  Sparkles,
   UserRoundCog,
   Users,
   Wrench,
@@ -55,6 +56,12 @@ export const CORE_ACTION_ITEMS: NavItem[] = [
     label: 'Inbox',
     icon: MessageSquare,
     rule: { permission: PERMISSIONS.CHANNEL_READ },
+  },
+  {
+    href: '/assistant',
+    label: 'Assistant',
+    icon: Sparkles,
+    rule: { permission: PERMISSIONS.ASSISTANT_USE },
   },
   {
     href: '/contacts',
