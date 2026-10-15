@@ -15,6 +15,7 @@ import type {
   TransferFundsResult,
   CreateCategoryBudgetPayload,
   CreateRecurringExpensePayload,
+  UpdateRecurringExpensePayload,
   AccountType,
   BudgetPeriod,
 } from '@saas/shared';
@@ -176,6 +177,105 @@ export function useCreateRecurringExpense() {
       toast.success(`Subscription "${sub.vendorName}" registered`);
     },
     onError: (error) => toast.error(describe(error, 'Could not register recurring expense')),
+  });
+}
+
+/** The server's own words (e.g. "needs bill:approve") beat a generic 403 line here. */
+function describeServer(error: unknown, fallback: string): string {
+  if (error instanceof ApiError && error.message) return error.message;
+  return describe(error, fallback);
+}
+
+export function useUpdateRecurringExpense() {
+  const { invalidateSubscriptions } = useInvalidateFinance();
+
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: UpdateRecurringExpensePayload }) =>
+      api.finance.updateSubscription(id, input),
+    onSuccess: async (sub) => {
+      await invalidateSubscriptions();
+      toast.success(`"${sub.vendorName}" updated`);
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not update recurring expense')),
+  });
+}
+
+export function usePauseRecurringExpense() {
+  const { invalidateSubscriptions } = useInvalidateFinance();
+
+  return useMutation({
+    mutationFn: (id: string) => api.finance.pauseSubscription(id),
+    onSuccess: async (sub) => {
+      await invalidateSubscriptions();
+      toast.success(`"${sub.vendorName}" paused`);
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not pause recurring expense')),
+  });
+}
+
+export function useResumeRecurringExpense() {
+  const { invalidateSubscriptions } = useInvalidateFinance();
+
+  return useMutation({
+    mutationFn: (id: string) => api.finance.resumeSubscription(id),
+    onSuccess: async (sub) => {
+      await invalidateSubscriptions();
+      toast.success(`"${sub.vendorName}" resumed`);
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not resume recurring expense')),
+  });
+}
+
+export function useCancelRecurringExpense() {
+  const { invalidateSubscriptions } = useInvalidateFinance();
+
+  return useMutation({
+    mutationFn: (id: string) => api.finance.cancelSubscription(id),
+    onSuccess: async (sub) => {
+      await invalidateSubscriptions();
+      toast.success(`"${sub.vendorName}" cancelled`);
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not cancel recurring expense')),
+  });
+}
+
+export function useRecurringOccurrences(id: string | null) {
+  return useQuery({
+    queryKey: queryKeys.financeOccurrences(id ?? ''),
+    queryFn: () => api.finance.listOccurrences(id!),
+    enabled: Boolean(id),
+  });
+}
+
+export function useCashForecast(months = 6) {
+  return useQuery({
+    queryKey: queryKeys.financeCashForecast(months),
+    queryFn: () => api.finance.cashForecast(months),
+  });
+}
+
+export function usePrepaidSchedules(billId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.prepaidSchedules(billId ?? ''),
+    queryFn: () => api.finance.listPrepaidSchedules(billId!),
+    enabled: Boolean(billId),
+  });
+}
+
+export function useEndPrepaidEarly() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => api.finance.endPrepaidEarly(id),
+    onSuccess: async (schedule) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.prepaidSchedules(schedule.billId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.bill(schedule.billId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.financeOverview }),
+      ]);
+      toast.success('Prepaid schedule ended early');
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not end the prepaid schedule')),
   });
 }
 

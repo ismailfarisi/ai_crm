@@ -74,6 +74,7 @@ const QUERY_KEYS = [
   'channels', 'aiConfigs', 'channelIdentities', 'channelMessages',
   'automations', 'automation', 'automationExecutions', 'automationExecution',
   'financeOverview', 'financeAccounts', 'financeBudgets', 'financeSubscriptions',
+  'financeOccurrences', 'financeCashForecast', 'prepaidSchedules',
   'financeJournalEntries', 'expenses', 'expense', 'aiBudget', 'aiUsage',
   'aiAgents', 'intentAgentConfig',
   'suppliers', 'supplier', 'supplierMaterials',

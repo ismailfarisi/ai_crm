@@ -130,6 +130,15 @@ const mockBudget: CategoryBudgetDto = {
 const mockSubscription: RecurringExpenseDto = {
   id: 'sub-1',
   tenantId: 'tenant-1',
+  supplierId: 'sup-1',
+  supplierName: 'Supplier',
+  currency: null,
+  startDate: '2026-01-01',
+  endDate: null,
+  taxCodeId: null,
+  autoApprove: false,
+  spreadOverPeriod: false,
+  lastOccurrenceStatus: null,
   vendorName: 'AWS Cloud',
   category: 'Infrastructure',
   amount: 1200,
@@ -367,7 +376,12 @@ describe('useFinance Hooks', () => {
         category: 'Infrastructure',
         amount: 1200,
         billingInterval: 'MONTHLY',
-        nextBillingDate: '2026-09-01',
+        startDate: '2026-09-01',
+        endDate: null,
+        supplierId: null,
+        taxCodeId: null,
+        autoApprove: false,
+        spreadOverPeriod: false,
       });
     });
 
@@ -376,7 +390,12 @@ describe('useFinance Hooks', () => {
       category: 'Infrastructure',
       amount: 1200,
       billingInterval: 'MONTHLY',
-      nextBillingDate: '2026-09-01',
+      startDate: '2026-09-01',
+      endDate: null,
+      supplierId: null,
+      taxCodeId: null,
+      autoApprove: false,
+      spreadOverPeriod: false,
     });
   });
 

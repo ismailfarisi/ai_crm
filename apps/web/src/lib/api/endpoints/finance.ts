@@ -13,6 +13,10 @@ import type {
   TransferFundsResult,
   CreateCategoryBudgetPayload,
   CreateRecurringExpensePayload,
+  UpdateRecurringExpensePayload,
+  RecurringOccurrenceDto,
+  CashForecastDto,
+  PrepaidScheduleDto,
   CreateExpenseClaimPayload,
   UpdateExpenseClaimPayload,
   ScanReceiptPayload,
@@ -39,6 +43,22 @@ export const financeEndpoints = {
     listSubscriptions: () => apiFetch<RecurringExpenseDto[]>('/finance/subscriptions'),
     createSubscription: (payload: CreateRecurringExpensePayload) =>
       apiFetch<RecurringExpenseDto>('/finance/subscriptions', { method: 'POST', body: payload }),
+    updateSubscription: (id: string, payload: UpdateRecurringExpensePayload) =>
+      apiFetch<RecurringExpenseDto>(`/finance/subscriptions/${id}`, { method: 'PATCH', body: payload }),
+    pauseSubscription: (id: string) =>
+      apiFetch<RecurringExpenseDto>(`/finance/subscriptions/${id}/pause`, { method: 'POST' }),
+    resumeSubscription: (id: string) =>
+      apiFetch<RecurringExpenseDto>(`/finance/subscriptions/${id}/resume`, { method: 'POST' }),
+    cancelSubscription: (id: string) =>
+      apiFetch<RecurringExpenseDto>(`/finance/subscriptions/${id}`, { method: 'DELETE' }),
+    listOccurrences: (id: string) =>
+      apiFetch<RecurringOccurrenceDto[]>(`/finance/subscriptions/${id}/occurrences`),
+    cashForecast: (months = 6) =>
+      apiFetch<CashForecastDto>('/finance/cash-forecast', { query: { months } }),
+    listPrepaidSchedules: (billId: string) =>
+      apiFetch<PrepaidScheduleDto[]>('/finance/prepaid-schedules', { query: { billId } }),
+    endPrepaidEarly: (id: string) =>
+      apiFetch<PrepaidScheduleDto>(`/finance/prepaid-schedules/${id}/end-early`, { method: 'POST' }),
     listJournalEntries: () => apiFetch<JournalEntryDto[]>('/finance/journal-entries'),
   },
   expenses: {
@@ -64,5 +84,9 @@ export const financeEndpoints = {
 
 export const financeKeys = {
   // Finance & Treasury
-  financeOverview: ['finance', 'overview'] as const,  financeAccounts: ['finance', 'accounts'] as const,  financeBudgets: ['finance', 'budgets'] as const,  financeSubscriptions: ['finance', 'subscriptions'] as const,  financeJournalEntries: ['finance', 'journal-entries'] as const,  // Expenses
+  financeOverview: ['finance', 'overview'] as const,  financeAccounts: ['finance', 'accounts'] as const,  financeBudgets: ['finance', 'budgets'] as const,  financeSubscriptions: ['finance', 'subscriptions'] as const,
+  financeOccurrences: (id: string) => ['finance', 'subscriptions', id, 'occurrences'] as const,
+  financeCashForecast: (months: number) => ['finance', 'cash-forecast', months] as const,
+  prepaidSchedules: (billId: string) => ['finance', 'prepaid-schedules', billId] as const,
+   financeJournalEntries: ['finance', 'journal-entries'] as const,  // Expenses
   expenses: (params: ExpenseListParams = {}) => ['finance', 'expenses', params] as const,  expense: (id: string) => ['finance', 'expenses', id] as const,};
