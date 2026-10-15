@@ -13,11 +13,19 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   createEmployeeSchema,
   createSalaryPackageSchema,
+  gratuityAdjustmentSchema,
   PERMISSIONS,
+  recordAdvanceSchema,
   updateEmployeeSchema,
   type CreateEmployeePayload,
   type CreateSalaryPackagePayload,
+  type EmployeeAdvanceDto,
+  type EmployeeAdvancesDto,
   type EmployeeDto,
+  type EmployeeGratuityDto,
+  type GratuityAdjustmentPayload,
+  type GratuityLedgerEntryDto,
+  type RecordAdvancePayload,
   type EmployeeStatus,
   type SalaryPackageDto,
   type UpdateEmployeePayload,
@@ -28,13 +36,19 @@ import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '@/modules/rbac/guards/permissions.guard';
 import { EmployeesService } from './employees.service';
+import { AdvancesService } from './advances.service';
+import { GratuityService } from './gratuity.service';
 import { maskEmployee } from './employee-mask';
 
 @ApiTags('employees')
 @Controller('employees')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class EmployeesController {
-  constructor(private readonly employees: EmployeesService) {}
+  constructor(
+    private readonly employees: EmployeesService,
+    private readonly advances: AdvancesService,
+    private readonly gratuity: GratuityService,
+  ) {}
 
   @Get()
   @RequirePermissions(PERMISSIONS.EMPLOYEE_READ)
@@ -104,5 +118,47 @@ export class EmployeesController {
     @Body(zodBody(createSalaryPackageSchema)) body: CreateSalaryPackagePayload,
   ): Promise<SalaryPackageDto> {
     return this.employees.addPackage(user.organizationId, id, user.id, body);
+  }
+
+  @Get(':id/advances')
+  @RequirePermissions(PERMISSIONS.PAYROLL_READ)
+  @ApiOperation({ summary: 'Salary advances with recovered and outstanding totals' })
+  listAdvances(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<EmployeeAdvancesDto> {
+    return this.advances.list(user.organizationId, id);
+  }
+
+  @Post(':id/advances')
+  @RequirePermissions(PERMISSIONS.PAYROLL_PAY)
+  @ApiOperation({ summary: 'Pay a salary advance from a finance account' })
+  recordAdvance(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(zodBody(recordAdvanceSchema)) body: RecordAdvancePayload,
+  ): Promise<EmployeeAdvanceDto> {
+    return this.advances.record(user.organizationId, id, user.id, body);
+  }
+
+  @Get(':id/gratuity')
+  @RequirePermissions(PERMISSIONS.PAYROLL_READ)
+  @ApiOperation({ summary: 'End-of-service provision balance, entitlement today and ledger' })
+  gratuitySummary(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<EmployeeGratuityDto> {
+    return this.gratuity.summary(user.organizationId, id);
+  }
+
+  @Post(':id/gratuity-adjustments')
+  @RequirePermissions(PERMISSIONS.PAYROLL_APPROVE)
+  @ApiOperation({ summary: 'Correct the end-of-service provision' })
+  adjustGratuity(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(zodBody(gratuityAdjustmentSchema)) body: GratuityAdjustmentPayload,
+  ): Promise<GratuityLedgerEntryDto> {
+    return this.gratuity.adjust(user.organizationId, id, user.id, body);
   }
 }
