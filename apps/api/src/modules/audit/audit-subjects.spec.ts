@@ -37,3 +37,13 @@ describe('auditSubjectFor', () => {
     expect(s.idSegment).toBe('transfer');
   });
 });
+
+describe('payroll subjects', () => {
+  it('maps employees, payroll runs and opening gratuity', () => {
+    expect(auditSubjectFor(['employees', 'e1']).mapped?.subject).toBe('EMPLOYEE');
+    expect(auditSubjectFor(['payroll-runs', 'r1', 'approve']).mapped?.subject).toBe('PAYROLL_RUN');
+    const s = auditSubjectFor(['payroll', 'opening-gratuity']);
+    expect(s.key).toBe('payroll/opening-gratuity');
+    expect(s.mapped?.subject).toBe('PAYROLL');
+  });
+});

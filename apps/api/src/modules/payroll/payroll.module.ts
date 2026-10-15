@@ -7,6 +7,8 @@ import { EmployeeAdvance } from './entities/employee-advance.entity';
 import { PayrollRun, PayrollRunLine } from './entities/payroll-run.entity';
 import { GratuityLedgerEntry } from './entities/gratuity-ledger-entry.entity';
 import { PayrollCryptoService } from './payroll-crypto.service';
+import { EmployeesService } from './employees.service';
+import { EmployeesController } from './employees.controller';
 
 /** Employees, salary packages, payroll runs, advances and the gratuity ledger. */
 @Module({
@@ -22,7 +24,9 @@ import { PayrollCryptoService } from './payroll-crypto.service';
     // LedgerService posts the approval, payment, advance and gratuity journals.
     FinanceModule,
   ],
+  controllers: [EmployeesController],
   providers: [
+    EmployeesService,
     // Built from process.env so a missing PAYROLL_DATA_KEY fails boot in production.
     { provide: PayrollCryptoService, useFactory: () => new PayrollCryptoService(process.env) },
   ],

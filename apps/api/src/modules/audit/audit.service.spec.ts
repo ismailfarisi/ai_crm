@@ -133,3 +133,28 @@ describe('AuditService.record', () => {
     ).rejects.toThrow('still failing');
   });
 });
+
+describe('AuditService.snapshot', () => {
+  it('omits ibanEncrypted and passwordHash', async () => {
+    const { service } = setup();
+    const columns = ['id', 'firstName', 'ibanEncrypted', 'ibanLast4', 'passwordHash'].map(
+      (propertyName) => ({ propertyName }),
+    );
+    const row = {
+      id: 'e1',
+      firstName: 'Ada',
+      ibanEncrypted: 'SECRETCIPHER',
+      ibanLast4: '3456',
+      passwordHash: 'hash',
+    };
+    const manager = {
+      getRepository: () => ({
+        metadata: { columns: [...columns, { propertyName: 'tenantId' }] },
+        findOne: jest.fn().mockResolvedValue({ ...row, tenantId: TENANT }),
+      }),
+    };
+    const snap = await service.snapshot({} as never, TENANT, 'e1', manager as never);
+    expect(snap).toEqual({ id: 'e1', firstName: 'Ada', ibanLast4: '3456', tenantId: TENANT });
+    expect(JSON.stringify(snap)).not.toContain('SECRETCIPHER');
+  });
+});

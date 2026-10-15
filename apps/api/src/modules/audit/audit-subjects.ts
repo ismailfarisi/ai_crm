@@ -18,6 +18,8 @@ import { RecurringExpense } from '../finance/entities/recurring-expense.entity';
 import { PrepaidSchedule } from '../payables/entities/prepaid-schedule.entity';
 import { StockItem } from '../inventory/entities/stock-item.entity';
 import { User } from '../users/entities/user.entity';
+import { Employee } from '../payroll/entities/employee.entity';
+import { PayrollRun } from '../payroll/entities/payroll-run.entity';
 import { Role } from '../rbac/entities/role.entity';
 
 /**
@@ -48,6 +50,9 @@ export const AUDIT_SUBJECTS: Record<
   users: { subject: 'USER', entity: User },
   roles: { subject: 'ROLE', entity: Role },
   'stock-items': { subject: 'STOCK_ITEM', entity: StockItem },
+  employees: { subject: 'EMPLOYEE', entity: Employee },
+  'payroll-runs': { subject: 'PAYROLL_RUN', entity: PayrollRun },
+  'payroll/opening-gratuity': { subject: 'PAYROLL', entity: PayrollRun },
   'finance/expenses': { subject: 'EXPENSE_CLAIM', entity: ExpenseClaim },
   'finance/accounts': { subject: 'FINANCE_ACCOUNT', entity: FinanceAccount },
   'finance/subscriptions': {
