@@ -1,7 +1,12 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
-import { CONTACT_SOURCES, CONTACT_STATUSES, SYSTEM_ROLES } from '@saas/shared';
+import {
+  CONTACT_SOURCES,
+  CONTACT_STATUSES,
+  isoDate,
+  SYSTEM_ROLES,
+} from '@saas/shared';
 import { AppModule } from '@/app.module';
 import { AuthService } from '@/modules/auth/auth.service';
 import { ContactsService } from '@/modules/contacts/contacts.service';
@@ -9,12 +14,17 @@ import { RbacService } from '@/modules/rbac/rbac.service';
 import { TeamsService } from '@/modules/teams/teams.service';
 import { UsersService } from '@/modules/users/users.service';
 import { Organization } from '@/modules/organizations/entities/organization.entity';
+import { Supplier } from '@/modules/purchasing/entities/supplier.entity';
+import { RecurringExpense } from '@/modules/finance/entities/recurring-expense.entity';
+import { RecurringBillingService } from '@/modules/overheads/recurring-billing.service';
+import { PrepaidService } from '@/modules/overheads/prepaid.service';
 import { DataSource } from 'typeorm';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { TenantContextService } from '@/common/context/tenant-context.service';
 
 const DEMO_ORG = 'Northwind Trading';
 const DEMO_PASSWORD = 'Password123!';
+const LEASE_SUPPLIER = 'Seed Properties LLC';
 
 const FIRST_NAMES = [
   'Ada',
@@ -69,6 +79,8 @@ async function seed(): Promise<void> {
     const rbac = app.get(RbacService);
     const contacts = app.get(ContactsService);
     const teams = app.get(TeamsService);
+
+    let leaseSeeded = false;
 
     await tenantContext.runAsSystem(async () => {
       const orgRepo = dataSource.getRepository(Organization);
@@ -215,6 +227,51 @@ async function seed(): Promise<void> {
         });
       }
 
+      // One annual lease, started three months ago and set to auto-approve, so
+      // CI's books check covers bill generation, prepaid and the release
+      // catch-up. FORCE RLS applies to this connection, hence the tenant scope.
+      await tenantContext.runWithTenant(organizationId, async () => {
+        const suppliers = dataSource.getRepository(Supplier);
+        if (
+          await suppliers.exists({
+            where: { tenantId: organizationId, companyName: LEASE_SUPPLIER },
+          })
+        ) {
+          return;
+        }
+        const supplier = await suppliers.save(
+          suppliers.create({
+            tenantId: organizationId,
+            companyName: LEASE_SUPPLIER,
+            currency: 'USD',
+          }),
+        );
+        const start = new Date();
+        start.setUTCDate(1);
+        start.setUTCMonth(start.getUTCMonth() - 3);
+        start.setUTCHours(0, 0, 0, 0);
+        const recurring = dataSource.getRepository(RecurringExpense);
+        await recurring.save(
+          recurring.create({
+            tenantId: organizationId,
+            supplierId: supplier.id,
+            vendorName: LEASE_SUPPLIER,
+            category: 'Rent & premises',
+            amount: 120000,
+            billingInterval: 'ANNUAL',
+            startDate: isoDate(start),
+            endDate: null,
+            nextBillingDate: start,
+            autoApprove: true,
+            autoApproveById: ownerId,
+            spreadOverPeriod: true,
+            createdById: ownerId,
+            status: 'ACTIVE',
+          }),
+        );
+        leaseSeeded = true;
+      });
+
       logger.log('');
       logger.log('─────────────────────────────────────────────');
       logger.log(`Seeded "${DEMO_ORG}" with 5 users and 48 contacts.`);
@@ -228,6 +285,13 @@ async function seed(): Promise<void> {
       logger.log('  viewer@northwind.test   — read-only, own contacts');
       logger.log('─────────────────────────────────────────────');
     });
+
+    // Both set their own tenant context, so they run outside any of ours.
+    if (leaseSeeded) {
+      await app.get(RecurringBillingService).run();
+      await app.get(PrepaidService).releaseDue();
+      logger.log('Billed and released the seeded annual lease.');
+    }
   } finally {
     await app.close();
   }

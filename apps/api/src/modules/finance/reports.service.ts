@@ -83,6 +83,7 @@ export class ReportsService {
           code: account.code,
           name: account.name,
           type: account.type,
+          parentId: account.parentId ?? null,
           amount: round2(
             NORMAL_BALANCE[account.type] === 'DEBIT'
               ? debitMinusCredit
