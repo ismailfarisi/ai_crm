@@ -169,7 +169,7 @@ services:
       dockerfile: apps/marketing/Dockerfile
       args:
         NEXT_PUBLIC_APP_URL: ${PUBLIC_WEB_URL}
-        NEXT_PUBLIC_SITE_URL: ${MARKETING_SITE_URL:-https://www.switeaz.com}
+        NEXT_PUBLIC_SITE_URL: ${MARKETING_SITE_URL:-https://switeaz.com}
         NEXT_PUBLIC_CONTACT_EMAIL: ${MARKETING_CONTACT_EMAIL:-hello@kerf.ae}
     container_name: crm_staging_marketing
     restart: unless-stopped
