@@ -20,6 +20,28 @@ interface Seed {
   billedElsewhere?: number;
   tolerance?: number;
   existingBills?: any[];
+  savedSchedules?: any[];
+  fxRate?: number;
+}
+
+function draftBill(overrides: any = {}) {
+  return {
+    id: 'bill-1',
+    tenantId,
+    billNumber: 'BILL-2026-0001',
+    currency: 'GBP',
+    fxRate: 1,
+    supplierName: 'Papertree Ltd',
+    purchaseOrderId: null,
+    status: 'DRAFT',
+    billDate: new Date('2026-09-01'),
+    totalAmount: 0,
+    paidAmount: 0,
+    taxAmount: 0,
+    deletedAt: null,
+    lines: [],
+    ...overrides,
+  };
 }
 
 function makeService(seed: Seed = {}) {
@@ -64,7 +86,7 @@ function makeService(seed: Seed = {}) {
     queries: [],
   };
 
-  const qb = () => {
+  const qb = (name = '') => {
     const b: any = {
       innerJoin: () => b,
       select: () => b,
@@ -72,12 +94,13 @@ function makeService(seed: Seed = {}) {
       where: () => b,
       andWhere: () => b,
       groupBy: () => b,
+      orderBy: () => b,
       setLock: () => b,
       getRawMany: async () =>
         seed.billedElsewhere
           ? [{ orderLineId: 'pol-1', qty: String(seed.billedElsewhere) }]
           : [],
-      getOne: async () => bill,
+      getOne: async () => (name === 'FxRate' ? { rate: seed.fxRate } : bill),
       getMany: async () => [orderLine],
     };
     return b;
@@ -129,9 +152,10 @@ function makeService(seed: Seed = {}) {
     save: jest.fn(async (row: any) => {
       if (name === 'JournalEntry') saved.journal.push(row);
       if (name === 'BillPayment') saved.payments.push(row);
+      if (name === 'PrepaidSchedule') seed.savedSchedules?.push(row);
       return row;
     }),
-    createQueryBuilder: jest.fn(qb),
+    createQueryBuilder: jest.fn(() => qb(name)),
   });
 
   const manager: any = {
@@ -144,12 +168,15 @@ function makeService(seed: Seed = {}) {
   };
 
   const ledger = {
-    resolveLines: jest.fn(async (_t: string, lines: any[]) =>
-      lines.map((l) => ({
-        ledgerAccountId: `l-${l.role ?? l.financeAccountId}`,
-        ledgerAccountCode: '0',
-        ...l,
-      })),
+    resolveLines: jest.fn(
+      async (_t: string, lines: any[], _m?: any, rate = 1) =>
+        lines.map((l) => ({
+          ledgerAccountId: `l-${l.role ?? l.financeAccountId}`,
+          ledgerAccountCode: '0',
+          ...l,
+          debit: Math.round(l.debit * rate * 100) / 100,
+          credit: Math.round(l.credit * rate * 100) / 100,
+        })),
     ),
   };
 
@@ -349,6 +376,7 @@ describe('PayablesService.create', () => {
         billDate: new Date('2026-09-01'),
         dueDate: null,
         taxAmount: 0,
+        taxCodeId: null,
         notes: null,
         lines: [
           {
@@ -356,10 +384,45 @@ describe('PayablesService.create', () => {
             description: 'Rent',
             qty: 1,
             unitCost: 1500,
+            category: null,
+            servicePeriodStart: null,
+            servicePeriodEnd: null,
           },
         ],
       }),
     ).rejects.toThrow(ConflictException);
+  });
+
+  it('keeps category and service period on a non-order line', async () => {
+    const { service } = makeService();
+    const bill = await service.create(tenantId, null, {
+      supplierId: 'sup-1',
+      purchaseOrderId: null,
+      supplierInvoiceNumber: 'INV-2',
+      billDate: new Date('2026-09-01T00:00:00Z'),
+      dueDate: null,
+      taxAmount: 0,
+      taxCodeId: null,
+      notes: null,
+      lines: [
+        {
+          purchaseOrderLineId: null,
+          description: 'Lease',
+          qty: 1,
+          unitCost: 1200,
+          category: 'Rent & premises',
+          servicePeriodStart: '2026-01-01',
+          servicePeriodEnd: '2026-12-31',
+        },
+      ],
+    });
+    expect(bill.lines[0]).toEqual(
+      expect.objectContaining({
+        category: 'Rent & premises',
+        servicePeriodStart: '2026-01-01',
+        servicePeriodEnd: '2026-12-31',
+      }),
+    );
   });
 
   it('defaults the due date from the supplier’s payment terms', async () => {
@@ -372,6 +435,7 @@ describe('PayablesService.create', () => {
       billDate: new Date('2026-09-01T00:00:00Z'),
       dueDate: null,
       taxAmount: 0,
+      taxCodeId: null,
       notes: null,
       lines: [
         {
@@ -379,6 +443,9 @@ describe('PayablesService.create', () => {
           description: 'Rent',
           qty: 1,
           unitCost: 1500,
+          category: null,
+          servicePeriodStart: null,
+          servicePeriodEnd: null,
         },
       ],
     });
@@ -403,5 +470,59 @@ describe('PayablesService transitions', () => {
     await service.dispute(tenantId, 'bill-1', 'Price does not match quote');
     expect(bill.status).toBe('DISPUTED');
     expect(bill.disputeReason).toBe('Price does not match quote');
+  });
+});
+
+describe('spread lines', () => {
+  const approver = { userId: 'u1', permissions: APPROVER };
+
+  it('creates a prepaid schedule on approval', async () => {
+    const saved: any[] = [];
+    const { service } = makeService({
+      savedSchedules: saved,
+      bill: draftBill({ lines: [{ id: 'l1', description: 'Lease', qty: 1, unitCost: 120000, lineTotal: 120000, category: 'Rent & premises', servicePeriodStart: '2026-01-01', servicePeriodEnd: '2026-12-31', purchaseOrderLineId: null, orderUnitCost: null }] }),
+    });
+    await service.approve(tenantId, 'bill-1', approver);
+    expect(saved).toEqual([
+      expect.objectContaining({ billLineId: 'l1', expenseRole: 'RENT', totalBase: 120000, firstMonth: '2026-01-01', months: 12 }),
+    ]);
+  });
+
+  it("schedule total uses the bill's fx rate", async () => {
+    const saved: any[] = [];
+    const { service } = makeService({
+      savedSchedules: saved,
+      fxRate: 3.6725,
+      bill: draftBill({ currency: 'USD', lines: [{ id: 'l1', description: 'Policy', qty: 1, unitCost: 1000, lineTotal: 1000, category: 'Insurance', servicePeriodStart: '2026-01-01', servicePeriodEnd: '2026-06-30', purchaseOrderLineId: null, orderUnitCost: null }] }),
+    });
+    await service.approve(tenantId, 'bill-1', approver);
+    expect(saved[0].totalBase).toBe(3672.5);
+  });
+
+  it('creates no schedule for a single-month line', async () => {
+    const saved: any[] = [];
+    const { service } = makeService({
+      savedSchedules: saved,
+      bill: draftBill({ lines: [{ id: 'l1', description: 'Rent Mar', qty: 1, unitCost: 10000, lineTotal: 10000, category: 'Rent & premises', servicePeriodStart: '2026-03-01', servicePeriodEnd: '2026-03-31', purchaseOrderLineId: null, orderUnitCost: null }] }),
+    });
+    await service.approve(tenantId, 'bill-1', approver);
+    expect(saved).toHaveLength(0);
+  });
+
+  it('keeps schedule totals equal to the combined prepaid debit', async () => {
+    const saved: any[] = [];
+    const { service, saved: out } = makeService({
+      savedSchedules: saved,
+      fxRate: 3.6725,
+      bill: draftBill({
+        currency: 'USD',
+        lines: [{ id: 'l1', description: 'A', qty: 1, unitCost: 0.13, lineTotal: 0.13, category: 'Insurance', servicePeriodStart: '2026-01-01', servicePeriodEnd: '2026-06-30', purchaseOrderLineId: null, orderUnitCost: null }, { id: 'l2', description: 'B', qty: 1, unitCost: 0.13, lineTotal: 0.13, category: 'Insurance', servicePeriodStart: '2026-01-01', servicePeriodEnd: '2026-06-30', purchaseOrderLineId: null, orderUnitCost: null }],
+      }),
+    });
+    await service.approve(tenantId, 'bill-1', approver);
+    const debit = out.journal[0].lines.find((l: any) => l.accountName === 'Prepaid expenses').debit;
+    const sum = saved.reduce((t, r) => t + r.totalBase, 0);
+    expect(saved).toHaveLength(2);
+    expect(Math.round(sum * 100)).toBe(Math.round(debit * 100));
   });
 });

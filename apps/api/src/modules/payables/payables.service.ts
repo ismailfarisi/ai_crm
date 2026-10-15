@@ -19,6 +19,10 @@ import {
   agingBucket,
   billPostingLines,
   billTotals,
+  expenseCategoryRole,
+  firstOfMonth,
+  isSpread,
+  monthsTouched,
   canTransitionBill,
   LEDGER_ROLES,
   PERMISSIONS,
@@ -47,6 +51,7 @@ import { PurchaseOrder } from '../purchasing/entities/purchase-order.entity';
 import { PurchaseOrderLine } from '../purchasing/entities/purchase-order-line.entity';
 import { PurchasePolicyEntity } from '../purchasing/entities/purchase-policy.entity';
 import { Supplier } from '../purchasing/entities/supplier.entity';
+import { PrepaidSchedule } from './entities/prepaid-schedule.entity';
 import {
   BillPayment,
   SupplierBill,
@@ -361,7 +366,7 @@ export class PayablesService {
    */
   async create(
     tenantId: string,
-    actorId: string,
+    actorId: string | null,
     input: CreateBillPayload,
   ): Promise<SupplierBill> {
     return this.dataSource.transaction(async (manager) => {
@@ -466,6 +471,13 @@ export class PayablesService {
                 ? (orderCost.get(line.purchaseOrderLineId) ?? null)
                 : null,
               lineTotal: money(line.qty * line.unitCost),
+              category: line.purchaseOrderLineId ? null : line.category,
+              servicePeriodStart: line.purchaseOrderLineId
+                ? null
+                : line.servicePeriodStart,
+              servicePeriodEnd: line.purchaseOrderLineId
+                ? null
+                : line.servicePeriodEnd,
             }),
           ),
         }),
@@ -593,6 +605,9 @@ export class PayablesService {
           qty: l.qty,
           unitCost: l.unitCost,
           orderUnitCost: l.purchaseOrderLineId ? l.orderUnitCost : null,
+          category: l.category,
+          servicePeriodStart: l.servicePeriodStart,
+          servicePeriodEnd: l.servicePeriodEnd,
         })),
         bill.taxAmount,
         { billNumber: bill.billNumber, supplierName: bill.supplierName },
@@ -651,6 +666,45 @@ export class PayablesService {
           lines,
         }),
       );
+
+      // A line covering more than a month went to prepaid expenses; record how
+      // it is released. Same transaction as the posting, so a schedule exists
+      // exactly when the prepaid debit does.
+      const scheduleRepo = manager.getRepository(PrepaidSchedule);
+      const schedules: PrepaidSchedule[] = [];
+      for (const line of bill.lines ?? []) {
+        if (line.purchaseOrderLineId || !isSpread(line)) continue;
+        schedules.push(
+          scheduleRepo.create({
+            tenantId,
+            billId: bill.id,
+            billLineId: line.id,
+            expenseRole: expenseCategoryRole(line.category),
+            totalBase: money(line.lineTotal * billRate),
+            firstMonth: firstOfMonth(line.servicePeriodStart!),
+            months: monthsTouched(
+              line.servicePeriodStart!,
+              line.servicePeriodEnd!,
+            ),
+            status: 'ACTIVE',
+          }),
+        );
+      }
+      if (schedules.length) {
+        // resolveLines rounds the combined prepaid debit once; per-line
+        // rounding can land a cent either side. The schedules must release
+        // exactly what was parked, so the last one absorbs the difference.
+        const prepaid = lines.find((l) => l.accountName === 'Prepaid expenses');
+        if (prepaid) {
+          const sum = schedules.reduce((t, r) => t + Number(r.totalBase), 0);
+          const diff = money(Number(prepaid.debit) - sum);
+          if (diff !== 0) {
+            const last = schedules[schedules.length - 1];
+            last.totalBase = money(Number(last.totalBase) + diff);
+          }
+        }
+        for (const schedule of schedules) await scheduleRepo.save(schedule);
+      }
 
       await this.notifications.resolve(tenantId, bill.id, manager);
       bill.status = 'APPROVED';
