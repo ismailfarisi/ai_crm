@@ -16,14 +16,50 @@ import { PageHeader } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/button';
 import { FinanceNav } from '../finance-nav';
 import { SubscriptionsTable } from './subscriptions-table';
-import { CreateSubscriptionModal } from './create-subscription-modal';
+import { SubscriptionFormModal } from './subscription-form-modal';
+import { Dialog } from '@/components/ui/dialog';
 import { formatFinanceCurrency } from '../dashboard/treasury-stat-cards';
 import {
   useRecurringExpenses,
   useFinanceAccounts,
   useCreateRecurringExpense,
+  useUpdateRecurringExpense,
+  usePauseRecurringExpense,
+  useResumeRecurringExpense,
+  useCancelRecurringExpense,
+  useRecurringOccurrences,
 } from '@/hooks/use-finance';
-import type { RecurringExpenseDto } from '@saas/shared';
+import {
+  monthlyEquivalent,
+  type CreateRecurringExpensePayload,
+  type RecurringExpenseDto,
+  type UpdateRecurringExpensePayload,
+} from '@saas/shared';
+
+const DIFF_KEYS = [
+  'supplierId',
+  'vendorName',
+  'category',
+  'amount',
+  'billingInterval',
+  'startDate',
+  'endDate',
+  'taxCodeId',
+  'autoApprove',
+  'spreadOverPeriod',
+] as const;
+
+/** Only what changed, so an edit never asks the server to touch what the user left alone. */
+export function diffRecurringExpense(
+  existing: RecurringExpenseDto,
+  next: CreateRecurringExpensePayload,
+): UpdateRecurringExpensePayload {
+  const changed: Record<string, unknown> = {};
+  for (const key of DIFF_KEYS) {
+    if (next[key] !== existing[key]) changed[key] = next[key];
+  }
+  return changed as UpdateRecurringExpensePayload;
+}
 
 const STAT_TONES = {
   brand: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
@@ -62,18 +98,28 @@ export function SubscriptionsView() {
   const { data: subscriptions = [], isLoading: isSubsLoading } = useRecurringExpenses();
   const { data: accounts = [], isLoading: isAccountsLoading } = useFinanceAccounts();
   const createSubMutation = useCreateRecurringExpense();
+  const updateSubMutation = useUpdateRecurringExpense();
+  const pauseSubMutation = usePauseRecurringExpense();
+  const resumeSubMutation = useResumeRecurringExpense();
+  const cancelSubMutation = useCancelRecurringExpense();
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editing, setEditing] = useState<RecurringExpenseDto | null>(null);
+  const [cancelling, setCancelling] = useState<RecurringExpenseDto | null>(null);
+
+  // Start date and interval lock once a bill exists, whether or not it is still listed.
+  const { data: editingOccurrences = [] } = useRecurringOccurrences(editing?.id ?? null);
+  const hasOccurrences =
+    editingOccurrences.length > 0 || Boolean(editing && editing.lastOccurrenceStatus !== null);
 
   // Compute metrics: monthly normalized sum
   const activeSubs = subscriptions.filter((s) => s.status === 'ACTIVE');
   const pausedOrCancelled = subscriptions.filter((s) => s.status !== 'ACTIVE');
 
-  const monthlyNormalized = activeSubs.reduce((acc, s) => {
-    const amt = s.amount || 0;
-    if (s.billingInterval === 'ANNUAL') return acc + amt / 12;
-    return acc + amt;
-  }, 0);
+  const monthlyNormalized = activeSubs.reduce(
+    (acc, s) => acc + monthlyEquivalent(s.amount || 0, s.billingInterval),
+    0,
+  );
 
   const annualizedCost = monthlyNormalized * 12;
 
@@ -137,19 +183,65 @@ export function SubscriptionsView() {
         accounts={accounts}
         isLoading={isSubsLoading || isAccountsLoading}
         onNewSubscription={() => setIsCreateModalOpen(true)}
+        onEditSubscription={(sub) => setEditing(sub)}
+        onToggleStatus={async (sub, next) => {
+          if (next === 'PAUSED') await pauseSubMutation.mutateAsync(sub.id).catch(() => undefined);
+          else if (next === 'ACTIVE') await resumeSubMutation.mutateAsync(sub.id).catch(() => undefined);
+        }}
+        onDeleteSubscription={(sub) => setCancelling(sub)}
       />
 
-      {/* Add Subscription Modal */}
-      <CreateSubscriptionModal
-        open={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        accounts={accounts}
-        onSubmit={async (payload) => {
-          await createSubMutation.mutateAsync(payload);
+      {/* Create / edit */}
+      <SubscriptionFormModal
+        open={isCreateModalOpen || editing !== null}
+        onClose={() => {
           setIsCreateModalOpen(false);
+          setEditing(null);
         }}
-        isLoading={createSubMutation.isPending}
+        existing={editing}
+        hasOccurrences={hasOccurrences}
+        onSubmit={async (payload) => {
+          if (editing) {
+            const changes = diffRecurringExpense(editing, payload);
+            if (Object.keys(changes).length === 0) return;
+            await updateSubMutation.mutateAsync({ id: editing.id, input: changes });
+          } else {
+            await createSubMutation.mutateAsync(payload);
+          }
+        }}
+        isLoading={createSubMutation.isPending || updateSubMutation.isPending}
       />
+
+      <Dialog
+        open={cancelling !== null}
+        onClose={() => setCancelling(null)}
+        title="Cancel this recurring expense?"
+        description={
+          cancelling
+            ? `No more bills will be created for "${cancelling.vendorName}". Bills already created are not affected.`
+            : undefined
+        }
+        size="sm"
+      >
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" data-testid="btn-keep-subscription" onClick={() => setCancelling(null)}>
+            Keep it
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            data-testid="btn-confirm-cancel-subscription"
+            loading={cancelSubMutation.isPending}
+            onClick={async () => {
+              if (!cancelling) return;
+              await cancelSubMutation.mutateAsync(cancelling.id).catch(() => undefined);
+              setCancelling(null);
+            }}
+          >
+            Cancel recurring expense
+          </Button>
+        </div>
+      </Dialog>
     </div>
   );
 }

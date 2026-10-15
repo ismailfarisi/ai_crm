@@ -37,9 +37,44 @@ import {
   formatNextBillingDate,
 } from '../subscriptions/subscriptions-table';
 
-import {
-  CreateSubscriptionModal,
-} from '../subscriptions/create-subscription-modal';
+import { SubscriptionFormModal } from '../subscriptions/subscription-form-modal';
+
+let canApprove = true;
+vi.mock('@/lib/session-context', () => ({
+  useSession: () => ({ check: () => canApprove }),
+  useCan: () => canApprove,
+}));
+
+vi.mock('@/hooks/use-suppliers', () => ({
+  useSuppliers: () => ({
+    data: { items: [{ id: 'sup-1', companyName: 'Landlord LLC' }], meta: { total: 1, page: 1, limit: 100, totalPages: 1 } },
+  }),
+}));
+
+vi.mock('@/hooks/use-finance', () => ({
+  useRecurringOccurrences: () => ({
+    data: [
+      {
+        id: 'occ-1',
+        periodStart: '2026-07-01',
+        periodEnd: '2026-09-30',
+        amount: 30000,
+        billId: 'bill-9',
+        billNumber: 'INV-9',
+        status: 'GENERATED',
+        error: null,
+        attempts: 1,
+        createdAt: '2026-07-01T00:00:00Z',
+      },
+    ],
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
+beforeEach(() => {
+  canApprove = true;
+});
 
 // Polyfill HTMLDialogElement for jsdom
 beforeEach(() => {
@@ -143,6 +178,15 @@ const mockSubscriptions: RecurringExpenseDto[] = [
   {
     id: 'sub-1',
     tenantId: 'tenant-1',
+    supplierId: 'sup-1',
+    supplierName: 'Supplier',
+    currency: null,
+    startDate: '2026-01-01',
+    endDate: null,
+    taxCodeId: null,
+    autoApprove: false,
+    spreadOverPeriod: false,
+    lastOccurrenceStatus: null,
     vendorName: 'AWS Cloud Infrastructure',
     category: 'Cloud Infrastructure',
     amount: 1200.0,
@@ -156,6 +200,15 @@ const mockSubscriptions: RecurringExpenseDto[] = [
   {
     id: 'sub-2',
     tenantId: 'tenant-1',
+    supplierId: 'sup-1',
+    supplierName: 'Supplier',
+    currency: null,
+    startDate: '2026-01-01',
+    endDate: null,
+    taxCodeId: null,
+    autoApprove: false,
+    spreadOverPeriod: false,
+    lastOccurrenceStatus: null,
     vendorName: 'GitHub Enterprise',
     category: 'Software & SaaS',
     amount: 2400.0,
@@ -169,6 +222,15 @@ const mockSubscriptions: RecurringExpenseDto[] = [
   {
     id: 'sub-3',
     tenantId: 'tenant-1',
+    supplierId: 'sup-1',
+    supplierName: 'Supplier',
+    currency: null,
+    startDate: '2026-01-01',
+    endDate: null,
+    taxCodeId: null,
+    autoApprove: false,
+    spreadOverPeriod: false,
+    lastOccurrenceStatus: null,
     vendorName: 'Figma Design Team',
     category: 'Software & SaaS',
     amount: 150.0,
@@ -182,6 +244,15 @@ const mockSubscriptions: RecurringExpenseDto[] = [
   {
     id: 'sub-4',
     tenantId: 'tenant-1',
+    supplierId: 'sup-1',
+    supplierName: 'Supplier',
+    currency: null,
+    startDate: '2026-01-01',
+    endDate: null,
+    taxCodeId: null,
+    autoApprove: false,
+    spreadOverPeriod: false,
+    lastOccurrenceStatus: null,
     vendorName: 'Legacy Hosting Server',
     category: 'Cloud Infrastructure',
     amount: 80.0,
@@ -795,108 +866,138 @@ describe('SubscriptionsTable Component', () => {
 });
 
 // ==========================================
-// 6. CreateSubscriptionModal Tests
+// 6. SubscriptionFormModal Tests
 // ==========================================
-describe('CreateSubscriptionModal Component', () => {
-  it('renders all form fields when opened', () => {
-    render(
-      <CreateSubscriptionModal
-        open={true}
-        onClose={vi.fn()}
-        accounts={mockAccounts}
-        onSubmit={vi.fn()}
-      />,
-    );
+describe('SubscriptionFormModal Component', () => {
+  it('renders the fields, and the no-supplier warning', () => {
+    render(<SubscriptionFormModal open={true} onClose={vi.fn()} onSubmit={vi.fn()} />);
 
-    expect(screen.getByTestId('create-subscription-form')).toBeInTheDocument();
-    expect(screen.getByTestId('input-vendor-name')).toBeInTheDocument();
-    expect(screen.getByTestId('select-sub-category')).toBeInTheDocument();
-    expect(screen.getByTestId('select-sub-interval')).toBeInTheDocument();
+    expect(screen.getByTestId('subscription-form')).toBeInTheDocument();
+    expect(screen.getByTestId('select-sub-supplier')).toBeInTheDocument();
+    expect(screen.getByTestId('input-sub-name')).toBeInTheDocument();
     expect(screen.getByTestId('input-sub-amount')).toBeInTheDocument();
-    expect(screen.getByTestId('input-sub-next-date')).toBeInTheDocument();
-    expect(screen.getByTestId('select-sub-account')).toBeInTheDocument();
+    expect(screen.getByTestId('select-sub-interval')).toBeInTheDocument();
+    expect(screen.getByTestId('no-supplier-note')).toBeInTheDocument();
   });
 
-  it('updates live cost summary when annual interval is selected', () => {
-    render(
-      <CreateSubscriptionModal
-        open={true}
-        onClose={vi.fn()}
-        accounts={mockAccounts}
-        onSubmit={vi.fn()}
-      />,
-    );
+  it('offers all four intervals and shows the monthly equivalent', () => {
+    render(<SubscriptionFormModal open={true} onClose={vi.fn()} onSubmit={vi.fn()} />);
 
-    const amountInput = screen.getByTestId('input-sub-amount');
-    fireEvent.change(amountInput, { target: { value: '1200' } });
+    const interval = screen.getByTestId('select-sub-interval') as HTMLSelectElement;
+    expect(Array.from(interval.options).map((o) => o.value)).toEqual([
+      'MONTHLY',
+      'QUARTERLY',
+      'SEMI_ANNUAL',
+      'ANNUAL',
+    ]);
 
-    const intervalSelect = screen.getByTestId('select-sub-interval');
-    fireEvent.change(intervalSelect, { target: { value: 'ANNUAL' } });
+    fireEvent.change(screen.getByTestId('input-sub-amount'), { target: { value: '30000' } });
+    fireEvent.change(interval, { target: { value: 'QUARTERLY' } });
 
-    expect(screen.getByTestId('subscription-cost-summary')).toBeInTheDocument();
-    expect(screen.getByTestId('summary-monthly-cost')).toHaveTextContent('$100.00 / mo');
-    expect(screen.getByTestId('summary-annual-cost')).toHaveTextContent('$1,200.00 / yr');
+    expect(screen.getByTestId('monthly-equivalent')).toHaveTextContent('10,000');
+    expect(screen.getByTestId('check-sub-spread')).toBeInTheDocument();
   });
 
-  it('submits valid recurring expense payload', async () => {
+  it('submits a transformed payload', async () => {
     const handleSubmit = vi.fn().mockResolvedValue(undefined);
     const handleClose = vi.fn();
+    render(<SubscriptionFormModal open={true} onClose={handleClose} onSubmit={handleSubmit} />);
 
-    render(
-      <CreateSubscriptionModal
-        open={true}
-        onClose={handleClose}
-        accounts={mockAccounts}
-        onSubmit={handleSubmit}
-      />,
-    );
+    fireEvent.change(screen.getByTestId('input-sub-name'), { target: { value: 'Office rent' } });
+    fireEvent.change(screen.getByTestId('input-sub-amount'), { target: { value: '30000' } });
+    fireEvent.change(screen.getByTestId('select-sub-interval'), { target: { value: 'QUARTERLY' } });
 
-    fireEvent.change(screen.getByTestId('input-vendor-name'), {
-      target: { value: 'Linear App' },
-    });
-    fireEvent.change(screen.getByTestId('input-sub-amount'), {
-      target: { value: '120' },
-    });
-    fireEvent.change(screen.getByTestId('select-sub-account'), {
-      target: { value: 'acc-1' },
-    });
-
-    const submitBtn = screen.getByTestId('btn-submit-subscription');
     await act(async () => {
-      fireEvent.click(submitBtn);
+      fireEvent.click(screen.getByTestId('btn-submit-subscription'));
     });
 
+    await waitFor(() => expect(handleSubmit).toHaveBeenCalledTimes(1));
     expect(handleSubmit).toHaveBeenCalledWith(
       expect.objectContaining({
-        vendorName: 'Linear App',
-        amount: 120,
-        billingInterval: 'MONTHLY',
-        financeAccountId: 'acc-1',
-        status: 'ACTIVE',
+        vendorName: 'Office rent',
+        amount: 30000,
+        billingInterval: 'QUARTERLY',
+        supplierId: null,
+        endDate: null,
+        autoApprove: false,
+        spreadOverPeriod: true,
       }),
     );
     expect(handleClose).toHaveBeenCalledTimes(1);
   });
 
-  it('shows error if vendor name is empty', async () => {
+  it('shows a validation error and does not submit without a name', async () => {
     const handleSubmit = vi.fn();
+    render(<SubscriptionFormModal open={true} onClose={vi.fn()} onSubmit={handleSubmit} />);
+
+    fireEvent.change(screen.getByTestId('input-sub-amount'), { target: { value: '100' } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('btn-submit-subscription'));
+    });
+
+    expect(await screen.findByText('Name the vendor')).toBeInTheDocument();
+    expect(handleSubmit).not.toHaveBeenCalled();
+  });
+
+  it('locks the interval and start date once bills exist', () => {
     render(
-      <CreateSubscriptionModal
+      <SubscriptionFormModal
         open={true}
         onClose={vi.fn()}
-        accounts={mockAccounts}
-        onSubmit={handleSubmit}
+        onSubmit={vi.fn()}
+        existing={mockSubscriptions[0]}
+        hasOccurrences
       />,
     );
 
-    fireEvent.change(screen.getByTestId('input-vendor-name'), { target: { value: '   ' } });
+    expect(screen.getByTestId('select-sub-interval')).toBeDisabled();
+    expect(screen.getByTestId('input-sub-start')).toBeDisabled();
+  });
 
-    const submitBtn = screen.getByTestId('btn-submit-subscription');
-    await act(async () => {
-      fireEvent.click(submitBtn);
-    });
+  it('disables auto-approve without bill:approve', () => {
+    canApprove = false;
+    render(<SubscriptionFormModal open={true} onClose={vi.fn()} onSubmit={vi.fn()} />);
+    expect(screen.getByTestId('check-sub-auto-approve')).toBeDisabled();
+  });
 
-    expect(screen.getByTestId('subscription-form-error')).toHaveTextContent('Please provide a vendor');
-    expect(handleSubmit).not.toHaveBeenCalled();
+  it('locks money fields on an auto-approving schedule without bill:approve', () => {
+    canApprove = false;
+    render(
+      <SubscriptionFormModal
+        open={true}
+        onClose={vi.fn()}
+        onSubmit={vi.fn()}
+        existing={{ ...mockSubscriptions[0], autoApprove: true }}
+      />,
+    );
+    expect(screen.getByTestId('sensitive-locked-note')).toBeInTheDocument();
+    expect(screen.getByTestId('input-sub-amount')).toBeDisabled();
+    expect(screen.getByTestId('input-sub-name')).not.toBeDisabled();
+  });
+});
+
+describe('SubscriptionsTable badges and history', () => {
+  it('flags a missing supplier, a failed run and an ended schedule', () => {
+    const rows: RecurringExpenseDto[] = [
+      { ...mockSubscriptions[0], id: 'a', supplierId: null, supplierName: null },
+      { ...mockSubscriptions[0], id: 'b', lastOccurrenceStatus: 'FAILED' },
+      { ...mockSubscriptions[0], id: 'c', endDate: '2026-08-25', nextBillingDate: '2026-08-25' },
+    ];
+    render(<SubscriptionsTable subscriptions={rows} />);
+
+    expect(screen.getByTestId('sub-badge-supplier-a')).toHaveTextContent('Link a supplier');
+    expect(screen.getByTestId('sub-badge-failed-b')).toHaveTextContent('Failed');
+    expect(screen.getByTestId('sub-badge-ended-c')).toHaveTextContent('Ended');
+    expect(screen.queryByTestId('sub-badge-supplier-b')).toBeNull();
+  });
+
+  it('shows the interval and expands to the bills it created', () => {
+    const rows: RecurringExpenseDto[] = [{ ...mockSubscriptions[0], billingInterval: 'QUARTERLY' }];
+    render(<SubscriptionsTable subscriptions={rows} />);
+
+    expect(screen.getByTestId('sub-interval-sub-1')).toHaveTextContent('Quarterly');
+    fireEvent.click(screen.getByTestId('btn-expand-sub-sub-1'));
+    expect(screen.getByTestId('occurrence-occ-1')).toHaveTextContent('INV-9');
+    expect(screen.getByRole('link', { name: 'INV-9' })).toHaveAttribute('href', '/purchasing/bills/bill-9');
   });
 });
