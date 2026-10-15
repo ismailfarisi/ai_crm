@@ -229,13 +229,17 @@ admin cannot subscribe or change a plan. That is a deliberate choice about who
 commits the company to a payment, but it surprises people. One line in
 `packages/shared/src/rbac/permissions/organization.ts` changes it.
 
-### Enforcement is on, and existing organizations' trials end 2026-10-15 — open
+### Staging runs with an unlimited trial until Stripe is live — open
 
-`BILLING_ENFORCE` defaults to `true`. Existing organizations were given 30-day
-trials by the S8 migration. When a trial ends, or a failed payment passes the
-14-day grace period, writes return 402 while reads, billing and sign-in keep
-working. Decide before that date whether staging and any real tenants should be
-exempt.
+`BILLING_ENFORCE` defaults to `true`, which pauses writes (402) once a trial
+ends or a failed payment passes its 14-day grace period. Reads, billing and
+sign-in keep working either way. On 2026-10-15, the day the S8 migration's
+30-day trials ran out, staging was switched to `BILLING_ENFORCE=false`. While
+it is off, nothing is restricted, the banners disappear, the billing page shows
+the trial as "No limit", and the daily trial-ending reminders are not sent.
+Turn it back on once Stripe is live (see "Stripe is untested" above). At that
+point, trials that have already lapsed restrict immediately, so extend
+`trial_ends_at` first if existing organizations should get notice.
 
 ---
 

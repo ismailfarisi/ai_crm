@@ -44,6 +44,11 @@ export interface SubscriptionDto {
   /** When writes stop if nothing changes: end of trial, or end of the dunning grace. */
   restrictsAt: string | null;
   restricted: boolean;
+  /**
+   * False while BILLING_ENFORCE is off (e.g. before payments go live): the
+   * trial has no end, nothing is restricted, and no trial reminders are sent.
+   */
+  enforced: boolean;
   provider: 'fake' | 'stripe';
 }
 
