@@ -39,6 +39,7 @@ jobs:
       - run: pnpm --filter shared build
       - run: pnpm --filter api build
       - run: pnpm --filter web build
+      - run: pnpm --filter marketing build
       - uses: actions/upload-artifact@v4
         with:
           name: shared-dist

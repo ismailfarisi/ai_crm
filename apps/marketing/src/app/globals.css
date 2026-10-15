@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+/*
+ * The marketing site is deliberately quieter than the app: white canvas, near
+ * black ink, and the brand amber used only as the "cut line" accent.
+ */
+@theme {
+  --color-canvas: oklch(1 0 0);
+  --color-paper: oklch(0.985 0.004 80);
+  --color-line: oklch(0.92 0.006 80);
+  --color-line-strong: oklch(0.85 0.01 80);
+
+  --color-ink: oklch(0.17 0.01 60);
+  --color-ink-muted: oklch(0.45 0.015 60);
+  --color-ink-subtle: oklch(0.62 0.012 60);
+
+  --color-cut: oklch(0.74 0.16 65);
+  --color-cut-soft: oklch(0.96 0.045 80);
+  --color-good: oklch(0.6 0.14 155);
+  --color-good-soft: oklch(0.955 0.04 155);
+  --color-whatsapp: oklch(0.93 0.06 145);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+  /* --header-h is measured by SiteHeader; the journey tab bar adds ~3rem. */
+  scroll-padding-top: calc(var(--header-h, 6.6rem) + 3.5rem);
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+}
+
+/* Chat bubbles in the product scenes appear one after another. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.rise {
+  opacity: 0;
+  animation: rise 0.5s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .rise {
+    opacity: 1;
+    animation: none;
+  }
+}
