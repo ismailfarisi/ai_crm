@@ -97,7 +97,8 @@ export type NotificationType =
   | 'LOW_STOCK'
   | 'CREDIT_NOTE_AWAITING_APPROVAL'
   | 'PAYMENT_FAILED'
-  | 'TRIAL_ENDING';
+  | 'TRIAL_ENDING'
+  | 'RECURRING_EXPENSE_FAILED';
 
 export interface NotificationDto {
   id: string;
