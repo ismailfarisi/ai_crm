@@ -330,6 +330,26 @@ request, `toolId` in the signal), and the send is pinned at preview time
 the preview and refuses with "This action changed since you approved it — ask
 again." if it differs.
 
+### Stop does not stop a send that is already running — open
+
+Stop marks the turn `CANCELLED` and cancels the workflow, but the commit
+activity does not heartbeat and is cancelled with the default `TRY_CANCEL`, so
+an approved `channel_message.send` that has already started still goes out.
+Its `tool_result` row is then dropped, because `emit()` ignores finished turns,
+and the transcript shows "Stopped." even though the message was delivered (the
+audit row is still written). The window is the second or two a send takes.
+Closing it means running the commit in a non-cancellable scope, recording its
+result, and only then settling the turn as cancelled.
+
+### Stream rows can be skipped if seq commits out of order — open
+
+The SSE cursor assumes `assistant_messages.seq` becomes visible in order. A
+`BIGSERIAL` is assigned at insert, not at commit, so two overlapping writes to
+one conversation (Stop racing a new message) can expose seq `b` before `a < b`;
+the stream then never pushes `a` until the page reloads. Serialising writes per
+conversation (the turn row lock already does this within a turn) or re-reading
+a short window behind the cursor would close it.
+
 ### Each open stream polls every 5 seconds — open
 
 The SSE stream does not close when a turn finishes: it stays open until the
