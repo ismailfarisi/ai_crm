@@ -105,6 +105,7 @@ export class BillingService {
       pastDueSince: sub.pastDueSince?.toISOString() ?? null,
       restrictsAt: restriction.restrictsAt?.toISOString() ?? null,
       restricted: restriction.restricted,
+      enforced: this.enforce(),
       provider: this.provider.name,
     };
   }
@@ -226,9 +227,14 @@ export class BillingService {
     });
   }
 
-  /** Three days before a trial ends, the people who can pay are told. */
+  /**
+   * Three days before a trial ends, the people who can pay are told. Not
+   * while enforcement is off: then the trial does not end, and a warning that
+   * it will would be false.
+   */
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
   async warnEndingTrials(): Promise<void> {
+    if (!this.enforce()) return;
     await this.tenantContext.runAsSystem(async () => {
       const rows: { tenant_id: string; id: string; trial_ends_at: Date }[] =
         await this.dataSource.query(

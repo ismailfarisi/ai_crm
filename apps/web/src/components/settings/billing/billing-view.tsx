@@ -58,7 +58,7 @@ export function BillingView() {
           {sub.status === 'TRIALING' && (
             <div>
               <dt className="text-xs text-ink-subtle">Trial ends</dt>
-              <dd className="text-ink">{date(sub.trialEndsAt)}</dd>
+              <dd className="text-ink">{sub.enforced ? date(sub.trialEndsAt) : 'No limit'}</dd>
             </div>
           )}
           {sub.currentPeriodEnd && (

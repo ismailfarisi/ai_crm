@@ -440,6 +440,52 @@ describe('BillingService', () => {
         expect.objectContaining({ type: 'TRIAL_ENDING' }),
       );
     });
+
+    it('warnEndingTrials stays quiet while enforcement is off — the trial does not end', async () => {
+      config.get.mockImplementation((key: string) =>
+        key === 'billing' ? { provider: 'fake', enforce: false } : null,
+      );
+      dataSource.query.mockResolvedValueOnce([
+        { tenant_id: 'org-1', id: 'sub-1', trial_ends_at: new Date() },
+      ]);
+
+      await service.warnEndingTrials();
+
+      expect(dataSource.query).not.toHaveBeenCalled();
+      expect(notifications.notifyHolders).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('get', () => {
+    const lapsedTrial = {
+      tenantId: 'org-1',
+      status: 'TRIALING',
+      seats: 1,
+      planId: null,
+      trialEndsAt: new Date(Date.now() - 86_400_000),
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+      pastDueSince: null,
+    };
+
+    it('reports a lapsed trial as restricted while enforcement is on', async () => {
+      subscriptionsRepo.findOne.mockResolvedValue(lapsedTrial);
+
+      const dto = await service.get('org-1');
+
+      expect(dto).toMatchObject({ enforced: true, restricted: true });
+    });
+
+    it('reports no limit while enforcement is off', async () => {
+      config.get.mockImplementation((key: string) =>
+        key === 'billing' ? { provider: 'fake', enforce: false } : null,
+      );
+      subscriptionsRepo.findOne.mockResolvedValue(lapsedTrial);
+
+      const dto = await service.get('org-1');
+
+      expect(dto).toMatchObject({ enforced: false, restricted: false, restrictsAt: null });
+    });
   });
 
   describe('listPlans', () => {
