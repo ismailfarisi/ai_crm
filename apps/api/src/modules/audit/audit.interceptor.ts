@@ -13,6 +13,7 @@ import {
   AUDIT_BODYLESS_PREFIXES,
   AUDIT_SKIPPED_PREFIXES,
   AUDIT_SUBJECTS,
+  auditSubjectFor,
   labelForRecord,
   subjectForSegment,
 } from './audit-subjects';
@@ -81,9 +82,10 @@ export class AuditInterceptor implements NestInterceptor {
     // tenant they belong to, since the request itself cannot.
     if (!user) return next.handle();
 
-    const mapped = AUDIT_SUBJECTS[head];
+    const subject = auditSubjectFor(segments);
+    const mapped = subject.mapped;
     const bodyless = AUDIT_BODYLESS_PREFIXES.includes(head);
-    const paramId = idFrom(req.params?.id) ?? idFrom(segments[1]);
+    const paramId = idFrom(req.params?.id) ?? idFrom(subject.idSegment);
     const before =
       mapped && paramId && !bodyless
         ? await this.audit.snapshot(mapped.entity, user.organizationId, paramId)
@@ -96,7 +98,15 @@ export class AuditInterceptor implements NestInterceptor {
         const subjectId =
           paramId ?? idFrom((result as WithId | undefined)?.id) ?? null;
         try {
-          await this.write(req, user, action, head, subjectId, before, bodyless);
+          await this.write(
+            req,
+            user,
+            action,
+            subject.key,
+            subjectId,
+            before,
+            bodyless,
+          );
         } catch (error) {
           // `record` and `snapshot` do not throw; this is belt and braces so
           // the trail can never turn a completed change into a 500.
@@ -115,12 +125,12 @@ export class AuditInterceptor implements NestInterceptor {
     req: Request,
     user: AuthenticatedUser,
     action: string,
-    head: string,
+    key: string,
     subjectId: string | null,
     before: Record<string, unknown> | null,
     bodyless: boolean,
   ): Promise<void> {
-    const mapped = AUDIT_SUBJECTS[head];
+    const mapped = AUDIT_SUBJECTS[key];
     const after =
       mapped && subjectId && !bodyless
         ? await this.audit.snapshot(
@@ -134,7 +144,7 @@ export class AuditInterceptor implements NestInterceptor {
       actorId: user.id,
       actorName: nameOf(user),
       action,
-      subjectType: subjectForSegment(head),
+      subjectType: subjectForSegment(key),
       subjectId,
       // Which record this was. Taken from `after` first: a rename should be
       // filed under the name the record now has. Falls back to `before` so a

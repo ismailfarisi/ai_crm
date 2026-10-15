@@ -14,6 +14,8 @@ import {
 } from '../credits/entities/credit-note.entity';
 import { ExpenseClaim } from '../finance/entities/expense-claim.entity';
 import { FinanceAccount } from '../finance/entities/finance-account.entity';
+import { RecurringExpense } from '../finance/entities/recurring-expense.entity';
+import { PrepaidSchedule } from '../payables/entities/prepaid-schedule.entity';
 import { StockItem } from '../inventory/entities/stock-item.entity';
 import { User } from '../users/entities/user.entity';
 import { Role } from '../rbac/entities/role.entity';
@@ -21,7 +23,8 @@ import { Role } from '../rbac/entities/role.entity';
 /**
  * The one file to touch when a sprint adds a document type worth auditing.
  *
- * Maps the first segment of a route to the entity behind it. The interceptor
+ * Maps the first segment of a route, or the first two for routes nested under
+ * a module prefix such as /finance, to the entity behind it. The interceptor
  * uses it to photograph a record either side of a write, so `before` and
  * `after` come from the database rather than from whatever the handler chose
  * to return. A route whose segment is absent here is still audited — it just
@@ -42,11 +45,19 @@ export const AUDIT_SUBJECTS: Record<
   'work-orders': { subject: 'WORK_ORDER', entity: WorkOrder },
   'credit-notes': { subject: 'CREDIT_NOTE', entity: CreditNote },
   'delivery-notes': { subject: 'DELIVERY_NOTE', entity: DeliveryNote },
-  'expense-claims': { subject: 'EXPENSE_CLAIM', entity: ExpenseClaim },
   users: { subject: 'USER', entity: User },
   roles: { subject: 'ROLE', entity: Role },
   'stock-items': { subject: 'STOCK_ITEM', entity: StockItem },
-  'finance-accounts': { subject: 'FINANCE_ACCOUNT', entity: FinanceAccount },
+  'finance/expenses': { subject: 'EXPENSE_CLAIM', entity: ExpenseClaim },
+  'finance/accounts': { subject: 'FINANCE_ACCOUNT', entity: FinanceAccount },
+  'finance/subscriptions': {
+    subject: 'RECURRING_EXPENSE',
+    entity: RecurringExpense,
+  },
+  'finance/prepaid-schedules': {
+    subject: 'PREPAID_SCHEDULE',
+    entity: PrepaidSchedule,
+  },
 };
 
 /**
@@ -59,11 +70,32 @@ export const AUDIT_BODYLESS_PREFIXES = ['auth', 'ai', 'channels', 'assistant'];
 /** Not recorded at all: reads dressed as writes, and the audit trail itself. */
 export const AUDIT_SKIPPED_PREFIXES = ['audit', 'health', 'notifications'];
 
-/** The subject an unmapped segment gets: the segment itself, singularised. */
+/** Resolves the audit key, mapping and record-id segment for a route. */
+export function auditSubjectFor(segments: string[]): {
+  key: string;
+  mapped?: { subject: string; entity: EntityTarget<ObjectLiteral> };
+  idSegment: string | undefined;
+} {
+  const two = segments.length > 1 ? `${segments[0]}/${segments[1]}` : null;
+  if (two && AUDIT_SUBJECTS[two]) {
+    return { key: two, mapped: AUDIT_SUBJECTS[two], idSegment: segments[2] };
+  }
+  if (two && segments[0] === 'finance') {
+    return { key: two, mapped: undefined, idSegment: segments[2] };
+  }
+  return {
+    key: segments[0],
+    mapped: AUDIT_SUBJECTS[segments[0]],
+    idSegment: segments[1],
+  };
+}
+
+/** The subject an unmapped segment gets: its last part, singularised. */
 export function subjectForSegment(segment: string): string {
   const mapped = AUDIT_SUBJECTS[segment];
   if (mapped) return mapped.subject;
-  return segment.replace(/s$/, '').replace(/-/g, '_').toUpperCase();
+  const last = segment.split('/').pop()!;
+  return last.replace(/s$/, '').replace(/-/g, '_').toUpperCase();
 }
 
 /**
