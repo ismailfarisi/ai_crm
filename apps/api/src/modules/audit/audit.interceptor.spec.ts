@@ -194,4 +194,22 @@ describe('AuditInterceptor', () => {
     await run(contextFor('POST', '/api/v1/quotes', { user: undefined }));
     expect(audit.record).not.toHaveBeenCalled();
   });
+  it('redacts sensitive keys from the fallback body when the snapshot fails', async () => {
+    audit.snapshot.mockResolvedValue(null);
+    await run(
+      contextFor('PATCH', '/api/v1/employees/' + QUOTE_ID, {
+        params: { id: QUOTE_ID },
+        body: { phone: '0501', iban: 'AE070331234567890123456', nested: { Password: 'x' } },
+      }),
+    );
+    const after = audit.record.mock.calls[0][0].after;
+    expect(after).toEqual({ phone: '0501', iban: '[redacted]', nested: { Password: '[redacted]' } });
+    expect(JSON.stringify(after)).not.toContain('AE0703');
+  });
+
+  it('still records the body of a non-sensitive route', async () => {
+    audit.snapshot.mockResolvedValue(null);
+    await run(contextFor('POST', '/api/v1/quotes', { body: { title: 'Boxes', qty: 3 } }));
+    expect(audit.record.mock.calls[0][0].after).toEqual({ title: 'Boxes', qty: 3 });
+  });
 });

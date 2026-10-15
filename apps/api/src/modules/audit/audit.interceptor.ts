@@ -15,6 +15,7 @@ import {
   AUDIT_SUBJECTS,
   auditSubjectFor,
   labelForRecord,
+  redactBody,
   subjectForSegment,
 } from './audit-subjects';
 import { AuditService } from './audit.service';
@@ -174,5 +175,7 @@ const nameOf = (user: AuthenticatedUser): string =>
 function bodyOf(req: Request): Record<string, unknown> | null {
   const body: unknown = req.body;
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
-  return Object.keys(body).length ? (body as Record<string, unknown>) : null;
+  return Object.keys(body).length
+    ? (redactBody(body) as Record<string, unknown>)
+    : null;
 }

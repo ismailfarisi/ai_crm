@@ -72,6 +72,38 @@ export const AUDIT_SUBJECTS: Record<
  */
 export const AUDIT_BODYLESS_PREFIXES = ['auth', 'ai', 'channels', 'assistant'];
 
+/**
+ * Request-body keys never written to the trail, at any depth. The fallback
+ * `after` is the raw body, so a failed snapshot must not leak a plaintext
+ * IBAN or password. Superset of `AUDIT_REDACTED_COLUMNS` (snapshots).
+ */
+export const AUDIT_REDACTED_BODY_KEYS = new Set(
+  [
+    'iban',
+    'ibanEncrypted',
+    'password',
+    'passwordHash',
+    'token',
+    'accessToken',
+    'refreshToken',
+    'currentPassword',
+    'newPassword',
+  ].map((k) => k.toLowerCase()),
+);
+
+/** Copies `value` with every sensitive key replaced by '[redacted]'. */
+export function redactBody(value: unknown, depth = 0): unknown {
+  if (depth > 8 || value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map((v) => redactBody(v, depth + 1));
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value)) {
+    out[k] = AUDIT_REDACTED_BODY_KEYS.has(k.toLowerCase())
+      ? '[redacted]'
+      : redactBody(v, depth + 1);
+  }
+  return out;
+}
+
 /** Not recorded at all: reads dressed as writes, and the audit trail itself. */
 export const AUDIT_SKIPPED_PREFIXES = ['audit', 'health', 'notifications'];
 
