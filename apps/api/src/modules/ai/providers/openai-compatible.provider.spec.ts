@@ -89,7 +89,7 @@ describe('OpenAiCompatibleProvider', () => {
 
       const [url, init] = fetchMock.mock.calls[0];
       expect(url).toBe('https://openrouter.ai/api/v1/chat/completions');
-      expect(init.headers['X-Title']).toBe('Relay CRM');
+      expect(init.headers['X-Title']).toBe('Kerf');
     });
 
     it('maps image content blocks (base64 and url) to OpenAI image_url shape', async () => {

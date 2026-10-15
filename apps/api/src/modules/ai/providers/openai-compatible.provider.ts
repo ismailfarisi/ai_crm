@@ -148,7 +148,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
       'Content-Type': 'application/json',
     };
     if (this.name === 'openrouter') {
-      headers['X-Title'] = 'Relay CRM';
+      headers['X-Title'] = 'Kerf';
     }
 
     let response: Response;

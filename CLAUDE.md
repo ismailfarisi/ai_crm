@@ -1,6 +1,6 @@
-# Relay CRM — working notes
+# Kerf — working notes
 
-pnpm workspace: `apps/api` (NestJS 11 + TypeORM 1 + Postgres 18), `apps/web` (Next.js 16 App Router), `packages/shared`.
+pnpm workspace: `apps/api` (NestJS 11 + TypeORM 1 + Postgres 18), `apps/web` (Next.js 16 App Router), `apps/marketing` (the public kerf.ae site, static Next.js 16 on :3001, copy in `docs/marketing/`), `packages/shared`.
 
 Open trade-offs, deferred work and staging quirks are collected in [docs/FLAGS.md](docs/FLAGS.md). Read it before assuming something is a bug.
 

@@ -163,7 +163,7 @@ export class QuoteAcceptanceService {
     const organization = await this.organizations.findOne({
       where: { id: tenantId },
     });
-    const sender = organization?.legalName || organization?.name || 'Relay CRM';
+    const sender = organization?.legalName || organization?.name || 'Kerf';
     const reference = quote.quoteNumber ?? 'your quote';
     const note = (options.message ?? '').trim();
 

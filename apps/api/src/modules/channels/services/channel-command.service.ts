@@ -55,7 +55,7 @@ const NEGATIVE_REPLIES = new Set([
 const RESOLVED_KEY = '_resolved';
 
 /**
- * Lets internal staff drive Relay by texting the org's Telegram/WhatsApp/Email
+ * Lets internal staff drive Kerf by texting the org's Telegram/WhatsApp/Email
  * channel in plain English.
  *
  * Only recognizes senders already linked via a one-time code — see
@@ -292,7 +292,7 @@ export class ChannelCommandService {
       handled: true,
       userId: candidate.userId,
       reply: {
-        body: 'This channel is now linked to your Relay account. Try "approve QT-2026-0004" or "order 500 sheets of 350gsm board from Papertree".',
+        body: 'This channel is now linked to your Kerf account. Try "approve QT-2026-0004" or "order 500 sheets of 350gsm board from Papertree".',
       },
     };
   }

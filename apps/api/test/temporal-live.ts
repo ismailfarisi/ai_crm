@@ -38,7 +38,7 @@ function request(
 }
 
 async function main() {
-  console.log('⚡ TESTING TEMPORAL INTEGRATION WITH RELAY CRM ⚡\n');
+  console.log('⚡ TESTING TEMPORAL INTEGRATION WITH KERF ⚡\n');
 
   // 1. Check Temporal Server gRPC connection
   console.log('1. Connecting directly to Temporal Server at localhost:7233...');

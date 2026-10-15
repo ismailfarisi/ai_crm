@@ -1,5 +1,5 @@
 /**
- * Relay's own subscription billing, and in-app notifications.
+ * Kerf's own subscription billing, and in-app notifications.
  *
  * `org:manage_billing` has been in the permission catalog since the start and
  * implemented nowhere. A subscription is per organization, priced per seat,

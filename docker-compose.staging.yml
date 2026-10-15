@@ -161,6 +161,24 @@ services:
     ports:
       - "127.0.0.1:3100:3000"
 
+  # The public marketing site. Static and stateless: no env_file, no database,
+  # and its links into the app are baked in at build time.
+  marketing:
+    build:
+      context: .
+      dockerfile: apps/marketing/Dockerfile
+      args:
+        NEXT_PUBLIC_APP_URL: ${PUBLIC_WEB_URL}
+        NEXT_PUBLIC_SITE_URL: ${MARKETING_SITE_URL:-https://www.switeaz.com}
+        NEXT_PUBLIC_CONTACT_EMAIL: ${MARKETING_CONTACT_EMAIL:-hello@kerf.ae}
+    container_name: crm_staging_marketing
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "127.0.0.1:3200:3000"
+
 volumes:
   postgres_staging_data:
   redis_staging_data:

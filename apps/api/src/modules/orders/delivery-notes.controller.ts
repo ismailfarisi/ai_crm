@@ -118,7 +118,7 @@ export class DeliveryNotesController {
       note,
       lines,
       order,
-      organization?.name ?? 'Relay CRM',
+      organization?.name ?? 'Kerf',
     );
     res.set({
       'Content-Type': 'application/pdf',

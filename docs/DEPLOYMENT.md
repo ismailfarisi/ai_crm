@@ -6,6 +6,7 @@ The staging checkout lives at `/home/deploy/ai_crm` on SSH host `ismail`. The ac
 
 - `https://switeaz.com/` and `https://staging.switeaz.com/` to the CRM web container on `127.0.0.1:3100`.
 - `https://api.switeaz.com/` and `https://api-staging.switeaz.com/` to the CRM API on `127.0.0.1:4100`.
+- `https://www.switeaz.com/` to the marketing site (`apps/marketing`) on `127.0.0.1:3200`. Its links into the app use `PUBLIC_WEB_URL`. Set `MARKETING_SITE_URL` or `MARKETING_CONTACT_EMAIL` in `.env.staging` to override the defaults (`https://www.switeaz.com`, `hello@kerf.ae`). These values are baked in at build time.
 
 The canonical public web URL is `https://switeaz.com/`. Keep `PUBLIC_WEB_URL`, `WEB_ORIGIN`, `NEXT_PUBLIC_API_URL`, and `PUBLIC_API_URL` aligned with the environment being deployed. Do not put credentials in this document or print `.env.staging`.
 
@@ -42,7 +43,7 @@ The following commands run on the staging host. Keep `.env.staging` and its back
 3. Build the release images:
 
    ```bash
-   docker compose --env-file .env.staging -f docker-compose.staging.yml build api worker web
+   docker compose --env-file .env.staging -f docker-compose.staging.yml build api worker web marketing
    ```
 
 4. Apply pending migrations with the admin credentials. The API service intentionally removes `DB_ADMIN_*` from its normal runtime environment, so pass them only to this one-off command:
@@ -59,7 +60,7 @@ The following commands run on the staging host. Keep `.env.staging` and its back
 
    ```bash
    docker compose --env-file .env.staging -f docker-compose.staging.yml \
-     up -d --no-deps --force-recreate api worker web
+     up -d --no-deps --force-recreate api worker web marketing
    ```
 
 ## Verify
@@ -70,12 +71,21 @@ Check service state and the API's database health:
 docker compose --env-file .env.staging -f docker-compose.staging.yml ps
 curl -fsS http://127.0.0.1:4100/api/v1/health
 curl -I --max-time 10 https://switeaz.com/
+curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3200/
 ```
 
 An unauthenticated web request may redirect to `/continue`; that is the expected sign-in gate. Confirm the worker logs report its task queues running and review API logs for startup or database-role errors:
 
 ```bash
 docker compose --env-file .env.staging -f docker-compose.staging.yml logs --tail=50 api worker web
+```
+
+The marketing route is a plain reverse proxy (DNS: `www` → this host, proxied the same way as the apex):
+
+```caddy
+www.switeaz.com {
+	reverse_proxy 127.0.0.1:3200
+}
 ```
 
 If a Caddy route changes, validate and reload the active config:

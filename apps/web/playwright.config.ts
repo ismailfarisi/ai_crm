@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 import path from 'path';
 
 /**
- * Playwright E2E configuration for Relay CRM Web Application.
+ * Playwright E2E configuration for the Kerf web application.
  * Follows patterns from playwright-skill for robust Next.js + NestJS testing.
  */
 export default defineConfig({
