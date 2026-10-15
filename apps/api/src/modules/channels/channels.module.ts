@@ -25,6 +25,7 @@ import { IntentAgentConfigService } from './services/intent-agent-config.service
 import { ProductionCheckInService } from './services/production-check-in.service';
 import { SkillActorService } from './services/skill-actor.service';
 import { ChannelsService } from './channels.service';
+import { CHANNEL_SENDER } from './skills/channel-sender.token';
 import { ChannelsController } from './channels.controller';
 import { ChannelsWebhookController } from './channels-webhook.controller';
 
@@ -51,6 +52,7 @@ import { ChannelsWebhookController } from './channels-webhook.controller';
   controllers: [ChannelsController, ChannelsWebhookController],
   providers: [
     ChannelsService,
+    { provide: CHANNEL_SENDER, useExisting: ChannelsService },
     ChannelCryptoService,
     ChannelCommandService,
     ChannelIdempotencyService,

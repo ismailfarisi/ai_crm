@@ -20,7 +20,8 @@ import { ModuleRef } from '@nestjs/core';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
 import { ChannelMessage } from '../entities/channel-message.entity';
-import { ChannelsService } from '../channels.service';
+import type { ChannelsService } from '../channels.service';
+import { CHANNEL_SENDER } from './channel-sender.token';
 import { SkillActorService } from '../services/skill-actor.service';
 import { ChannelThreadReadSkill } from './channel-thread-read.skill';
 import { ChannelMessageSendSkill } from './channel-message-send.skill';
@@ -51,7 +52,8 @@ export class SkillRegistry {
   ) {
     // ChannelsService depends (via ChannelCommandService) on this registry, so
     // it is looked up when a send executes, never at construction.
-    const channels = () => moduleRef.get(ChannelsService, { strict: false });
+    const channels = () =>
+      moduleRef.get<ChannelsService>(CHANNEL_SENDER, { strict: false });
     this.skills = [
       new QuoteApproveSkill(quotes, invoices) as unknown as ChannelSkill<never>,
       new QuoteCreateSkill(quotes, contacts) as unknown as ChannelSkill<never>,
