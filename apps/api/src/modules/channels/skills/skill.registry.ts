@@ -6,7 +6,7 @@ import { PurchasingService } from '../../purchasing/purchasing.service';
 import { ProductionService } from '../../production/production.service';
 import { DeliveryNotesService } from '../../orders/delivery-notes.service';
 import { OrdersService } from '../../orders/orders.service';
-import type { ChannelSkill } from './skill.types';
+import type { ChannelSkill, SkillSurface } from './skill.types';
 import { QuoteApproveSkill } from './quote-approve.skill';
 import { QuoteCreateSkill } from './quote-create.skill';
 import { PurchaseOrderCreateSkill } from './purchase-order-create.skill';
@@ -16,6 +16,15 @@ import { SalesOrderFromDocumentSkill } from './sales-order-from-document.skill';
 import { WorkOrderManageSkill } from './work-order-manage.skill';
 import { WorkOrderQuerySkill } from './work-order-query.skill';
 import { ContactsService } from '../../contacts/contacts.service';
+import { ModuleRef } from '@nestjs/core';
+import { InjectRepository } from '@nestjs/typeorm';
+import type { Repository } from 'typeorm';
+import { ChannelMessage } from '../entities/channel-message.entity';
+import type { ChannelsService } from '../channels.service';
+import { CHANNEL_SENDER } from './channel-sender.token';
+import { SkillActorService } from '../services/skill-actor.service';
+import { ChannelThreadReadSkill } from './channel-thread-read.skill';
+import { ChannelMessageSendSkill } from './channel-message-send.skill';
 
 /**
  * The one file to touch when adding a staff chat capability.
@@ -37,7 +46,14 @@ export class SkillRegistry {
     deliveryNotes: DeliveryNotesService,
     orders: OrdersService,
     contacts: ContactsService,
+    actors: SkillActorService,
+    @InjectRepository(ChannelMessage) channelMessages: Repository<ChannelMessage>,
+    moduleRef: ModuleRef,
   ) {
+    // ChannelsService depends (via ChannelCommandService) on this registry, so
+    // it is looked up when a send executes, never at construction.
+    const channels = () =>
+      moduleRef.get<ChannelsService>(CHANNEL_SENDER, { strict: false });
     this.skills = [
       new QuoteApproveSkill(quotes, invoices) as unknown as ChannelSkill<never>,
       new QuoteCreateSkill(quotes, contacts) as unknown as ChannelSkill<never>,
@@ -59,6 +75,8 @@ export class SkillRegistry {
         quotes,
         orders,
       ) as unknown as ChannelSkill<never>,
+      new ChannelThreadReadSkill(contacts, actors, channelMessages) as unknown as ChannelSkill<never>,
+      new ChannelMessageSendSkill(contacts, actors, channelMessages, channels) as unknown as ChannelSkill<never>,
     ];
   }
 
@@ -77,12 +95,20 @@ export class SkillRegistry {
    * means an unauthorised action cannot be routed to in the first place, and
    * the refusal the user eventually sees is about what they asked for rather
    * than a catalogue of what exists.
+   *
+   * `surface` narrows the list to skills offered there (a skill without
+   * `surfaces` is offered everywhere). Omitting it skips that filter.
    */
-  permittedFor(permissions: Permission[]): ChannelSkill<never>[] {
-    return this.skills.filter((skill) =>
-      skill.requiredPermissions.every((required) =>
-        permissions.includes(required),
-      ),
+  permittedFor(
+    permissions: Permission[],
+    surface?: SkillSurface,
+  ): ChannelSkill<never>[] {
+    return this.skills.filter(
+      (skill) =>
+        (!surface || !skill.surfaces || skill.surfaces.includes(surface)) &&
+        skill.requiredPermissions.every((required) =>
+          permissions.includes(required),
+        ),
     );
   }
 }

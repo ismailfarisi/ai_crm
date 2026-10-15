@@ -16,11 +16,15 @@ import {
   Sun,
   X,
 } from 'lucide-react';
+import { PERMISSIONS } from '@saas/shared';
 import { useSession } from '@/lib/session-context';
 import { cn, initials } from '@/lib/utils';
 import { CORE_ACTION_ITEMS, SECONDARY_SECTIONS } from '@/lib/nav';
 import { useCustomObjects } from '@/hooks/use-custom-objects';
 import { Button } from '@/components/ui/button';
+import { AssistantProvider } from '@/components/assistant/assistant-provider';
+import { AssistantLauncher } from '@/components/assistant/assistant-launcher';
+import { AssistantPanel } from '@/components/assistant/assistant-panel';
 import { NotificationBell } from './notification-bell';
 import { BillingBanner } from './billing-banner';
 
@@ -224,7 +228,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     </div>
   );
 
+  const canUseAssistant = check({ permission: PERMISSIONS.ASSISTANT_USE });
+
   return (
+    <AssistantProvider>
     <div className="flex min-h-screen">
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-border bg-surface lg:flex print:hidden">
@@ -279,6 +286,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="truncate font-semibold text-ink">{pageTitleFor(pathname, customObjects)}</span>
           </div>
 
+          {canUseAssistant && <AssistantLauncher />}
           <NotificationBell />
           <ThemeToggle />
         </header>
@@ -290,7 +298,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="mx-auto max-w-6xl space-y-6 print:max-w-none print:space-y-0">{children}</div>
         </main>
       </div>
+      {canUseAssistant && <AssistantPanel />}
     </div>
+    </AssistantProvider>
   );
 }
 

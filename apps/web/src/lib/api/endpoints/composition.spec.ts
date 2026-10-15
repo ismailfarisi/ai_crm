@@ -19,6 +19,7 @@ import { platformEndpoints, platformKeys } from './platform';
 import { documentTemplatesEndpoints, documentTemplatesKeys } from './document-templates';
 import { savedViewsEndpoints, savedViewsKeys } from './saved-views';
 import { customObjectsEndpoints, customObjectsKeys } from './custom-objects';
+import { assistantEndpoints, assistantKeys } from './assistant';
 
 /**
  * Guards for the composed API surface.
@@ -51,6 +52,7 @@ const SLICES = [
   ['documentTemplates', documentTemplatesEndpoints, documentTemplatesKeys],
   ['savedViews', savedViewsEndpoints, savedViewsKeys],
   ['customObjects', customObjectsEndpoints, customObjectsKeys],
+  ['assistant', assistantEndpoints, assistantKeys],
 ] as const;
 
 const API_SECTIONS = [
@@ -60,7 +62,7 @@ const API_SECTIONS = [
   'purchaseOrders', 'purchasePolicy', 'inventory', 'goodsReceipts', 'bills',
   'salesOrders', 'quoteAcceptance', 'workOrders', 'board', 'creditNotes', 'deliveryNotes', 'tax',
   'notifications', 'billing', 'currencies', 'reports', 'organization', 'audit', 'attachments',
-  'documentTemplates', 'savedViews', 'customObjects',
+  'documentTemplates', 'savedViews', 'customObjects', 'assistant',
 ];
 
 const QUERY_KEYS = [
@@ -85,6 +87,7 @@ const QUERY_KEYS = [
   'organization', 'audit', 'auditForSubject', 'attachments',
   'documentTemplates', 'documentTemplate', 'resolveTemplate',
   'savedViews', 'savedView', 'customObjects',
+  'assistantConversations', 'assistantConversation',
 ];
 
 describe('api surface composition', () => {

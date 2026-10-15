@@ -54,7 +54,7 @@ export const AUDIT_SUBJECTS: Record<
  * else. Their actions are still recorded — `auth.login` is worth having — but
  * never their request or response bodies.
  */
-export const AUDIT_BODYLESS_PREFIXES = ['auth', 'ai', 'channels'];
+export const AUDIT_BODYLESS_PREFIXES = ['auth', 'ai', 'channels', 'assistant'];
 
 /** Not recorded at all: reads dressed as writes, and the audit trail itself. */
 export const AUDIT_SKIPPED_PREFIXES = ['audit', 'health', 'notifications'];

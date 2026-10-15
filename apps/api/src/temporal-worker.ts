@@ -18,6 +18,8 @@ import { createAgentReactActivities } from './modules/channels/workflows/activit
 import { AuditService } from './modules/audit/audit.service';
 import { CustomObjectToolFactoryService } from './modules/custom-objects/services/custom-object-tool-factory.service';
 import { CustomObjectsService } from './modules/custom-objects/services/custom-objects.service';
+import { AssistantEventsService } from './modules/assistant/assistant-events.service';
+import { createAssistantActivities } from './modules/assistant/assistant.activities';
 import { CustomRecordsService } from './modules/custom-objects/services/custom-records.service';
 
 /**
@@ -57,6 +59,10 @@ async function run(): Promise<void> {
       tenantContext: appContext.get(TenantContextService),
       idempotency: appContext.get(ChannelIdempotencyService),
     });
+    const assistantActivities = createAssistantActivities({
+      events: appContext.get(AssistantEventsService),
+      tenantContext: appContext.get(TenantContextService),
+    });
 
     const workers = await Promise.all([
       Worker.create({
@@ -87,10 +93,16 @@ async function run(): Promise<void> {
           require.resolve('./modules/channels/workflows/channel-ai.workflow'),
         activities: channelAiActivities,
       }),
+      Worker.create({
+        connection,
+        taskQueue: 'assistant-queue',
+        workflowsPath: require.resolve('./modules/channels/workflows/agent-react.workflow'),
+        activities: { ...agentReactActivities, ...assistantActivities },
+      }),
     ]);
 
     console.log(
-      'Temporal worker(s) started: finance-queue, quotes-queue, automations-queue, channel-ai-queue',
+      'Temporal worker(s) started: finance-queue, quotes-queue, automations-queue, channel-ai-queue, assistant-queue',
     );
 
     await Promise.all(workers.map((w) => w.run()));

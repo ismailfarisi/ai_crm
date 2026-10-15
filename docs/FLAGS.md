@@ -295,6 +295,111 @@ This is now resolved platform-wide:
 
 ---
 
+## In-app assistant
+
+Each assistant turn runs `agentReActWorkflow` on `assistant-queue` and streams
+its steps over SSE from `assistant_messages`. Deferred work:
+
+### No token streaming — open
+
+The final answer arrives whole, once the model has finished it. Step rows
+stream as they are written, but the text of a single model response does not.
+Closing it means emitting deltas from the provider adapter and an additional
+row kind for partial text, so a reconnect can replay them.
+
+### No attachments — open
+
+The assistant accepts text only. Attachments are not sent to the model, and
+conversations have no owner mapping in `modules/storage/attachment-owners.ts`.
+
+### Contact resolution does not search by phone — open
+
+Contact resolution in the assistant does not use phone numbers as a search key.
+
+### Customer messages always need approval; channel skills are assistant-only — by design
+
+`channel_message.send` always waits for an explicit Approve: it is in
+`ToolExecutionPolicyService.ALWAYS_REQUIRE_APPROVAL`, and the workflow ignores
+`autoApprove` for it. Both channel skills (`channel_thread.read`,
+`channel_message.send`) declare `surfaces: ['assistant']`, so the staff chat
+bot and automation AI nodes are never offered them.
+
+An approval is bound to the tool call it was shown for (`toolCallId` in the
+request, `toolId` in the signal), and the send is pinned at preview time
+(contact id, provider, recipient, body). Before sending, the commit recomputes
+the preview and refuses with "This action changed since you approved it — ask
+again." if it differs.
+
+### Stop does not stop a send that is already running — open
+
+Stop marks the turn `CANCELLED` and cancels the workflow, but the commit
+activity does not heartbeat and is cancelled with the default `TRY_CANCEL`, so
+an approved `channel_message.send` that has already started still goes out.
+Its `tool_result` row is then dropped, because `emit()` ignores finished turns,
+and the transcript shows "Stopped." even though the message was delivered (the
+audit row is still written). The window is the second or two a send takes.
+Closing it means running the commit in a non-cancellable scope, recording its
+result, and only then settling the turn as cancelled.
+
+### Stream rows can be skipped if seq commits out of order — open
+
+The SSE cursor assumes `assistant_messages.seq` becomes visible in order. A
+`BIGSERIAL` is assigned at insert, not at commit, so two overlapping writes to
+one conversation (Stop racing a new message) can expose seq `b` before `a < b`;
+the stream then never pushes `a` until the page reloads. Serialising writes per
+conversation (the turn row lock already does this within a turn) or re-reading
+a short window behind the cursor would close it.
+
+### Each open stream polls every 5 seconds — open
+
+The SSE stream does not close when a turn finishes: it stays open until the
+client disconnects, with a 15s heartbeat and a 5s database poll as a fallback
+to Redis pub/sub. Every open panel or tab therefore costs one small query
+every five seconds. Closing idle streams (or polling only while a turn is
+active) is deferred.
+
+### Stale-turn threshold is 7 minutes — by design
+
+A `RUNNING` turn with no event for 7 minutes is failed by the sweep. The
+commit activity may run for up to 5 minutes with nothing to emit (a
+"Running <tool>" step is written just before it), so the threshold sits
+above that.
+
+### The assistant module runs in the worker too — by design
+
+The worker loads the assistant module, so the stale-turn sweep cron
+(`AssistantSweepService`, every minute) is registered there as well and is
+inert in that process by design.
+
+### Not yet verified against a live stack — open
+
+The first version was checked with the automated suites only. No database,
+Redis, Temporal or Docker was available when it was written. Still to do on a
+running stack:
+
+- **Migration and drift:** `pnpm migration:run && pnpm migration:generate Probe`
+  must report no changes, and `pnpm check:drift` must pass against the
+  baseline.
+- **Worker pickup:** the Temporal worker picks up jobs on `assistant-queue`.
+- **SSE end to end:** the stream delivers, replays from `seq`, and stays
+  open (heartbeat 15s, poll 5s) after the turn finishes.
+- **Manual E2E, seeded data:**
+  1. Ctrl/⌘J on a contact page shows that contact as the context chip.
+  2. "Show me this contact's last messages and draft a follow-up" returns step
+     rows for the thread read and a drafted message.
+  3. "Send it" produces an approval card with recipient, provider and full text.
+  4. The same conversation in a second tab shows the same card.
+  5. Approving in both tabs quickly: one succeeds, the other shows the "no
+     longer waiting for approval" toast, and one outbound row appears.
+  6. The audit log holds `channel_message.send.executed`, `AI_ASSISTED`,
+     `ASSISTANT` and a non-null message id.
+  7. Toggling the browser offline for 5s mid-turn catches up with no duplicates.
+  8. With the worker stopped, a turn left for seven minutes shows "Couldn't
+     finish: The assistant stopped responding". A member without
+     `channel:send` is told it cannot send, and no approval card appears.
+
+---
+
 ## Smaller things found on the way
 
 - **A malformed quote body returns 500, not 400.** `POST /quotes` with a badly

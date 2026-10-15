@@ -17,6 +17,7 @@ export const AUDIT_CHANNELS = [
   'WHATSAPP',
   'EMAIL',
   'SYSTEM',
+  'ASSISTANT',
 ] as const;
 export type AuditChannel = (typeof AUDIT_CHANNELS)[number];
 
