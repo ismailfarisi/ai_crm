@@ -694,7 +694,13 @@ export class PayablesService {
         // resolveLines rounds the combined prepaid debit once; per-line
         // rounding can land a cent either side. The schedules must release
         // exactly what was parked, so the last one absorbs the difference.
-        const prepaid = lines.find((l) => l.accountName === 'Prepaid expenses');
+        // Found by role, not label: a line categorised "Prepaid expenses" is
+        // an ordinary expense with the same name. resolveLines keeps input
+        // order (an exchange line, if any, is appended), so indices match.
+        const prepaidIndex = postingLines.findIndex(
+          (l) => l.role === LEDGER_ROLES.PREPAID_EXPENSES && l.debit > 0,
+        );
+        const prepaid = prepaidIndex >= 0 ? lines[prepaidIndex] : undefined;
         if (prepaid) {
           const sum = schedules.reduce((t, r) => t + Number(r.totalBase), 0);
           const diff = money(Number(prepaid.debit) - sum);

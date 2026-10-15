@@ -509,6 +509,22 @@ describe('spread lines', () => {
     expect(saved).toHaveLength(0);
   });
 
+  it('finds the prepaid debit by role, not by a line labelled "Prepaid expenses"', async () => {
+    const saved: any[] = [];
+    const { service } = makeService({
+      savedSchedules: saved,
+      bill: draftBill({
+        lines: [
+          // An ordinary expense whose category happens to read "Prepaid expenses", posted first.
+          { id: 'l0', description: 'Odd label', qty: 1, unitCost: 500, lineTotal: 500, category: 'Prepaid expenses', servicePeriodStart: null, servicePeriodEnd: null, purchaseOrderLineId: null, orderUnitCost: null },
+          { id: 'l1', description: 'Lease', qty: 1, unitCost: 1200, lineTotal: 1200, category: 'Rent & premises', servicePeriodStart: '2026-01-01', servicePeriodEnd: '2026-12-31', purchaseOrderLineId: null, orderUnitCost: null },
+        ],
+      }),
+    });
+    await service.approve(tenantId, 'bill-1', approver);
+    expect(saved).toEqual([expect.objectContaining({ billLineId: 'l1', totalBase: 1200 })]);
+  });
+
   it('keeps schedule totals equal to the combined prepaid debit', async () => {
     const saved: any[] = [];
     const { service, saved: out } = makeService({
