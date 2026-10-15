@@ -459,8 +459,10 @@ What overheads posting and recurring bills leave out, and the choices behind it.
   says which record.
 - **Balance sheet sections now nest child accounts — by design.** It is a
   shared component, so the P&L and the balance sheet render hierarchy alike.
-- **The seed's annual lease relies on the billing job — open.** The job logs
-  and skips per-row failures, so a broken lease would not fail the seed.
+- **The seed checks its annual lease — resolved.** The billing job logs and
+  skips per-row failures, so the seed asserts afterwards that the lease made
+  one approved bill, one prepaid schedule and one release per elapsed month,
+  and fails otherwise.
 - **Expense claims are still not FX-converted** — see "Money and currency".
 
 ---

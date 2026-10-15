@@ -5,7 +5,9 @@ import {
   CONTACT_SOURCES,
   CONTACT_STATUSES,
   isoDate,
+  monthsTouched,
   SYSTEM_ROLES,
+  utcToday,
 } from '@saas/shared';
 import { AppModule } from '@/app.module';
 import { AuthService } from '@/modules/auth/auth.service';
@@ -18,7 +20,10 @@ import { Supplier } from '@/modules/purchasing/entities/supplier.entity';
 import { RecurringExpense } from '@/modules/finance/entities/recurring-expense.entity';
 import { RecurringBillingService } from '@/modules/overheads/recurring-billing.service';
 import { PrepaidService } from '@/modules/overheads/prepaid.service';
-import { DataSource } from 'typeorm';
+import { SupplierBill } from '@/modules/payables/entities/supplier-bill.entity';
+import { PrepaidSchedule } from '@/modules/payables/entities/prepaid-schedule.entity';
+import { JournalEntry } from '@/modules/finance/entities/journal-entry.entity';
+import { DataSource, In } from 'typeorm';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { TenantContextService } from '@/common/context/tenant-context.service';
 
@@ -81,6 +86,7 @@ async function seed(): Promise<void> {
     const teams = app.get(TeamsService);
 
     let leaseSeeded = false;
+    let leaseTenantId: string | null = null;
 
     await tenantContext.runAsSystem(async () => {
       const orgRepo = dataSource.getRepository(Organization);
@@ -270,6 +276,7 @@ async function seed(): Promise<void> {
           }),
         );
         leaseSeeded = true;
+        leaseTenantId = organizationId;
       });
 
       logger.log('');
@@ -290,10 +297,68 @@ async function seed(): Promise<void> {
     if (leaseSeeded) {
       await app.get(RecurringBillingService).run();
       await app.get(PrepaidService).releaseDue();
+      // run() logs and skips a failing row; fail the seed instead, so CI's
+      // books check never passes without having exercised the lease.
+      await tenantContext.runWithTenant(leaseTenantId!, () =>
+        assertLeaseBilled(dataSource, leaseTenantId!, logger),
+      );
       logger.log('Billed and released the seeded annual lease.');
     }
   } finally {
     await app.close();
+  }
+}
+
+/**
+ * The seeded lease must have produced one approved bill, its prepaid schedule,
+ * and one release per month from the first month through this one.
+ */
+async function assertLeaseBilled(
+  dataSource: DataSource,
+  tenantId: string,
+  logger: Logger,
+): Promise<void> {
+  const supplier = await dataSource.getRepository(Supplier).findOne({
+    where: { tenantId, companyName: LEASE_SUPPLIER },
+  });
+  if (!supplier) throw new Error(`Seed lease check: supplier "${LEASE_SUPPLIER}" not found`);
+  const bills = await dataSource.getRepository(SupplierBill).find({
+    where: { tenantId, supplierId: supplier.id },
+  });
+  const approved = bills.filter((b) =>
+    ['APPROVED', 'PARTIALLY_PAID', 'PAID'].includes(b.status),
+  );
+  const schedules = approved.length
+    ? await dataSource.getRepository(PrepaidSchedule).find({
+        where: { tenantId, billId: In(approved.map((b) => b.id)) },
+      })
+    : [];
+  const schedule = schedules[0];
+  const expected = schedule
+    ? Math.min(schedule.months, monthsTouched(schedule.firstMonth, utcToday()))
+    : 0;
+  const releases = schedule
+    ? await dataSource.getRepository(JournalEntry).count({
+        where: { tenantId, referenceType: 'PREPAID', referenceId: schedule.id },
+      })
+    : 0;
+  logger.log(
+    `Seed lease: ${bills.length} bill(s), ${approved.length} approved, ${schedules.length} prepaid schedule(s), ${releases}/${expected} monthly release(s)`,
+  );
+  if (bills.length !== 1 || approved.length !== 1) {
+    throw new Error(
+      `Seed lease check: expected exactly one approved bill for "${LEASE_SUPPLIER}", found ${bills.length} bill(s) with statuses [${bills.map((b) => b.status).join(', ')}]. See the recurring billing log above.`,
+    );
+  }
+  if (schedules.length !== 1) {
+    throw new Error(
+      `Seed lease check: expected one prepaid schedule for ${approved[0].billNumber}, found ${schedules.length}`,
+    );
+  }
+  if (releases !== expected) {
+    throw new Error(
+      `Seed lease check: expected ${expected} PREPAID release entries for schedule ${schedule.id} (from ${schedule.firstMonth} through this month), found ${releases}`,
+    );
   }
 }
 
