@@ -12,6 +12,7 @@ import { PayablesModule } from '../payables/payables.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { RbacModule } from '../rbac/rbac.module';
 import { AuditModule } from '../audit/audit.module';
+import { TaxModule } from '../tax/tax.module';
 import { OccurrenceStore } from './occurrence.store';
 import { AmortizationStore } from './amortization.store';
 import { PrepaidService } from './prepaid.service';
@@ -33,6 +34,7 @@ import { RecurringBillingService } from './recurring-billing.service';
     NotificationsModule,
     RbacModule,
     AuditModule,
+    TaxModule,
   ],
   controllers: [PrepaidController],
   providers: [OccurrenceStore, AmortizationStore, PrepaidService, RecurringBillingService],

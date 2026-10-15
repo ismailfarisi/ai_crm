@@ -191,8 +191,9 @@ export function SubscriptionFormModal({
         </div>
 
         <Input
-          label="Amount per bill"
+          label="Amount before tax"
           data-testid="input-sub-amount"
+          hint="Tax is added from the supplier's tax code when the bill is created."
           type="number"
           step="0.01"
           disabled={sensitiveLocked}

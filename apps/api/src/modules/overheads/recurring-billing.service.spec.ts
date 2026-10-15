@@ -37,12 +37,15 @@ function setup(over: Partial<any> = {}) {
   const audit = { record: jest.fn(async () => undefined) };
   const recurring = { update: jest.fn(async () => ({ affected: 1 })), find: jest.fn(async () => [row]) };
   const tenantContext = { runAsSystem: (fn: any) => fn(), runWithTenant: (_t: string, fn: any) => fn() };
+  // No tax code anywhere unless a test says otherwise.
+  const tax = { purchaseTaxFor: jest.fn(async (): Promise<any> => ({ code: null, rate: 0 })) };
   const service = new RecurringBillingService(
     recurring as any, occurrenceRepo as any, payables as any, rbac as any,
     notifications as any, audit as any, tenantContext as any,
     { releaseDue: jest.fn() } as any,
+    tax as any,
   );
-  return { service, row, occurrences, payables, rbac, notifications, audit, recurring, occurrenceRepo, tenantContext };
+  return { service, tax, row, occurrences, payables, rbac, notifications, audit, recurring, occurrenceRepo, tenantContext };
 }
 
 describe('RecurringBillingService', () => {
@@ -68,6 +71,37 @@ describe('RecurringBillingService', () => {
     const input = payables.create.mock.calls[0][2];
     expect(input.supplierInvoiceNumber).toBe('REC-rec-1-2026-01-01');
     expect(input.lines).toEqual([expect.objectContaining({ qty: 1, unitCost: 120000, category: 'Rent & premises', servicePeriodStart: '2026-01-01', servicePeriodEnd: '2026-12-31' })]);
+  });
+
+  describe('tax (the schedule amount is net)', () => {
+    const annual = { billingInterval: 'ANNUAL', amount: 120000, startDate: '2026-01-01', nextBillingDate: new Date('2026-01-01T00:00:00Z') };
+
+    it('adds tax at the resolved purchase code rate and passes that code', async () => {
+      const { service, row, payables, tax } = setup({ ...annual, taxCodeId: null });
+      tax.purchaseTaxFor.mockResolvedValue({ code: { id: 'tc-5', rate: 5, isReverseCharge: false }, rate: 5 });
+      await service.generateFor(row as any, '2026-01-01');
+      expect(tax.purchaseTaxFor).toHaveBeenCalledWith(tenantId, null, 'sup-1');
+      expect(payables.create.mock.calls[0][2]).toMatchObject({ taxAmount: 6000, taxCodeId: 'tc-5' });
+    });
+
+    it('uses the schedule own code ahead of the supplier one', async () => {
+      const { service, row, tax } = setup({ ...annual, taxCodeId: 'tc-own' });
+      await service.generateFor(row as any, '2026-01-01');
+      expect(tax.purchaseTaxFor).toHaveBeenCalledWith(tenantId, 'tc-own', 'sup-1');
+    });
+
+    it('adds nothing for a reverse-charge or exempt code', async () => {
+      const { service, row, payables, tax } = setup(annual);
+      tax.purchaseTaxFor.mockResolvedValue({ code: { id: 'tc-rc', rate: 5, isReverseCharge: true }, rate: 0 });
+      await service.generateFor(row as any, '2026-01-01');
+      expect(payables.create.mock.calls[0][2]).toMatchObject({ taxAmount: 0, taxCodeId: 'tc-rc' });
+    });
+
+    it('adds nothing when no code applies', async () => {
+      const { service, row, payables } = setup(annual);
+      await service.generateFor(row as any, '2026-01-01');
+      expect(payables.create.mock.calls[0][2]).toMatchObject({ taxAmount: 0, taxCodeId: null });
+    });
   });
 
   it('approves as the user who switched auto-approve on, with their current permissions', async () => {

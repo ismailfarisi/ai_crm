@@ -16,8 +16,11 @@ import { RbacService } from '../rbac/rbac.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuditService } from '../audit/audit.service';
 import { TenantContextService } from '@/common/context/tenant-context.service';
+import { TaxService } from '../tax/tax.service';
 import { PrepaidService } from './prepaid.service';
 import { IN_PROGRESS, OccurrenceStore } from './occurrence.store';
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
  * How long a period may sit claimed ("in progress") before it counts as stuck.
@@ -49,6 +52,7 @@ export class RecurringBillingService {
     private readonly audit: AuditService,
     private readonly tenantContext: TenantContextService,
     private readonly prepaid: PrepaidService,
+    private readonly tax: TaxService,
   ) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_2AM)
@@ -142,6 +146,13 @@ export class RecurringBillingService {
       const attempts = claim.attempts + 1;
       let bill: SupplierBill;
       try {
+        // The schedule's amount is net: tax comes from the schedule's code,
+        // else the supplier's, exactly as a bill entered by hand would get it.
+        const tax = await this.tax.purchaseTaxFor(
+          row.tenantId,
+          row.taxCodeId,
+          row.supplierId,
+        );
         bill = await this.payables.create(row.tenantId, row.createdById, {
           supplierId: row.supplierId!,
           purchaseOrderId: null,
@@ -150,8 +161,8 @@ export class RecurringBillingService {
           supplierInvoiceNumber: `REC-${row.id}-${period.start}`,
           billDate: new Date(`${period.start}T00:00:00Z`),
           dueDate: null,
-          taxAmount: 0,
-          taxCodeId: row.taxCodeId,
+          taxAmount: round2((Number(row.amount) * tax.rate) / 100),
+          taxCodeId: tax.code?.id ?? null,
           notes: `Generated from recurring expense "${row.vendorName}" for ${period.start} – ${period.end}`,
           lines: [
             {
