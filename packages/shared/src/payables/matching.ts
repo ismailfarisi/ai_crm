@@ -313,6 +313,9 @@ export interface SupplierBillLineDto {
   unitCost: number;
   orderUnitCost: number | null;
   lineTotal: number;
+  category?: string | null;
+  servicePeriodStart?: string | null;
+  servicePeriodEnd?: string | null;
 }
 
 export interface SupplierBillDto {

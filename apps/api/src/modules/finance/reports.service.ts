@@ -75,7 +75,7 @@ export class ReportsService {
         );
       }
     }
-    return accounts
+    const lines = accounts
       .map((account): StatementLineDto => {
         const debitMinusCredit = (totals.get(account.id) ?? 0) / 100;
         return {
@@ -90,8 +90,15 @@ export class ReportsService {
               : -debitMinusCredit,
           ),
         };
-      })
-      .filter((line) => cents(line.amount) !== 0);
+      });
+    // A parent that nets to zero stays when a child has a balance, so the
+    // P&L can still show the group header the child is nested under.
+    const parentsWithActivity = new Set(
+      lines.filter((l) => l.parentId && cents(l.amount) !== 0).map((l) => l.parentId),
+    );
+    return lines.filter(
+      (line) => cents(line.amount) !== 0 || parentsWithActivity.has(line.ledgerAccountId),
+    );
   }
 
   async profitAndLoss(

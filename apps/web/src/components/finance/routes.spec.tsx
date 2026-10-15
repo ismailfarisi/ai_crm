@@ -234,6 +234,7 @@ vi.mock('@/components/platform/activity-timeline', () => ({
 const mockUpdateAccount = vi.fn();
 
 vi.mock('@/hooks/use-finance', () => ({
+  useCashForecast: () => ({ data: { baseCurrency: 'USD', months: [] }, isLoading: false }),
   useFinanceOverview: () => ({ data: mockOverview, isLoading: false }),
   useFinanceAccounts: () => ({ data: mockAccounts, isLoading: false }),
   useCategoryBudgets: () => ({ data: mockBudgets, isLoading: false }),

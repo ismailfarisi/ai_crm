@@ -11,6 +11,7 @@ import { usePurchasePolicy } from '@/hooks/use-purchase-orders';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/field';
+import { buildExtraLine, ExtraLinesEditor, type ExtraLineDraft } from './bill-extra-lines';
 
 interface EnterBillDialogProps {
   open: boolean;
@@ -35,12 +36,14 @@ export function EnterBillDialog({ open, onClose, order }: EnterBillDialogProps) 
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [billDate, setBillDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [tax, setTax] = useState('');
+  const [extras, setExtras] = useState<ExtraLineDraft[]>([]);
   const [edits, setEdits] = useState<Record<string, { qty?: string; unitCost?: string }>>({});
 
   const close = () => {
     setInvoiceNumber('');
     setTax('');
     setEdits({});
+    setExtras([]);
     onClose();
   };
 
@@ -67,7 +70,10 @@ export function EnterBillDialog({ open, onClose, order }: EnterBillDialogProps) 
     })),
     policy?.varianceTolerancePct ?? 0,
   );
-  const totals = billTotals(included, Number(tax) || 0);
+  const extraResults = extras.map(buildExtraLine);
+  const extraLines = extraResults.flatMap((r) => (r.status === 'ok' ? [r.line] : []));
+  const extrasInvalid = extraResults.some((r) => r.status === 'invalid');
+  const totals = billTotals([...included, ...extraLines], Number(tax) || 0);
 
   return (
     <Dialog
@@ -83,7 +89,7 @@ export function EnterBillDialog({ open, onClose, order }: EnterBillDialogProps) 
           </Button>
           <Button
             loading={create.isPending}
-            disabled={!invoiceNumber.trim() || included.length === 0}
+            disabled={!invoiceNumber.trim() || included.length + extraLines.length === 0 || extrasInvalid}
             onClick={async () => {
               await create.mutateAsync({
                 supplierId: order.supplierId,
@@ -95,12 +101,18 @@ export function EnterBillDialog({ open, onClose, order }: EnterBillDialogProps) 
                 // Left to the purchase tax rules for this supplier.
                 taxCodeId: null,
                 notes: null,
-                lines: included.map((r) => ({
-                  purchaseOrderLineId: r.line.purchaseOrderLineId,
-                  description: r.line.description,
-                  qty: r.qty,
-                  unitCost: r.unitCost,
-                })),
+                lines: [
+                  ...included.map((r) => ({
+                    purchaseOrderLineId: r.line.purchaseOrderLineId,
+                    description: r.line.description,
+                    qty: r.qty,
+                    unitCost: r.unitCost,
+                    category: null,
+                    servicePeriodStart: null,
+                    servicePeriodEnd: null,
+                  })),
+                  ...extraLines,
+                ],
               });
               close();
             }}
@@ -193,6 +205,8 @@ export function EnterBillDialog({ open, onClose, order }: EnterBillDialogProps) 
             </tbody>
           </table>
         </div>
+
+        <ExtraLinesEditor lines={extras} onChange={setExtras} />
 
         {preview.variances.length > 0 ? (
           <div className="rounded border border-warning/40 bg-warning-soft/40 p-3 text-sm">

@@ -19,6 +19,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { EmptyState, PageHeader } from '@/components/ui/primitives';
 import { Input, Textarea } from '@/components/ui/field';
 import { BillStatusPill } from './bills-view';
+import { PrepaidSchedulesPanel } from './prepaid-schedules-panel';
 import { AttachmentsPanel } from '@/components/platform/attachments-panel';
 import { ActivityTimeline } from '@/components/platform/activity-timeline';
 
@@ -159,7 +160,21 @@ export function BillDetail({ id }: { id: string }) {
           <tbody>
             {bill.lines.map((line) => (
               <tr key={line.id} className="border-b border-line/50 last:border-0">
-                <td className="px-4 py-2 text-ink">{line.description}</td>
+                <td className="px-4 py-2 text-ink">
+                  {line.description}
+                  {(line.category || line.servicePeriodStart) && (
+                    <p className="text-xs text-ink-subtle">
+                      {line.category}
+                      {line.category && line.servicePeriodStart && ' · '}
+                      {line.servicePeriodStart && line.servicePeriodEnd && (
+                        <>
+                          Spread {new Date(line.servicePeriodStart).toLocaleDateString()} to{' '}
+                          {new Date(line.servicePeriodEnd).toLocaleDateString()}
+                        </>
+                      )}
+                    </p>
+                  )}
+                </td>
                 <td className="px-4 py-2 text-right tabular-nums text-ink-muted">{line.qty}</td>
                 <td className="px-4 py-2 text-right tabular-nums text-ink">{line.unitCost.toFixed(4)}</td>
                 <td className="px-4 py-2 text-right tabular-nums text-ink-subtle">
@@ -171,6 +186,8 @@ export function BillDetail({ id }: { id: string }) {
           </tbody>
         </table>
       </div>
+
+      {bill.status !== 'DRAFT' && <PrepaidSchedulesPanel billId={id} lines={bill.lines} />}
 
       {payments.length > 0 && (
         <section aria-label="Payments">
