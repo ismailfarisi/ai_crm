@@ -884,6 +884,45 @@ describe('FinanceService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
+    it('changing supplierId saves the new id with no stale supplier object', async () => {
+      const NEW = '33333333-3333-4333-8333-333333333333';
+      seedRecurring({ id: 'r1', supplier: { id: SUPPLIER, companyName: 'Old' } });
+      await service.updateSubscription(tenantId, 'r1', manager, { supplierId: NEW });
+      const saved = (recurringRepo.save as jest.Mock).mock.calls[0][0];
+      expect(saved.supplierId).toBe(NEW);
+      expect(saved.supplier).toBeUndefined();
+    });
+
+    describe('auto-approve schedules', () => {
+      beforeEach(() =>
+        seedRecurring({ id: 'r1', autoApprove: true, autoApproveById: 'u-boss' }),
+      );
+
+      it('refuses an amount change from someone who cannot approve bills', async () => {
+        await expect(
+          service.updateSubscription(tenantId, 'r1', manager, { amount: 1 }),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('allows a vendor name change from a non-approver', async () => {
+        await expect(
+          service.updateSubscription(tenantId, 'r1', manager, { vendorName: 'New name' }),
+        ).resolves.toBeDefined();
+      });
+
+      it('ignores values sent but unchanged', async () => {
+        await expect(
+          service.updateSubscription(tenantId, 'r1', manager, { amount: 120000 }),
+        ).resolves.toBeDefined();
+      });
+
+      it('allows an amount change from an approver', async () => {
+        await expect(
+          service.updateSubscription(tenantId, 'r1', managerApprover, { amount: 1 }),
+        ).resolves.toBeDefined();
+      });
+    });
+
     it('turning auto-approve off clears who it runs as', async () => {
       seedRecurring({ id: 'r1', autoApprove: true, autoApproveById: 'u-boss' });
       const updated = await service.updateSubscription(tenantId, 'r1', manager, {

@@ -817,6 +817,18 @@ export class FinanceService {
     if (reshapes && (await this.occurrences.count({ where: { tenantId, recurringExpenseId: id } })) > 0) {
       throw new BadRequestException('The start date and interval cannot change once a bill has been generated. Cancel this one and create a new schedule.');
     }
+    if (row.autoApprove && input.autoApprove !== false) {
+      // A schedule that approves its own bills is changed only by someone who
+      // could approve those bills; sent-but-unchanged values don't count.
+      const changesMoney = (
+        ['amount', 'supplierId', 'taxCodeId', 'category', 'spreadOverPeriod'] as const
+      ).some((k) => input[k] !== undefined && input[k] !== row[k]);
+      if (changesMoney && !actor.permissions.includes(PERMISSIONS.BILL_APPROVE)) {
+        throw new ForbiddenException(
+          'Only someone who can approve bills can change a schedule that approves its own bills.',
+        );
+      }
+    }
     if (input.autoApprove === true && !row.autoApprove) {
       this.assertCanAutoApprove(actor, true);
       row.autoApproveById = actor.userId;
@@ -824,6 +836,8 @@ export class FinanceService {
     if (input.autoApprove === false) row.autoApproveById = null;
 
     Object.assign(row, input);
+    // The loaded relation would win over the new supplierId on save.
+    if (input.supplierId !== undefined) row.supplier = undefined;
     if (row.endDate && row.endDate <= row.startDate) {
       throw new BadRequestException('The end date must be after the start');
     }
