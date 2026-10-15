@@ -93,7 +93,12 @@ export class RbacService implements OnModuleInit {
     }
 
     if (toInsert.length) {
-      await this.permissions.insert(toInsert);
+      // The API and the worker both sync on boot; whichever is second must
+      // not fail on the rows the first just wrote.
+      await this.permissions.upsert(toInsert, {
+        conflictPaths: ['key'],
+        skipUpdateIfNoValuesChanged: true,
+      });
     }
     if (toUpdate.length) {
       await this.permissions.save(toUpdate);

@@ -25,7 +25,7 @@ describe('RbacService', () => {
   };
   let permissionsRepo: {
     find: jest.Mock;
-    insert: jest.Mock;
+    upsert: jest.Mock;
     save: jest.Mock;
   };
   let dataSource: {
@@ -56,7 +56,7 @@ describe('RbacService', () => {
 
     permissionsRepo = {
       find: jest.fn().mockResolvedValue([]),
-      insert: jest.fn().mockResolvedValue(undefined),
+      upsert: jest.fn().mockResolvedValue(undefined),
       save: jest.fn().mockImplementation(async (p) => p),
     };
 
@@ -125,13 +125,15 @@ describe('RbacService', () => {
 
       await service.syncPermissionCatalog();
 
-      expect(permissionsRepo.insert).toHaveBeenCalledTimes(1);
-      const inserted = permissionsRepo.insert.mock.calls[0][0] as Partial<PermissionEntity>[];
+      expect(permissionsRepo.upsert).toHaveBeenCalledTimes(1);
+      const inserted = permissionsRepo.upsert.mock.calls[0][0] as Partial<PermissionEntity>[];
       expect(inserted.length).toBe(ALL_PERMISSIONS.length);
       expect(inserted[0]).toHaveProperty('key');
       expect(inserted[0]).toHaveProperty('subject');
       expect(inserted[0]).toHaveProperty('action');
       expect(inserted[0]).toHaveProperty('description');
+      // A concurrent boot (API and worker) may have inserted the same keys.
+      expect(permissionsRepo.upsert.mock.calls[0][1]).toMatchObject({ conflictPaths: ['key'] });
     });
 
     it('updates existing permissions if description changed', async () => {
@@ -158,7 +160,7 @@ describe('RbacService', () => {
 
       await service.syncPermissionCatalog();
 
-      expect(permissionsRepo.insert).not.toHaveBeenCalled();
+      expect(permissionsRepo.upsert).not.toHaveBeenCalled();
       expect(permissionsRepo.save).toHaveBeenCalledTimes(1);
       const updated = permissionsRepo.save.mock.calls[0][0] as PermissionEntity[];
       expect(updated.length).toBe(1);
