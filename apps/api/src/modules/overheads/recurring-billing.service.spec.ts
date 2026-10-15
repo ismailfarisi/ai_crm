@@ -121,21 +121,48 @@ describe('RecurringBillingService', () => {
     expect(payables.create.mock.calls[0][2].billDate.toISOString().slice(0, 10)).toBe('2026-08-01');
   });
 
-  it('does not move past a period another run still holds', async () => {
-    const { service, row, payables, occurrenceRepo, recurring } = setup();
+  it('does not move past a period another run still holds, and stays quiet while it is fresh', async () => {
+    const { service, row, payables, occurrenceRepo, recurring, notifications } = setup();
+    const error = jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
     occurrenceRepo.claim.mockResolvedValueOnce(null);
-    occurrenceRepo.findByPeriod.mockResolvedValueOnce({ status: 'FAILED', error: 'in progress' });
+    occurrenceRepo.findByPeriod.mockResolvedValueOnce({ status: 'FAILED', error: 'in progress', updatedAt: new Date(Date.now() - 59 * 60 * 1000) });
     await service.generateFor(row as any, '2026-08-01');
     expect(payables.create).not.toHaveBeenCalled();
     expect(recurring.update).not.toHaveBeenCalled();
+    expect(notifications.notifyHolders).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
   });
 
-  it('never marks a created bill FAILED when a later step throws', async () => {
-    const { service, row, occurrences, occurrenceRepo } = setup();
+  it('reports a period stuck in progress for over an hour, without billing it', async () => {
+    const { service, row, payables, occurrenceRepo, recurring, notifications } = setup();
+    const error = jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
+    occurrenceRepo.claim.mockResolvedValueOnce(null);
+    occurrenceRepo.findByPeriod.mockResolvedValueOnce({ status: 'FAILED', error: 'in progress', updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000) });
+    await service.generateFor(row as any, '2026-08-01');
+    expect(payables.create).not.toHaveBeenCalled();
+    expect(recurring.update).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith(expect.stringMatching(/tenant 1111.*schedule rec-1.*period 2026-07-01/));
+    expect(notifications.notifyHolders).toHaveBeenCalledTimes(1);
+    expect(notifications.notifyHolders).toHaveBeenCalledWith(tenantId, PERMISSIONS.FINANCE_MANAGE, expect.objectContaining({
+      type: 'RECURRING_EXPENSE_FAILED', link: '/finance/subscriptions', entityType: 'RECURRING_EXPENSE', entityId: 'rec-1',
+      title: expect.stringMatching(/Landlord.*2026-07-01.*stuck/),
+    }));
+  });
+
+  it('reports an error after the bill was created, keeps the claim and stops catch-up', async () => {
+    const { service, row, occurrences, occurrenceRepo, payables, notifications } = setup();
+    const error = jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
     occurrenceRepo.update.mockRejectedValueOnce(new Error('connection lost'));
-    await expect(service.generateFor(row as any, '2026-07-01')).rejects.toThrow('connection lost');
+    await service.generateFor(row as any, '2026-10-16');
+    expect(payables.create).toHaveBeenCalledTimes(1);
     // Stays claimed ("in progress"), so no run can bill it a second time.
     expect(occurrences[0]).toMatchObject({ status: 'FAILED', error: 'in progress', attempts: 0 });
+    expect(row.nextBillingDate.toISOString().slice(0, 10)).toBe('2026-07-01');
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('connection lost'));
+    expect(notifications.notifyHolders).toHaveBeenCalledTimes(1);
+    expect(notifications.notifyHolders).toHaveBeenCalledWith(tenantId, PERMISSIONS.FINANCE_MANAGE, expect.objectContaining({
+      type: 'RECURRING_EXPENSE_FAILED', entityId: 'rec-1', title: expect.stringContaining('stuck'), body: expect.stringContaining('BILL-1'),
+    }));
   });
 
   it('stops at the end date', async () => {

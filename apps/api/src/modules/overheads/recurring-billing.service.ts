@@ -16,7 +16,14 @@ import { RbacService } from '../rbac/rbac.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuditService } from '../audit/audit.service';
 import { TenantContextService } from '@/common/context/tenant-context.service';
-import { OccurrenceStore } from './occurrence.store';
+import { IN_PROGRESS, OccurrenceStore } from './occurrence.store';
+
+/**
+ * How long a period may sit claimed ("in progress") before it counts as stuck.
+ * A generation takes seconds; anything older crashed or lost its final write,
+ * and stays held (never re-billed) until someone looks at it.
+ */
+export const STALE_CLAIM_MS = 60 * 60 * 1000;
 
 /**
  * Turns recurring expenses into supplier bills when they fall due.
@@ -102,6 +109,21 @@ export class RecurringBillingService {
           continue;
         }
         // Another run holds it (or crashed holding it). Later periods wait.
+        if (
+          existing?.status === 'FAILED' &&
+          existing.error === IN_PROGRESS &&
+          existing.updatedAt &&
+          Date.now() - new Date(existing.updatedAt).getTime() > STALE_CLAIM_MS
+        ) {
+          this.logger.error(
+            `Recurring billing stuck: tenant ${row.tenantId}, schedule ${row.id}, period ${period.start}–${period.end} has been in progress since ${new Date(existing.updatedAt).toISOString()}`,
+          );
+          await this.notifyStuck(
+            row,
+            period,
+            'a previous run did not finish generating its bill',
+          );
+        }
         return;
       }
 
@@ -160,36 +182,78 @@ export class RecurringBillingService {
         return;
       }
 
-      // The bill exists from here on. Anything that throws now leaves the
-      // claim "in progress" — stuck, but never billed twice.
-      await this.occurrences.update(claim.id, {
-        status: 'GENERATED',
-        billId: bill.id,
-        error: null,
-        attempts,
-      });
-      await this.advance(row, n + 1);
-
-      await this.audit.record({
-        tenantId: row.tenantId,
-        action: 'recurring_expense.generate',
-        subjectType: 'RECURRING_EXPENSE',
-        subjectId: row.id,
-        actorId: null,
-        actorName: 'Recurring billing',
-        channel: 'SYSTEM',
-        summary: `${bill.billNumber} for ${row.vendorName}, ${period.start} – ${period.end}`,
-        after: {
-          billId: bill.id,
-          periodStart: period.start,
-          periodEnd: period.end,
-          amount: row.amount,
-        },
-      });
-
-      if (row.autoApprove)
-        await this.autoApprove(row, bill.id, bill.billNumber);
+      // The bill exists from here on. Anything that throws now keeps the claim
+      // held ("in progress"): stuck and reported, but never billed twice.
+      try {
+        await this.afterCreate(row, n, period, claim.id, attempts, bill);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          `Recurring billing stuck: tenant ${row.tenantId}, schedule ${row.id}, period ${period.start}–${period.end}: ${bill.billNumber} was created but finishing it failed: ${message}`,
+        );
+        await this.notifyStuck(
+          row,
+          period,
+          `${bill.billNumber} was created but could not be recorded against the schedule (${message})`,
+        );
+        return;
+      }
     }
+  }
+
+  private async afterCreate(
+    row: RecurringExpense,
+    n: number,
+    period: { start: string; end: string },
+    claimId: string,
+    attempts: number,
+    bill: SupplierBill,
+  ): Promise<void> {
+    await this.occurrences.update(claimId, {
+      status: 'GENERATED',
+      billId: bill.id,
+      error: null,
+      attempts,
+    });
+    await this.advance(row, n + 1);
+
+    await this.audit.record({
+      tenantId: row.tenantId,
+      action: 'recurring_expense.generate',
+      subjectType: 'RECURRING_EXPENSE',
+      subjectId: row.id,
+      actorId: null,
+      actorName: 'Recurring billing',
+      channel: 'SYSTEM',
+      summary: `${bill.billNumber} for ${row.vendorName}, ${period.start} – ${period.end}`,
+      after: {
+        billId: bill.id,
+        periodStart: period.start,
+        periodEnd: period.end,
+        amount: row.amount,
+      },
+    });
+
+    if (row.autoApprove) await this.autoApprove(row, bill.id, bill.billNumber);
+  }
+
+  private async notifyStuck(
+    row: RecurringExpense,
+    period: { start: string; end: string },
+    detail: string,
+  ): Promise<void> {
+    await this.notifications.notifyHolders(
+      row.tenantId,
+      PERMISSIONS.FINANCE_MANAGE,
+      {
+        type: 'RECURRING_EXPENSE_FAILED',
+        title: `Billing for ${row.vendorName} (${period.start} – ${period.end}) is stuck and needs attention`,
+        body: `${detail}. Later periods will not be billed until this one is resolved.`,
+        link: '/finance/subscriptions',
+        entityType: 'RECURRING_EXPENSE',
+        entityId: row.id,
+      },
+    );
   }
 
   /**
