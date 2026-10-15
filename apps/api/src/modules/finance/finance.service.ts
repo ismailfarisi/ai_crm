@@ -184,6 +184,7 @@ export class FinanceService {
         inflows: round2(r.inflows),
         billsOut: round2(r.billsOut),
         recurringOut: round2(r.recurringOut),
+        payrollOut: 0,
         closing,
       };
       opening = closing;

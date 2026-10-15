@@ -129,6 +129,7 @@ export interface CashForecastMonthDto {
   inflows: number;
   billsOut: number;
   recurringOut: number;
+  payrollOut: number;
   closing: number;
 }
 

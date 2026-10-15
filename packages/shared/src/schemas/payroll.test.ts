@@ -1,0 +1,46 @@
+import { describe, expect, it } from 'vitest';
+import {
+  createEmployeeSchema, createPayrollRunSchema, createSalaryPackageSchema,
+  payPayrollRunSchema, postOpeningGratuitySchema, updatePayrollLineSchema, gratuityAdjustmentSchema,
+} from './payroll';
+
+const uuid = '11111111-1111-4111-8111-111111111111';
+
+describe('payroll schemas', () => {
+  it('employee: normalises empties, requires a joining date, iban only for bank', () => {
+    const out = createEmployeeSchema.parse({ firstName: 'Ada', lastName: 'Okafor', joiningDate: '2024-03-01', paymentMethod: 'BANK', iban: ' ae07 0331 2345 6789 0123 456 ', jobTitle: '' });
+    expect(out).toMatchObject({ jobTitle: null, iban: 'AE070331234567890123456', isNational: false, status: 'ACTIVE' });
+    expect(() => createEmployeeSchema.parse({ firstName: 'A', lastName: 'B', paymentMethod: 'CASH' })).toThrow();
+    expect(createEmployeeSchema.parse({ firstName: 'A', lastName: 'B', joiningDate: '2024-01-01', paymentMethod: 'CASH', iban: 'AE07' }).iban).toBeNull();
+  });
+
+  it('employee: accepts nulls from a loaded record', () => {
+    expect(() => createEmployeeSchema.parse({ firstName: 'A', lastName: 'B', joiningDate: '2024-01-01', paymentMethod: 'CASH', userId: null, leavingDate: null, nationality: null, email: null, phone: null, bankName: null, department: null })).not.toThrow();
+  });
+
+  it('employee: leaving date must not precede joining', () => {
+    expect(() => createEmployeeSchema.parse({ firstName: 'A', lastName: 'B', joiningDate: '2024-05-01', leavingDate: '2024-04-30', paymentMethod: 'CASH' })).toThrow();
+  });
+
+  it('salary package coerces and defaults', () => {
+    expect(createSalaryPackageSchema.parse({ effectiveFrom: '2026-01-01', basic: '6000', housing: '2000' }))
+      .toEqual({ effectiveFrom: '2026-01-01', basic: 6000, housing: 2000, transport: 0, otherAllowances: [] });
+    expect(() => createSalaryPackageSchema.parse({ effectiveFrom: '2026-01-01', basic: 0 })).toThrow();
+  });
+
+  it('run period format', () => {
+    expect(createPayrollRunSchema.parse({ period: '2026-10' })).toEqual({ period: '2026-10', payDate: null });
+    expect(() => createPayrollRunSchema.parse({ period: '2026-13' })).toThrow();
+  });
+
+  it('line extras are non-negative numbers; labels trimmed', () => {
+    expect(updatePayrollLineSchema.parse({ overtimeHours: '10', bonusLabel: ' Q3 ' })).toEqual({ overtimeHours: 10, bonusLabel: 'Q3' });
+    expect(() => updatePayrollLineSchema.parse({ unpaidLeaveDays: -1 })).toThrow();
+  });
+
+  it('pay and opening gratuity', () => {
+    expect(payPayrollRunSchema.parse({ method: 'BANK', financeAccountId: uuid }).method).toBe('BANK');
+    expect(() => postOpeningGratuitySchema.parse({ cutoverDate: '2026-09-30', lines: [] })).toThrow();
+    expect(() => gratuityAdjustmentSchema.parse({ amount: 0, note: 'x' })).toThrow();
+  });
+});
