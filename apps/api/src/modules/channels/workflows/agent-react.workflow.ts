@@ -265,7 +265,7 @@ async function runAgentLoop(
           // What was resolved is what is shown and what is committed: the
           // skill's pinned args replace the planner's before the approval.
           if (execution.resolvedArgs) {
-            tool = { ...tool, args: execution.resolvedArgs };
+            tool = { ...tool, args: execution.resolvedArgs, pinned: true };
           }
           const approvedPreview = execution.previewPayload ?? {};
           if (!input.autoApprove || ALWAYS_ASK_TOOLS.has(tool.name)) {

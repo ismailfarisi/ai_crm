@@ -107,6 +107,12 @@ export interface ChannelSkill<
   pinArgs?(resolved: TResolved): Record<string, unknown>;
 
   /**
+   * Slots only `pinArgs` may set. They are dropped from the planner's raw
+   * args, so a model (or text it read) cannot supply them directly.
+   */
+  pinnedOnlySlots?: ReadonlyArray<string>;
+
+  /**
    * Turn partial slots into something executable, ask one question, or refuse.
    *
    * Called again on every inbound message while the conversation is

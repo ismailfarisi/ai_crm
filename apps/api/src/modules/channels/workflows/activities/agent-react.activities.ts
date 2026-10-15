@@ -58,6 +58,8 @@ export interface ToolCallSpec {
   name: string;
   args: Record<string, unknown>;
   model?: string;
+  /** Set by the workflow when `args` came from the skill's `pinArgs`, not the planner. */
+  pinned?: boolean;
 }
 
 export interface ToolExecutionResult {

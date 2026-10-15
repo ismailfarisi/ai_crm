@@ -59,6 +59,8 @@ export class ChannelMessageSendSkill implements ChannelSkill<ResolvedSend> {
     additionalProperties: false,
   };
   readonly slotSchema = slotSchema;
+  /** The address comes from the contact or delivered history, never the model. */
+  readonly pinnedOnlySlots = ['recipient'] as const;
   readonly promptVersion = 'channel-message-send/1';
 
   constructor(

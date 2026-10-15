@@ -102,7 +102,13 @@ export function createAgentReactActivities(deps: {
       throw new Error(`Tool '${tool.name}' is unavailable or not authorized`);
     }
     const skillContext = makeContext(ctx, permissions);
-    const resolution = await skill.resolve(tool.args, skillContext);
+    const args =
+      tool.pinned || !skill.pinnedOnlySlots?.length
+        ? tool.args
+        : Object.fromEntries(
+            Object.entries(tool.args).filter(([key]) => !skill.pinnedOnlySlots!.includes(key)),
+          );
+    const resolution = await skill.resolve(args, skillContext);
     return { skill, skillContext, resolution };
   };
 

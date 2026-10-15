@@ -294,7 +294,7 @@ describe('channel_message.send: what executes equals what was approved', () => {
     });
     h.setContact({ phone: '+971599999999' });
     await h.activities.commitToolMutationActivity(
-      { ...planned, args: gated.resolvedArgs! },
+      { ...planned, args: gated.resolvedArgs!, pinned: true },
       { ...assistantCtx, approvedPreview: gated.previewPayload },
     );
     expect(h.channels.sendMessage).toHaveBeenCalledWith('org-1', 'user-1', {
@@ -305,13 +305,35 @@ describe('channel_message.send: what executes equals what was approved', () => {
     });
   });
 
+  it('ignores a recipient the planner supplies and uses the contact address', async () => {
+    const h = harness();
+    const injected = { ...planned, args: { ...planned.args, recipient: '+15550000000' } };
+    const gated = await h.activities.executeToolActivity(injected, assistantCtx);
+    expect(gated.resolvedArgs).toMatchObject({ recipient: '+971500000001' });
+    expect(gated.previewPayload?.summary).not.toContain('+15550000000');
+  });
+
+  it('re-derives the recipient when an unpinned commit carries one', async () => {
+    const h = harness();
+    const gated = await h.activities.executeToolActivity(planned, assistantCtx);
+    await h.activities.commitToolMutationActivity(
+      { ...planned, args: { ...gated.resolvedArgs!, recipient: '+15550000000' } },
+      { ...assistantCtx, approvedPreview: gated.previewPayload },
+    );
+    expect(h.channels.sendMessage).toHaveBeenCalledWith(
+      'org-1',
+      'user-1',
+      expect.objectContaining({ recipient: '+971500000001' }),
+    );
+  });
+
   it('refuses and sends nothing when the preview no longer matches', async () => {
     const h = harness();
     const gated = await h.activities.executeToolActivity(planned, assistantCtx);
     h.setContact({ fullName: 'Ada Acme (left company)' });
     await expect(
       h.activities.commitToolMutationActivity(
-        { ...planned, args: gated.resolvedArgs! },
+        { ...planned, args: gated.resolvedArgs!, pinned: true },
         { ...assistantCtx, approvedPreview: gated.previewPayload },
       ),
     ).rejects.toMatchObject({ type: 'ApprovedActionChanged', nonRetryable: true });
