@@ -13,7 +13,6 @@ export const ATTACHMENT_OWNER_TYPES = [
   'PURCHASE_ORDER',
   'BILL',
   'EXPENSE_CLAIM',
-  'EMPLOYEE',
 ] as const;
 export type AttachmentOwnerType = (typeof ATTACHMENT_OWNER_TYPES)[number];
 
