@@ -47,6 +47,17 @@ export const LEDGER_ROLES = {
   SALES: 'SALES',
   COGS: 'COGS',
   OPERATING_EXPENSE: 'OPERATING_EXPENSE',
+  PREPAID_EXPENSES: 'PREPAID_EXPENSES',
+  RENT: 'RENT',
+  UTILITIES: 'UTILITIES',
+  SALARIES: 'SALARIES',
+  REPAIRS: 'REPAIRS',
+  INSURANCE: 'INSURANCE',
+  TRAVEL: 'TRAVEL',
+  SOFTWARE_IT: 'SOFTWARE_IT',
+  MARKETING: 'MARKETING',
+  PROFESSIONAL_FEES: 'PROFESSIONAL_FEES',
+  BANK_CHARGES: 'BANK_CHARGES',
   FX_GAIN_LOSS: 'FX_GAIN_LOSS',
 } as const;
 
@@ -58,6 +69,8 @@ export interface SystemLedgerAccount {
   type: LedgerAccountType;
   role: LedgerRole;
   description: string;
+  /** Code of the system account this one rolls up into on the P&L. */
+  parentCode?: string;
 }
 
 /**
@@ -107,6 +120,13 @@ export const SYSTEM_LEDGER_ACCOUNTS: SystemLedgerAccount[] = [
     description: 'Materials and labour issued to jobs not yet complete',
   },
   {
+    code: '1400',
+    name: 'Prepaid expenses',
+    type: 'ASSET',
+    role: LEDGER_ROLES.PREPAID_EXPENSES,
+    description: 'Paid or billed ahead for a period not yet used — an annual lease, a yearly policy. Released to expense one month at a time.',
+  },
+  {
     code: '2100',
     name: 'Accounts payable',
     type: 'LIABILITY',
@@ -151,11 +171,21 @@ export const SYSTEM_LEDGER_ACCOUNTS: SystemLedgerAccount[] = [
   },
   {
     code: '6000',
-    name: 'Operating expense',
+    name: 'Other operating expense',
     type: 'EXPENSE',
     role: LEDGER_ROLES.OPERATING_EXPENSE,
-    description: 'Overheads and employee expense claims',
+    description: 'Overheads with no account of their own. Parent of the overhead accounts below.',
   },
+  { code: '6100', name: 'Rent & premises', type: 'EXPENSE', role: LEDGER_ROLES.RENT, parentCode: '6000', description: 'Rent, service charges and premises costs' },
+  { code: '6200', name: 'Utilities & telecom', type: 'EXPENSE', role: LEDGER_ROLES.UTILITIES, parentCode: '6000', description: 'Electricity, water, cooling, internet and phones' },
+  { code: '6300', name: 'Salaries & wages', type: 'EXPENSE', role: LEDGER_ROLES.SALARIES, parentCode: '6000', description: 'Payroll, allowances and contractors' },
+  { code: '6400', name: 'Repairs & maintenance', type: 'EXPENSE', role: LEDGER_ROLES.REPAIRS, parentCode: '6000', description: 'Upkeep of premises, plant and machinery' },
+  { code: '6450', name: 'Insurance', type: 'EXPENSE', role: LEDGER_ROLES.INSURANCE, parentCode: '6000', description: 'Insurance premiums' },
+  { code: '6500', name: 'Travel & entertainment', type: 'EXPENSE', role: LEDGER_ROLES.TRAVEL, parentCode: '6000', description: 'Travel, lodging, meals and entertainment' },
+  { code: '6600', name: 'Software & IT', type: 'EXPENSE', role: LEDGER_ROLES.SOFTWARE_IT, parentCode: '6000', description: 'Software subscriptions, hosting and IT equipment below the capitalisation threshold' },
+  { code: '6700', name: 'Marketing', type: 'EXPENSE', role: LEDGER_ROLES.MARKETING, parentCode: '6000', description: 'Advertising and marketing' },
+  { code: '6800', name: 'Professional fees', type: 'EXPENSE', role: LEDGER_ROLES.PROFESSIONAL_FEES, parentCode: '6000', description: 'Accounting, legal and consulting fees' },
+  { code: '6900', name: 'Bank charges', type: 'EXPENSE', role: LEDGER_ROLES.BANK_CHARGES, parentCode: '6000', description: 'Bank and payment processing fees' },
   {
     code: '7000',
     name: 'Exchange gains and losses',
@@ -164,6 +194,11 @@ export const SYSTEM_LEDGER_ACCOUNTS: SystemLedgerAccount[] = [
     description: 'Differences between the rate a document was booked at and the rate it settled or was revalued at. A credit balance is a net gain.',
   },
 ];
+
+/** The overhead roles that roll up into 6000 Other operating expense. */
+export const OPERATING_EXPENSE_CHILD_ROLES: LedgerRole[] = SYSTEM_LEDGER_ACCOUNTS
+  .filter((a) => a.parentCode === '6000')
+  .map((a) => a.role);
 
 /** The code a cash account's own ledger account is numbered from. */
 export const CASH_ACCOUNT_CODE_PREFIX = '10';
@@ -238,7 +273,8 @@ export type JournalReferenceType =
   | 'STOCK'
   | 'BILL'
   | 'WORK_ORDER'
-  | 'CREDIT_NOTE';
+  | 'CREDIT_NOTE'
+  | 'PREPAID';
 
 export interface TrialBalanceRowDto {
   ledgerAccountId: string;
