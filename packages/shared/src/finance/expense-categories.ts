@@ -1,3 +1,5 @@
+import { LEDGER_ROLES, type LedgerRole } from './ledger';
+
 /**
  * What money spent inside the business is filed under.
  *
@@ -84,8 +86,54 @@ const LEGACY_CATEGORY_ALIASES: Record<string, string> = {
   Utilities: 'Utilities & Telecom',
 };
 
+/**
+ * The subscription modal's old private list, mapped onto the shared one (used by the migration and the form).
+ */
+export const LEGACY_SUBSCRIPTION_CATEGORIES: Record<string, string> = {
+  'Cloud Infrastructure': 'Software & SaaS',
+  'Marketing Tools': 'Marketing & Advertising',
+  'Security & Compliance': 'Software & SaaS',
+  'Communication & Collaboration': 'Software & SaaS',
+  'Customer Support': 'Software & SaaS',
+  'Design & Creative': 'Software & SaaS',
+  'Office Utilities': 'Utilities & Telecom',
+};
+
 /** The canonical name for a category, resolving the pre-merge short values. */
 export function normaliseExpenseCategory(category: string): string {
   const trimmed = category.trim();
-  return LEGACY_CATEGORY_ALIASES[trimmed] ?? trimmed;
+  return LEGACY_CATEGORY_ALIASES[trimmed] ?? LEGACY_SUBSCRIPTION_CATEGORIES[trimmed] ?? trimmed;
+}
+
+/**
+ * Which account a category posts to. Cost-of-sales categories are direct
+ * costs and land in COGS so gross margin is real; overheads land in their own
+ * account under 6000. Anything unrecognised — the list is open, people type
+ * their own — falls back to 6000 so a posting never fails on a label.
+ */
+const CATEGORY_ROLE: Record<string, LedgerRole> = {
+  'Raw materials': LEDGER_ROLES.COGS,
+  Packaging: LEDGER_ROLES.COGS,
+  Consumables: LEDGER_ROLES.COGS,
+  Subcontract: LEDGER_ROLES.COGS,
+  'Freight & shipping': LEDGER_ROLES.COGS,
+  Tooling: LEDGER_ROLES.COGS,
+  'Rent & premises': LEDGER_ROLES.RENT,
+  'Utilities & Telecom': LEDGER_ROLES.UTILITIES,
+  'Payroll & Contractors': LEDGER_ROLES.SALARIES,
+  'Repairs & maintenance': LEDGER_ROLES.REPAIRS,
+  'Plant & machinery': LEDGER_ROLES.REPAIRS,
+  Insurance: LEDGER_ROLES.INSURANCE,
+  'Travel & Lodging': LEDGER_ROLES.TRAVEL,
+  'Meals & Entertainment': LEDGER_ROLES.TRAVEL,
+  'Software & SaaS': LEDGER_ROLES.SOFTWARE_IT,
+  'Hardware & Equipment': LEDGER_ROLES.SOFTWARE_IT,
+  'Marketing & Advertising': LEDGER_ROLES.MARKETING,
+  'Professional Services': LEDGER_ROLES.PROFESSIONAL_FEES,
+  'Bank charges': LEDGER_ROLES.BANK_CHARGES,
+};
+
+export function expenseCategoryRole(category: string | null | undefined): LedgerRole {
+  if (!category) return LEDGER_ROLES.OPERATING_EXPENSE;
+  return CATEGORY_ROLE[normaliseExpenseCategory(category)] ?? LEDGER_ROLES.OPERATING_EXPENSE;
 }
