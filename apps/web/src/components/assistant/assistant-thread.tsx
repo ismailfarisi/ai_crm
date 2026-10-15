@@ -52,7 +52,11 @@ export function AssistantThread({ conversationId, variant }: { conversationId: s
   const busy = Boolean(activeTurn) || send.isPending;
   const pendingVisible = pending !== null && !messages.some((m) => m.role === 'user' && m.content === pending);
 
-  useEffect(() => bottom.current?.scrollIntoView?.({ block: 'end' }), [messages.length, pendingVisible]);
+  // A block body: newer browsers return a Promise from scrollIntoView, and an
+  // effect must not return anything but a cleanup function.
+  useEffect(() => {
+    bottom.current?.scrollIntoView?.({ block: 'end' });
+  }, [messages.length, pendingVisible]);
 
   if (isLoading) {
     return (
