@@ -102,7 +102,12 @@ export const LEGACY_SUBSCRIPTION_CATEGORIES: Record<string, string> = {
 /** The canonical name for a category, resolving the pre-merge short values. */
 export function normaliseExpenseCategory(category: string): string {
   const trimmed = category.trim();
-  return LEGACY_CATEGORY_ALIASES[trimmed] ?? LEGACY_SUBSCRIPTION_CATEGORIES[trimmed] ?? trimmed;
+  return own(LEGACY_CATEGORY_ALIASES, trimmed) ?? own(LEGACY_SUBSCRIPTION_CATEGORIES, trimmed) ?? trimmed;
+}
+
+/** Own keys only: a typed category such as `toString` must not hit Object.prototype. */
+function own<T>(map: Record<string, T>, key: string): T | undefined {
+  return Object.hasOwn(map, key) ? map[key] : undefined;
 }
 
 /**
@@ -135,5 +140,5 @@ const CATEGORY_ROLE: Record<string, LedgerRole> = {
 
 export function expenseCategoryRole(category: string | null | undefined): LedgerRole {
   if (!category) return LEDGER_ROLES.OPERATING_EXPENSE;
-  return CATEGORY_ROLE[normaliseExpenseCategory(category)] ?? LEDGER_ROLES.OPERATING_EXPENSE;
+  return own(CATEGORY_ROLE, normaliseExpenseCategory(category)) ?? LEDGER_ROLES.OPERATING_EXPENSE;
 }

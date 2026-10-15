@@ -70,6 +70,10 @@ describe('expense categories', () => {
     });
 
     it('does not resolve Object.prototype names as categories', () => {
+      expect(normaliseExpenseCategory('toString')).toBe('toString');
+      expect(normaliseExpenseCategory('constructor')).toBe('constructor');
+      expect(normaliseExpenseCategory('__proto__')).toBe('__proto__');
+      expect(expenseCategoryRole('hasOwnProperty')).toBe(LEDGER_ROLES.OPERATING_EXPENSE);
       expect(expenseCategoryRole('toString')).toBe(LEDGER_ROLES.OPERATING_EXPENSE);
       expect(expenseCategoryRole('constructor')).toBe(LEDGER_ROLES.OPERATING_EXPENSE);
     });
