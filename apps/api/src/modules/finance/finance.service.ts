@@ -8,13 +8,18 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, In, MoreThanOrEqual, Repository } from 'typeorm';
 import {
+  addMonthsClamped,
   calculateRunwayMonths,
+  dueOccurrences,
+  isoDate,
   LEDGER_ROLES,
+  monthlyEquivalent,
   occurrenceDate,
   occurrenceIndexOnOrAfter,
   PERMISSIONS,
   utcToday,
   TreasuryOverviewDto,
+  type CashForecastDto,
   type CreateRecurringExpensePayload,
   type Permission,
   type RecurringExpenseDto,
@@ -26,6 +31,7 @@ import { CategoryBudget } from './entities/category-budget.entity';
 import { RecurringExpense } from './entities/recurring-expense.entity';
 import { RecurringExpenseOccurrence } from './entities/recurring-expense-occurrence.entity';
 import { SupplierBill } from '../payables/entities/supplier-bill.entity';
+import { Invoice, InvoiceStatus } from '../quotes/entities/invoice.entity';
 import { JournalEntry } from './entities/journal-entry.entity';
 import { ExpenseClaim } from './entities/expense-claim.entity';
 import { LedgerService } from './ledger.service';
@@ -36,6 +42,10 @@ import {
   CreateCategoryBudgetDto,
   TransferFundsDto,
 } from './dto';
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+const toIso = (d: Date | string): string =>
+  typeof d === 'string' ? d.slice(0, 10) : isoDate(d);
 
 @Injectable()
 export class FinanceService {
@@ -55,7 +65,100 @@ export class FinanceService {
     private readonly ledger: LedgerService,
     @InjectRepository(RecurringExpenseOccurrence)
     private readonly occurrences: Repository<RecurringExpenseOccurrence>,
+    @InjectRepository(SupplierBill)
+    private readonly bills: Repository<SupplierBill>,
+    @InjectRepository(Invoice)
+    private readonly invoices: Repository<Invoice>,
   ) {}
+
+  async cashForecast(
+    tenantId: string,
+    months: number,
+  ): Promise<CashForecastDto> {
+    const today = utcToday();
+    const monthKeys = Array.from({ length: months }, (_, k) =>
+      addMonthsClamped(`${today.slice(0, 7)}-01`, k).slice(0, 7),
+    );
+    const last = monthKeys[monthKeys.length - 1];
+    const bucket = (iso: string): string | null => {
+      const key = iso.slice(0, 7);
+      if (key < monthKeys[0]) return monthKeys[0]; // overdue lands now
+      return key <= last ? key : null;
+    };
+
+    const [accounts, bills, invoices, recurring] = await Promise.all([
+      this.accountRepository.find({ where: { tenantId } }),
+      this.bills.find({
+        where: {
+          tenantId,
+          status: In(['DRAFT', 'APPROVED', 'PARTIALLY_PAID']) as any,
+        },
+      }),
+      this.invoices.find({
+        where: {
+          tenantId,
+          status: In([InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID]),
+        },
+      }),
+      this.recurringRepository.find({ where: { tenantId, status: 'ACTIVE' } }),
+    ]);
+
+    const rows = new Map(
+      monthKeys.map((m) => [m, { inflows: 0, billsOut: 0, recurringOut: 0 }]),
+    );
+    for (const b of bills) {
+      const key = bucket(toIso(b.dueDate ?? b.billDate));
+      if (!key) continue;
+      // Drafts have no posted rate yet, so the stored rate (default 1) is used.
+      rows.get(key)!.billsOut +=
+        (Number(b.totalAmount) - Number(b.paidAmount || 0)) *
+        Number(b.fxRate || 1);
+    }
+    for (const inv of invoices) {
+      const key = bucket(inv.dueDate ? toIso(inv.dueDate) : today);
+      if (!key) continue;
+      rows.get(key)!.inflows +=
+        (Number(inv.amount) - Number(inv.paidAmount ?? 0)) *
+        Number(inv.fxRate || 1);
+    }
+    for (const r of recurring) {
+      // Only periods not yet generated: from nextBillingDate on.
+      const fromIndex = occurrenceIndexOnOrAfter(
+        r.startDate,
+        r.billingInterval,
+        toIso(r.nextBillingDate),
+      );
+      for (const n of dueOccurrences({
+        startDate: r.startDate,
+        endDate: r.endDate,
+        interval: r.billingInterval,
+        fromIndex,
+        today: `${last}-31`,
+      })) {
+        const key = bucket(occurrenceDate(r.startDate, n, r.billingInterval));
+        if (key) rows.get(key)!.recurringOut += Number(r.amount);
+      }
+    }
+
+    let opening = round2(
+      accounts.reduce((s, a) => s + Number(a.balance || 0), 0),
+    );
+    const out = monthKeys.map((month) => {
+      const r = rows.get(month)!;
+      const closing = round2(opening + r.inflows - r.billsOut - r.recurringOut);
+      const row = {
+        month,
+        opening,
+        inflows: round2(r.inflows),
+        billsOut: round2(r.billsOut),
+        recurringOut: round2(r.recurringOut),
+        closing,
+      };
+      opening = closing;
+      return row;
+    });
+    return { baseCurrency: accounts[0]?.currency || 'USD', months: out };
+  }
 
   async getOverview(tenantId: string): Promise<TreasuryOverviewDto> {
     const accounts = await this.accountRepository.find({
@@ -80,15 +183,20 @@ export class FinanceService {
       0,
     );
 
-    const recurringMonthly = recurringExpenses.reduce((sum, rec) => {
-      const amt = Number(rec.amount || 0);
-      return sum + (rec.billingInterval === 'ANNUAL' ? amt / 12 : amt);
-    }, 0);
-
-    const expenseMonthly = approvedExpenses.reduce(
-      (sum, exp) => sum + Number(exp.amount || 0),
+    const recurringMonthly = recurringExpenses.reduce(
+      (sum, rec) =>
+        sum + monthlyEquivalent(Number(rec.amount || 0), rec.billingInterval),
       0,
     );
+
+    // A month's worth of claims, averaged over the last quarter. Summing
+    // every claim ever approved made the burn rate grow for ever.
+    const claimsSince = new Date();
+    claimsSince.setUTCDate(claimsSince.getUTCDate() - 90);
+    const expenseMonthly =
+      approvedExpenses
+        .filter((e) => new Date(e.expenseDate ?? e.createdAt) >= claimsSince)
+        .reduce((sum, exp) => sum + Number(exp.amount || 0), 0) / 3;
 
     // What actually moved through the bank over the last 30 days, taken from
     // posted journal lines rather than assumed. Internal transfers are left

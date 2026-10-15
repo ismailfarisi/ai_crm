@@ -1,12 +1,15 @@
 import {
   Body,
   Controller,
+  DefaultValuePipe,
   Delete,
   Get,
   Param,
+  ParseIntPipe,
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -15,6 +18,7 @@ import {
   PERMISSIONS,
   TreasuryOverviewDto,
   updateRecurringExpenseSchema,
+  type CashForecastDto,
   type CreateRecurringExpensePayload,
   type RecurringExpenseDto,
   type RecurringOccurrenceDto,
@@ -71,6 +75,23 @@ export class FinanceController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<TrialBalanceDto> {
     return this.ledgerService.trialBalance(user.organizationId);
+  }
+
+  @Get('cash-forecast')
+  @RequirePermissions(PERMISSIONS.FINANCE_READ)
+  @ApiOperation({
+    summary: 'Cash forecast',
+    description:
+      'Month-by-month projection of cash: outstanding bills, upcoming recurring charges and receivables, carried from the current balance.',
+  })
+  cashForecast(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('months', new DefaultValuePipe(6), ParseIntPipe) months: number,
+  ): Promise<CashForecastDto> {
+    return this.financeService.cashForecast(
+      user.organizationId,
+      Math.min(12, Math.max(1, months)),
+    );
   }
 
   @Get('overview')

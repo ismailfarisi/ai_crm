@@ -16,6 +16,8 @@ import { CategoryBudget } from './entities/category-budget.entity';
 import { RecurringExpense } from './entities/recurring-expense.entity';
 import { JournalEntry } from './entities/journal-entry.entity';
 import { ExpenseClaim } from './entities/expense-claim.entity';
+import { SupplierBill } from '../payables/entities/supplier-bill.entity';
+import { Invoice } from '../quotes/entities/invoice.entity';
 import { RecurringExpenseOccurrence } from './entities/recurring-expense-occurrence.entity';
 import {
   CreateFinanceAccountDto,
@@ -34,6 +36,8 @@ describe('FinanceService', () => {
   let expenseRepo: jest.Mocked<Partial<Repository<ExpenseClaim>>>;
   let occurrences: { count: jest.Mock; find: jest.Mock; findOne: jest.Mock };
   let recurringRows: any[];
+  let billRepo: { find: jest.Mock };
+  let invoiceRepo: { find: jest.Mock };
 
   const tenantId = '11111111-1111-1111-1111-111111111111';
 
@@ -155,6 +159,9 @@ describe('FinanceService', () => {
       provisionChartOfAccounts: jest.fn().mockResolvedValue([]),
     };
 
+    billRepo = { find: jest.fn().mockResolvedValue([]) };
+    invoiceRepo = { find: jest.fn().mockResolvedValue([]) };
+
     service = new FinanceService(
       accountRepo as unknown as Repository<FinanceAccount>,
       budgetRepo as unknown as Repository<CategoryBudget>,
@@ -163,6 +170,8 @@ describe('FinanceService', () => {
       expenseRepo as unknown as Repository<ExpenseClaim>,
       ledger as unknown as LedgerService,
       occurrences as unknown as Repository<RecurringExpenseOccurrence>,
+      billRepo as unknown as Repository<SupplierBill>,
+      invoiceRepo as unknown as Repository<Invoice>,
     );
   });
 
@@ -186,7 +195,7 @@ describe('FinanceService', () => {
           name: 'Petty Cash',
           accountType: 'CASH',
           currency: 'USD',
-          balance: 10000,
+          balance: 20000,
           isDefault: false,
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -218,14 +227,14 @@ describe('FinanceService', () => {
         {
           id: 'exp-1',
           tenantId,
-          amount: 2500,
+          amount: 1500,
           status: 'APPROVED',
           createdAt: new Date(),
         },
         {
           id: 'exp-2',
           tenantId,
-          amount: 1000,
+          amount: 1500,
           status: 'PAID',
           createdAt: new Date(),
         },
@@ -237,12 +246,12 @@ describe('FinanceService', () => {
 
       const overview = await service.getOverview(tenantId);
 
-      expect(overview.totalCash).toBe(60000);
+      expect(overview.totalCash).toBe(70000);
       expect(overview.currency).toBe('USD');
       expect(overview.accounts).toHaveLength(2);
-      expect(overview.monthlyOutflow).toBe(6000); // 2000 + 500 + 2500 + 1000 = 6000
-      expect(overview.monthlyBurnRate).toBe(6000);
-      expect(overview.runwayMonths).toBe(10); // 60000 / 6000 = 10
+      expect(overview.monthlyOutflow).toBe(3500); // 2000 + 500 + (1500 + 1500) / 3 over the 90-day window
+      expect(overview.monthlyBurnRate).toBe(3500);
+      expect(overview.runwayMonths).toBe(20); // 70000 / 3500 = 20
       expect(overview.recentCashflowSeries).toHaveLength(30);
     });
 
@@ -264,6 +273,64 @@ describe('FinanceService', () => {
       expect(overview.totalCash).toBe(10000);
       expect(overview.monthlyBurnRate).toBe(0);
       expect(overview.runwayMonths).toBe(Infinity);
+    });
+  });
+
+  const seedAccounts = (rows: any[]) => {
+    accountRepo.find = jest.fn().mockResolvedValue(rows);
+  };
+  const seedRecurringRows = (rows: any[]) => {
+    recurringRepo.find = jest.fn().mockResolvedValue(rows);
+  };
+  const seedClaims = (rows: any[]) => {
+    expenseRepo.find = jest.fn().mockResolvedValue(rows);
+  };
+  const seedBills = (rows: any[]) => {
+    billRepo.find.mockResolvedValue(rows);
+  };
+  const seedInvoices = (rows: any[]) => {
+    invoiceRepo.find.mockResolvedValue(rows);
+  };
+
+  describe('runway', () => {
+    afterEach(() => jest.useRealTimers());
+
+    it('counts quarterly recurring at a third and only the last 90 days of claims', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-10-16T00:00:00Z'));
+      seedAccounts([{ balance: 100000 }]);
+      seedRecurringRows([
+        { amount: 3000, billingInterval: 'QUARTERLY', status: 'ACTIVE' },
+      ]);
+      seedClaims([
+        { amount: 900, status: 'APPROVED', expenseDate: '2026-09-01' },
+        { amount: 50000, status: 'PAID', expenseDate: '2025-01-01' },
+      ]);
+      const o = await service.getOverview(tenantId);
+      expect(o.monthlyOutflow).toBe(1000 + 300);
+    });
+  });
+
+  describe('cashForecast', () => {
+    afterEach(() => jest.useRealTimers());
+
+    it('buckets bills by due date, projects recurring, adds receivables, carries the balance', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-10-16T00:00:00Z'));
+      seedAccounts([{ balance: 50000 }]);
+      seedBills([
+        { status: 'APPROVED', totalAmount: 8000, paidAmount: 0, dueDate: '2026-10-30', fxRate: 1 },
+        { status: 'DRAFT', totalAmount: 2000, paidAmount: 0, dueDate: '2026-09-01', fxRate: 1 }, // overdue -> month 1
+      ]);
+      seedRecurringRows([
+        { amount: 120000, billingInterval: 'ANNUAL', status: 'ACTIVE', startDate: '2026-01-01', nextBillingDate: new Date('2027-01-01T00:00:00Z'), endDate: null },
+      ]);
+      seedInvoices([
+        { status: 'ISSUED', amount: 30000, paidAmount: 0, dueDate: '2026-11-10', fxRate: 1 },
+      ]);
+      const f = await service.cashForecast(tenantId, 4);
+      expect(f.months.map((m) => m.month)).toEqual(['2026-10', '2026-11', '2026-12', '2027-01']);
+      expect(f.months[0]).toMatchObject({ opening: 50000, billsOut: 10000, inflows: 0, closing: 40000 });
+      expect(f.months[1]).toMatchObject({ opening: 40000, inflows: 30000, closing: 70000 });
+      expect(f.months[3]).toMatchObject({ recurringOut: 120000, closing: -50000 });
     });
   });
 
