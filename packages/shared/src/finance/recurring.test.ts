@@ -43,3 +43,24 @@ describe('recurring schedule maths', () => {
     expect(occurrenceIndexOnOrAfter('2026-01-15', 'MONTHLY', '2026-10-15')).toBe(9);
   });
 });
+
+import { monthsTouched, prepaidSplit, addMonthsToFirst } from './recurring';
+
+describe('prepaid split', () => {
+  it('counts calendar months touched, start month is month 1', () => {
+    expect(monthsTouched('2026-01-01', '2026-12-31')).toBe(12);
+    expect(monthsTouched('2026-12-15', '2027-12-14')).toBe(13);
+    expect(monthsTouched('2026-03-01', '2026-03-31')).toBe(1);
+  });
+
+  it('splits into equal cents with the remainder on the last month', () => {
+    expect(prepaidSplit(120_000, 12)).toEqual(Array(12).fill(10_000));
+    const odd = prepaidSplit(1000, 3);
+    expect(odd).toEqual([333.33, 333.33, 333.34]);
+    expect(odd.reduce((a, b) => a + b, 0)).toBeCloseTo(1000, 2);
+  });
+
+  it('steps month starts across a year end', () => {
+    expect(addMonthsToFirst('2026-12-01', 1)).toBe('2027-01-01');
+  });
+});

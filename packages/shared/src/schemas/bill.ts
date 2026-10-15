@@ -8,13 +8,32 @@ const optionalText = (max: number) =>
     .nullish()
     .transform((v) => (v == null || v === '' ? null : v));
 
-export const billLineSchema = z.object({
-  /** Set when the line bills goods from a purchase order; absent for a utility bill. */
-  purchaseOrderLineId: z.string().uuid().nullish().transform((v) => v ?? null),
-  description: z.string().trim().min(1, 'Each line needs a description').max(255),
-  qty: z.coerce.number().positive('Quantity must be above zero'),
-  unitCost: z.coerce.number().min(0, 'Unit cost cannot be negative'),
-});
+const isoDay = z.string().regex(/^d{4}-d{2}-d{2}$/, 'Use YYYY-MM-DD');
+
+export const billLineSchema = z
+  .object({
+    /** Set when the line bills goods from a purchase order; absent for a utility bill. */
+    purchaseOrderLineId: z.string().uuid().nullish().transform((v) => v ?? null),
+    description: z.string().trim().min(1, 'Each line needs a description').max(255),
+    qty: z.coerce.number().positive('Quantity must be above zero'),
+    unitCost: z.coerce.number().min(0, 'Unit cost cannot be negative'),
+    /** Which account an unordered line posts to; ignored on order lines. */
+    category: optionalText(100),
+    servicePeriodStart: isoDay.nullish().transform((v) => v ?? null),
+    servicePeriodEnd: isoDay.nullish().transform((v) => v ?? null),
+  })
+  .refine((l) => (l.servicePeriodStart == null) === (l.servicePeriodEnd == null), {
+    message: 'Give both the start and the end of the period, or neither',
+    path: ['servicePeriodEnd'],
+  })
+  .refine((l) => !l.servicePeriodStart || !l.servicePeriodEnd || l.servicePeriodEnd >= l.servicePeriodStart, {
+    message: 'The period cannot end before it starts',
+    path: ['servicePeriodEnd'],
+  })
+  .refine((l) => !(l.purchaseOrderLineId && l.servicePeriodStart), {
+    message: 'Order lines cannot be spread',
+    path: ['servicePeriodStart'],
+  });
 
 export const createBillSchema = z.object({
   supplierId: z.string().uuid(),

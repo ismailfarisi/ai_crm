@@ -1,5 +1,7 @@
-import type { JournalLineInput } from '../finance/ledger';
+import type { JournalLineInput, LedgerRole } from '../finance/ledger';
 import { LEDGER_ROLES } from '../finance/ledger';
+import { expenseCategoryRole } from '../finance/expense-categories';
+import { monthsTouched } from '../finance/recurring';
 
 /**
  * Supplier bills: three-way matching, the journal a bill posts, and aging.
@@ -148,6 +150,16 @@ export interface BillLineForPosting {
   unitCost: number;
   /** The ordered unit cost — what GRNI was credited at when the goods arrived. */
   orderUnitCost?: number | null;
+  /** Expense category for a line with no order; picks the account. */
+  category?: string | null;
+  /** When both are set and span more than one calendar month, the line is booked to prepaid and released monthly. */
+  servicePeriodStart?: string | null;
+  servicePeriodEnd?: string | null;
+}
+
+export function isSpread(line: { servicePeriodStart?: string | null; servicePeriodEnd?: string | null }): boolean {
+  return Boolean(line.servicePeriodStart && line.servicePeriodEnd) &&
+    monthsTouched(line.servicePeriodStart!, line.servicePeriodEnd!) > 1;
 }
 
 /**
@@ -163,7 +175,8 @@ export interface BillLineForPosting {
  *   Cr Payables        bill total
  *
  * Lines with no order (a utility bill) have no receipt behind them, so they
- * debit operating expense directly.
+ * debit the account their category maps to (operating expense when
+ * uncategorised), or prepaid expenses when they cover more than a month.
  *
  * Price variance goes to cost of sales rather than back into inventory
  * value. That is a simplification: strictly, the portion still on the shelf
@@ -177,7 +190,7 @@ export function billPostingLines(
 ): JournalLineInput[] {
   let grni = 0;
   let variance = 0;
-  let expense = 0;
+  const expenseByRole = new Map<LedgerRole, number>();
 
   for (const line of lines) {
     const billed = money(line.qty * line.unitCost);
@@ -186,10 +199,12 @@ export function billPostingLines(
       grni = money(grni + cleared);
       variance = money(variance + (billed - cleared));
     } else {
-      expense = money(expense + billed);
+      const role = isSpread(line) ? LEDGER_ROLES.PREPAID_EXPENSES : expenseCategoryRole(line.category);
+      expenseByRole.set(role, money((expenseByRole.get(role) ?? 0) + billed));
     }
   }
 
+  const expense = money([...expenseByRole.values()].reduce((s, v) => s + v, 0));
   const tax = money(Math.max(0, taxAmount));
   const payable = money(grni + variance + expense + tax);
   const label = `Bill ${reference.billNumber} from ${reference.supplierName}`;
@@ -203,8 +218,15 @@ export function billPostingLines(
   } else if (variance < 0) {
     out.push({ role: LEDGER_ROLES.COGS, accountName: 'Purchase price variance', debit: 0, credit: -variance, description: label });
   }
-  if (expense !== 0) {
-    out.push({ role: LEDGER_ROLES.OPERATING_EXPENSE, accountName: 'Operating expense', debit: expense, credit: 0, description: label });
+  for (const [role, amount] of expenseByRole) {
+    if (amount === 0) continue;
+    out.push({
+      role,
+      accountName: role === LEDGER_ROLES.PREPAID_EXPENSES ? 'Prepaid expenses' : 'Operating expense',
+      debit: amount,
+      credit: 0,
+      description: label,
+    });
   }
   if (tax !== 0) {
     out.push({ role: LEDGER_ROLES.TAX_PAYABLE, accountName: 'Input tax', debit: tax, credit: 0, description: label });

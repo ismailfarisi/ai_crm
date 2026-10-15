@@ -79,3 +79,27 @@ export function occurrenceIndexOnOrAfter(startDate: string, interval: RecurringI
   while (occurrenceDate(startDate, n, interval) < date) n++;
   return n;
 }
+
+export function firstOfMonth(iso: string): string {
+  return `${iso.slice(0, 7)}-01`;
+}
+
+export function addMonthsToFirst(firstMonth: string, k: number): string {
+  return addMonthsClamped(firstOfMonth(firstMonth), k);
+}
+
+/** Calendar months a period touches, counting the start month as month 1. No day proration. */
+export function monthsTouched(start: string, end: string): number {
+  const [ys, ms] = parts(start);
+  const [ye, me] = parts(end);
+  return (ye - ys) * 12 + (me - ms) + 1;
+}
+
+/** Equal whole-cent months; the last month takes the remainder so the total clears exactly. */
+export function prepaidSplit(totalBase: number, months: number): number[] {
+  const totalCents = Math.round(totalBase * 100);
+  const each = Math.floor(totalCents / months);
+  const out = Array<number>(months).fill(each / 100);
+  out[months - 1] = (totalCents - each * (months - 1)) / 100;
+  return out;
+}
