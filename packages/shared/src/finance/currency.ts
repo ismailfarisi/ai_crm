@@ -175,6 +175,7 @@ export interface StatementLineDto {
   name: string;
   type: 'ASSET' | 'LIABILITY' | 'EQUITY' | 'INCOME' | 'EXPENSE';
   amount: number;
+  parentId: string | null;
 }
 
 export interface ProfitAndLossDto {

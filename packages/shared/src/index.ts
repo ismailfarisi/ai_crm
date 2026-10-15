@@ -59,3 +59,4 @@ export * from './schemas/custom-object';
 export * from './rbac/permissions/custom-objects';
 export * from './assistant';
 
+export * from './schemas/recurring-expense';
