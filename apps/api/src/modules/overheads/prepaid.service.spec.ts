@@ -14,7 +14,16 @@ function setup(schedule: any, already: string[] = []) {
           save: async (x: any) => { const s = { id: `je-${entries.length + 1}`, ...x }; entries.push(s); return s; },
         };
       }
-      if (e.name === 'PrepaidSchedule') return { save: async (x: any) => x, findOne: async () => schedule, find: async () => [schedule] };
+      if (e.name === 'PrepaidSchedule') return {
+        save: async (x: any) => x,
+        findOne: async () => schedule, // current (mutated) row, as a locked read would return
+        find: async () => [schedule],
+        update: async (w: any, patch: any) => {
+          if (schedule.id !== w.id || (w.status && schedule.status !== w.status)) return { affected: 0 };
+          Object.assign(schedule, patch);
+          return { affected: 1 };
+        },
+      };
       throw new Error(e.name);
     },
   };
@@ -65,6 +74,25 @@ describe('PrepaidService', () => {
     store.claim.mockResolvedValueOnce(null);
     await service.releaseSchedule(sched as any, '2026-01-20');
     expect(entries).toHaveLength(0);
+  });
+
+  it('does not release for a stale ACTIVE schedule that was ended early meanwhile', async () => {
+    const stored = { ...annual };
+    const { service, entries } = setup(stored);
+    await service.endEarly(tenantId, 's1', 'u1', '2026-01-05');
+    expect(entries).toHaveLength(1);
+    await service.releaseSchedule({ ...annual } as any, '2026-12-01');
+    expect(entries).toHaveLength(1);
+    expect(stored.status).toBe('ENDED_EARLY');
+  });
+
+  it('completing the last month leaves an ended-early row untouched', async () => {
+    const stored = { ...annual, status: 'ENDED_EARLY' };
+    const { service } = setup(stored, ['2026-01-01']);
+    const stale = { ...annual, months: 1 };
+    await service.releaseSchedule(stale as any, '2026-12-01');
+    expect(stored.status).toBe('ENDED_EARLY');
+    expect(stale.status).toBe('ACTIVE');
   });
 
   it('completes after the last month, last month takes the remainder', async () => {

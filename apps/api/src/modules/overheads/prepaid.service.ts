@@ -55,16 +55,27 @@ export class PrepaidService {
       if (month > currentMonth) break;
       if (done.has(month)) continue;
       try {
-        await this.dataSource.transaction((manager) =>
-          this.postMonth(manager, schedule, month, split[k], `Release ${k + 1} of ${schedule.months}`),
-        );
+        const proceed = await this.dataSource.transaction(async (manager) => {
+          // Serialise with endEarly: re-read the live status under a row lock.
+          const live = await manager.getRepository(PrepaidSchedule).findOne({
+            where: { id: schedule.id, tenantId: schedule.tenantId },
+            lock: { mode: 'pessimistic_write' },
+          });
+          if (!live || live.status !== 'ACTIVE') return false;
+          await this.postMonth(manager, schedule, month, split[k], `Release ${k + 1} of ${schedule.months}`);
+          return true;
+        });
+        if (!proceed) return;
       } catch (e) {
         if (!(e instanceof MonthAlreadyPosted)) throw e;
       }
     }
     if (addMonthsToFirst(schedule.firstMonth, schedule.months - 1) <= currentMonth) {
-      schedule.status = 'COMPLETED';
-      await this.dataSource.manager.getRepository(PrepaidSchedule).save(schedule);
+      // Conditional: never overwrite a schedule that was ended early meanwhile.
+      const res = await this.dataSource.manager
+        .getRepository(PrepaidSchedule)
+        .update({ id: schedule.id, tenantId: schedule.tenantId, status: 'ACTIVE' }, { status: 'COMPLETED' });
+      if (res.affected) schedule.status = 'COMPLETED';
     }
   }
 
@@ -92,7 +103,7 @@ export class PrepaidService {
 
   async endEarly(tenantId: string, id: string, actorId: string, today: string = utcToday()): Promise<PrepaidScheduleDto> {
     return this.dataSource.transaction(async (manager) => {
-      const schedule = await manager.getRepository(PrepaidSchedule).findOne({ where: { id, tenantId } });
+      const schedule = await manager.getRepository(PrepaidSchedule).findOne({ where: { id, tenantId }, lock: { mode: 'pessimistic_write' } });
       if (!schedule) throw new NotFoundException('Prepaid schedule not found');
       if (schedule.status !== 'ACTIVE') throw new BadRequestException('This schedule is already closed');
       const released = await manager.getRepository(PrepaidAmortization).find({ where: { tenantId, scheduleId: id } });
