@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createEmployeeSchema, createPayrollRunSchema, createSalaryPackageSchema,
-  payPayrollRunSchema, postOpeningGratuitySchema, updatePayrollLineSchema, gratuityAdjustmentSchema,
+  payPayrollRunSchema, postOpeningGratuitySchema, updatePayrollLineSchema, gratuityAdjustmentSchema, updateEmployeeSchema,
 } from './payroll';
 
 const uuid = '11111111-1111-4111-8111-111111111111';
@@ -20,6 +20,23 @@ describe('payroll schemas', () => {
 
   it('employee: leaving date must not precede joining', () => {
     expect(() => createEmployeeSchema.parse({ firstName: 'A', lastName: 'B', joiningDate: '2024-05-01', leavingDate: '2024-04-30', paymentMethod: 'CASH' })).toThrow();
+  });
+
+  it('update: no defaults leak into partial edits', () => {
+    expect(updateEmployeeSchema.parse({})).toEqual({});
+    const out = updateEmployeeSchema.parse({ firstName: 'X' });
+    expect(out).toEqual({ firstName: 'X' });
+    expect('status' in out).toBe(false);
+    expect('isNational' in out).toBe(false);
+    expect(updateEmployeeSchema.parse({ leavingDate: null })).toEqual({ leavingDate: null });
+    expect(updateEmployeeSchema.parse({ email: '' })).toEqual({ email: null });
+    expect(updateEmployeeSchema.parse({ iban: ' ae07 12 ' })).toEqual({ iban: 'AE0712' });
+  });
+
+  it('nationality: empty becomes null, bad length rejected', () => {
+    expect(updateEmployeeSchema.parse({ nationality: '' })).toEqual({ nationality: null });
+    expect(updateEmployeeSchema.parse({ nationality: 'ae' })).toEqual({ nationality: 'AE' });
+    expect(() => updateEmployeeSchema.parse({ nationality: 'UAE' })).toThrow();
   });
 
   it('salary package coerces and defaults', () => {

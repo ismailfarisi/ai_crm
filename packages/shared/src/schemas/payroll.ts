@@ -13,9 +13,9 @@ const employeeFields = {
   userId: z.string().uuid().nullish().transform((v) => v ?? null),
   joiningDate: isoDay,
   leavingDate: isoDay.nullish().transform((v) => v ?? null),
-  status: z.enum(['ACTIVE', 'ON_HOLD', 'LEFT']).default('ACTIVE'),
-  nationality: z.string().trim().length(2).toUpperCase().nullish().transform((v) => v ?? null),
-  isNational: z.boolean().default(false),
+  status: z.enum(['ACTIVE', 'ON_HOLD', 'LEFT']),
+  nationality: z.string().trim().toUpperCase().nullish().refine((v) => !v || v.length === 2, 'Use a 2-letter country code').transform((v) => (v ? v : null)),
+  isNational: z.boolean(),
   paymentMethod: z.enum(['BANK', 'CASH']),
   bankName: optionalText(120),
   iban: z.string().nullish().transform((v) => (v == null ? null : v.replace(/\s+/g, '').toUpperCase() || null)),
@@ -24,7 +24,7 @@ const employeeFields = {
 };
 
 export const createEmployeeSchema = z
-  .object(employeeFields)
+  .object({ ...employeeFields, status: employeeFields.status.default('ACTIVE'), isNational: employeeFields.isNational.default(false) })
   .refine((v) => !v.leavingDate || v.leavingDate >= v.joiningDate, { message: 'Leaving date cannot be before joining', path: ['leavingDate'] })
   .refine((v) => v.paymentMethod !== 'BANK' || !v.iban || /^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(v.iban), { message: 'Enter a valid IBAN', path: ['iban'] })
   .transform((v) => ({ ...v, iban: v.paymentMethod === 'BANK' ? v.iban : null, bankName: v.paymentMethod === 'BANK' ? v.bankName : null }));
