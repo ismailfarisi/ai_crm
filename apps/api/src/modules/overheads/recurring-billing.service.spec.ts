@@ -40,6 +40,7 @@ function setup(over: Partial<any> = {}) {
   const service = new RecurringBillingService(
     recurring as any, occurrenceRepo as any, payables as any, rbac as any,
     notifications as any, audit as any, tenantContext as any,
+    { releaseDue: jest.fn() } as any,
   );
   return { service, row, occurrences, payables, rbac, notifications, audit, recurring, occurrenceRepo, tenantContext };
 }

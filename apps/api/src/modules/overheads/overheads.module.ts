@@ -13,6 +13,9 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { RbacModule } from '../rbac/rbac.module';
 import { AuditModule } from '../audit/audit.module';
 import { OccurrenceStore } from './occurrence.store';
+import { AmortizationStore } from './amortization.store';
+import { PrepaidService } from './prepaid.service';
+import { PrepaidController } from './prepaid.controller';
 import { RecurringBillingService } from './recurring-billing.service';
 
 /** Overheads that post: recurring bills and prepaid release. */
@@ -31,6 +34,7 @@ import { RecurringBillingService } from './recurring-billing.service';
     RbacModule,
     AuditModule,
   ],
-  providers: [OccurrenceStore, RecurringBillingService],
+  controllers: [PrepaidController],
+  providers: [OccurrenceStore, AmortizationStore, PrepaidService, RecurringBillingService],
 })
 export class OverheadsModule {}

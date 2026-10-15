@@ -16,6 +16,7 @@ import { RbacService } from '../rbac/rbac.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuditService } from '../audit/audit.service';
 import { TenantContextService } from '@/common/context/tenant-context.service';
+import { PrepaidService } from './prepaid.service';
 import { IN_PROGRESS, OccurrenceStore } from './occurrence.store';
 
 /**
@@ -47,11 +48,22 @@ export class RecurringBillingService {
     private readonly notifications: NotificationsService,
     private readonly audit: AuditService,
     private readonly tenantContext: TenantContextService,
+    private readonly prepaid: PrepaidService,
   ) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_2AM)
   async cron(): Promise<void> {
-    await this.run();
+    try {
+      await this.run();
+    } finally {
+      try {
+        await this.prepaid.releaseDue();
+      } catch (err) {
+        this.logger.error(
+          `Prepaid release failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
   }
 
   async run(today: string = utcToday()): Promise<void> {
