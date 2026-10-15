@@ -332,7 +332,7 @@ export function ChannelConfigModal({ open, onClose, config }: ChannelConfigModal
               />
               <Input
                 label="From Name"
-                placeholder="Relay CRM Support"
+                placeholder="Meridian Packaging Support"
                 value={formData.fromName || ''}
                 error={errors.fromName}
                 onChange={(e) => updateField('fromName', e.target.value)}
@@ -365,7 +365,7 @@ export function ChannelConfigModal({ open, onClose, config }: ChannelConfigModal
               />
               <Input
                 label="From Name"
-                placeholder="Relay CRM"
+                placeholder="Meridian Packaging"
                 value={formData.fromName || ''}
                 error={errors.fromName}
                 onChange={(e) => updateField('fromName', e.target.value)}

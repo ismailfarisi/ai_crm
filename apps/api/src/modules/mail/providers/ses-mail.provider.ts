@@ -37,7 +37,7 @@ export class SesMailProvider implements MailProvider {
           Body: {
             Text: {
               Data: [
-                `${mail.inviterName} invited you to join ${mail.organizationName} on Relay CRM.`,
+                `${mail.inviterName} invited you to join ${mail.organizationName} on Kerf.`,
                 '',
                 'Set your password and sign in here:',
                 mail.acceptUrl,
@@ -48,7 +48,7 @@ export class SesMailProvider implements MailProvider {
             Html: {
               Data: [
                 '<p>',
-                `${escapeHtml(mail.inviterName)} invited you to join <strong>${escapeHtml(mail.organizationName)}</strong> on Relay CRM.`,
+                `${escapeHtml(mail.inviterName)} invited you to join <strong>${escapeHtml(mail.organizationName)}</strong> on Kerf.`,
                 '</p>',
                 `<p><a href="${escapeHtml(mail.acceptUrl)}">Set your password and sign in</a></p>`,
                 `<p>This invite expires <time datetime="${mail.expiresAt.toISOString()}">${mail.expiresAt.toISOString()}</time>.</p>`,

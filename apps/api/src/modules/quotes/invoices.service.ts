@@ -408,7 +408,7 @@ export class InvoicesService {
     const organization = await this.organizationRepository.findOne({
       where: { id: tenantId },
     });
-    const organizationName = organization?.name || 'Relay CRM';
+    const organizationName = organization?.name || 'Kerf';
 
     const { buffer: pdf } = await this.getPdf(tenantId, id);
 
@@ -530,7 +530,7 @@ export class InvoicesService {
       ? await this.pdfRenderer.render(docData, config)
       : await this.invoicePdfService.generate(
           invoice,
-          organization?.name || 'Relay CRM',
+          organization?.name || 'Kerf',
         );
 
     return { buffer, filename: `${invoice.invoiceNumber}.pdf` };

@@ -118,7 +118,7 @@ const envSchema = z.object({
 
   // Mail (see modules/mail — providers are switchable via this enum)
   MAIL_PROVIDER: z.enum(['console', 'ses']).default('console'),
-  MAIL_FROM: z.string().default('Relay CRM <no-reply@relay.local>'),
+  MAIL_FROM: z.string().default('Kerf <no-reply@kerf.local>'),
   // Only used when MAIL_PROVIDER=ses. Credentials come from the SDK's default
   // chain (env vars, ~/.aws/credentials, IAM role, ...), never from .env.
   MAIL_REGION: z.string().optional(),

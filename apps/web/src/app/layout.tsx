@@ -15,10 +15,10 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Relay CRM',
-    template: '%s · Relay CRM',
+    default: 'Kerf',
+    template: '%s · Kerf',
   },
-  description: 'A multi-tenant CRM with role-based access control.',
+  description: 'The CRM that counts every cut — customers, costed quotes, production, stock and the books in one place.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

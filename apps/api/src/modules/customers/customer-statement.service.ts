@@ -308,7 +308,7 @@ export class CustomerStatementService {
       issuedAt: toDate,
       currency: customer.currency || invoices[0]?.currency || 'USD',
       organization: {
-        name: organization?.name || 'Relay CRM',
+        name: organization?.name || 'Kerf',
         address: orgAddress,
         taxId: organization?.taxId || undefined,
         phone: organization?.phone || undefined,

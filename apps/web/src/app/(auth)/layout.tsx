@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { CircleDot, Lock, Ruler, ShieldCheck } from 'lucide-react';
+import { Lock, Ruler, ShieldCheck } from 'lucide-react';
+import { KerfMark } from '@/components/brand/kerf-mark';
 import { LiveQuoteDemo } from '@/components/marketing/live-quote-demo';
 
 const TRUST_SIGNALS = [
@@ -13,10 +14,8 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       <div className="flex flex-col justify-center px-6 py-12 sm:px-12">
         <div className="mx-auto w-full max-w-sm">
           <Link href="/" className="mb-8 inline-flex items-center gap-2">
-            <span className="grid size-8 place-items-center rounded-lg bg-brand text-white">
-              <CircleDot className="size-4" />
-            </span>
-            <span className="text-base font-semibold tracking-tight">Relay CRM</span>
+            <KerfMark />
+            <span className="text-base font-semibold tracking-tight">Kerf</span>
           </Link>
           {children}
         </div>
@@ -44,7 +43,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
             </h2>
             <p className="mt-3 max-w-md text-sm leading-relaxed text-white/80">
               If you manufacture to order, a unit price doesn&rsquo;t exist until you know the
-              dimensions, the material yield and the machine time. Relay works it out from your own
+              dimensions, the material yield and the machine time. Kerf works it out from your own
               cost model.
             </p>
           </div>

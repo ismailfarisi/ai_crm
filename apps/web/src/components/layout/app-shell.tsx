@@ -7,7 +7,6 @@ import {
   Bell,
   ChevronDown,
   ChevronRight,
-  CircleDot,
   Database,
   LogOut,
   Menu,
@@ -25,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { AssistantProvider } from '@/components/assistant/assistant-provider';
 import { AssistantLauncher } from '@/components/assistant/assistant-launcher';
 import { AssistantPanel } from '@/components/assistant/assistant-panel';
+import { KerfMark } from '@/components/brand/kerf-mark';
 import { NotificationBell } from './notification-bell';
 import { BillingBanner } from './billing-banner';
 
@@ -307,11 +307,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 function Brand() {
   return (
     <Link href="/dashboard" className="flex items-center gap-2.5 px-4 pt-4 pb-3">
-      <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-amber-500 text-stone-950 font-bold shadow-xs">
-        <CircleDot className="size-4.5 stroke-[2.5]" />
-      </span>
+      <KerfMark />
       <div className="flex min-w-0 flex-col">
-        <span className="truncate text-sm font-bold tracking-tight text-ink">Relay CRM</span>
+        <span className="truncate text-sm font-bold tracking-tight text-ink">Kerf</span>
         <span className="text-[10px] font-medium uppercase tracking-wider text-ink-subtle">
           Workspace
         </span>
