@@ -1,5 +1,13 @@
-import type { JournalLineInput } from '@saas/shared';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  createRecurringExpenseSchema,
+  PERMISSIONS,
+  type JournalLineInput,
+} from '@saas/shared';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { FinanceService } from './finance.service';
 import { LedgerService } from './ledger.service';
@@ -8,10 +16,10 @@ import { CategoryBudget } from './entities/category-budget.entity';
 import { RecurringExpense } from './entities/recurring-expense.entity';
 import { JournalEntry } from './entities/journal-entry.entity';
 import { ExpenseClaim } from './entities/expense-claim.entity';
+import { RecurringExpenseOccurrence } from './entities/recurring-expense-occurrence.entity';
 import {
   CreateFinanceAccountDto,
   CreateCategoryBudgetDto,
-  CreateRecurringExpenseDto,
   TransferFundsDto,
 } from './dto';
 
@@ -24,6 +32,8 @@ describe('FinanceService', () => {
   let recurringRepo: jest.Mocked<Partial<Repository<RecurringExpense>>>;
   let journalRepo: jest.Mocked<Partial<Repository<JournalEntry>>>;
   let expenseRepo: jest.Mocked<Partial<Repository<ExpenseClaim>>>;
+  let occurrences: { count: jest.Mock; find: jest.Mock; findOne: jest.Mock };
+  let recurringRows: any[];
 
   const tenantId = '11111111-1111-1111-1111-111111111111';
 
@@ -80,13 +90,34 @@ describe('FinanceService', () => {
         .mockImplementation(async (bud) => ({ id: 'bud-1', ...bud })),
     };
 
+    recurringRows = [];
     recurringRepo = {
       find: jest.fn().mockResolvedValue([]),
-      findOne: jest.fn().mockResolvedValue(null),
+      findOne: jest.fn(
+        async ({ where }: any) =>
+          recurringRows.find(
+            (r) => r.id === where.id && r.tenantId === where.tenantId,
+          ) ?? null,
+      ),
       create: jest.fn().mockImplementation((dto) => ({ id: 'rec-1', ...dto })),
-      save: jest
-        .fn()
-        .mockImplementation(async (rec) => ({ id: 'rec-1', ...rec })),
+      save: jest.fn().mockImplementation(async (rec) => {
+        const row = {
+          id: 'rec-1',
+          createdAt: new Date('2026-01-01T00:00:00Z'),
+          updatedAt: new Date('2026-01-01T00:00:00Z'),
+          ...rec,
+        };
+        if (!recurringRows.includes(rec)) {
+          recurringRows = recurringRows.filter((r) => r.id !== row.id);
+          recurringRows.push(row);
+        }
+        return row;
+      }),
+    };
+    occurrences = {
+      count: jest.fn().mockResolvedValue(0),
+      find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValue(null),
     };
 
     journalRepo = {
@@ -131,6 +162,7 @@ describe('FinanceService', () => {
       journalRepo as unknown as Repository<JournalEntry>,
       expenseRepo as unknown as Repository<ExpenseClaim>,
       ledger as unknown as LedgerService,
+      occurrences as unknown as Repository<RecurringExpenseOccurrence>,
     );
   });
 
@@ -757,25 +789,125 @@ describe('FinanceService', () => {
       expect(list).toHaveLength(1);
     });
 
-    it('creates and lists recurring SaaS subscriptions', async () => {
-      const subDto: CreateRecurringExpenseDto = {
-        vendorName: 'Figma',
-        category: 'Design Tools',
-        amount: 45,
-        billingInterval: 'MONTHLY',
-        nextBillingDate: '2026-09-01',
+    const SUPPLIER = '22222222-2222-4222-8222-222222222222';
+    const manager = {
+      userId: 'u-fin',
+      permissions: [PERMISSIONS.FINANCE_MANAGE],
+    };
+    const managerApprover = {
+      userId: 'u-boss',
+      permissions: [PERMISSIONS.FINANCE_MANAGE, PERMISSIONS.BILL_APPROVE],
+    };
+    const input = createRecurringExpenseSchema.parse({
+      supplierId: SUPPLIER,
+      vendorName: 'Landlord',
+      category: 'Rent & premises',
+      amount: 120000,
+      billingInterval: 'ANNUAL',
+      startDate: '2026-01-01',
+    });
+    const seedRecurring = (over: Record<string, unknown>) => {
+      recurringRows.push({
+        tenantId,
+        supplierId: SUPPLIER,
+        vendorName: 'Landlord',
+        category: 'Rent & premises',
+        amount: 120000,
+        billingInterval: 'ANNUAL',
+        startDate: '2026-01-01',
+        endDate: null,
+        nextBillingDate: new Date('2026-01-01T00:00:00Z'),
+        taxCodeId: null,
+        autoApprove: false,
+        autoApproveById: null,
+        spreadOverPeriod: false,
+        financeAccountId: null,
         status: 'ACTIVE',
-      };
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        updatedAt: new Date('2026-01-01T00:00:00Z'),
+        ...over,
+      });
+    };
 
-      const created = await service.createSubscription(tenantId, subDto);
+    it('refuses auto-approve from someone who cannot approve bills', async () => {
+      await expect(
+        service.createSubscription(tenantId, manager, {
+          ...input,
+          autoApprove: true,
+        }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('records who switched auto-approve on', async () => {
+      const row = await service.createSubscription(tenantId, managerApprover, {
+        ...input,
+        autoApprove: true,
+      });
+      expect(row).toMatchObject({
+        autoApprove: true,
+        createdAt: expect.any(String),
+      });
       expect(recurringRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ tenantId, vendorName: 'Figma', amount: 45 }),
+        expect.objectContaining({
+          autoApproveById: 'u-boss',
+          createdById: 'u-boss',
+          nextBillingDate: new Date('2026-01-01T00:00:00Z'),
+        }),
       );
-      expect(created.id).toBe('rec-1');
+    });
 
-      recurringRepo.find = jest.fn().mockResolvedValue([created]);
-      const list = await service.findAllSubscriptions(tenantId);
-      expect(list).toHaveLength(1);
+    it('edit after first occurrence: amount changes, start date and interval are refused', async () => {
+      seedRecurring({ id: 'r1' });
+      occurrences.count.mockResolvedValue(1);
+      const updated = await service.updateSubscription(tenantId, 'r1', manager, {
+        amount: 126000,
+      });
+      expect(updated.amount).toBe(126000);
+      await expect(
+        service.updateSubscription(tenantId, 'r1', manager, {
+          startDate: '2026-02-01',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.updateSubscription(tenantId, 'r1', manager, {
+          billingInterval: 'QUARTERLY',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('refuses a PATCH whose end date is not after the stored start date', async () => {
+      seedRecurring({ id: 'r1', startDate: '2026-06-01' });
+      await expect(
+        service.updateSubscription(tenantId, 'r1', manager, {
+          endDate: '2026-05-01',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('turning auto-approve off clears who it runs as', async () => {
+      seedRecurring({ id: 'r1', autoApprove: true, autoApproveById: 'u-boss' });
+      const updated = await service.updateSubscription(tenantId, 'r1', manager, {
+        autoApprove: false,
+      });
+      expect(updated.autoApprove).toBe(false);
+      expect(recurringRows[0].autoApproveById).toBeNull();
+    });
+
+    it('resume moves the next date to the first occurrence on or after today, no back-fill', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-10-16T08:00:00Z'));
+      try {
+        seedRecurring({
+          id: 'r1',
+          status: 'PAUSED',
+          startDate: '2026-01-15',
+          billingInterval: 'MONTHLY',
+        });
+        const row = await service.resumeSubscription(tenantId, 'r1');
+        expect(row.status).toBe('ACTIVE');
+        expect(row.nextBillingDate.slice(0, 10)).toBe('2026-11-15');
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 });

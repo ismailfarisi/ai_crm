@@ -1,19 +1,31 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, MoreThanOrEqual, Repository } from 'typeorm';
+import { EntityManager, In, MoreThanOrEqual, Repository } from 'typeorm';
 import {
   calculateRunwayMonths,
   LEDGER_ROLES,
+  occurrenceDate,
+  occurrenceIndexOnOrAfter,
+  PERMISSIONS,
+  utcToday,
   TreasuryOverviewDto,
+  type CreateRecurringExpensePayload,
+  type Permission,
+  type RecurringExpenseDto,
+  type RecurringOccurrenceDto,
+  type UpdateRecurringExpensePayload,
 } from '@saas/shared';
 import { FinanceAccount } from './entities/finance-account.entity';
 import { CategoryBudget } from './entities/category-budget.entity';
 import { RecurringExpense } from './entities/recurring-expense.entity';
+import { RecurringExpenseOccurrence } from './entities/recurring-expense-occurrence.entity';
+import { SupplierBill } from '../payables/entities/supplier-bill.entity';
 import { JournalEntry } from './entities/journal-entry.entity';
 import { ExpenseClaim } from './entities/expense-claim.entity';
 import { LedgerService } from './ledger.service';
@@ -22,7 +34,6 @@ import {
   CreateFinanceAccountDto,
   UpdateFinanceAccountDto,
   CreateCategoryBudgetDto,
-  CreateRecurringExpenseDto,
   TransferFundsDto,
 } from './dto';
 
@@ -42,6 +53,8 @@ export class FinanceService {
     @InjectRepository(ExpenseClaim)
     private readonly expenseRepository: Repository<ExpenseClaim>,
     private readonly ledger: LedgerService,
+    @InjectRepository(RecurringExpenseOccurrence)
+    private readonly occurrences: Repository<RecurringExpenseOccurrence>,
   ) {}
 
   async getOverview(tenantId: string): Promise<TreasuryOverviewDto> {
@@ -717,30 +730,148 @@ export class FinanceService {
     return this.budgetRepository.save(budget);
   }
 
-  async findAllSubscriptions(tenantId: string): Promise<RecurringExpense[]> {
-    return this.recurringRepository.find({
+  private assertCanAutoApprove(actor: { permissions: Permission[] }, wants: boolean | undefined) {
+    // Same rule as assertActorCanGrant: compared with what this actor holds.
+    // A finance manager who cannot approve bills must not be able to set up
+    // bills that approve themselves.
+    if (wants && !actor.permissions.includes(PERMISSIONS.BILL_APPROVE)) {
+      throw new ForbiddenException('Only someone who can approve bills can turn on auto-approve.');
+    }
+  }
+
+  private toDto(row: RecurringExpense, last?: RecurringExpenseOccurrence | null): RecurringExpenseDto {
+    return {
+      id: row.id, tenantId: row.tenantId,
+      supplierId: row.supplierId, supplierName: row.supplier?.companyName ?? null,
+      vendorName: row.vendorName, category: row.category, amount: row.amount,
+      currency: row.supplier?.currency ?? null,
+      billingInterval: row.billingInterval, startDate: row.startDate, endDate: row.endDate,
+      nextBillingDate: row.nextBillingDate.toISOString(),
+      taxCodeId: row.taxCodeId, autoApprove: row.autoApprove, spreadOverPeriod: row.spreadOverPeriod,
+      financeAccountId: row.financeAccountId, status: row.status,
+      lastOccurrenceStatus: last?.status ?? null,
+      createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  async findAllSubscriptions(tenantId: string): Promise<RecurringExpenseDto[]> {
+    const rows = await this.recurringRepository.find({
       where: { tenantId },
       order: { nextBillingDate: 'ASC' },
-      relations: { financeAccount: true },
+      relations: { financeAccount: true, supplier: true },
     });
+    const last = rows.length
+      ? await this.occurrences
+          .createQueryBuilder('o')
+          .distinctOn(['o.recurringExpenseId'])
+          .where('o.tenantId = :tenantId', { tenantId })
+          .orderBy('o.recurringExpenseId')
+          .addOrderBy('o.periodStart', 'DESC')
+          .getMany()
+      : [];
+    const byId = new Map(last.map((o) => [o.recurringExpenseId, o]));
+    return rows.map((r) => this.toDto(r, byId.get(r.id)));
   }
 
   async createSubscription(
     tenantId: string,
-    dto: CreateRecurringExpenseDto,
-  ): Promise<RecurringExpense> {
-    const sub = this.recurringRepository.create({
-      tenantId,
-      vendorName: dto.vendorName,
-      category: dto.category,
-      amount: dto.amount,
-      billingInterval: dto.billingInterval,
-      nextBillingDate: new Date(dto.nextBillingDate),
-      financeAccountId: dto.financeAccountId || null,
-      status: dto.status || 'ACTIVE',
-    });
+    actor: { userId: string; permissions: Permission[] },
+    input: CreateRecurringExpensePayload,
+  ): Promise<RecurringExpenseDto> {
+    this.assertCanAutoApprove(actor, input.autoApprove);
+    const saved = await this.recurringRepository.save(
+      this.recurringRepository.create({
+        tenantId,
+        ...input,
+        nextBillingDate: new Date(`${input.startDate}T00:00:00Z`),
+        autoApproveById: input.autoApprove ? actor.userId : null,
+        createdById: actor.userId,
+        status: 'ACTIVE',
+      }),
+    );
+    return this.findSubscription(tenantId, saved.id);
+  }
 
-    return this.recurringRepository.save(sub);
+  private async findSubscriptionRow(tenantId: string, id: string): Promise<RecurringExpense> {
+    const row = await this.recurringRepository.findOne({ where: { id, tenantId }, relations: { supplier: true } });
+    if (!row) throw new NotFoundException('Recurring expense not found');
+    return row;
+  }
+
+  async findSubscription(tenantId: string, id: string): Promise<RecurringExpenseDto> {
+    const row = await this.findSubscriptionRow(tenantId, id);
+    const last = await this.occurrences.findOne({ where: { tenantId, recurringExpenseId: id }, order: { periodStart: 'DESC' } });
+    return this.toDto(row, last);
+  }
+
+  async updateSubscription(
+    tenantId: string,
+    id: string,
+    actor: { userId: string; permissions: Permission[] },
+    input: UpdateRecurringExpensePayload,
+  ): Promise<RecurringExpenseDto> {
+    const row = await this.findSubscriptionRow(tenantId, id);
+    const reshapes =
+      (input.startDate !== undefined && input.startDate !== row.startDate) ||
+      (input.billingInterval !== undefined && input.billingInterval !== row.billingInterval);
+    if (reshapes && (await this.occurrences.count({ where: { tenantId, recurringExpenseId: id } })) > 0) {
+      throw new BadRequestException('The start date and interval cannot change once a bill has been generated. Cancel this one and create a new schedule.');
+    }
+    if (input.autoApprove === true && !row.autoApprove) {
+      this.assertCanAutoApprove(actor, true);
+      row.autoApproveById = actor.userId;
+    }
+    if (input.autoApprove === false) row.autoApproveById = null;
+
+    Object.assign(row, input);
+    if (row.endDate && row.endDate <= row.startDate) {
+      throw new BadRequestException('The end date must be after the start');
+    }
+    if (row.billingInterval === 'MONTHLY') row.spreadOverPeriod = false;
+    if (input.startDate !== undefined && reshapes) row.nextBillingDate = new Date(`${row.startDate}T00:00:00Z`);
+    await this.recurringRepository.save(row);
+    return this.findSubscription(tenantId, id);
+  }
+
+  async pauseSubscription(tenantId: string, id: string): Promise<RecurringExpenseDto> {
+    const row = await this.findSubscriptionRow(tenantId, id);
+    if (row.status !== 'ACTIVE') throw new BadRequestException('Only an active schedule can be paused');
+    row.status = 'PAUSED';
+    await this.recurringRepository.save(row);
+    return this.findSubscription(tenantId, id);
+  }
+
+  async resumeSubscription(tenantId: string, id: string): Promise<RecurringExpenseDto> {
+    const row = await this.findSubscriptionRow(tenantId, id);
+    if (row.status !== 'PAUSED') throw new BadRequestException('Only a paused schedule can be resumed');
+    // Paused months are deliberately not back-generated.
+    const n = occurrenceIndexOnOrAfter(row.startDate, row.billingInterval, utcToday());
+    row.nextBillingDate = new Date(`${occurrenceDate(row.startDate, n, row.billingInterval)}T00:00:00Z`);
+    row.status = 'ACTIVE';
+    await this.recurringRepository.save(row);
+    return this.findSubscription(tenantId, id);
+  }
+
+  async cancelSubscription(tenantId: string, id: string): Promise<RecurringExpenseDto> {
+    const row = await this.findSubscriptionRow(tenantId, id);
+    row.status = 'CANCELLED';
+    await this.recurringRepository.save(row);
+    return this.findSubscription(tenantId, id);
+  }
+
+  async listOccurrences(tenantId: string, id: string): Promise<RecurringOccurrenceDto[]> {
+    await this.findSubscriptionRow(tenantId, id);
+    const rows = await this.occurrences.find({ where: { tenantId, recurringExpenseId: id }, order: { periodStart: 'DESC' } });
+    const billIds = rows.map((r) => r.billId).filter((v): v is string => Boolean(v));
+    const bills = billIds.length
+      ? await this.recurringRepository.manager.getRepository(SupplierBill).find({ where: { tenantId, id: In(billIds) }, select: { id: true, billNumber: true } })
+      : [];
+    const numbers = new Map(bills.map((b) => [b.id, b.billNumber]));
+    return rows.map((r) => ({
+      id: r.id, periodStart: r.periodStart, periodEnd: r.periodEnd, amount: r.amount,
+      billId: r.billId, billNumber: r.billId ? (numbers.get(r.billId) ?? null) : null,
+      status: r.status, error: r.error, attempts: r.attempts, createdAt: r.createdAt.toISOString(),
+    }));
   }
 
   async findAllJournalEntries(tenantId: string): Promise<JournalEntry[]> {

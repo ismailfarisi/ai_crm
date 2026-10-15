@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -10,11 +11,18 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
+  createRecurringExpenseSchema,
   PERMISSIONS,
   TreasuryOverviewDto,
+  updateRecurringExpenseSchema,
+  type CreateRecurringExpensePayload,
+  type RecurringExpenseDto,
+  type RecurringOccurrenceDto,
   type TrialBalanceDto,
+  type UpdateRecurringExpensePayload,
 } from '@saas/shared';
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
+import { zodBody } from '@/common/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '@/modules/rbac/guards/permissions.guard';
@@ -25,12 +33,10 @@ import {
   CreateFinanceAccountDto,
   UpdateFinanceAccountDto,
   CreateCategoryBudgetDto,
-  CreateRecurringExpenseDto,
   TransferFundsDto,
 } from './dto';
 import { FinanceAccount } from './entities/finance-account.entity';
 import { CategoryBudget } from './entities/category-budget.entity';
-import { RecurringExpense } from './entities/recurring-expense.entity';
 import { JournalEntry } from './entities/journal-entry.entity';
 
 @ApiTags('finance')
@@ -166,27 +172,51 @@ export class FinanceController {
 
   @Get('subscriptions')
   @RequirePermissions(PERMISSIONS.FINANCE_READ)
-  @ApiOperation({
-    summary: 'List SaaS subscriptions',
-    description: 'Lists recurring SaaS and vendor subscriptions',
-  })
-  async findAllSubscriptions(
-    @CurrentUser() user: AuthenticatedUser,
-  ): Promise<RecurringExpense[]> {
+  findAllSubscriptions(@CurrentUser() user: AuthenticatedUser): Promise<RecurringExpenseDto[]> {
     return this.financeService.findAllSubscriptions(user.organizationId);
   }
 
   @Post('subscriptions')
   @RequirePermissions(PERMISSIONS.FINANCE_MANAGE)
-  @ApiOperation({
-    summary: 'Create SaaS subscription',
-    description: 'Registers a new recurring vendor subscription or SaaS fee',
-  })
-  async createSubscription(
+  createSubscription(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: CreateRecurringExpenseDto,
-  ): Promise<RecurringExpense> {
-    return this.financeService.createSubscription(user.organizationId, dto);
+    @Body(zodBody(createRecurringExpenseSchema)) body: CreateRecurringExpensePayload,
+  ): Promise<RecurringExpenseDto> {
+    return this.financeService.createSubscription(user.organizationId, { userId: user.id, permissions: user.permissions }, body);
+  }
+
+  @Patch('subscriptions/:id')
+  @RequirePermissions(PERMISSIONS.FINANCE_MANAGE)
+  updateSubscription(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(zodBody(updateRecurringExpenseSchema)) body: UpdateRecurringExpensePayload,
+  ): Promise<RecurringExpenseDto> {
+    return this.financeService.updateSubscription(user.organizationId, id, { userId: user.id, permissions: user.permissions }, body);
+  }
+
+  @Post('subscriptions/:id/pause')
+  @RequirePermissions(PERMISSIONS.FINANCE_MANAGE)
+  pauseSubscription(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.financeService.pauseSubscription(user.organizationId, id);
+  }
+
+  @Post('subscriptions/:id/resume')
+  @RequirePermissions(PERMISSIONS.FINANCE_MANAGE)
+  resumeSubscription(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.financeService.resumeSubscription(user.organizationId, id);
+  }
+
+  @Delete('subscriptions/:id')
+  @RequirePermissions(PERMISSIONS.FINANCE_MANAGE)
+  cancelSubscription(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.financeService.cancelSubscription(user.organizationId, id);
+  }
+
+  @Get('subscriptions/:id/occurrences')
+  @RequirePermissions(PERMISSIONS.FINANCE_READ)
+  listOccurrences(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.financeService.listOccurrences(user.organizationId, id);
   }
 
   @Get('journal-entries')

@@ -1,3 +1,4 @@
+import { createRecurringExpenseSchema } from '@saas/shared';
 import { Test, TestingModule } from '@nestjs/testing';
 import { FinanceController } from './finance.controller';
 import { FinanceService } from './finance.service';
@@ -126,16 +127,17 @@ describe('FinanceController', () => {
       'tenant-123',
     );
 
-    const subDto = {
+    const subDto = createRecurringExpenseSchema.parse({
       vendorName: 'Slack',
       category: 'Communication',
       amount: 15,
-      billingInterval: 'MONTHLY' as const,
-      nextBillingDate: '2026-09-01',
-    };
+      billingInterval: 'MONTHLY',
+      startDate: '2026-09-01',
+    });
     await controller.createSubscription(mockUser, subDto);
     expect(financeService.createSubscription).toHaveBeenCalledWith(
       'tenant-123',
+      { userId: mockUser.id, permissions: mockUser.permissions },
       subDto,
     );
   });
