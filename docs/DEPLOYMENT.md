@@ -4,11 +4,13 @@
 
 The staging checkout lives at `/home/deploy/ai_crm` on SSH host `ismail`. The active Caddy configuration is `/etc/caddy/Caddyfile` (not `/home/deploy/Caddyfile`). Current routes are:
 
-- `https://switeaz.com/` and `https://staging.switeaz.com/` to the CRM web container on `127.0.0.1:3100`.
+- `https://switeaz.com/` to the marketing site (`apps/marketing`) on `127.0.0.1:3200`. `https://www.switeaz.com/` redirects to it.
+- `https://app.switeaz.com/` and `https://staging.switeaz.com/` to the CRM web container on `127.0.0.1:3100`.
 - `https://api.switeaz.com/` and `https://api-staging.switeaz.com/` to the CRM API on `127.0.0.1:4100`.
-- `https://www.switeaz.com/` to the marketing site (`apps/marketing`) on `127.0.0.1:3200`. Its links into the app use `PUBLIC_WEB_URL`. Set `MARKETING_SITE_URL` or `MARKETING_CONTACT_EMAIL` in `.env.staging` to override the defaults (`https://www.switeaz.com`, `hello@kerf.ae`). These values are baked in at build time.
 
-The canonical public web URL is `https://switeaz.com/`. Keep `PUBLIC_WEB_URL`, `WEB_ORIGIN`, `NEXT_PUBLIC_API_URL`, and `PUBLIC_API_URL` aligned with the environment being deployed. Do not put credentials in this document or print `.env.staging`.
+The apex used to serve the app. The marketing site redirects every app path (`/q/…`, `/accept-invite`, `/dashboard`, and so on; see `apps/marketing/app-routes.mjs`) to the same path on `PUBLIC_WEB_URL`, so links already sent to customers keep working. Its own links into the app use `PUBLIC_WEB_URL` too. Set `MARKETING_SITE_URL` and, optionally, `MARKETING_CONTACT_EMAIL` in `.env.staging`; the defaults are `https://switeaz.com` and `hello@kerf.ae`. All of these are baked in at build time, so changing one means rebuilding `marketing`. Sessions survive the move between hosts because `COOKIE_DOMAIN` is `.switeaz.com`.
+
+The canonical public web URL is `https://app.switeaz.com/`. Keep `PUBLIC_WEB_URL`, `WEB_ORIGIN`, `NEXT_PUBLIC_API_URL`, and `PUBLIC_API_URL` aligned with the environment being deployed. Do not put credentials in this document or print `.env.staging`.
 
 ## Deploy
 
@@ -80,11 +82,19 @@ An unauthenticated web request may redirect to `/continue`; that is the expected
 docker compose --env-file .env.staging -f docker-compose.staging.yml logs --tail=50 api worker web
 ```
 
-The marketing route is a plain reverse proxy (DNS: `www` → this host, proxied the same way as the apex):
+The site blocks for the web hosts (DNS is a Cloudflare wildcard, so every subdomain already points here):
 
 ```caddy
-www.switeaz.com {
+switeaz.com {
 	reverse_proxy 127.0.0.1:3200
+}
+
+www.switeaz.com {
+	redir https://switeaz.com{uri} permanent
+}
+
+app.switeaz.com {
+	reverse_proxy 127.0.0.1:3100
 }
 ```
 
