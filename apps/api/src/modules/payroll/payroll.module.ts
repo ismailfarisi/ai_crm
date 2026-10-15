@@ -12,6 +12,8 @@ import { EmployeesController } from './employees.controller';
 import { AdvancesService } from './advances.service';
 import { GratuityService } from './gratuity.service';
 import { PayrollController } from './payroll.controller';
+import { PayrollRunsService } from './payroll-runs.service';
+import { PayrollRunsController } from './payroll-runs.controller';
 
 /** Employees, salary packages, payroll runs, advances and the gratuity ledger. */
 @Module({
@@ -27,13 +29,17 @@ import { PayrollController } from './payroll.controller';
     // LedgerService posts the approval, payment, advance and gratuity journals.
     FinanceModule,
   ],
-  controllers: [EmployeesController, PayrollController],
+  controllers: [EmployeesController, PayrollController, PayrollRunsController],
   providers: [
     EmployeesService,
     AdvancesService,
     GratuityService,
+    PayrollRunsService,
     // Built from process.env so a missing PAYROLL_DATA_KEY fails boot in production.
-    { provide: PayrollCryptoService, useFactory: () => new PayrollCryptoService(process.env) },
+    {
+      provide: PayrollCryptoService,
+      useFactory: () => new PayrollCryptoService(process.env),
+    },
   ],
 })
 export class PayrollModule {}

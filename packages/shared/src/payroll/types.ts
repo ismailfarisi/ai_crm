@@ -41,7 +41,10 @@ export interface PayrollRunDto {
   id: string; runNumber: string; period: string; payDate: string; status: PayrollRunStatus;
   totals: PayrollRunTotalsDto; bankPaidAt: string | null; cashPaidAt: string | null;
   approvedAt: string | null; approvedById: string | null; journalEntryId: string | null;
-  lines?: PayrollRunLineDto[]; createdAt: string; updatedAt: string;
+  lines?: PayrollRunLineDto[];
+  /** Employees left out of a create or refresh, and why. */
+  warnings?: string[];
+  createdAt: string; updatedAt: string;
 }
 export interface OpeningGratuityPreviewDto { cutoverDate: string; lines: { employeeId: string; employeeName: string; joiningDate: string; basic: number; serviceDays: number; calculated: number }[]; }
 export interface PayslipDto { run: Pick<PayrollRunDto, 'id' | 'runNumber' | 'period' | 'payDate' | 'status'>; line: PayrollRunLineDto; employee: Pick<EmployeeDto, 'id' | 'employeeNumber' | 'fullName' | 'jobTitle' | 'department' | 'joiningDate' | 'paymentMethod' | 'bankName' | 'ibanMasked'>; organization: { name: string; legalName: string | null; address: string | null; baseCurrency: string }; }
