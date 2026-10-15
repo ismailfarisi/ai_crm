@@ -14,6 +14,10 @@ import {
   SupplierBill,
   SupplierBillLine,
 } from './entities/supplier-bill.entity';
+import {
+  PrepaidAmortization,
+  PrepaidSchedule,
+} from './entities/prepaid-schedule.entity';
 import { PayablesController } from './payables.controller';
 import { PayablesService } from './payables.service';
 
@@ -23,6 +27,8 @@ import { PayablesService } from './payables.service';
       SupplierBill,
       SupplierBillLine,
       BillPayment,
+      PrepaidSchedule,
+      PrepaidAmortization,
       Supplier,
       PurchaseOrder,
       PurchaseOrderLine,

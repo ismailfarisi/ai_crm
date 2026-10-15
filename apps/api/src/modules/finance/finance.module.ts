@@ -4,6 +4,7 @@ import { FinanceAccount } from './entities/finance-account.entity';
 import { ExpenseClaim } from './entities/expense-claim.entity';
 import { CategoryBudget } from './entities/category-budget.entity';
 import { RecurringExpense } from './entities/recurring-expense.entity';
+import { RecurringExpenseOccurrence } from './entities/recurring-expense-occurrence.entity';
 import { JournalEntry } from './entities/journal-entry.entity';
 import { LedgerAccount } from './entities/ledger-account.entity';
 import { FxRate } from './entities/fx-rate.entity';
@@ -20,6 +21,7 @@ import {
   SalesOrderLine,
 } from '../orders/entities/sales-order.entity';
 import { WorkOrder } from '../production/entities/work-order.entity';
+import { Supplier } from '../purchasing/entities/supplier.entity';
 import { FinanceService } from './finance.service';
 import { LedgerService } from './ledger.service';
 import { ExpensesService } from './expenses.service';
@@ -35,6 +37,7 @@ import { AiModule } from '../ai/ai.module';
       ExpenseClaim,
       CategoryBudget,
       RecurringExpense,
+      RecurringExpenseOccurrence,
       JournalEntry,
       LedgerAccount,
       // Read by the currency and reporting services; owned elsewhere.
@@ -47,6 +50,7 @@ import { AiModule } from '../ai/ai.module';
       SalesOrder,
       SalesOrderLine,
       WorkOrder,
+      Supplier,
     ]),
     TemporalModule,
     AiModule,

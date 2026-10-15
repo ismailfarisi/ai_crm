@@ -8,7 +8,9 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
+import type { RecurringInterval } from '@saas/shared';
 import { FinanceAccount, numericTransformer } from './finance-account.entity';
+import { Supplier } from '../../purchasing/entities/supplier.entity';
 
 @Entity('recurring_expenses')
 export class RecurringExpense {
@@ -25,6 +27,13 @@ export class RecurringExpense {
   @Column({ type: 'varchar', length: 100 })
   category: string;
 
+  @Column({ type: 'uuid', nullable: true })
+  supplierId: string | null;
+
+  @ManyToOne(() => Supplier, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'supplierId' })
+  supplier?: Supplier;
+
   @Column({
     type: 'numeric',
     precision: 14,
@@ -36,14 +45,38 @@ export class RecurringExpense {
 
   @Column({
     type: 'enum',
-    enum: ['MONTHLY', 'ANNUAL'],
+    enum: ['MONTHLY', 'QUARTERLY', 'SEMI_ANNUAL', 'ANNUAL'],
     enumName: 'recurring_expenses_billing_interval_enum',
     default: 'MONTHLY',
   })
-  billingInterval: 'MONTHLY' | 'ANNUAL';
+  billingInterval: RecurringInterval;
 
   @Column({ type: 'timestamptz' })
   nextBillingDate: Date;
+
+  /** Anchor every occurrence is computed from. */
+  @Column({ type: 'date' })
+  startDate: string;
+
+  /** No occurrence on or after this date. */
+  @Column({ type: 'date', nullable: true })
+  endDate: string | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  taxCodeId: string | null;
+
+  @Column({ type: 'boolean', default: false })
+  autoApprove: boolean;
+
+  /** Who switched auto-approve on; approvals run as them, with their current permissions. */
+  @Column({ type: 'uuid', nullable: true })
+  autoApproveById: string | null;
+
+  @Column({ type: 'boolean', default: false })
+  spreadOverPeriod: boolean;
+
+  @Column({ type: 'uuid', nullable: true })
+  createdById: string | null;
 
   @Column({ type: 'uuid', nullable: true })
   financeAccountId: string | null;
