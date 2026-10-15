@@ -434,6 +434,11 @@ What overheads posting and recurring bills leave out, and the choices behind it.
   was already created, recover by setting the occurrence to status `'GENERATED'`
   with its `billId`. If it was not, `UPDATE recurring_expense_occurrences SET
   error = 'stale' WHERE id = …` lets the next run retry.
+- **Existing recurring rows are not back-billed — by design.** The migration
+  keeps each row's start date as its anchor and moves `nextBillingDate` to the
+  first occurrence on or after the migration date (UTC). Earlier periods were
+  paid and booked another way; anyone wanting them as bills enters them by
+  hand.
 - **Auto-approve runs as the user who enabled it — by design.** If they lose
   `bill:approve`, bills stay draft and finance managers are notified.
 - **With auto-approve on, only a holder of `bill:approve` can change amount,

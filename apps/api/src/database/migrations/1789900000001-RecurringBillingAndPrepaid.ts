@@ -34,7 +34,42 @@ const LEGACY_SUBSCRIPTION_CATEGORIES: Array<[from: string, to: string]> = [
   ['Office Utilities', 'Utilities & Telecom'],
 ];
 
-const NEW_TENANT_TABLES: Array<[table: string, tenantColumn: string]> = [
+/** Months per interval, frozen as of this migration (mirrors @saas/shared recurring.ts). */
+const INTERVAL_MONTHS: Record<string, number> = {
+  MONTHLY: 1,
+  QUARTERLY: 3,
+  SEMI_ANNUAL: 6,
+  ANNUAL: 12,
+};
+
+/**
+ * `addMonthsClamped` from @saas/shared, inlined so the migration never changes
+ * with app code: the anchor's day, clamped to the target month's last day.
+ */
+function addMonthsClamped(anchor: string, months: number): string {
+  const [y, m, d] = anchor.slice(0, 10).split('-').map(Number);
+  const target = new Date(Date.UTC(y, m - 1 + months, 1));
+  const lastDay = new Date(
+    Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  target.setUTCDate(Math.min(d, lastDay));
+  return target.toISOString().slice(0, 10);
+}
+
+/** First occurrence of the schedule on or after `date` (ISO dates compare as strings). */
+function firstOccurrenceOnOrAfter(
+  startDate: string,
+  interval: string,
+  date: string,
+): string {
+  const step = INTERVAL_MONTHS[interval] ?? 1;
+  for (let n = 0; ; n++) {
+    const occurrence = addMonthsClamped(startDate, n * step);
+    if (occurrence >= date) return occurrence;
+  }
+}
+
+const NEW_TENANT_TABLES:Array<[table: string, tenantColumn: string]> = [
   ['recurring_expense_occurrences', 'tenantId'],
   ['prepaid_schedules', 'tenant_id'],
   ['prepaid_amortizations', 'tenant_id'],
@@ -84,6 +119,24 @@ export class RecurringBillingAndPrepaid1789900000001 implements MigrationInterfa
     await queryRunner.query(
       `UPDATE "recurring_expenses" SET "spreadOverPeriod" = ("billingInterval" <> 'MONTHLY')`,
     );
+    // Not back-billed: the old code never advanced nextBillingDate, and those
+    // periods were paid and booked another way. Each row moves to its first
+    // occurrence on or after today (UTC); startDate stays the anchor.
+    const [{ today }] = (await queryRunner.query(
+      `SELECT to_char((now() AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS "today"`,
+    )) as Array<{ today: string }>;
+    const legacy = (await queryRunner.query(
+      `SELECT "id", to_char("startDate", 'YYYY-MM-DD') AS "startDate", "billingInterval"::text AS "billingInterval"
+         FROM "recurring_expenses" WHERE "startDate" < $1::date`,
+      [today],
+    )) as Array<{ id: string; startDate: string; billingInterval: string }>;
+    for (const row of legacy) {
+      const next = firstOccurrenceOnOrAfter(row.startDate, row.billingInterval, today);
+      await queryRunner.query(
+        `UPDATE "recurring_expenses" SET "nextBillingDate" = $2::timestamptz WHERE "id" = $1`,
+        [row.id, `${next}T00:00:00Z`],
+      );
+    }
     // A supplier only where exactly one live supplier carries the vendor name.
     await queryRunner.query(`
       UPDATE "recurring_expenses" r SET "supplierId" = s."id"
