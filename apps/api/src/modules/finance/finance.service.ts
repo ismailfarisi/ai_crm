@@ -117,9 +117,16 @@ export class FinanceService {
     for (const inv of invoices) {
       const key = bucket(inv.dueDate ? toIso(inv.dueDate) : today);
       if (!key) continue;
-      rows.get(key)!.inflows +=
-        (Number(inv.amount) - Number(inv.paidAmount ?? 0)) *
-        Number(inv.fxRate || 1);
+      // Open balance as the customer statement defines it: credit notes
+      // reduce what is owed, refunds of those credits put it back.
+      const open = Math.max(
+        0,
+        Number(inv.amount) -
+          Number(inv.paidAmount ?? 0) -
+          Number(inv.creditedAmount || 0) +
+          Number(inv.refundedAmount || 0),
+      );
+      rows.get(key)!.inflows += open * Number(inv.fxRate || 1);
     }
     for (const r of recurring) {
       // Only periods not yet generated: from nextBillingDate on.

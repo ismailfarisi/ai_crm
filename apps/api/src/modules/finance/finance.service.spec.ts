@@ -334,6 +334,21 @@ describe('FinanceService', () => {
     });
   });
 
+  describe('cashForecast receivables', () => {
+    afterEach(() => jest.useRealTimers());
+
+    it('nets credit notes off invoice inflows and drops fully credited invoices', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-10-16T00:00:00Z'));
+      seedAccounts([{ balance: 0 }]);
+      seedInvoices([
+        { status: 'ISSUED', amount: 30000, paidAmount: 0, creditedAmount: 10000, refundedAmount: 0, dueDate: '2026-10-20', fxRate: 1 },
+        { status: 'ISSUED', amount: 5000, paidAmount: 0, creditedAmount: 5000, refundedAmount: 0, dueDate: '2026-10-21', fxRate: 1 },
+      ]);
+      const f = await service.cashForecast(tenantId, 1);
+      expect(f.months[0].inflows).toBe(20000);
+    });
+  });
+
   describe('accounts CRUD & transfers', () => {
     it('creates a new financial account and unsets prior default if isDefault is true', async () => {
       const dto: CreateFinanceAccountDto = {
