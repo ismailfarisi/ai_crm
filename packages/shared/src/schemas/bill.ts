@@ -8,7 +8,7 @@ const optionalText = (max: number) =>
     .nullish()
     .transform((v) => (v == null || v === '' ? null : v));
 
-const isoDay = z.string().regex(/^d{4}-d{2}-d{2}$/, 'Use YYYY-MM-DD');
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
 
 export const billLineSchema = z
   .object({

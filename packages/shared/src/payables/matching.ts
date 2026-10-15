@@ -1,6 +1,6 @@
 import type { JournalLineInput, LedgerRole } from '../finance/ledger';
 import { LEDGER_ROLES } from '../finance/ledger';
-import { expenseCategoryRole } from '../finance/expense-categories';
+import { expenseCategoryRole, normaliseExpenseCategory } from '../finance/expense-categories';
 import { monthsTouched } from '../finance/recurring';
 
 /**
@@ -191,6 +191,7 @@ export function billPostingLines(
   let grni = 0;
   let variance = 0;
   const expenseByRole = new Map<LedgerRole, number>();
+  const expenseName = new Map<LedgerRole, string>();
 
   for (const line of lines) {
     const billed = money(line.qty * line.unitCost);
@@ -200,6 +201,14 @@ export function billPostingLines(
       variance = money(variance + (billed - cleared));
     } else {
       const role = isSpread(line) ? LEDGER_ROLES.PREPAID_EXPENSES : expenseCategoryRole(line.category);
+      if (!expenseName.has(role)) {
+        expenseName.set(
+          role,
+          role === LEDGER_ROLES.PREPAID_EXPENSES
+            ? 'Prepaid expenses'
+            : line.category?.trim() ? normaliseExpenseCategory(line.category) : 'Operating expense',
+        );
+      }
       expenseByRole.set(role, money((expenseByRole.get(role) ?? 0) + billed));
     }
   }
@@ -222,7 +231,7 @@ export function billPostingLines(
     if (amount === 0) continue;
     out.push({
       role,
-      accountName: role === LEDGER_ROLES.PREPAID_EXPENSES ? 'Prepaid expenses' : 'Operating expense',
+      accountName: expenseName.get(role) ?? 'Operating expense',
       debit: amount,
       credit: 0,
       description: label,

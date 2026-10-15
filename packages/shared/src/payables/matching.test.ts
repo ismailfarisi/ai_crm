@@ -249,6 +249,7 @@ describe('billPostingLines — categories and spreading', () => {
       { description: 'Rent March', qty: 1, unitCost: 10_000, category: 'Rent & premises', servicePeriodStart: '2026-03-01', servicePeriodEnd: '2026-03-31' },
     ], 0, ref);
     expect(lines.find((l) => l.role === LEDGER_ROLES.RENT)!.debit).toBe(10_000);
+    expect(lines.find((l) => l.role === LEDGER_ROLES.RENT)!.accountName).toBe('Rent & premises');
   });
 
   it('mixed bill balances', () => {
