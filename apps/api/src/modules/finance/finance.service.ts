@@ -35,7 +35,9 @@ import { Invoice, InvoiceStatus } from '../quotes/entities/invoice.entity';
 import { JournalEntry } from './entities/journal-entry.entity';
 import { ExpenseClaim } from './entities/expense-claim.entity';
 import { LedgerService } from './ledger.service';
-import { cashAccountAmount } from './fx';
+import { baseCurrencyFor, cashAccountAmount } from './fx';
+import { Supplier } from '../purchasing/entities/supplier.entity';
+import { TaxService } from '../tax/tax.service';
 import {
   CreateFinanceAccountDto,
   UpdateFinanceAccountDto,
@@ -69,6 +71,9 @@ export class FinanceService {
     private readonly bills: Repository<SupplierBill>,
     @InjectRepository(Invoice)
     private readonly invoices: Repository<Invoice>,
+    @InjectRepository(Supplier)
+    private readonly suppliers: Repository<Supplier>,
+    private readonly tax: TaxService,
   ) {}
 
   async cashForecast(
@@ -128,13 +133,33 @@ export class FinanceService {
       );
       rows.get(key)!.inflows += open * Number(inv.fxRate || 1);
     }
+    // Projected with the tax the generated bill will carry (the amount is
+    // net), looked up once per code/supplier pair.
+    const rates = new Map<string, Promise<number>>();
+    const rateFor = (r: RecurringExpense): Promise<number> => {
+      const key = `${r.taxCodeId ?? ''}|${r.supplierId ?? ''}`;
+      if (!rates.has(key)) {
+        rates.set(
+          key,
+          this.tax
+            .purchaseTaxFor(tenantId, r.taxCodeId, r.supplierId)
+            .then((t) => t.rate)
+            .catch(() => 0),
+        );
+      }
+      return rates.get(key)!;
+    };
     for (const r of recurring) {
-      // Only periods not yet generated: from nextBillingDate on.
+      // Only periods not yet generated, and never the past: a row without a
+      // supplier is never billed, so its nextBillingDate never moves, and its
+      // old periods are not cash still to go out.
+      const nextIso = toIso(r.nextBillingDate);
       const fromIndex = occurrenceIndexOnOrAfter(
         r.startDate,
         r.billingInterval,
-        toIso(r.nextBillingDate),
+        nextIso > today ? nextIso : today,
       );
+      const gross = round2(Number(r.amount) * (1 + (await rateFor(r)) / 100));
       for (const n of dueOccurrences({
         startDate: r.startDate,
         endDate: r.endDate,
@@ -143,7 +168,7 @@ export class FinanceService {
         today: `${last}-31`,
       })) {
         const key = bucket(occurrenceDate(r.startDate, n, r.billingInterval));
-        if (key) rows.get(key)!.recurringOut += Number(r.amount);
+        if (key) rows.get(key)!.recurringOut += gross;
       }
     }
 
@@ -164,7 +189,10 @@ export class FinanceService {
       opening = closing;
       return row;
     });
-    return { baseCurrency: accounts[0]?.currency || 'USD', months: out };
+    return {
+      baseCurrency: await baseCurrencyFor(this.accountRepository.manager, tenantId),
+      months: out,
+    };
   }
 
   async getOverview(tenantId: string): Promise<TreasuryOverviewDto> {
@@ -894,6 +922,7 @@ export class FinanceService {
     input: CreateRecurringExpensePayload,
   ): Promise<RecurringExpenseDto> {
     this.assertCanAutoApprove(actor, input.autoApprove);
+    await this.assertReferences(tenantId, input);
     const saved = await this.recurringRepository.save(
       this.recurringRepository.create({
         tenantId,
@@ -905,6 +934,31 @@ export class FinanceService {
       }),
     );
     return this.findSubscription(tenantId, saved.id);
+  }
+
+  /** A supplier and purchase tax code the schedule points at must exist in this tenant. */
+  private async assertReferences(
+    tenantId: string,
+    input: { supplierId?: string | null; taxCodeId?: string | null },
+  ): Promise<void> {
+    if (input.supplierId) {
+      // Soft-deleted suppliers are excluded by find.
+      const supplier = await this.suppliers.findOne({
+        where: { id: input.supplierId, tenantId },
+        select: { id: true },
+      });
+      if (!supplier) throw new BadRequestException('That supplier does not exist');
+    }
+    if (input.taxCodeId) {
+      try {
+        await this.tax.findCode(tenantId, input.taxCodeId, 'PURCHASE');
+      } catch (err) {
+        if (err instanceof NotFoundException) {
+          throw new BadRequestException('That purchase tax code does not exist');
+        }
+        throw err;
+      }
+    }
   }
 
   private async findSubscriptionRow(tenantId: string, id: string): Promise<RecurringExpense> {
@@ -932,11 +986,25 @@ export class FinanceService {
     if (reshapes && (await this.occurrences.count({ where: { tenantId, recurringExpenseId: id } })) > 0) {
       throw new BadRequestException('The start date and interval cannot change once a bill has been generated. Cancel this one and create a new schedule.');
     }
+    await this.assertReferences(tenantId, {
+      supplierId: input.supplierId !== row.supplierId ? input.supplierId : undefined,
+      taxCodeId: input.taxCodeId !== row.taxCodeId ? input.taxCodeId : undefined,
+    });
     if (row.autoApprove && input.autoApprove !== false) {
       // A schedule that approves its own bills is changed only by someone who
       // could approve those bills; sent-but-unchanged values don't count.
       const changesMoney = (
-        ['amount', 'supplierId', 'taxCodeId', 'category', 'spreadOverPeriod'] as const
+        [
+          'amount',
+          'supplierId',
+          'taxCodeId',
+          'category',
+          'spreadOverPeriod',
+          // When and how often it bills is what gets approved, too.
+          'billingInterval',
+          'startDate',
+          'endDate',
+        ] as const
       ).some((k) => input[k] !== undefined && input[k] !== row[k]);
       if (changesMoney && !actor.permissions.includes(PERMISSIONS.BILL_APPROVE)) {
         throw new ForbiddenException(

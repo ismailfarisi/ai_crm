@@ -29,6 +29,7 @@ import { FinanceController } from './finance.controller';
 import { ExpensesController } from './expenses.controller';
 import { TemporalModule } from '../temporal/temporal.module';
 import { AiModule } from '../ai/ai.module';
+import { TaxModule } from '../tax/tax.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { AiModule } from '../ai/ai.module';
     ]),
     TemporalModule,
     AiModule,
+    TaxModule,
   ],
   controllers: [FinanceController, ExpensesController, ReportsController],
   providers: [

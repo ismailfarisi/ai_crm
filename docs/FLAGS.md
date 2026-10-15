@@ -441,8 +441,14 @@ What overheads posting and recurring bills leave out, and the choices behind it.
   hand.
 - **Auto-approve runs as the user who enabled it — by design.** If they lose
   `bill:approve`, bills stay draft and finance managers are notified.
+- **Recurring amounts are net of tax — by design.** Each generated bill adds
+  tax from the schedule's purchase code, else the supplier's (none for
+  reverse-charge, exempt or zero-rated codes), as a hand-entered bill would.
+  Rows created before this change are treated as net too, so a row whose
+  amount was typed gross now gets tax on top: check existing schedules for
+  taxable suppliers. The cash forecast projects the same tax.
 - **With auto-approve on, only a holder of `bill:approve` can change amount,
-  supplier, tax code, category or spreading.** Otherwise anyone who can edit a
+  supplier, tax code, category, spreading, interval, start or end date.** Otherwise anyone who can edit a
   schedule could push a different bill through someone else's approval.
 - **The cash forecast converts draft bills at their stored rate — open.** That
   rate is 1 until approval, so foreign-currency drafts are mis-stated.

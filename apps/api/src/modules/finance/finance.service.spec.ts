@@ -19,6 +19,8 @@ import { ExpenseClaim } from './entities/expense-claim.entity';
 import { SupplierBill } from '../payables/entities/supplier-bill.entity';
 import { Invoice } from '../quotes/entities/invoice.entity';
 import { RecurringExpenseOccurrence } from './entities/recurring-expense-occurrence.entity';
+import { Supplier } from '../purchasing/entities/supplier.entity';
+import { TaxService } from '../tax/tax.service';
 import {
   CreateFinanceAccountDto,
   CreateCategoryBudgetDto,
@@ -38,6 +40,8 @@ describe('FinanceService', () => {
   let recurringRows: any[];
   let billRepo: { find: jest.Mock };
   let invoiceRepo: { find: jest.Mock };
+  let supplierRepo: { findOne: jest.Mock };
+  let tax: { purchaseTaxFor: jest.Mock; findCode: jest.Mock };
 
   const tenantId = '11111111-1111-1111-1111-111111111111';
 
@@ -161,6 +165,12 @@ describe('FinanceService', () => {
 
     billRepo = { find: jest.fn().mockResolvedValue([]) };
     invoiceRepo = { find: jest.fn().mockResolvedValue([]) };
+    // Every referenced supplier and tax code exists unless a test says not.
+    supplierRepo = { findOne: jest.fn(async ({ where }: any) => ({ id: where.id })) };
+    tax = {
+      purchaseTaxFor: jest.fn().mockResolvedValue({ code: null, rate: 0 }),
+      findCode: jest.fn(async (_t: string, id: string) => ({ id, kind: 'PURCHASE' })),
+    };
 
     service = new FinanceService(
       accountRepo as unknown as Repository<FinanceAccount>,
@@ -172,6 +182,8 @@ describe('FinanceService', () => {
       occurrences as unknown as Repository<RecurringExpenseOccurrence>,
       billRepo as unknown as Repository<SupplierBill>,
       invoiceRepo as unknown as Repository<Invoice>,
+      supplierRepo as unknown as Repository<Supplier>,
+      tax as unknown as TaxService,
     );
   });
 
@@ -280,7 +292,10 @@ describe('FinanceService', () => {
     accountRepo.find = jest.fn().mockResolvedValue(rows);
   };
   const seedRecurringRows = (rows: any[]) => {
-    recurringRepo.find = jest.fn().mockResolvedValue(rows);
+    // Honours the status filter, as the query would.
+    recurringRepo.find = jest.fn(async (opts?: any) =>
+      rows.filter((r) => !opts?.where?.status || r.status === opts.where.status),
+    );
   };
   const seedClaims = (rows: any[]) => {
     expenseRepo.find = jest.fn().mockResolvedValue(rows);
@@ -331,6 +346,52 @@ describe('FinanceService', () => {
       expect(f.months[0]).toMatchObject({ opening: 50000, billsOut: 10000, inflows: 0, closing: 40000 });
       expect(f.months[1]).toMatchObject({ opening: 40000, inflows: 30000, closing: 70000 });
       expect(f.months[3]).toMatchObject({ recurringOut: 120000, closing: -50000 });
+    });
+  });
+
+  describe('cashForecast recurring', () => {
+    afterEach(() => jest.useRealTimers());
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-10-16T00:00:00Z'));
+      seedAccounts([{ balance: 0 }]);
+    });
+
+    it('projects a never-billed (supplier-less) row from today, not from its old next date', async () => {
+      seedRecurringRows([
+        { amount: 1000, billingInterval: 'MONTHLY', status: 'ACTIVE', supplierId: null, taxCodeId: null, startDate: '2026-01-05', nextBillingDate: new Date('2026-01-05T00:00:00Z'), endDate: null },
+      ]);
+      const f = await service.cashForecast(tenantId, 3);
+      // 5 Oct is already past: November and December only, nothing piled into October.
+      expect(f.months.map((m) => m.recurringOut)).toEqual([0, 1000, 1000]);
+    });
+
+    it('a paused row contributes nothing', async () => {
+      seedRecurringRows([
+        { amount: 1000, billingInterval: 'MONTHLY', status: 'PAUSED', supplierId: null, taxCodeId: null, startDate: '2026-01-05', nextBillingDate: new Date('2026-01-05T00:00:00Z'), endDate: null },
+      ]);
+      const f = await service.cashForecast(tenantId, 3);
+      expect(f.months.map((m) => m.recurringOut)).toEqual([0, 0, 0]);
+    });
+
+    it('adds the tax the generated bill will carry', async () => {
+      tax.purchaseTaxFor.mockResolvedValue({ code: { id: 'tc-5' }, rate: 5 });
+      seedRecurringRows([
+        { amount: 120000, billingInterval: 'ANNUAL', status: 'ACTIVE', supplierId: 'sup-1', taxCodeId: null, startDate: '2026-11-01', nextBillingDate: new Date('2026-11-01T00:00:00Z'), endDate: null },
+      ]);
+      const f = await service.cashForecast(tenantId, 2);
+      expect(f.months[1].recurringOut).toBe(126000);
+      expect(tax.purchaseTaxFor).toHaveBeenCalledWith(tenantId, null, 'sup-1');
+    });
+
+    it('reports in the organization base currency, not the first cash account', async () => {
+      seedAccounts([{ balance: 0, currency: 'USD' }]);
+      const getRepository = (accountRepo as any).manager.getRepository;
+      (accountRepo as any).manager.getRepository = (entity: { name: string }) =>
+        entity.name === 'Organization'
+          ? { findOne: jest.fn().mockResolvedValue({ id: tenantId, baseCurrency: 'aed' }) }
+          : getRepository(entity);
+      const f = await service.cashForecast(tenantId, 1);
+      expect(f.baseCurrency).toBe('AED');
     });
   });
 
@@ -1002,6 +1063,69 @@ describe('FinanceService', () => {
         await expect(
           service.updateSubscription(tenantId, 'r1', managerApprover, { amount: 1 }),
         ).resolves.toBeDefined();
+      });
+    });
+
+    describe('auto-approve schedules: when and how often it bills', () => {
+      beforeEach(() =>
+        seedRecurring({ id: 'r1', autoApprove: true, autoApproveById: 'u-boss', endDate: '2028-01-01' }),
+      );
+
+      it('refuses an interval change from someone who cannot approve bills', async () => {
+        await expect(
+          service.updateSubscription(tenantId, 'r1', manager, { billingInterval: 'QUARTERLY' }),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('refuses clearing the end date from someone who cannot approve bills', async () => {
+        await expect(
+          service.updateSubscription(tenantId, 'r1', manager, { endDate: null }),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('refuses a start date change from someone who cannot approve bills', async () => {
+        await expect(
+          service.updateSubscription(tenantId, 'r1', manager, { startDate: '2026-02-01' }),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('allows unchanged dates, and an interval change that also turns auto-approve off', async () => {
+        await expect(
+          service.updateSubscription(tenantId, 'r1', manager, { endDate: '2028-01-01', startDate: '2026-01-01' }),
+        ).resolves.toBeDefined();
+        await expect(
+          service.updateSubscription(tenantId, 'r1', manager, { autoApprove: false, billingInterval: 'QUARTERLY' }),
+        ).resolves.toBeDefined();
+      });
+    });
+
+    describe('references', () => {
+      it('refuses a supplier that does not exist in the tenant', async () => {
+        supplierRepo.findOne.mockResolvedValue(null);
+        await expect(service.createSubscription(tenantId, manager, input)).rejects.toThrow(
+          new BadRequestException('That supplier does not exist'),
+        );
+        expect(supplierRepo.findOne).toHaveBeenCalledWith(
+          expect.objectContaining({ where: { id: SUPPLIER, tenantId } }),
+        );
+      });
+
+      it('refuses a tax code that is not a purchase code of the tenant', async () => {
+        tax.findCode.mockRejectedValue(new NotFoundException('nope'));
+        await expect(
+          service.createSubscription(tenantId, manager, { ...input, taxCodeId: '44444444-4444-4444-8444-444444444444' }),
+        ).rejects.toThrow(new BadRequestException('That purchase tax code does not exist'));
+        expect(tax.findCode).toHaveBeenCalledWith(tenantId, '44444444-4444-4444-8444-444444444444', 'PURCHASE');
+      });
+
+      it('checks a new supplier on update but not an unchanged one', async () => {
+        seedRecurring({ id: 'r1' });
+        await service.updateSubscription(tenantId, 'r1', manager, { supplierId: SUPPLIER, amount: 5 });
+        expect(supplierRepo.findOne).not.toHaveBeenCalled();
+        supplierRepo.findOne.mockResolvedValue(null);
+        await expect(
+          service.updateSubscription(tenantId, 'r1', manager, { supplierId: '33333333-3333-4333-8333-333333333333' }),
+        ).rejects.toThrow(BadRequestException);
       });
     });
 
