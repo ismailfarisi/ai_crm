@@ -67,7 +67,7 @@ New reference types: `SETTLEMENT`, `PENSION_REMITTANCE`.
 
 ### `leave_records` (new)
 
-`id, tenantId, employeeId, type ('ANNUAL' | 'SICK' | 'UNPAID' | 'MATERNITY' | 'OTHER_PAID'), startDate, endDate, days (numeric 5,1 — defaults to the calendar-day count, editable down for half days), note, createdById, createdAt`. Attachments via the existing storage module (owner type `LEAVE_RECORD`, inheriting `employee:read` / `employee:manage`).
+`id, tenantId, employeeId, type ('ANNUAL' | 'SICK' | 'UNPAID' | 'MATERNITY' | 'OTHER_PAID'), startDate, endDate, days (numeric 5,1 — defaults to the calendar-day count, editable down for half days), note, createdById, createdAt`. Attachments via the existing storage module (owner type `LEAVE_RECORD`, `employee:manage` to read and to add or remove — medical certificates are as private as other employee documents).
 
 Days are calendar days (UAE law counts annual leave in calendar days). A record spanning months contributes to each month the calendar days that fall in it, scaled by `days / calendarDays` when edited down.
 
