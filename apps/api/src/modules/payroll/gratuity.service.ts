@@ -107,8 +107,10 @@ export class GratuityService {
   }
 
   /**
-   * What the employee has earned by `asOf`, on the basic in force that day.
-   * Service stops at the leaving date.
+   * What the employee has earned by `asOf` under the statute, on the basic in
+   * force that day. Service stops at the leaving date; unpaid leave is counted
+   * to `asOf` itself, so a leaver's final month (which ends after the leaving
+   * date) still reduces their service.
    */
   async entitlement(
     manager: EntityManager,
@@ -127,7 +129,7 @@ export class GratuityService {
       manager,
       tenantId,
       employee.id,
-      day,
+      asOf,
       extraUnpaidDays,
     );
     const got = gratuityEntitlement({
@@ -140,16 +142,64 @@ export class GratuityService {
     return { serviceDays: got.serviceDays, amount: got.amount, basic };
   }
 
+  /** Σ ADJUSTMENT rows (opening overrides included): the employee's offset above the statute. */
+  async adjustments(
+    manager: EntityManager,
+    tenantId: string,
+    employeeId: string,
+  ): Promise<number> {
+    const rows = await manager
+      .getRepository(GratuityLedgerEntry)
+      .find({ where: { tenantId, employeeId, kind: 'ADJUSTMENT' } });
+    return round2(rows.reduce((s, r) => s + r.amount, 0));
+  }
+
+  /**
+   * The provision the employee should carry at `asOf`: the statutory
+   * entitlement plus every adjustment. Adjustments persist as an offset, so a
+   * contractual extra or a correction survives the next true-up.
+   */
+  async target(
+    manager: EntityManager,
+    tenantId: string,
+    employee: Employee,
+    asOf: string,
+    extraUnpaidDays = 0,
+  ): Promise<{
+    serviceDays: number;
+    statutory: number;
+    adjustments: number;
+    amount: number;
+    basic: number;
+  }> {
+    const ent = await this.entitlement(
+      manager,
+      tenantId,
+      employee,
+      asOf,
+      extraUnpaidDays,
+    );
+    const adjustments = await this.adjustments(manager, tenantId, employee.id);
+    return {
+      serviceDays: ent.serviceDays,
+      statutory: ent.amount,
+      adjustments,
+      amount: round2(ent.amount + adjustments),
+      basic: ent.basic,
+    };
+  }
+
   async summary(tenantId: string, employeeId: string): Promise<EmployeeGratuityDto> {
     const manager = this.dataSource.manager;
     const employee = await this.loadEmployee(manager, tenantId, employeeId);
     const rows = await manager
       .getRepository(GratuityLedgerEntry)
       .find({ where: { tenantId, employeeId } });
-    const now = await this.entitlement(manager, tenantId, employee, today());
+    const now = await this.target(manager, tenantId, employee, today());
     return {
       balance: round2(rows.reduce((s, r) => s + r.amount, 0)),
       entitlementToday: now.amount,
+      statutoryEntitlementToday: now.statutory,
       serviceDaysToday: now.serviceDays,
       entries: rows
         .sort(
@@ -238,7 +288,9 @@ export class GratuityService {
             .find({ where: { tenantId, kind: 'OPENING' } })
         ).map((r) => r.employeeId),
       );
+      const accrued = await this.accruedByRuns(manager, tenantId);
       const employees = new Map<string, Employee>();
+      const alreadyAccrued: string[] = [];
       for (const id of ids) {
         const e = await manager
           .getRepository(Employee)
@@ -253,7 +305,15 @@ export class GratuityService {
             `${e.firstName} ${e.lastName} already has an opening gratuity balance`,
           );
         }
+        if (accrued.has(id)) alreadyAccrued.push(`${e.firstName} ${e.lastName}`);
         employees.set(id, e);
+      }
+      // A posted run already trued these employees up to their entitlement;
+      // an opening on top would count their past service twice.
+      if (alreadyAccrued.length) {
+        throw new ConflictException(
+          `Gratuity already accrued by a posted payroll run for ${alreadyAccrued.join(', ')}`,
+        );
       }
 
       const total = round2(input.lines.reduce((s, l) => s + l.amount, 0));
@@ -269,21 +329,44 @@ export class GratuityService {
         journalEntryId = entry.id;
       }
 
+      // OPENING carries the statutory amount; an override is the difference,
+      // booked as an ADJUSTMENT so the next true-up keeps it.
       const repo = manager.getRepository(GratuityLedgerEntry);
-      await repo.save(
-        input.lines.map((l) =>
+      const rows: GratuityLedgerEntry[] = [];
+      for (const l of input.lines) {
+        const employee = employees.get(l.employeeId)!;
+        const calculated = (
+          await this.entitlement(manager, tenantId, employee, cutover)
+        ).amount;
+        rows.push(
           repo.create({
             tenantId,
             employeeId: l.employeeId,
             kind: 'OPENING',
-            amount: round2(l.amount),
+            amount: calculated,
             asOf: cutover,
             runLineId: null,
             journalEntryId,
             note: null,
           }),
-        ),
-      );
+        );
+        const override = round2(round2(l.amount) - calculated);
+        if (override !== 0) {
+          rows.push(
+            repo.create({
+              tenantId,
+              employeeId: l.employeeId,
+              kind: 'ADJUSTMENT',
+              amount: override,
+              asOf: cutover,
+              runLineId: null,
+              journalEntryId,
+              note: 'Opening override',
+            }),
+          );
+        }
+      }
+      await repo.save(rows);
       // A zero total posts no journal, hence a null id.
       return { journalEntryId, total };
     });
@@ -416,15 +499,41 @@ export class GratuityService {
           .find({ where: { tenantId, kind: 'OPENING' } })
       ).map((r) => r.employeeId),
     );
+    const accrued = await this.accruedByRuns(manager, tenantId);
     const rows = await manager
       .getRepository(Employee)
       .find({ where: { tenantId } });
     return rows
       .filter(
         (e) =>
-          e.status !== 'LEFT' && e.joiningDate <= cutover && !opened.has(e.id),
+          e.status !== 'LEFT' &&
+          e.joiningDate <= cutover &&
+          !opened.has(e.id) &&
+          !accrued.has(e.id),
       )
       .sort((a, b) => a.employeeNumber.localeCompare(b.employeeNumber));
+  }
+
+  /**
+   * Employees with an ACCRUAL from a run that is still posted; an accrual
+   * whose run line also has a REVERSAL belongs to a voided run.
+   */
+  private async accruedByRuns(
+    manager: EntityManager,
+    tenantId: string,
+  ): Promise<Set<string>> {
+    const repo = manager.getRepository(GratuityLedgerEntry);
+    const accruals = await repo.find({ where: { tenantId, kind: 'ACCRUAL' } });
+    const reversed = new Set(
+      (await repo.find({ where: { tenantId, kind: 'REVERSAL' } })).map(
+        (r) => r.runLineId,
+      ),
+    );
+    return new Set(
+      accruals
+        .filter((r) => !r.runLineId || !reversed.has(r.runLineId))
+        .map((r) => r.employeeId),
+    );
   }
 
   private async loadEmployee(

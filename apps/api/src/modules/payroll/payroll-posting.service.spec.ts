@@ -328,6 +328,39 @@ describe('PayrollPostingService', () => {
       );
     });
 
+    it('a gratuity adjustment survives the next approval: the true-up excludes it', async () => {
+      const ctx = setup();
+      const oct = await draft(ctx, '2026-10');
+      await ctx.service.approve(T, oct.id, APPROVER);
+      const afterOct = ent('2023-11-01', '2026-10-31', 6000).amount;
+      await ctx.gratuityService.adjust(T, 'a', ACTOR, { amount: 1000, note: 'Contractual extra' });
+
+      const nov = await draft(ctx, '2026-11');
+      const out = await ctx.service.approve(T, nov.id, APPROVER);
+      const a = lineOf(out, 'EMP-001');
+      const novEnt = ent('2023-11-01', '2026-11-30', 6000).amount;
+      expect(a.gratuityBefore).toBe(Math.round((afterOct + 1000) * 100) / 100);
+      expect(a.gratuityAccrual).toBeCloseTo(novEnt - afterOct, 2);
+      expect(a.gratuityAfter).toBeCloseTo(novEnt + 1000, 2);
+      expect(await ctx.gratuityService.balance(ctx.manager, T, 'a')).toBeCloseTo(novEnt + 1000, 2);
+    });
+
+    it('an opening override above the calculated amount survives the first approval', async () => {
+      const ctx = setup();
+      const calc = ent('2023-11-01', '2026-09-30', 6000).amount;
+      await ctx.gratuityService.postOpening(T, ACTOR, {
+        cutoverDate: '2026-09-30',
+        lines: [{ employeeId: 'a', amount: calc + 500 }],
+      });
+      const oct = await draft(ctx, '2026-10');
+      const out = await ctx.service.approve(T, oct.id, APPROVER);
+      const a = lineOf(out, 'EMP-001');
+      const octEnt = ent('2023-11-01', '2026-10-31', 6000).amount;
+      expect(a.gratuityBefore).toBeCloseTo(calc + 500, 2);
+      expect(a.gratuityAccrual).toBeCloseTo(octEnt - calc, 2);
+      expect(a.gratuityAfter).toBeCloseTo(octEnt + 500, 2);
+    });
+
     it('a pay cut accrues negatively: Dr provision / Cr gratuity expense, still balanced', async () => {
       const ctx = setup();
       const oct = await draft(ctx, '2026-10');

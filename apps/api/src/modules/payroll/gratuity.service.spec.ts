@@ -142,6 +142,19 @@ describe('GratuityService', () => {
       expect(got).toEqual({ serviceDays: want.serviceDays, amount: want.amount, basic: 6000 });
     });
 
+    it('a leaver: service stops at the leaving date, but the final month’s unpaid leave still counts', async () => {
+      const { service, manager, employees, runs, lines } = setup();
+      const leaver = { ...employees.rows[0], status: 'LEFT', leavingDate: '2026-05-15' };
+      runs.rows.push({ id: 'r5', tenantId: T, period: '2026-05', status: 'APPROVED' });
+      lines.rows.push({ id: 'l5', tenantId: T, runId: 'r5', employeeId: E1, unpaidLeaveDays: 3 });
+      const got = await service.entitlement(manager, T, leaver, '2026-05-31', 2);
+      const want = gratuityEntitlement({
+        joiningDate: '2023-10-01', asOf: '2026-05-15', basic: 6000, unpaidLeaveDays: 5, isNational: false,
+      });
+      expect(got.serviceDays).toBe(want.serviceDays);
+      expect(got.amount).toBe(want.amount);
+    });
+
     it('is zero without a package', async () => {
       const { service, manager, employees } = setup();
       const got = await service.entitlement(manager, T, employees.rows[2], '2026-09-30');
@@ -187,7 +200,7 @@ describe('GratuityService', () => {
 
   describe('postOpening', () => {
     it('posts one entry for the total and one OPENING row per line', async () => {
-      const { service, ledger, entries, ledgerRows } = setup();
+      const { service, manager, ledger, entries, ledgerRows } = setup();
       const res = await service.postOpening(T, ACTOR, {
         cutoverDate: '2026-09-30',
         lines: [
@@ -210,14 +223,54 @@ describe('GratuityService', () => {
         expect.objectContaining({ role: LEDGER_ROLES.GRATUITY_PROVISION, debit: 0, credit: 10000 }),
       ]);
 
-      const opening = ledgerRows.rows.filter((r) => r.kind === 'OPENING' && r.employeeId !== E4);
-      expect(opening).toHaveLength(2);
-      expect(opening.find((r) => r.employeeId === E1)).toEqual(
-        expect.objectContaining({ amount: 10000, asOf: '2026-09-30', journalEntryId: entry.id }),
+      // OPENING is the statutory amount; the override is an ADJUSTMENT, and
+      // each employee's rows sum to what was posted.
+      const calc1 = gratuityEntitlement({ joiningDate: '2023-10-01', asOf: '2026-09-30', basic: 6000, unpaidLeaveDays: 0, isNational: false }).amount;
+      const calc6 = gratuityEntitlement({ joiningDate: '2025-01-01', asOf: '2026-09-30', basic: 3000, unpaidLeaveDays: 0, isNational: false }).amount;
+      const mine = ledgerRows.rows.filter((r) => r.employeeId !== E4);
+      expect(mine.filter((r) => r.kind === 'OPENING')).toHaveLength(2);
+      expect(mine.find((r) => r.employeeId === E1 && r.kind === 'OPENING')).toEqual(
+        expect.objectContaining({ amount: calc1, asOf: '2026-09-30', journalEntryId: entry.id }),
       );
-      expect(opening.find((r) => r.employeeId === E6)).toEqual(
-        expect.objectContaining({ amount: 0, asOf: '2026-09-30' }),
+      expect(mine.find((r) => r.employeeId === E1 && r.kind === 'ADJUSTMENT')).toEqual(
+        expect.objectContaining({ amount: Math.round((10000 - calc1) * 100) / 100, asOf: '2026-09-30', note: 'Opening override', journalEntryId: entry.id }),
       );
+      expect(mine.find((r) => r.employeeId === E6 && r.kind === 'OPENING')).toEqual(
+        expect.objectContaining({ amount: calc6, asOf: '2026-09-30' }),
+      );
+      expect(mine.find((r) => r.employeeId === E6 && r.kind === 'ADJUSTMENT')!.amount).toBe(-calc6);
+      expect(await service.balance(manager, T, E1)).toBe(10000);
+      expect(await service.balance(manager, T, E6)).toBe(0);
+    });
+
+    it('writes no ADJUSTMENT when the posted amount is the calculated one', async () => {
+      const { service, ledgerRows } = setup();
+      const { lines } = await service.previewOpening(T, '2026-09-30');
+      await service.postOpening(T, ACTOR, {
+        cutoverDate: '2026-09-30',
+        lines: lines.map((l) => ({ employeeId: l.employeeId, amount: l.calculated })),
+      });
+      expect(ledgerRows.rows.some((r) => r.kind === 'ADJUSTMENT')).toBe(false);
+    });
+
+    it('excludes from the preview, and refuses (409, naming them), employees already accrued by a posted run', async () => {
+      const { service, ledgerRows } = setup();
+      ledgerRows.rows.push(
+        { id: 'a1', tenantId: T, employeeId: E1, kind: 'ACCRUAL', amount: 500, asOf: '2026-10-31', runLineId: 'l1', journalEntryId: 'je', note: null, createdAt: new Date() },
+        // E6's accrual was voided: it no longer counts.
+        { id: 'a6', tenantId: T, employeeId: E6, kind: 'ACCRUAL', amount: 90, asOf: '2026-10-31', runLineId: 'l6', journalEntryId: 'je', note: null, createdAt: new Date() },
+        { id: 'v6', tenantId: T, employeeId: E6, kind: 'REVERSAL', amount: -90, asOf: '2026-10-31', runLineId: 'l6', journalEntryId: 'jv', note: null, createdAt: new Date() },
+      );
+      const dto = await service.previewOpening(T, '2026-11-30');
+      expect(dto.lines.map((l) => l.employeeId)).toEqual([E2, E6]);
+      await expect(
+        service.postOpening(T, ACTOR, {
+          cutoverDate: '2026-11-30',
+          lines: [{ employeeId: E1, amount: 100 }, { employeeId: E6, amount: 0 }],
+        }),
+      ).rejects.toThrow(new ConflictException('Gratuity already accrued by a posted payroll run for E e1'));
+      expect(ledgerRows.rows.filter((r) => r.kind === 'OPENING' && r.employeeId !== E4)).toHaveLength(0);
+      await service.postOpening(T, ACTOR, { cutoverDate: '2026-11-30', lines: [{ employeeId: E6, amount: 0 }] });
     });
 
     it('refuses a second opening for the same employee', async () => {
@@ -308,6 +361,21 @@ describe('GratuityService', () => {
       });
       expect(dto.entitlementToday).toBe(want.amount);
       expect(dto.serviceDaysToday).toBe(want.serviceDays);
+    });
+
+    it('entitlementToday is the true-up target: statutory + Σ adjustments', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-10-16T09:00:00Z'));
+      const { service, ledgerRows } = setup();
+      ledgerRows.rows.push(
+        { id: 'j1', tenantId: T, employeeId: E1, kind: 'ADJUSTMENT', amount: 1000, asOf: '2026-08-01', runLineId: null, journalEntryId: null, note: 'Contract', createdAt: new Date() },
+        { id: 'j2', tenantId: T, employeeId: E1, kind: 'ADJUSTMENT', amount: -250, asOf: '2026-09-01', runLineId: null, journalEntryId: null, note: 'Fix', createdAt: new Date() },
+      );
+      const dto = await service.summary(T, E1);
+      const want = gratuityEntitlement({
+        joiningDate: '2023-10-01', asOf: '2026-10-16', basic: 6000, unpaidLeaveDays: 0, isNational: false,
+      }).amount;
+      expect(dto.statutoryEntitlementToday).toBe(want);
+      expect(dto.entitlementToday).toBe(Math.round((want + 750) * 100) / 100);
     });
   });
 });

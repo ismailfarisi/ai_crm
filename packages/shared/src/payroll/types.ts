@@ -21,7 +21,15 @@ export interface EmployeeAdvanceDto { id: string; employeeId: string; amount: nu
 export interface EmployeeAdvancesDto { advances: EmployeeAdvanceDto[]; recovered: number; outstanding: number; }
 export type GratuityEntryKind = 'OPENING' | 'ACCRUAL' | 'ADJUSTMENT' | 'REVERSAL';
 export interface GratuityLedgerEntryDto { id: string; kind: GratuityEntryKind; amount: number; asOf: string; runLineId: string | null; note: string | null; createdAt: string; }
-export interface EmployeeGratuityDto { balance: number; entitlementToday: number; serviceDaysToday: number; entries: GratuityLedgerEntryDto[]; }
+export interface EmployeeGratuityDto {
+  balance: number;
+  /** The provision target today: statutory entitlement + Σ adjustments. */
+  entitlementToday: number;
+  /** The statutory part of entitlementToday. */
+  statutoryEntitlementToday?: number;
+  serviceDaysToday: number;
+  entries: GratuityLedgerEntryDto[];
+}
 
 export type PayrollRunStatus = 'DRAFT' | 'APPROVED' | 'PARTIALLY_PAID' | 'PAID' | 'VOIDED';
 export interface PayrollRunLineDto {

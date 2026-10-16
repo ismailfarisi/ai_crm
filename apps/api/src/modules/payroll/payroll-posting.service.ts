@@ -103,8 +103,9 @@ export class PayrollPostingService {
       }
       await this.revalidate(manager, run, lines);
 
-      // Gratuity true-up: provision after = entitlement at month end. This
-      // run is still a draft, so its own unpaid leave is passed in.
+      // Gratuity true-up: provision after = statutory entitlement at month
+      // end + Σ adjustments (they persist as an offset). This run is still a
+      // draft, so its own unpaid leave is passed in.
       for (const line of lines) {
         const employee = await manager.getRepository(Employee).findOne({
           where: { id: line.employeeId, tenantId },
@@ -116,14 +117,14 @@ export class PayrollPostingService {
           tenantId,
           employee.id,
         );
-        const ent = await this.gratuity.entitlement(
+        const target = await this.gratuity.target(
           manager,
           tenantId,
           employee,
           asOf,
           line.unpaidLeaveDays ?? 0,
         );
-        const accrual = round2(ent.amount - before);
+        const accrual = round2(target.amount - before);
         line.gratuityBefore = before;
         line.gratuityAccrual = accrual;
         line.gratuityAfter = round2(before + accrual);
