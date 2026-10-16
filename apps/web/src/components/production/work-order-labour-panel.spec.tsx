@@ -28,6 +28,9 @@ describe('WorkOrderLabourPanel', () => {
     expect(screen.getByTestId('labour-status')).toHaveTextContent('Provisional — waiting on payroll');
     const unlinked = screen.getByTestId('labour-unlinked');
     expect(unlinked).toHaveTextContent(/Clock time from users not linked to an employee/);
+    expect(unlinked).toHaveTextContent(
+      'minutes the clock could not record as timesheet hours (a posted month, outside employment, a full 24-hour day)',
+    );
     expect(unlinked).toHaveTextContent('40.00');
     expect(screen.getByTestId('labour-totals')).toHaveTextContent('460.00');
   });

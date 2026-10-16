@@ -173,23 +173,30 @@ describe('PayrollRunDetail actions', () => {
     expect(screen.queryByLabelText('Bonus for Amina Khan')).not.toBeInTheDocument();
   });
 
-  it('shows labour hours and absorption on an approved run, dashes on a draft', () => {
+  it('shows labour hours and absorption on an approved run, dashes on a draft, no labour total on draft or voided', () => {
     granted = new Set(['payroll:read']);
     const labourLine = { ...line, standardHours: 208, loggedHours: 150.5, directHours: 120, labourAbsorbed: 4321.5 };
     const totals = { ...makeRun().totals, labourAbsorbed: 4321.5 };
     run = makeRun({ lines: [labourLine], totals });
     const { unmount } = render(<PayrollRunDetail id="r1" />);
     expect(screen.getByTestId('labour-absorbed')).toHaveTextContent('—');
+    // No labour charged to jobs stat until the run is posted.
+    expect(screen.queryByTestId('total-labour-absorbed')).not.toBeInTheDocument();
     unmount();
 
     run = makeRun({ status: 'APPROVED', lines: [labourLine], totals });
-    render(<PayrollRunDetail id="r1" />);
+    const { unmount: unmount2 } = render(<PayrollRunDetail id="r1" />);
     expect(screen.getByRole('columnheader', { name: 'Standard h' })).toBeInTheDocument();
     expect(screen.getByTestId('labour-hours-0')).toHaveTextContent('208');
     expect(screen.getByTestId('labour-hours-1')).toHaveTextContent('150.5');
     expect(screen.getByTestId('labour-hours-2')).toHaveTextContent('120');
     expect(screen.getByTestId('labour-absorbed')).toHaveTextContent('4,321.50');
     expect(screen.getByTestId('total-labour-absorbed')).toHaveTextContent('4,321.50');
+    unmount2();
+
+    run = makeRun({ status: 'VOIDED', lines: [labourLine], totals });
+    render(<PayrollRunDetail id="r1" />);
+    expect(screen.queryByTestId('total-labour-absorbed')).not.toBeInTheDocument();
   });
 
   it('disables the Approve and Pay confirmations while a line update is saving', async () => {

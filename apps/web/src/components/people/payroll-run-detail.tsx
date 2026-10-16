@@ -230,7 +230,9 @@ export function PayrollRunDetail({ id }: { id: string }) {
             <Stat label="Pension (employee)" value={run.totals.pensionEmployee} testId="total-pension-employee" />
             <Stat label="Pension (employer)" value={run.totals.pensionEmployer} testId="total-pension-employer" />
             <Stat label="Leave provision" value={run.totals.leaveProvision} testId="total-leave-provision" />
-            <Stat label="Labour charged to jobs" value={run.totals.labourAbsorbed} testId="total-labour-absorbed" />
+            {posted && (
+              <Stat label="Labour charged to jobs" value={run.totals.labourAbsorbed} testId="total-labour-absorbed" />
+            )}
           </dl>
           {showSif && wpsOff && (
             <p className="mt-3 text-sm text-ink-muted" data-testid="sif-disabled-reason">

@@ -43,6 +43,8 @@ export function useSaveTimesheets() {
         queryClient.invalidateQueries({ queryKey: ['timesheets'] }),
         queryClient.invalidateQueries({ queryKey: ['work-orders'] }),
         queryClient.invalidateQueries({ queryKey: ['payroll'] }),
+        // Unposted hours move the provisional labour utilisation report.
+        queryClient.invalidateQueries({ queryKey: ['finance'] }),
       ]);
       toast.success('Timesheet saved');
     },
@@ -59,6 +61,8 @@ export function useDeleteTimesheet() {
         queryClient.invalidateQueries({ queryKey: ['timesheets'] }),
         queryClient.invalidateQueries({ queryKey: ['work-orders'] }),
         queryClient.invalidateQueries({ queryKey: ['payroll'] }),
+        // Unposted hours move the provisional labour utilisation report.
+        queryClient.invalidateQueries({ queryKey: ['finance'] }),
       ]);
       toast.success('Entry deleted');
     },

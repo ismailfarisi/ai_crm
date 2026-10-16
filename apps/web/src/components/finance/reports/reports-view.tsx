@@ -309,7 +309,7 @@ function Margins({ params }: { params: ReportParams }) {
                 {r.provisionalLabourShare > 0 && (
                   <span
                     className="ml-2 rounded bg-warning/10 px-1.5 py-0.5 text-xs text-warning"
-                    title={`${(r.provisionalLabourShare * 100).toFixed(0)}% of cost is labour waiting on payroll`}
+                    title={`${r.provisionalLabourShare < 0.005 ? '<1' : (r.provisionalLabourShare * 100).toFixed(0)}% of cost is labour waiting on payroll`}
                   >
                     provisional
                   </span>

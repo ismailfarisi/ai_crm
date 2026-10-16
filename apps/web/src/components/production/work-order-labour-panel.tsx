@@ -87,7 +87,9 @@ export function WorkOrderLabourPanel({ labour }: { labour: WorkOrderLabourDto | 
                   <td className="px-3 py-2 text-ink">
                     Unlinked clock time
                     <span className="block text-[11px] text-ink-subtle">
-                      Clock time from users not linked to an employee, at the standard rate
+                      Clock time from users not linked to an employee, or minutes the clock could not
+                      record as timesheet hours (a posted month, outside employment, a full 24-hour
+                      day), at the standard rate
                     </span>
                   </td>
                   <td className="px-2 py-2 text-right tabular-nums">{hours(labour.unlinkedHours)}</td>

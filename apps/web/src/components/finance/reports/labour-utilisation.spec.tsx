@@ -58,13 +58,28 @@ describe('reports: labour', () => {
       rows: [
         { key: 'a', label: 'Acme', orders: 1, revenue: 100, cost: 60, margin: 40, marginPct: 0.4, measuredCostShare: 1, provisionalLabourShare: 0.25 },
         { key: 'b', label: 'Beta', orders: 1, revenue: 100, cost: 60, margin: 40, marginPct: 0.4, measuredCostShare: 1, provisionalLabourShare: 0 },
+        { key: 'c', label: 'Gamma', orders: 1, revenue: 100, cost: 60, margin: 40, marginPct: 0.4, measuredCostShare: 1, provisionalLabourShare: 0.003 },
       ],
     };
     render(<ReportsView />);
     openTab('Margins');
     const badges = screen.getAllByText('provisional');
-    expect(badges).toHaveLength(1);
+    expect(badges).toHaveLength(2);
     expect(badges[0].getAttribute('title')).toBe('25% of cost is labour waiting on payroll');
+    // Under half a percent reads "<1%", never "0%".
+    expect(badges[1].getAttribute('title')).toBe('<1% of cost is labour waiting on payroll');
+  });
+
+  it('does not query labour utilisation while the month is empty', () => {
+    shownReport = 'labour-utilisation';
+    reportData = labour('ACTUAL');
+    render(<ReportsView />);
+    openTab('Labour');
+    fireEvent.change(screen.getByLabelText('Month'), { target: { value: '' } });
+    expect(screen.getByText('Pick a month.')).toBeTruthy();
+    const last = vi.mocked(useFinancialReport).mock.calls.at(-1)!;
+    expect(last[0]).toBe('labour-utilisation');
+    expect(last[2]).toBe(false);
   });
 
   it('hides the Labour tab unless the user holds finance:read and payroll:read', () => {

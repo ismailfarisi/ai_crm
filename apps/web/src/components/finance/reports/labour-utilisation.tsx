@@ -34,7 +34,10 @@ function FigureCells({ f, provisional }: { f: LabourFigures; provisional: boolea
 }
 
 export function LabourUtilisation({ params }: { params: ReportParams }) {
-  const { data, error } = useFinancialReport<LabourUtilisationDto>('labour-utilisation', params);
+  // A cleared month input sends no period; the API would refuse it.
+  const hasMonth = Boolean(params.period);
+  const { data, error } = useFinancialReport<LabourUtilisationDto>('labour-utilisation', params, hasMonth);
+  if (!hasMonth) return <p className="text-sm text-ink-muted">Pick a month.</p>;
   if (!data) {
     return <p className="text-sm text-ink-muted">{error ? (error instanceof Error ? error.message : 'Could not load') : 'Loading…'}</p>;
   }
