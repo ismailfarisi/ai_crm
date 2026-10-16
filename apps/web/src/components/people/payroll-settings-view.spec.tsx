@@ -73,12 +73,25 @@ describe('PayrollSettingsView', () => {
     expect(screen.getByText(/Presets start inactive/)).toBeInTheDocument();
   });
 
-  it('saves with WPS off even when a stale hidden WPS value is invalid', async () => {
+  it('keeps valid stored WPS values when saving with WPS off', async () => {
     granted.add('payroll:manage');
-    settings = { ...settings, wpsEnabled: false, employerIdType: 'MOHRE', employerId: 'not-13-digits', payerRoutingCode: '12' };
+    settings = { ...settings, wpsEnabled: false, employerIdType: 'MOHRE', employerId: '1234567890123', payerRoutingCode: '123456789' };
     render(<PayrollSettingsView />);
     fireEvent.submit(screen.getByTestId('payroll-settings-form'));
     await waitFor(() => expect(saveSettings).toHaveBeenCalledTimes(1));
-    expect(saveSettings.mock.calls[0][0]).toMatchObject({ wpsEnabled: false, employerId: null, payerRoutingCode: null });
+    expect(saveSettings.mock.calls[0][0]).toMatchObject({
+      wpsEnabled: false, employerIdType: 'MOHRE', employerId: '1234567890123', payerRoutingCode: '123456789',
+    });
+  });
+
+  it('saves with WPS off when a stale hidden value is invalid, sending only that field as null', async () => {
+    granted.add('payroll:manage');
+    settings = { ...settings, wpsEnabled: false, employerIdType: 'MOHRE', employerId: '1234567890123', payerRoutingCode: '12' };
+    render(<PayrollSettingsView />);
+    fireEvent.submit(screen.getByTestId('payroll-settings-form'));
+    await waitFor(() => expect(saveSettings).toHaveBeenCalledTimes(1));
+    expect(saveSettings.mock.calls[0][0]).toMatchObject({
+      wpsEnabled: false, employerIdType: 'MOHRE', employerId: '1234567890123', payerRoutingCode: null,
+    });
   });
 });

@@ -90,6 +90,17 @@ describe('LeaveRecordModal', () => {
     expect(onSubmit.mock.calls[0][0]).toMatchObject({ endDate: '2026-03-06', days: 5 });
   });
 
+  it('changing a date of an explicit half-day record without touching days sends days from the new span', async () => {
+    const onSubmit = vi.fn();
+    const record = { id: 'r1', employeeId: 'e1', type: 'SICK' as const, startDate: '2026-03-02', endDate: '2026-03-04', days: 2.5, note: null, createdAt: '' };
+    render(<LeaveRecordModal open onClose={() => {}} existing={record} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-03-05' } });
+    expect((screen.getByLabelText('Days (optional)') as HTMLInputElement).value).toBe('');
+    fireEvent.submit(screen.getByTestId('leave-record-form'));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ endDate: '2026-03-05', days: 4 });
+  });
+
   it('keeps an explicit half-day count when the dates are untouched', async () => {
     const onSubmit = vi.fn();
     const record = { id: 'r1', employeeId: 'e1', type: 'SICK' as const, startDate: '2026-03-02', endDate: '2026-03-04', days: 2.5, note: null, createdAt: '' };

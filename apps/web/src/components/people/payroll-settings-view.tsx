@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus } from 'lucide-react';
 import {
@@ -42,6 +42,25 @@ export const PENSION_BASE_LABELS: Record<PensionBase, string> = {
 
 const optionalNumber = (v: unknown) => (v === '' || v == null || Number.isNaN(v) ? null : Number(v));
 
+const WPS_FIELDS = ['employerIdType', 'employerId', 'payerRoutingCode'] as const;
+const settingsResolver = zodResolver(payrollSettingsSchema);
+
+/**
+ * With WPS off its fields are hidden, so one that fails validation must not block Save with an
+ * invisible error. Valid stored values go through unchanged; only an invalid one is sent as null.
+ */
+const wpsAwareResolver: Resolver<PayrollSettingsInput, unknown, PayrollSettingsPayload> = async (values, context, options) => {
+  const first = await settingsResolver(values, context, options);
+  if (values.wpsEnabled || !Object.keys(first.errors).length) return first;
+  const blanked = { ...values };
+  for (const key of WPS_FIELDS) {
+    if (!(key in first.errors)) continue;
+    if (key === 'employerIdType') blanked.employerIdType = null;
+    else blanked[key] = '';
+  }
+  return settingsResolver(blanked, context, options);
+};
+
 function toSettingsDefaults(s?: PayrollSettingsDto): PayrollSettingsInput {
   return {
     wpsEnabled: s?.wpsEnabled ?? false,
@@ -56,13 +75,7 @@ function SettingsCard({ settings }: { settings: PayrollSettingsDto }) {
   const canManage = useCan({ permission: PERMISSIONS.PAYROLL_MANAGE });
   const save = useSavePayrollSettings();
   const form = useForm<PayrollSettingsInput, unknown, PayrollSettingsPayload>({
-    // With WPS off its fields are hidden, so a stale invalid value must not block Save: validate them as blank.
-    resolver: (values, context, options) =>
-      zodResolver(payrollSettingsSchema)(
-        values.wpsEnabled ? values : { ...values, employerIdType: null, employerId: '', payerRoutingCode: '' },
-        context,
-        options,
-      ),
+    resolver: wpsAwareResolver,
     defaultValues: toSettingsDefaults(settings),
   });
   useEffect(() => {
