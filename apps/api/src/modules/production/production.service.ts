@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -75,6 +76,8 @@ export interface CreateWorkOrdersResult {
  */
 @Injectable()
 export class ProductionService {
+  private readonly logger = new Logger(ProductionService.name);
+
   constructor(
     @InjectRepository(WorkOrder)
     private readonly workOrders: Repository<WorkOrder>,
@@ -801,7 +804,6 @@ export class ProductionService {
           workDate: isoDay(sessionStart),
         });
       }
-      await this.recomputeIfComplete(manager, tenantId, wo);
     });
     return { workOrder: await this.get(tenantId, id, false), capped };
   }
@@ -836,7 +838,6 @@ export class ProductionService {
         minutes,
         workDate: isoDay(new Date()),
       });
-      await this.recomputeIfComplete(manager, tenantId, wo);
     });
     return this.get(tenantId, id, false);
   }
@@ -1038,19 +1039,11 @@ export class ProductionService {
       await manager.transaction((m) =>
         this.timesheets.recordClock(m, tenantId, a),
       );
-    } catch {
-      // Silent skip: the minutes stay on the operation, unlinked.
-    }
-  }
-
-  /** Time landing on a completed job (late) changes its actual labour. */
-  private async recomputeIfComplete(
-    manager: EntityManager,
-    tenantId: string,
-    wo: WorkOrder,
-  ): Promise<void> {
-    if (wo.status === 'COMPLETE') {
-      await this.jobCost.recompute(manager, tenantId, [wo.id]);
+    } catch (err) {
+      // Never block the floor: the minutes stay on the operation, unlinked.
+      this.logger.warn(
+        `Clock entry skipped (tenant ${tenantId}, work order ${a.workOrderId}, operation ${a.operationId}): ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 

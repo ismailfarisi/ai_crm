@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Logger } from '@nestjs/common';
 import { DEFAULT_BOARD_COLUMNS, isBalanced } from '@saas/shared';
 import { ProductionService } from './production.service';
 
@@ -474,7 +474,12 @@ describe('ProductionService shop floor', () => {
       const w = makeWorld();
       const { wo, op } = await running(w, 'linked');
       w.timesheets.recordClock.mockRejectedValueOnce(new Error('boom'));
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
       await w.service.stopOperation(tenantId, wo.id, op.id, false, 'linked');
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(`operation ${op.id}): boom`),
+      );
+      warn.mockRestore();
       expect(op.status).toBe('PAUSED');
       expect(op.actualMinutes).toBeCloseTo(30, 0);
     });
@@ -499,14 +504,22 @@ describe('ProductionService shop floor', () => {
       const w = makeWorld();
       const wo = await released(w);
       const op = w.tables.WorkOrderOperation[0];
-      await w.service.logTime(tenantId, wo.id, op.id, 'linked', 45);
+      jest.useFakeTimers({
+        now: new Date('2026-04-01T23:59:00.000Z'),
+        doNotFake: ['nextTick', 'setImmediate', 'setTimeout'],
+      });
+      try {
+        await w.service.logTime(tenantId, wo.id, op.id, 'linked', 45);
+      } finally {
+        jest.useRealTimers();
+      }
       expect(w.clockEntries).toEqual([
         {
           userId: 'linked',
           workOrderId: wo.id,
           operationId: op.id,
           minutes: 45,
-          workDate: new Date().toISOString().slice(0, 10),
+          workDate: '2026-04-01',
         },
       ]);
       expect(op.actualMinutes).toBe(45);
