@@ -612,6 +612,14 @@ costed from payroll and timesheets; machine time and overhead are not posted.
   reverses each amount against where it sits now: WIP, COGS, or nothing if a
   cancellation already returned it to overhead. Two entries instead of one on
   void keeps the original reversal untouched.
+- **Labour reaches cost of sales no earlier than the job completes — by
+  design.** `JE-<run>-LAB` is dated the period end. Labour on a job completed
+  on or before that day is debited to COGS directly. Labour on a job completed
+  after it goes to WIP, and a `JE-<run>-LAB-DONE-<job>` journal, dated
+  max(period end, completion day), moves it to COGS. That keeps next month's
+  job cost out of this month's P&L, at the price of one extra journal per
+  late-completing job. A void reverses that labour from COGS, dated no
+  earlier than the latest of those journals.
 - **Hours on cancelled jobs are not charged — by design.** Labour already
   absorbed into a job that is later cancelled returns to 6390 (overhead).
 - **Machine time and the template overhead % stay management figures in
@@ -642,11 +650,16 @@ costed from payroll and timesheets; machine time and overhead are not posted.
   otherwise see per-person amounts that do not add up to a total they cannot
   see.
 - **A payroll line whose direct hours could not be charged is flagged
-  `LABOUR_NOT_ABSORBED` — by design.** That is a line whose cost is zero or
-  negative, or whose hours sit on a cancelled job. The flag tells finance the
-  cost did not reach a job, rather than leaving the gap silent.
-- **Deleting or editing a clock-created entry can leave up to about 0.2 minutes
-  of rounding — by design.** Entries store hours to two decimal places, so the
+  `LABOUR_NOT_ABSORBED` — by design.** That is a line with direct hours whose
+  cost is ≤ 0 or whose hours sit on a cancelled job. The flag tells finance
+  the cost did not reach a job, rather than leaving the gap silent.
+- **Changing a package or the monthly standard hours does not re-cost
+  completed jobs still carrying provisional hours until something touches
+  them — open.** Their provisional labour is recomputed when an entry on them
+  is edited or the month's payroll is approved; until then it shows the rate
+  in force when last computed.
+- **Deleting or editing a clock-created entry can leave up to 0.3 minutes of
+  rounding — by design.** Entries store hours to two decimal places, so the
   minutes a clock session recorded do not always convert back exactly. The
   residue is below the precision of anything that reads it.
 

@@ -1391,6 +1391,8 @@ describe('PayrollPostingService', () => {
           status,
           qty: 1,
           qtyCompleted: status === 'COMPLETE' ? 1 : null,
+          completedAt:
+            status === 'COMPLETE' ? new Date('2026-10-20T10:00:00.000Z') : null,
           overheadPct: 0,
           estimatedCost: { tooling: 0 },
           actualCost: null,
@@ -1586,6 +1588,56 @@ describe('PayrollPostingService', () => {
       expect(ctx.timesheets.rows.every((e) => e.runLineId === null)).toBe(true);
       for (const w of ctx.workOrders.rows) {
         expect(w.labourStatus).toBe('PROVISIONAL');
+      }
+    });
+
+    it('approve → complete → void → a fresh run for the month re-absorbs to COGS and re-stamps the entries', async () => {
+      const ctx = setup();
+      addJobs(ctx);
+      const first = await draft(ctx, '2026-10');
+      await ctx.service.approve(T, first.id, APPROVER);
+      expect(
+        ctx.labourRows.rows.find((r) => r.workOrderId === 'wo-open').account,
+      ).toBe('WIP');
+      // Completion (Task 9) within the month moves the WIP labour to COGS.
+      const open = ctx.workOrders.rows.find((w) => w.id === 'wo-open');
+      open.status = 'COMPLETE';
+      open.qtyCompleted = 1;
+      open.completedAt = new Date('2026-10-30T12:00:00.000Z');
+      ctx.labourRows.rows.find((r) => r.workOrderId === 'wo-open').clearedTo =
+        'COGS';
+      await ctx.service.void(T, first.id, APPROVER);
+      expect(ctx.timesheets.rows.every((e) => e.runLineId === null)).toBe(true);
+
+      const second = await draft(ctx, '2026-10');
+      expect(second.id).not.toBe(first.id);
+      await ctx.service.approve(T, second.id, APPROVER);
+      const a = ctx.lines.rows.find(
+        (l) => l.employeeId === 'a' && l.runId === second.id,
+      );
+      const stored = ctx.runs.rows.find((r) => r.id === second.id);
+      const lab = ctx.entries.rows.find(
+        (e) => e.id === stored.labourJournalEntryId,
+      );
+      expect(lab.entryNumber).toBe(`JE-${stored.runNumber}-LAB`);
+      // Both jobs are now complete by the period end: all of it is COGS.
+      expect(byRole(lab)).toEqual({
+        [LEDGER_ROLES.COGS]: { debit: a.labourAbsorbed, credit: 0 },
+        [LEDGER_ROLES.LABOUR_ABSORBED]: { debit: 0, credit: a.labourAbsorbed },
+      });
+      expect(a.labourAbsorbed).toBeGreaterThan(0);
+      expect(
+        ctx.labourRows.rows.map((r) => [r.workOrderId, r.account, r.runId]),
+      ).toEqual(
+        expect.arrayContaining([
+          ['wo-open', 'COGS', second.id],
+          ['wo-done', 'COGS', second.id],
+        ]),
+      );
+      expect(ctx.labourRows.rows).toHaveLength(2);
+      expect(ctx.timesheets.rows.every((e) => e.runLineId === a.id)).toBe(true);
+      for (const w of ctx.workOrders.rows) {
+        expect(w.labourStatus).toBe('ACTUAL');
       }
     });
 

@@ -38,10 +38,18 @@ export interface PreparedAbsorption {
     account: 'WIP' | 'COGS';
     amount: number;
   }[];
-  rows: Omit<
-    WorkOrderLabour,
-    'id' | 'createdAt' | 'journalEntryId' | 'clearedTo' | 'clearedAt'
-  >[];
+  rows: Omit<WorkOrderLabour, 'id' | 'createdAt' | 'journalEntryId'>[];
+  /**
+   * J19: labour on jobs completed after the period end. It is charged to WIP
+   * in `JE-<run>-LAB` (month M's P&L never carries next month's job cost) and
+   * moved to COGS by `JE-<run>-LAB-DONE-<wo>`, dated the day the job completed.
+   */
+  clearings: {
+    workOrderId: string;
+    woNumber: string;
+    amount: number;
+    entryDate: Date;
+  }[];
   /** Entry id → the run line that absorbs it. */
   stampEntryIds: Map<string, string>;
   /** COMPLETE work orders whose entries this approval stamps (J7: even at 0). */
@@ -49,14 +57,30 @@ export interface PreparedAbsorption {
 }
 
 const dayToDate = (day: string) => new Date(`${day}T00:00:00.000Z`);
-const todayUtc = () => dayToDate(new Date().toISOString().slice(0, 10));
+const isoDay = (d: Date) => new Date(d).toISOString().slice(0, 10);
+const todayUtc = () => dayToDate(isoDay(new Date()));
 const unique = <T>(xs: T[]) => [...new Set(xs)];
+
+/** J19: a job completed by the period end is cost of sales in the month. */
+const accountFor = (wo: WorkOrder, periodEnd: string): 'WIP' | 'COGS' =>
+  wo.status === 'COMPLETE' &&
+  (wo.completedAt == null || isoDay(wo.completedAt) <= periodEnd)
+    ? 'COGS'
+    : 'WIP';
+
+/** The day a late-completing job's labour moves to COGS: max(period end, completedAt). */
+const clearingDate = (wo: WorkOrder, periodEnd: string): Date => {
+  const done = wo.completedAt ? isoDay(wo.completedAt) : periodEnd;
+  return dayToDate(done > periodEnd ? done : periodEnd);
+};
 
 /**
  * Payroll's approval charges each employee's timesheet hours to jobs at what
- * the month actually cost (Dr WIP for an open job, Dr COGS for a completed
- * one / Cr 6390 Labour absorbed); the void takes each amount back from where
- * it sits now.
+ * the month actually cost (Dr WIP for an open job, Dr COGS for one completed
+ * by the period end / Cr 6390 Labour absorbed). A job completed after the
+ * period end is charged to WIP and moved to COGS on its completion date
+ * (J19), so month M's P&L never carries next month's job cost. The void
+ * takes each amount back from where it sits now.
  *
  * Callers hold the run row, `lockGratuityOpening` and `lockJobCosting`, in
  * that order; this locks the touched work order rows (sorted by id) and reads
@@ -114,11 +138,14 @@ export class LabourAbsorptionService {
       const wo = woById.get(e.workOrderId);
       return !!wo && wo.status !== 'CANCELLED';
     };
+    const completedLate = (wo: WorkOrder) =>
+      wo.status === 'COMPLETE' && accountFor(wo, last) === 'WIP';
 
     const prepared: PreparedAbsorption = {
       total: 0,
       journal: [],
       rows: [],
+      clearings: [],
       stampEntryIds: new Map(),
       completedWorkOrderIds: [],
     };
@@ -176,6 +203,7 @@ export class LabourAbsorptionService {
       for (const [workOrderId, g] of perWorkOrder) {
         if (g.amount === 0) continue;
         const wo = woById.get(workOrderId)!;
+        const late = completedLate(wo);
         prepared.rows.push({
           tenantId,
           workOrderId,
@@ -186,7 +214,10 @@ export class LabourAbsorptionService {
           hours: g.hours,
           rate,
           amount: g.amount,
-          account: wo.status === 'COMPLETE' ? 'COGS' : 'WIP',
+          account: accountFor(wo, last),
+          // Moved on by this run's LAB-DONE, in the same transaction.
+          clearedTo: late ? 'COGS' : null,
+          clearedAt: late ? clearingDate(wo, last) : null,
         });
         byWorkOrder.set(
           workOrderId,
@@ -210,9 +241,17 @@ export class LabourAbsorptionService {
       prepared.journal.push({
         workOrderId,
         woNumber: wo.woNumber,
-        account: wo.status === 'COMPLETE' ? 'COGS' : 'WIP',
+        account: accountFor(wo, last),
         amount,
       });
+      if (completedLate(wo)) {
+        prepared.clearings.push({
+          workOrderId,
+          woNumber: wo.woNumber,
+          amount,
+          entryDate: clearingDate(wo, last),
+        });
+      }
     }
     prepared.total = round2(prepared.journal.reduce((s, j) => s + j.amount, 0));
     prepared.completedWorkOrderIds = [...completed].sort();
@@ -220,8 +259,9 @@ export class LabourAbsorptionService {
   }
 
   /**
-   * Posts `JE-<run>-LAB`, writes the `work_order_labour` rows, stamps the
-   * entries and recomputes the completed jobs they sit on. The journal and
+   * Posts `JE-<run>-LAB` (and a `JE-<run>-LAB-DONE-<wo>` per job completed
+   * after the period end), writes the `work_order_labour` rows, stamps the
+   * entries and recomputes the completed jobs they sit on. The journals and
    * rows are skipped when nothing was absorbed; the stamps never are.
    */
   async post(
@@ -271,14 +311,47 @@ export class LabourAbsorptionService {
       const rowRepo = manager.getRepository(WorkOrderLabour);
       await rowRepo.save(
         prepared.rows.map((r) =>
-          rowRepo.create({
-            ...r,
-            journalEntryId: entry.id,
-            clearedTo: null,
-            clearedAt: null,
-          }),
+          rowRepo.create({ ...r, journalEntryId: entry.id }),
         ),
       );
+
+      // J19: Dr COGS / Cr WIP on the day each late-completing job completed.
+      for (const c of prepared.clearings) {
+        const description = `${c.woNumber} labour ${label} to cost of sales on completion`;
+        const lines = await this.ledger.resolveLines(
+          tenantId,
+          [
+            {
+              role: LEDGER_ROLES.COGS,
+              accountName: 'Cost of goods sold',
+              debit: c.amount,
+              credit: 0,
+              description,
+            },
+            {
+              role: LEDGER_ROLES.WIP,
+              accountName: 'Work in progress',
+              debit: 0,
+              credit: c.amount,
+              description,
+            },
+          ],
+          manager,
+        );
+        await entries.save(
+          entries.create({
+            tenantId,
+            entryNumber: `JE-${run.runNumber}-LAB-DONE-${c.woNumber}`,
+            referenceType: 'PAYROLL',
+            referenceId: run.id,
+            entryDate: c.entryDate,
+            totalAmount: c.amount,
+            currency: entry.currency,
+            fxRate: 1,
+            lines,
+          }),
+        );
+      }
     }
 
     const byLine = new Map<string, string[]>();
@@ -302,9 +375,10 @@ export class LabourAbsorptionService {
   /**
    * Takes each absorbed amount back from where it sits now (J10:
    * `JE-<run>-LAB-VOID`, beside the payroll's exact reversal): WIP while the
-   * job is open, COGS once booked or cleared there. Rows a cancel already
-   * returned to 6390 are skipped. Then deletes the rows, unstamps the
-   * entries and recomputes the completed jobs they touched.
+   * job is open, COGS once booked or cleared there (by completion, or by the
+   * run's own LAB-DONE). Rows a cancel already returned to 6390 are skipped.
+   * Dated max(today, every labour journal of the run). Then deletes the rows,
+   * unstamps the entries and recomputes the completed jobs they touched.
    */
   async reverse(
     manager: EntityManager,
@@ -354,6 +428,17 @@ export class LabourAbsorptionService {
             where: { id: run.labourJournalEntryId, tenantId },
           })
         : null;
+      // The run's LAB-DONE journals can be dated after LAB (J19).
+      const labDone = (
+        await entries.find({
+          where: { tenantId, referenceType: 'PAYROLL', referenceId: run.id },
+        })
+      ).filter((e) =>
+        e.entryNumber.startsWith(`JE-${run.runNumber}-LAB-DONE-`),
+      );
+      const reversed = [...(original ? [original] : []), ...labDone].map((e) =>
+        new Date(e.entryDate).getTime(),
+      );
       const label = periodLabel(run.period);
       const input: JournalLineInput[] = [
         {
@@ -384,12 +469,7 @@ export class LabourAbsorptionService {
           referenceType: 'PAYROLL',
           referenceId: run.id,
           // Never before the entry it reverses.
-          entryDate: new Date(
-            Math.max(
-              todayUtc().getTime(),
-              original ? new Date(original.entryDate).getTime() : 0,
-            ),
-          ),
+          entryDate: new Date(Math.max(todayUtc().getTime(), ...reversed)),
           totalAmount: total,
           currency:
             original?.currency ?? (await baseCurrencyFor(manager, tenantId)),

@@ -711,8 +711,9 @@ async function seedPayroll(
   // and approval only absorbs hours already entered. Two released jobs take
   // timesheets from three employees on the payroll for the whole month (not
   // Sami, who joined mid-month, nor Hassan, who left); WO-SEED-1 is
-  // completed now, so approval charges its labour straight to COGS, while
-  // WO-SEED-2 is still open and takes its labour into WIP.
+  // completed now, after the period end, so approval charges its labour to
+  // WIP and JE-<run>-LAB-DONE-WO-SEED-1 moves it to COGS on the completion
+  // day (J19), while WO-SEED-2 is still open and takes its labour into WIP.
   const jobs = await seedJobs(dataSource, tenantId, ownerId, lastPeriod);
   await app.get(TimesheetsService).bulk(
     tenantId,
@@ -1044,7 +1045,8 @@ async function seedJobs(
  * absorbed equals the 6390 credit and the job rows; what it did not is
  * worked out from the ledger on its own and matches the lines; both
  * completed jobs carry their labour in COGS, at ACTUAL, with nothing left in
- * WIP; and the owner's clock time became exactly one CLOCK entry.
+ * WIP (WO-SEED-1's moved by the run's LAB-DONE, dated its completion day);
+ * and the owner's clock time became exactly one CLOCK entry.
  */
 async function assertJobCostingSeeded(
   dataSource: DataSource,
@@ -1133,7 +1135,7 @@ async function assertJobCostingSeeded(
       gratuityAccrual: l.gratuityAccrual ?? 0,
       leaveProvisionChange: l.leaveProvisionChange ?? 0,
     });
-    if (l.labourAbsorbed < 0 || l.labourAbsorbed > cost) {
+    if (l.labourAbsorbed < 0 || l.labourAbsorbed > Math.max(cost, 0)) {
       fail(`${l.employeeName} absorbed ${l.labourAbsorbed} of cost ${cost}`);
     }
     lineUnabsorbed += cost - l.labourAbsorbed;
@@ -1153,14 +1155,18 @@ async function assertJobCostingSeeded(
     );
   }
 
-  // 3. Both completed jobs: labour in COGS (WO-SEED-1 directly, WO-SEED-2
-  // via WIP), at ACTUAL, and their WIP back to zero.
+  // 3. Both completed jobs: labour in COGS, both via WIP — WO-SEED-1 was
+  // completed after the period end, so the run's own LAB-DONE moved it on
+  // the completion day (J19); WO-SEED-2 was open at approval and its
+  // completion moved it — at ACTUAL, and their WIP back to zero.
   const workOrders = await dataSource
     .getRepository(WorkOrder)
     .find({ where: { tenantId, id: In([jobs.wo1, jobs.wo2]) } });
+  const labDone = (woNumber: string) =>
+    entry(`JE-${run.runNumber}-LAB-DONE-${woNumber}`);
   for (const [id, expect] of [
-    [jobs.wo1, { account: 'COGS', clearedTo: null }],
-    [jobs.wo2, { account: 'WIP', clearedTo: 'COGS' }],
+    [jobs.wo1, { account: 'WIP', clearedTo: 'COGS', labDone: true }],
+    [jobs.wo2, { account: 'WIP', clearedTo: 'COGS', labDone: false }],
   ] as const) {
     const wo = workOrders.find((w) => w.id === id);
     if (!wo) return fail(`work order ${id} not found`);
@@ -1179,13 +1185,36 @@ async function assertJobCostingSeeded(
         `${wo.woNumber} labour sits at [${wrong.map((r) => `${r.account}/${r.clearedTo}`).join(', ')}], expected ${expect.account}/${expect.clearedTo}`,
       );
     }
+    const done = labDone(wo.woNumber);
+    if (!!done !== expect.labDone) {
+      fail(
+        `${wo.woNumber}: JE-${run.runNumber}-LAB-DONE-${wo.woNumber} ${done ? 'posted' : 'missing'}, expected ${expect.labDone ? 'posted' : 'none'}`,
+      );
+    }
+    if (done) {
+      // Dated max(period end, completion day): never in the payroll's month.
+      const day = (d: Date | string) => new Date(d).toISOString().slice(0, 10);
+      const want = [
+        periodBounds(run.period).last,
+        day(wo.completedAt!),
+      ].sort()[1];
+      if (day(done.entryDate) !== want) {
+        fail(
+          `${done.entryNumber} dated ${day(done.entryDate)}, expected ${want}`,
+        );
+      }
+      if (
+        !cents(net(done, LEDGER_ROLES.COGS, 'net'), Number(done.totalAmount))
+      ) {
+        fail(`${done.entryNumber} does not debit COGS by its total`);
+      }
+    }
     const wipIn = net(lab, LEDGER_ROLES.WIP, 'debit', (d) =>
       d.startsWith(`${wo.woNumber} `),
     );
-    const wipOut = -net(
-      entry(`JE-${wo.woNumber}-DONE`),
-      LEDGER_ROLES.WIP,
-      'credit',
+    const wipOut = round2(
+      -net(entry(`JE-${wo.woNumber}-DONE`), LEDGER_ROLES.WIP, 'credit') -
+        net(done, LEDGER_ROLES.WIP, 'credit'),
     );
     if (!cents(wipIn, wipOut)) {
       fail(`${wo.woNumber} WIP balance ${round2(wipIn - wipOut)}, expected 0`);

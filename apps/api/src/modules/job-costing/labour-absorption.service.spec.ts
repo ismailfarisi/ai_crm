@@ -113,6 +113,8 @@ function makeWorld() {
       status,
       qty: 1,
       qtyCompleted: status === 'COMPLETE' ? 1 : null,
+      completedAt:
+        status === 'COMPLETE' ? new Date('2026-10-20T10:00:00.000Z') : null,
       overheadPct: 0,
       estimatedCost: { tooling: 0 },
       actualCost: null,
@@ -395,6 +397,114 @@ describe('LabourAbsorptionService', () => {
       actual: 0,
       provisional: 0,
       unlinked: 0,
+    });
+  });
+
+  describe('jobs completed after the period end (J19)', () => {
+    afterEach(() => jest.useRealTimers());
+
+    /** WO-2 completed on 5 November: October's labour on it is not October's cost of sales. */
+    function late() {
+      const s = standard();
+      const done = s.w.tables.WorkOrder.find((x) => x.id === 'wo-done')!;
+      done.completedAt = new Date('2026-11-05T15:30:00.000Z');
+      return s;
+    }
+
+    it('completed on or before the period end: Dr COGS directly, no LAB-DONE', async () => {
+      const { w, l } = standard();
+      const done = w.tables.WorkOrder.find((x) => x.id === 'wo-done')!;
+      done.completedAt = new Date('2026-10-31T23:59:00.000Z');
+      await w.approve([l]);
+      expect(w.tables.JournalEntry.map((e) => e.entryNumber)).toEqual([
+        'JE-PR-2026-10-LAB',
+      ]);
+      const row = w.tables.WorkOrderLabour.find(
+        (r) => r.workOrderId === 'wo-done',
+      )!;
+      expect(row).toMatchObject({
+        account: 'COGS',
+        clearedTo: null,
+        clearedAt: null,
+      });
+    });
+
+    it('completed after: Dr WIP in LAB, then LAB-DONE moves it to COGS dated the completion day', async () => {
+      const { w, l } = late();
+      const { prepared, id } = await w.approve([l]);
+      expect(prepared.total).toBe(3000);
+
+      const lab = w.tables.JournalEntry.find((e) => e.id === id)!;
+      expect(lab.entryDate).toEqual(new Date('2026-10-31T00:00:00.000Z'));
+      expect(byRole(lab)).toEqual({
+        [LEDGER_ROLES.WIP]: { debit: 3000, credit: 0 },
+        [LEDGER_ROLES.LABOUR_ABSORBED]: { debit: 0, credit: 3000 },
+      });
+
+      const done = w.tables.JournalEntry.find(
+        (e) => e.entryNumber === 'JE-PR-2026-10-LAB-DONE-WO-2',
+      )!;
+      expect(done).toMatchObject({
+        referenceType: 'PAYROLL',
+        referenceId: 'run1',
+        totalAmount: 1000,
+        currency: 'AED',
+        entryDate: new Date('2026-11-05T00:00:00.000Z'),
+      });
+      expect(byRole(done)).toEqual({
+        [LEDGER_ROLES.COGS]: { debit: 1000, credit: 0 },
+        [LEDGER_ROLES.WIP]: { debit: 0, credit: 1000 },
+      });
+      expect(w.tables.JournalEntry).toHaveLength(2);
+
+      const row = w.tables.WorkOrderLabour.find(
+        (r) => r.workOrderId === 'wo-done',
+      )!;
+      expect(row).toMatchObject({
+        account: 'WIP',
+        clearedTo: 'COGS',
+        clearedAt: new Date('2026-11-05T00:00:00.000Z'),
+        journalEntryId: id,
+      });
+      // Already moved on: completion and cancellation never see it as WIP.
+      expect(await w.service.wipLabour(w.manager, tenantId, 'wo-done')).toEqual(
+        { ids: [], amount: 0 },
+      );
+      // The open job is untouched by the clearing.
+      expect(
+        w.tables.WorkOrderLabour.find((r) => r.workOrderId === 'wo-open'),
+      ).toMatchObject({ account: 'WIP', clearedTo: null });
+    });
+
+    it('void afterwards reverses that labour from COGS', async () => {
+      const { w, l } = late();
+      await w.approve([l]);
+      const id = await w.service.reverse(w.manager, tenantId, w.run);
+      const je = w.tables.JournalEntry.find((e) => e.id === id)!;
+      expect(byRole(je)).toEqual({
+        [LEDGER_ROLES.LABOUR_ABSORBED]: { debit: 3000, credit: 0 },
+        [LEDGER_ROLES.WIP]: { debit: 0, credit: 2000 },
+        [LEDGER_ROLES.COGS]: { debit: 0, credit: 1000 },
+      });
+      expect(w.tables.WorkOrderLabour).toHaveLength(0);
+    });
+
+    it('a void on a day before the LAB-DONE date is dated no earlier than LAB-DONE', async () => {
+      const { w, l } = late();
+      await w.approve([l]);
+      jest.useFakeTimers({ now: new Date('2026-11-03T09:00:00.000Z') });
+      const id = await w.service.reverse(w.manager, tenantId, w.run);
+      const je = w.tables.JournalEntry.find((e) => e.id === id)!;
+      expect(je.entryDate).toEqual(new Date('2026-11-05T00:00:00.000Z'));
+    });
+
+    it('a void after the LAB-DONE date is dated today', async () => {
+      const { w, l } = late();
+      await w.approve([l]);
+      jest.useFakeTimers({ now: new Date('2026-11-20T09:00:00.000Z') });
+      const id = await w.service.reverse(w.manager, tenantId, w.run);
+      const je = w.tables.JournalEntry.find((e) => e.id === id)!;
+      expect(je.entryDate).toEqual(new Date('2026-11-20T00:00:00.000Z'));
     });
   });
 
