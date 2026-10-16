@@ -17,7 +17,14 @@ describe('timesheet schemas', () => {
   it('hours above 0, at most 24, two decimals', () => {
     for (const hours of [0, -1, 24.01, 1.234]) expect(timesheetEntrySchema.safeParse({ employeeId: E, workDate: '2026-09-03', hours, indirectCategory: 'IDLE' }).success).toBe(false);
   });
-  it('patch takes hours and note only', () => expect(updateTimesheetEntrySchema.parse({ hours: 2, note: '' })).toEqual({ hours: 2, note: null }));
+  it('patch takes hours and note only, blank note clears', () => expect(updateTimesheetEntrySchema.parse({ hours: 2, note: '' })).toEqual({ hours: 2, note: null }));
+  it('patch leaves an omitted note out of the output', () => {
+    const v = updateTimesheetEntrySchema.parse({ hours: 2 });
+    expect(v).toEqual({ hours: 2 });
+    expect('note' in v).toBe(false);
+  });
+  it('patch with explicit null note clears it', () => expect(updateTimesheetEntrySchema.parse({ note: null })).toEqual({ note: null }));
+  it('an empty patch is accepted and changes nothing', () => expect(updateTimesheetEntrySchema.parse({})).toEqual({}));
   it('bulk upserts and deletes', () => {
     const v = bulkTimesheetSchema.parse({ upserts: [{ id: O, employeeId: E, workDate: '2026-09-03', hours: 3, indirectCategory: 'TRAINING' }], deletes: [] });
     expect(v.upserts[0].id).toBe(O);

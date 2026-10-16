@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { TIMESHEET_INDIRECT_CATEGORIES } from '../timesheets/types';
-import { isoDay, optionalText } from './payroll';
+import { isoDay, optionalText, stripUndefined } from './payroll';
 
 const hours = z.coerce
   .number()
@@ -22,7 +22,10 @@ const entryBase = z.object({
 });
 
 export const timesheetEntrySchema = entryBase.refine(oneTarget, oneTargetMessage);
-export const updateTimesheetEntrySchema = z.object({ hours, note });
+/** A patch: only what was sent is present in the output (an empty patch is accepted and changes nothing); a null or blank note clears it. */
+export const updateTimesheetEntrySchema = z
+  .object({ hours: hours.optional(), note: note.optional() })
+  .transform(stripUndefined);
 export const bulkTimesheetSchema = z
   .object({
     upserts: z.array(entryBase.extend({ id: z.string().uuid().optional() }).refine(oneTarget, oneTargetMessage)).max(500),
