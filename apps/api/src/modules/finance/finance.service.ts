@@ -54,6 +54,8 @@ import {
   PayrollRun,
   PayrollRunLine,
 } from '../payroll/entities/payroll-run.entity';
+import { PensionRemittance } from '../payroll/entities/pension-remittance.entity';
+import { Settlement } from '../payroll/entities/settlement.entity';
 import {
   CreateFinanceAccountDto,
   UpdateFinanceAccountDto,
@@ -100,6 +102,10 @@ export class FinanceService {
     private readonly payrollRuns: Repository<PayrollRun>,
     @InjectRepository(PayrollRunLine)
     private readonly payrollLines: Repository<PayrollRunLine>,
+    @InjectRepository(PensionRemittance)
+    private readonly pensionRemittances: Repository<PensionRemittance>,
+    @InjectRepository(Settlement)
+    private readonly settlements: Repository<Settlement>,
   ) {}
 
   /** The package in force on `date`: greatest effectiveFrom at or before it. */
@@ -145,7 +151,17 @@ export class FinanceService {
       return key <= last ? key : null;
     };
 
-    const [accounts, bills, invoices, recurring, employees, packages, runs] =
+    const [
+      accounts,
+      bills,
+      invoices,
+      recurring,
+      employees,
+      packages,
+      runs,
+      remittances,
+      approvedSettlements,
+    ] =
       await Promise.all([
       this.accountRepository.find({ where: { tenantId } }),
       this.bills.find({
@@ -166,10 +182,14 @@ export class FinanceService {
       this.payrollRuns.find({
         where: { tenantId, status: Not('VOIDED') as any },
       }),
+      this.pensionRemittances.find({
+        where: { tenantId, voidedAt: IsNull() },
+      }),
+      this.settlements.find({ where: { tenantId, status: 'APPROVED' as any } }),
     ]);
 
     const rows = new Map(
-      monthKeys.map((m) => [m, { inflows: 0, billsOut: 0, recurringOut: 0, payrollOut: 0 }]),
+      monthKeys.map((m) => [m, { inflows: 0, billsOut: 0, recurringOut: 0, payrollOut: 0, pensionOut: 0 }]),
     );
     for (const b of bills) {
       const key = bucket(toIso(b.dueDate ?? b.billDate));
@@ -281,13 +301,53 @@ export class FinanceService {
       if (key) rows.get(key)!.payrollOut += projected;
     }
 
+    // Approved, unpaid final settlements are owed now.
+    for (const st of approvedSettlements) {
+      const key = bucket(today);
+      if (key) rows.get(key)!.payrollOut += Number(st.netPay);
+    }
+
+    // Pension: a posted run's contributions are due to the fund on the 15th of
+    // the following month, until a live remittance covers its period.
+    const remitted = new Set(remittances.map((r) => r.period));
+    const posted = runs.filter(
+      (r) =>
+        ['APPROVED', 'PARTIALLY_PAID', 'PAID'].includes(r.status) &&
+        !remitted.has(r.period),
+    );
+    if (posted.length) {
+      const pensionLines = await this.payrollLines.find({
+        where: { tenantId, runId: In(posted.map((r) => r.id)) },
+      });
+      const byRun = new Map<string, number>();
+      for (const l of pensionLines) {
+        byRun.set(
+          l.runId,
+          (byRun.get(l.runId) ?? 0) +
+            Number(l.pensionEmployee || 0) +
+            Number(l.pensionEmployer || 0),
+        );
+      }
+      for (const r of posted) {
+        const amount = byRun.get(r.id) ?? 0;
+        if (!amount) continue;
+        const due = `${addMonthsClamped(`${r.period}-01`, 1).slice(0, 7)}-15`;
+        const key = bucket(due);
+        if (key) rows.get(key)!.pensionOut += amount;
+      }
+    }
+
     let opening = round2(
       accounts.reduce((s, a) => s + Number(a.balance || 0), 0),
     );
     const out = monthKeys.map((month) => {
       const r = rows.get(month)!;
       const closing = round2(
-        opening + r.inflows - r.billsOut - r.recurringOut - r.payrollOut,
+        opening + r.inflows -
+          r.billsOut -
+          r.recurringOut -
+          r.payrollOut -
+          r.pensionOut,
       );
       const row = {
         month,
@@ -296,8 +356,7 @@ export class FinanceService {
         billsOut: round2(r.billsOut),
         recurringOut: round2(r.recurringOut),
         payrollOut: round2(r.payrollOut),
-        // Pension remittances due; filled in with the compliance forecast.
-        pensionOut: 0,
+        pensionOut: round2(r.pensionOut),
         closing,
       };
       opening = closing;
