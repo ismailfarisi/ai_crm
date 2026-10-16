@@ -9,10 +9,18 @@ import { SalaryPackage } from './entities/salary-package.entity';
 import { EmployeeAdvance } from './entities/employee-advance.entity';
 import { PayrollRun, PayrollRunLine } from './entities/payroll-run.entity';
 import { GratuityLedgerEntry } from './entities/gratuity-ledger-entry.entity';
+import { LeaveLedgerEntry } from './entities/leave-ledger-entry.entity';
+import { LeaveRecord } from './entities/leave-record.entity';
+import { PensionScheme } from './entities/pension-scheme.entity';
+import { PayrollSettings } from './entities/payroll-settings.entity';
+import { Settlement, SettlementLine } from './entities/settlement.entity';
 import { EmployeesService } from './employees.service';
 import { PayrollCryptoService } from './payroll-crypto.service';
 import { AdvancesService } from './advances.service';
 import { GratuityService } from './gratuity.service';
+import { PayrollSettingsService } from './payroll-settings.service';
+import { LeaveService } from './leave.service';
+import { PensionService } from './pension.service';
 import { PayrollRunsService } from './payroll-runs.service';
 
 const T = '11111111-1111-4111-8111-111111111111';
@@ -154,6 +162,9 @@ function setup() {
   const runs = repo([]);
   const lines = repo([]);
   const gratuity = repo([]);
+  const leaveLedger = repo([]);
+  const leaveRecords = repo([]);
+  const schemes = repo([]);
   const orgs = repo([
     {
       id: T,
@@ -175,7 +186,13 @@ function setup() {
     [PayrollRun, runs],
     [PayrollRunLine, lines],
     [GratuityLedgerEntry, gratuity],
+    [LeaveLedgerEntry, leaveLedger],
+    [LeaveRecord, leaveRecords],
+    [PensionScheme, schemes],
+    [PayrollSettings, repo([])],
     [Organization, orgs],
+    [Settlement, repo([])],
+    [SettlementLine, repo([])],
   ]);
   let seq = 0;
   const manager: any = {
@@ -188,13 +205,33 @@ function setup() {
     dataSource,
     new PayrollCryptoService({}),
   );
+  const gratuityService = new GratuityService(dataSource, ledger, employeesService);
   const service = new PayrollRunsService(
     dataSource,
     employeesService,
     new AdvancesService(dataSource, ledger),
-    new GratuityService(dataSource, ledger, employeesService),
+    gratuityService,
+    new LeaveService(
+      dataSource,
+      gratuityService,
+      new PayrollSettingsService(dataSource),
+      ledger,
+      employeesService,
+    ),
+    new PensionService(dataSource),
   );
-  return { service, employees, packages, advances, runs, lines, gratuity };
+  return {
+    service,
+    employees,
+    packages,
+    advances,
+    runs,
+    lines,
+    gratuity,
+    leaveLedger,
+    leaveRecords,
+    schemes,
+  };
 }
 
 const lineOf = (dto: any, num: string) =>
@@ -256,15 +293,21 @@ describe('PayrollRunsService', () => {
       ]);
     });
 
-    it('flags a national', async () => {
+    it('flags a national without a pension scheme and gives them no pension', async () => {
       const { service } = setup();
       const run = await service.create(T, ACTOR, {
         period: '2026-10',
         payDate: null,
       });
-      expect(lineOf(run, 'EMP-007').flags).toEqual([
-        'NATIONAL_PENSION_NOT_HANDLED',
-      ]);
+      const g = lineOf(run, 'EMP-007');
+      expect(g.flags).toEqual(['NATIONAL_NO_PENSION_SCHEME']);
+      expect(g.pensionSchemeName).toBeNull();
+      expect(g).toMatchObject({
+        pensionBase: 0,
+        pensionEmployee: 0,
+        pensionEmployer: 0,
+      });
+      expect(g.netPay).toBe(9000);
       expect(lineOf(run, 'EMP-001').flags).toEqual([]);
     });
 
@@ -309,6 +352,29 @@ describe('PayrollRunsService', () => {
       await expect(
         service.create(T, ACTOR, { period: '2026-09', payDate: null }),
       ).rejects.toBeInstanceOf(ConflictException);
+      await expect(
+        service.create(T, ACTOR, { period: '2026-11', payDate: null }),
+      ).resolves.toBeDefined();
+    });
+
+    it('refuses a run at or before the leave cut-over', async () => {
+      const { service, leaveLedger } = setup();
+      leaveLedger.rows.push({
+        id: 'l1',
+        tenantId: T,
+        employeeId: 'a',
+        kind: 'OPENING',
+        days: 20,
+        amount: 4000,
+        asOf: '2026-10-31',
+      });
+      await expect(
+        service.create(T, ACTOR, { period: '2026-10', payDate: null }),
+      ).rejects.toThrow(
+        new ConflictException(
+          'Leave opening balances were set up as of 2026-10-31; payroll for October 2026 is already in them',
+        ),
+      );
       await expect(
         service.create(T, ACTOR, { period: '2026-11', payDate: null }),
       ).resolves.toBeDefined();
@@ -508,6 +574,295 @@ describe('PayrollRunsService', () => {
     });
   });
 
+  describe('leave from records', () => {
+    const rec = (
+      id: string,
+      employeeId: string,
+      type: string,
+      startDate: string,
+      endDate: string,
+      days: number,
+    ) => ({
+      id,
+      tenantId: T,
+      employeeId,
+      type,
+      startDate,
+      endDate,
+      days,
+      note: null,
+    });
+
+    /** EMP-001: 20 sick days (15 full, 5 half) and 2 unpaid days in October. */
+    async function withLeave() {
+      const s = setup();
+      s.leaveRecords.rows.push(
+        rec('r1', 'a', 'SICK', '2026-10-01', '2026-10-20', 20),
+        rec('r2', 'a', 'UNPAID', '2026-10-25', '2026-10-26', 2),
+      );
+      const run = await s.service.create(T, ACTOR, {
+        period: '2026-10',
+        payDate: null,
+      });
+      return { ...s, run, a: lineOf(run, 'EMP-001') };
+    }
+
+    it('fills unpaid and half-pay days from sick and unpaid records; half pay costs gross / 30 x 0.5 a day', async () => {
+      const { run, a } = await withLeave();
+      expect(a).toMatchObject({
+        unpaidLeaveDays: 2,
+        halfPayDays: 5,
+        leaveDaysInPeriod: 22,
+        leaveOverridden: false,
+      });
+      // 8500 / 30 × 0.5 × 5 = 708.33; 8500 / 30 × 2 = 566.67
+      expect(a.halfPayAmount).toBe(708.33);
+      expect(a.unpaidLeaveAmount).toBe(566.67);
+      expect(a.salaryCost).toBe(7225);
+      expect(a.netPay).toBe(7225);
+      expect(run.totals.halfPay).toBe(708.33);
+      expect(run.totals.salaryCost).toBe(7225 + 1600 + 9000);
+    });
+
+    it('an edit to the leave days marks the line overridden and refresh keeps it; leaveOverridden: false restores the records', async () => {
+      const { service, run, a } = await withLeave();
+      const edited = lineOf(
+        await service.updateLine(T, run.id, a.id, { unpaidLeaveDays: 1 }),
+        'EMP-001',
+      );
+      expect(edited).toMatchObject({
+        unpaidLeaveDays: 1,
+        halfPayDays: 5,
+        leaveOverridden: true,
+      });
+      // 8500 − 283.33 − 708.33
+      expect(edited.salaryCost).toBe(7508.34);
+
+      const refreshed = lineOf(await service.refresh(T, run.id), 'EMP-001');
+      expect(refreshed).toMatchObject({
+        unpaidLeaveDays: 1,
+        halfPayDays: 5,
+        leaveOverridden: true,
+      });
+
+      const restored = lineOf(
+        await service.updateLine(T, run.id, a.id, { leaveOverridden: false }),
+        'EMP-001',
+      );
+      expect(restored).toMatchObject({
+        unpaidLeaveDays: 2,
+        halfPayDays: 5,
+        leaveOverridden: false,
+      });
+      expect(restored.salaryCost).toBe(7225);
+    });
+
+    it('editing half-pay days alone also marks the line overridden', async () => {
+      const { service, run, a } = await withLeave();
+      const got = lineOf(
+        await service.updateLine(T, run.id, a.id, { halfPayDays: 2 }),
+        'EMP-001',
+      );
+      expect(got).toMatchObject({
+        unpaidLeaveDays: 2,
+        halfPayDays: 2,
+        leaveOverridden: true,
+      });
+    });
+
+    it('a line edit that is not about leave leaves the override alone', async () => {
+      const { service, run, a } = await withLeave();
+      const got = lineOf(
+        await service.updateLine(T, run.id, a.id, { bonusAmount: 100 }),
+        'EMP-001',
+      );
+      expect(got.leaveOverridden).toBe(false);
+    });
+
+    it('refuses unpaid plus half-pay days above days employed (400)', async () => {
+      const { service, run } = await withLeave();
+      const b = lineOf(run, 'EMP-002');
+      await expect(
+        service.updateLine(T, run.id, b.id, {
+          unpaidLeaveDays: 10,
+          halfPayDays: 7,
+        }),
+      ).rejects.toThrow(
+        new BadRequestException(
+          'Emp EMP-002 has more leave days than days employed in October 2026',
+        ),
+      );
+      await expect(
+        service.updateLine(T, run.id, b.id, {
+          unpaidLeaveDays: 10,
+          halfPayDays: 6,
+        }),
+      ).resolves.toBeDefined();
+    });
+
+    it('refresh writes only the columns it owns on existing lines', async () => {
+      const { service, run, lines } = await withLeave();
+      lines.save.mockClear();
+      lines.update.mockClear();
+      await service.refresh(T, run.id);
+      expect(lines.save).not.toHaveBeenCalled();
+      const patch = lines.update.mock.calls[0][1];
+      for (const k of [
+        'tenantId',
+        'runId',
+        'employeeId',
+        'paidAt',
+        'gratuityBefore',
+        'bonusAmount',
+      ])
+        expect(patch).not.toHaveProperty(k);
+      expect(patch).toHaveProperty('halfPayDays');
+      expect(patch).toHaveProperty('pensionEmployee');
+      expect(patch).toHaveProperty('flags');
+    });
+
+    it('flags annual leave beyond the balance as LEAVE_IN_ADVANCE', async () => {
+      const s = setup();
+      // At 30 Sep 2026 EMP-001 had accrued 82.52 days and taken 80 before
+      // go-live; October accrues 85.07 − 82.52 = 2.55 more: 5.07 available.
+      s.leaveLedger.rows.push(
+        {
+          id: 'o',
+          tenantId: T,
+          employeeId: 'a',
+          kind: 'OPENING',
+          days: 82.52,
+          amount: 0,
+          asOf: '2026-09-30',
+        },
+        {
+          id: 'j',
+          tenantId: T,
+          employeeId: 'a',
+          kind: 'ADJUSTMENT',
+          days: -80,
+          amount: null,
+          asOf: '2026-09-30',
+        },
+      );
+      s.leaveRecords.rows.push(
+        rec('r1', 'a', 'ANNUAL', '2026-10-05', '2026-10-09', 5),
+      );
+      const ok = await s.service.create(T, ACTOR, {
+        period: '2026-10',
+        payDate: null,
+      });
+      expect(lineOf(ok, 'EMP-001')).toMatchObject({
+        annualLeaveDays: 5,
+        flags: [],
+      });
+
+      s.leaveRecords.rows[0].endDate = '2026-10-10';
+      s.leaveRecords.rows[0].days = 6;
+      const got = lineOf(await s.service.refresh(T, ok.id), 'EMP-001');
+      expect(got.annualLeaveDays).toBe(6);
+      expect(got.flags).toEqual(['LEAVE_IN_ADVANCE']);
+      // Annual leave is paid: it costs nothing on the line.
+      expect(got.salaryCost).toBe(8500);
+    });
+
+    it('a new joiner taking annual leave in their first month is in advance', async () => {
+      const s = setup();
+      s.leaveRecords.rows.push(
+        rec('r1', 'b', 'ANNUAL', '2026-10-20', '2026-10-21', 2),
+      );
+      const run = await s.service.create(T, ACTOR, {
+        period: '2026-10',
+        payDate: null,
+      });
+      expect(lineOf(run, 'EMP-002').flags).toEqual(['LEAVE_IN_ADVANCE']);
+    });
+  });
+
+  describe('pension for nationals', () => {
+    const gpssa = (over: any = {}) => ({
+      id: 's1',
+      tenantId: T,
+      name: 'GPSSA (joined from 31 Oct 2023)',
+      presetKey: 'GPSSA_2023',
+      employeePct: 11,
+      employerPct: 15,
+      base: 'GROSS',
+      minSalary: 3000,
+      maxSalary: 70000,
+      isActive: true,
+      ...over,
+    });
+
+    it('a national with an active scheme gets base, employee and employer shares and lower net pay', async () => {
+      const { service, employees, schemes } = setup();
+      schemes.rows.push(gpssa());
+      employees.rows.find((e) => e.id === 'g').pensionSchemeId = 's1';
+      const run = await service.create(T, ACTOR, {
+        period: '2026-10',
+        payDate: null,
+      });
+      const g = lineOf(run, 'EMP-007');
+      expect(g).toMatchObject({
+        pensionSchemeName: 'GPSSA (joined from 31 Oct 2023)',
+        pensionBase: 9000,
+        pensionEmployee: 990,
+        pensionEmployer: 1350,
+        flags: [],
+      });
+      expect(g.salaryCost).toBe(9000);
+      expect(g.netPay).toBe(8010);
+      expect(run.totals).toMatchObject({
+        pensionEmployee: 990,
+        pensionEmployer: 1350,
+        net: 8500 + 1600 + 8010,
+      });
+    });
+
+    it('an inactive scheme counts as none', async () => {
+      const { service, employees, schemes } = setup();
+      schemes.rows.push(gpssa({ isActive: false }));
+      employees.rows.find((e) => e.id === 'g').pensionSchemeId = 's1';
+      const run = await service.create(T, ACTOR, {
+        period: '2026-10',
+        payDate: null,
+      });
+      const g = lineOf(run, 'EMP-007');
+      expect(g.flags).toEqual(['NATIONAL_NO_PENSION_SCHEME']);
+      expect(g.pensionEmployee).toBe(0);
+    });
+
+    it('a non-national assigned a scheme pays no pension', async () => {
+      const { service, employees, schemes } = setup();
+      schemes.rows.push(gpssa());
+      employees.rows.find((e) => e.id === 'a').pensionSchemeId = 's1';
+      const run = await service.create(T, ACTOR, {
+        period: '2026-10',
+        payDate: null,
+      });
+      expect(lineOf(run, 'EMP-001')).toMatchObject({
+        pensionSchemeName: null,
+        pensionBase: 0,
+        pensionEmployee: 0,
+        pensionEmployer: 0,
+      });
+    });
+
+    it('refresh applies a scheme assigned after the draft and clears the flag', async () => {
+      const { service, employees, schemes } = setup();
+      const run = await service.create(T, ACTOR, {
+        period: '2026-10',
+        payDate: null,
+      });
+      schemes.rows.push(gpssa());
+      employees.rows.find((e) => e.id === 'g').pensionSchemeId = 's1';
+      const g = lineOf(await service.refresh(T, run.id), 'EMP-007');
+      expect(g.flags).toEqual([]);
+      expect(g.pensionEmployee).toBe(990);
+      expect(g.netPay).toBe(8010);
+    });
+  });
+
   describe('leavers', () => {
     it('pays a LEFT employee for the days up to the leaving date in their final month', async () => {
       const { service, employees } = setup();
@@ -606,6 +961,21 @@ describe('PayrollRunsService', () => {
       const out = await service.list(T);
       expect(out.openingGratuityCutover).toBe('2026-09-30');
       expect(out.runs).toEqual([]);
+      expect(out.openingLeaveCutover).toBeNull();
+    });
+
+    it('reports the latest opening leave cut-over', async () => {
+      const { service, leaveLedger } = setup();
+      leaveLedger.rows.push({
+        id: 'l1',
+        tenantId: T,
+        employeeId: 'a',
+        kind: 'OPENING',
+        days: 5,
+        amount: 100,
+        asOf: '2026-09-30',
+      });
+      expect((await service.list(T)).openingLeaveCutover).toBe('2026-09-30');
     });
   });
 

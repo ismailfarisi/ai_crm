@@ -11,6 +11,14 @@ export interface EmployeeDto {
   iban?: string | null;
   ibanMasked: string | null;
   email: string | null; phone: string | null;
+  /** WPS person ID (14 digits). */
+  wpsPersonId: string | null;
+  /** The employee's bank routing code (9 digits), for the WPS file. */
+  bankRoutingCode: string | null;
+  pensionSchemeId: string | null;
+  /** Overrides the tenant's annual leave days. */
+  annualLeaveDaysOverride: number | null;
+  probationEndDate: string | null;
   /** Present only for payroll:read holders. */
   currentPackage?: SalaryPackageDto | null;
   createdAt: string; updatedAt: string;
@@ -19,7 +27,7 @@ export interface EmployeeDto {
 export interface SalaryPackageDto { id: string; employeeId: string; effectiveFrom: string; basic: number; housing: number; transport: number; otherAllowances: { label: string; amount: number }[]; gross: number; createdAt: string; }
 export interface EmployeeAdvanceDto { id: string; employeeId: string; amount: number; issuedAt: string; financeAccountId: string; note: string | null; createdAt: string; }
 export interface EmployeeAdvancesDto { advances: EmployeeAdvanceDto[]; recovered: number; outstanding: number; }
-export type GratuityEntryKind = 'OPENING' | 'ACCRUAL' | 'ADJUSTMENT' | 'REVERSAL';
+export type GratuityEntryKind = 'OPENING' | 'ACCRUAL' | 'ADJUSTMENT' | 'REVERSAL' | 'SETTLEMENT';
 export interface GratuityLedgerEntryDto { id: string; kind: GratuityEntryKind; amount: number; asOf: string; runLineId: string | null; note: string | null; createdAt: string; }
 export interface EmployeeGratuityDto {
   balance: number;
@@ -39,12 +47,19 @@ export interface PayrollRunLineDto {
   overtimeHours: number; overtimeHoursPremium: number; overtimeAmount: number;
   bonusAmount: number; bonusLabel: string | null;
   unpaidLeaveDays: number; unpaidLeaveAmount: number;
+  halfPayDays: number; halfPayAmount: number;
+  annualLeaveDays: number; leaveDaysInPeriod: number;
+  /** True once someone edited the leave days; refresh keeps them. */
+  leaveOverridden: boolean;
   advanceRecovery: number; otherDeductionAmount: number; otherDeductionLabel: string | null;
   salaryCost: number; netPay: number;
   gratuityBefore: number | null; gratuityAccrual: number | null; gratuityAfter: number | null;
+  pensionSchemeName: string | null; pensionBase: number; pensionEmployee: number; pensionEmployer: number;
+  /** Null until approval computes the leave provision true-up. */
+  leaveProvisionBefore: number | null; leaveProvisionChange: number | null; leaveProvisionAfter: number | null;
   flags: string[]; paidAt: string | null;
 }
-export interface PayrollRunTotalsDto { salaryCost: number; overtime: number; bonus: number; unpaidLeave: number; advanceRecovery: number; otherDeductions: number; net: number; gratuityAccrual: number; bankNet: number; cashNet: number; }
+export interface PayrollRunTotalsDto { salaryCost: number; overtime: number; bonus: number; unpaidLeave: number; advanceRecovery: number; otherDeductions: number; net: number; gratuityAccrual: number; halfPay: number; pensionEmployee: number; pensionEmployer: number; leaveProvision: number; bankNet: number; cashNet: number; }
 export interface PayrollRunDto {
   id: string; runNumber: string; period: string; payDate: string; status: PayrollRunStatus;
   totals: PayrollRunTotalsDto; bankPaidAt: string | null; cashPaidAt: string | null;
@@ -55,6 +70,6 @@ export interface PayrollRunDto {
   createdAt: string; updatedAt: string;
 }
 /** The runs list, plus the go-live gratuity cut-over (null until opening balances are posted). */
-export interface PayrollRunsListDto { runs: PayrollRunDto[]; openingGratuityCutover: string | null; }
+export interface PayrollRunsListDto { runs: PayrollRunDto[]; openingGratuityCutover: string | null; openingLeaveCutover: string | null; }
 export interface OpeningGratuityPreviewDto { cutoverDate: string; lines: { employeeId: string; employeeName: string; joiningDate: string; basic: number; serviceDays: number; calculated: number }[]; }
 export interface PayslipDto { run: Pick<PayrollRunDto, 'id' | 'runNumber' | 'period' | 'payDate' | 'status'>; line: PayrollRunLineDto; employee: Pick<EmployeeDto, 'id' | 'employeeNumber' | 'fullName' | 'jobTitle' | 'department' | 'joiningDate' | 'paymentMethod' | 'bankName' | 'ibanMasked'>; organization: { name: string; legalName: string | null; address: string | null; baseCurrency: string }; }

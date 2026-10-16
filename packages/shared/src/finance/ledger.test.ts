@@ -37,3 +37,12 @@ it('adds payroll accounts with the right types and parents', () => {
   expect(byCode.get('6310')).toMatchObject({ type: 'EXPENSE', role: 'GRATUITY_EXPENSE', parentCode: '6000' });
   expect(OPERATING_EXPENSE_CHILD_ROLES).toContain('GRATUITY_EXPENSE');
 });
+
+it('adds the compliance accounts with the right types and parents', () => {
+  const byCode = new Map(SYSTEM_LEDGER_ACCOUNTS.map((a) => [a.code, a]));
+  expect(byCode.get('2410')).toMatchObject({ type: 'LIABILITY', role: 'LEAVE_PROVISION' });
+  expect(byCode.get('2420')).toMatchObject({ type: 'LIABILITY', role: 'PENSION_PAYABLE' });
+  expect(byCode.get('6320')).toMatchObject({ type: 'EXPENSE', role: 'LEAVE_EXPENSE', parentCode: '6000' });
+  expect(byCode.get('6330')).toMatchObject({ type: 'EXPENSE', role: 'PENSION_EXPENSE', parentCode: '6000' });
+  expect(OPERATING_EXPENSE_CHILD_ROLES).toEqual(expect.arrayContaining(['LEAVE_EXPENSE', 'PENSION_EXPENSE']));
+});

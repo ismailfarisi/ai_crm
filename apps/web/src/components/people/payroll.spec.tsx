@@ -6,6 +6,8 @@ import { PayrollRunDetail } from './payroll-run-detail';
 import { Payslip } from './payslip-view';
 import { OpeningGratuityView } from './opening-gratuity-view';
 import { PayrollRunsView } from './payroll-runs-view';
+import { PensionPanel } from './pension-panel';
+import { OpeningLeaveView } from './opening-leave-view';
 import { defaultNextPeriod } from './payroll-format';
 
 let granted = new Set<string>();
@@ -25,12 +27,15 @@ const line: PayrollRunLineDto = {
   overtimeAmount: 0, bonusAmount: 0, bonusLabel: null, unpaidLeaveDays: 0, unpaidLeaveAmount: 0,
   advanceRecovery: 0, otherDeductionAmount: 0, otherDeductionLabel: null, salaryCost: 7500, netPay: 7500,
   gratuityBefore: 0, gratuityAccrual: 100, gratuityAfter: 100, flags: [], paidAt: null,
+  halfPayDays: 0, halfPayAmount: 0, annualLeaveDays: 0, leaveDaysInPeriod: 0, leaveOverridden: false,
+  pensionSchemeName: null, pensionBase: 0, pensionEmployee: 0, pensionEmployer: 0,
+  leaveProvisionBefore: null, leaveProvisionChange: null, leaveProvisionAfter: null,
 };
 
 function makeRun(over: Partial<PayrollRunDto> = {}): PayrollRunDto {
   return {
     id: 'r1', runNumber: 'PAY-0001', period: '2026-11', payDate: '2026-11-30', status: 'DRAFT',
-    totals: { salaryCost: 7500, overtime: 0, bonus: 0, unpaidLeave: 0, advanceRecovery: 0, otherDeductions: 0, net: 7500, gratuityAccrual: 100, bankNet: 7500, cashNet: 0 },
+    totals: { salaryCost: 7500, overtime: 0, bonus: 0, unpaidLeave: 0, advanceRecovery: 0, otherDeductions: 0, net: 7500, gratuityAccrual: 100, halfPay: 0, pensionEmployee: 0, pensionEmployer: 0, leaveProvision: 0, bankNet: 7500, cashNet: 0 },
     bankPaidAt: null, cashPaidAt: null, approvedAt: null, approvedById: null, journalEntryId: null,
     lines: [line], createdAt: '', updatedAt: '', ...over,
   };
@@ -40,6 +45,10 @@ let run = makeRun();
 let saving = false;
 let previewState = { isPlaceholderData: false, isFetching: false };
 let runsList: PayrollRunDto[] = [];
+let leaveCutover: string | null = null;
+let wpsEnabled = true;
+let pensionPeriod: unknown = null;
+const runSif = vi.fn();
 const updateLine = vi.fn();
 const deleteRun = vi.fn();
 vi.mock('@/hooks/use-payroll', () => {
@@ -54,7 +63,7 @@ vi.mock('@/hooks/use-payroll', () => {
     usePayPayrollRun: mutation,
     useUpdatePayrollLine: () => ({ mutateAsync: (v: unknown) => updateLine(v) }),
     usePayrollLinesSaving: () => saving,
-    usePayrollRuns: () => ({ data: { runs: runsList, openingGratuityCutover: null }, isPending: false, isError: false }),
+    usePayrollRuns: () => ({ data: { runs: runsList, openingGratuityCutover: null, openingLeaveCutover: leaveCutover }, isPending: false, isError: false }),
     useOpeningGratuityPreview: () => ({
       data: {
         cutoverDate: '2026-09-30',
@@ -65,6 +74,21 @@ vi.mock('@/hooks/use-payroll', () => {
       ...previewState,
     }),
     usePostOpeningGratuity: mutation,
+    usePayrollSettings: () => ({ data: { wpsEnabled } }),
+    useRunSif: () => ({ mutateAsync: (id: string) => runSif(id), isPending: false }),
+    usePensionPeriod: () => ({ data: pensionPeriod }),
+    useRemitPension: mutation,
+    useVoidPension: mutation,
+    useOpeningLeavePreview: () => ({
+      data: {
+        cutoverDate: '2026-09-30',
+        lines: [{ employeeId: 'e1', employeeName: 'Amina Khan', joiningDate: '2024-01-01', basic: 5000, serviceDays: 100, calculatedDays: 8 }],
+      },
+      isPending: false,
+      isError: false,
+      ...previewState,
+    }),
+    usePostOpeningLeave: mutation,
   };
 });
 
@@ -74,6 +98,10 @@ beforeEach(() => {
   saving = false;
   previewState = { isPlaceholderData: false, isFetching: false };
   runsList = [];
+  leaveCutover = null;
+  wpsEnabled = true;
+  pensionPeriod = null;
+  runSif.mockReset();
   updateLine.mockReset();
   deleteRun.mockReset();
   push.mockReset();
@@ -219,6 +247,95 @@ describe('PayrollRunDetail actions', () => {
   });
 });
 
+describe('PayrollRunDetail SIF and pension', () => {
+  it('shows Export SIF on a posted run only with payroll:pay, disabled with a reason while WPS is off', () => {
+    run = makeRun({ status: 'APPROVED' });
+    granted = new Set(['payroll:read', 'payroll:approve']);
+    const first = render(<PayrollRunDetail id="r1" />);
+    expect(btn(/export sif/i)).toBeNull();
+    first.unmount();
+
+    granted = new Set(['payroll:read', 'payroll:pay']);
+    const second = render(<PayrollRunDetail id="r1" />);
+    expect(btn(/export sif/i)).toBeEnabled();
+    second.unmount();
+
+    wpsEnabled = false;
+    render(<PayrollRunDetail id="r1" />);
+    expect(btn(/export sif/i)).toBeDisabled();
+    expect(screen.getByTestId('sif-disabled-reason')).toHaveTextContent('Switch on WPS in payroll settings');
+  });
+
+  it('does not offer Export SIF on a draft', () => {
+    granted = new Set(['payroll:read', 'payroll:pay']);
+    render(<PayrollRunDetail id="r1" />);
+    expect(btn(/export sif/i)).toBeNull();
+  });
+
+  it('shows the pension panel on a posted run with pension, not on a draft', () => {
+    granted = new Set(['payroll:read']);
+    pensionPeriod = { period: '2026-11', employeeTotal: 100, employerTotal: 200, due: 300, lines: [], remittance: null };
+    const totals = { ...makeRun().totals, pensionEmployee: 100, pensionEmployer: 200 };
+    run = makeRun({ status: 'APPROVED', totals });
+    const first = render(<PayrollRunDetail id="r1" />);
+    expect(screen.getByTestId('pension-due')).toHaveTextContent('300.00');
+    first.unmount();
+    run = makeRun({ totals });
+    render(<PayrollRunDetail id="r1" />);
+    expect(screen.queryByTestId('pension-due')).toBeNull();
+  });
+});
+
+describe('PensionPanel', () => {
+  const remittance = { id: 'p1', period: '2026-11', amount: 300, financeAccountId: 'a1', paidAt: '2026-12-05', voidedAt: null, createdAt: '' };
+  beforeEach(() => {
+    pensionPeriod = { period: '2026-11', employeeTotal: 100, employerTotal: 200, due: 300, lines: [], remittance: null };
+  });
+
+  it('hides Remit without payroll:pay and offers it with', () => {
+    granted = new Set(['payroll:read']);
+    const first = render(<PensionPanel period="2026-11" />);
+    expect(btn(/^remit$/i)).toBeNull();
+    first.unmount();
+    granted = new Set(['payroll:read', 'payroll:pay']);
+    render(<PensionPanel period="2026-11" />);
+    expect(btn(/^remit$/i)).not.toBeNull();
+  });
+
+  it('shows Remitted and Void when a remittance exists', () => {
+    granted = new Set(['payroll:read', 'payroll:pay']);
+    pensionPeriod = { ...(pensionPeriod as object), remittance };
+    render(<PensionPanel period="2026-11" />);
+    expect(screen.getByText('Remitted')).toBeInTheDocument();
+    expect(btn(/^remit$/i)).toBeNull();
+    expect(btn(/void remittance/i)).not.toBeNull();
+  });
+});
+
+describe('OpeningLeaveView', () => {
+  it('disables Post without payroll:approve and enables it with', () => {
+    granted = new Set(['payroll:read', 'payroll:manage']);
+    const first = render(<OpeningLeaveView />);
+    expect(screen.getByRole('button', { name: /post opening leave balances/i })).toBeDisabled();
+    expect(screen.getByTestId('opening-leave-total')).toHaveTextContent('8');
+    first.unmount();
+    granted = new Set(['payroll:read', 'payroll:manage', 'payroll:approve']);
+    render(<OpeningLeaveView />);
+    expect(screen.getByRole('button', { name: /post opening leave balances/i })).toBeEnabled();
+  });
+
+  it('allows a negative balance but rejects a cleared one', () => {
+    granted = new Set(['payroll:read', 'payroll:manage', 'payroll:approve']);
+    render(<OpeningLeaveView />);
+    const input = screen.getByLabelText('Opening leave days for Amina Khan');
+    fireEvent.change(input, { target: { value: '-3' } });
+    expect(screen.getByRole('button', { name: /post opening leave balances/i })).toBeEnabled();
+    expect(screen.getByTestId('opening-leave-total')).toHaveTextContent('-3');
+    fireEvent.change(input, { target: { value: '' } });
+    expect(screen.getByRole('button', { name: /post opening leave balances/i })).toBeDisabled();
+  });
+});
+
 describe('Payslip', () => {
   const slip: PayslipDto = {
     run: { id: 'r1', runNumber: 'PAY-0001', period: '2026-11', payDate: '2026-11-30', status: 'PAID' },
@@ -288,6 +405,19 @@ describe('PayrollRunsView opening prompt', () => {
       expect(screen.queryByTestId('opening-gratuity-prompt')).toBeNull();
       view.unmount();
     }
+  });
+});
+
+describe('PayrollRunsView opening leave link', () => {
+  it('links to opening leave while no cut-over is posted, even with posted runs', () => {
+    granted = new Set(['payroll:read', 'payroll:manage']);
+    runsList = [makeRun({ status: 'PAID' })];
+    const first = render(<PayrollRunsView />);
+    expect(screen.getByRole('link', { name: /set up opening leave balances/i })).toHaveAttribute('href', '/people/payroll/opening-leave');
+    first.unmount();
+    leaveCutover = '2026-09-30';
+    render(<PayrollRunsView />);
+    expect(screen.queryByTestId('opening-leave-prompt')).toBeNull();
   });
 });
 

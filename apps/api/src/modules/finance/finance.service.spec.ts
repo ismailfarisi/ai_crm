@@ -20,6 +20,8 @@ import { SupplierBill } from '../payables/entities/supplier-bill.entity';
 import { Invoice } from '../quotes/entities/invoice.entity';
 import { RecurringExpenseOccurrence } from './entities/recurring-expense-occurrence.entity';
 import { Supplier } from '../purchasing/entities/supplier.entity';
+import { PensionRemittance } from '../payroll/entities/pension-remittance.entity';
+import { Settlement } from '../payroll/entities/settlement.entity';
 import { TaxService } from '../tax/tax.service';
 import { Employee } from '../payroll/entities/employee.entity';
 import { SalaryPackage } from '../payroll/entities/salary-package.entity';
@@ -49,6 +51,8 @@ describe('FinanceService', () => {
   let packageRepo: { find: jest.Mock };
   let runRepo: { find: jest.Mock };
   let lineRepo: { find: jest.Mock };
+  let remittanceRepo: { find: jest.Mock };
+  let settlementRepo: { find: jest.Mock };
 
   const tenantId = '11111111-1111-1111-1111-111111111111';
 
@@ -183,6 +187,8 @@ describe('FinanceService', () => {
     packageRepo = { find: jest.fn().mockResolvedValue([]) };
     runRepo = { find: jest.fn().mockResolvedValue([]) };
     lineRepo = { find: jest.fn().mockResolvedValue([]) };
+    remittanceRepo = { find: jest.fn().mockResolvedValue([]) };
+    settlementRepo = { find: jest.fn().mockResolvedValue([]) };
 
     service = new FinanceService(
       accountRepo as unknown as Repository<FinanceAccount>,
@@ -200,6 +206,8 @@ describe('FinanceService', () => {
       packageRepo as unknown as Repository<SalaryPackage>,
       runRepo as unknown as Repository<PayrollRun>,
       lineRepo as unknown as Repository<PayrollRunLine>,
+      remittanceRepo as unknown as Repository<PensionRemittance>,
+      settlementRepo as unknown as Repository<Settlement>,
     );
   });
 
@@ -450,6 +458,52 @@ describe('FinanceService', () => {
       ]);
       const f = await service.cashForecast(tenantId, 2);
       expect(f.months.map((m) => m.payrollOut)).toEqual([0, 1000]);
+    });
+  });
+
+  describe('cashForecast pension and settlements', () => {
+    afterEach(() => jest.useRealTimers());
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-10-16T00:00:00Z'));
+      seedAccounts([{ balance: 10000 }]);
+      lineRepo.find.mockImplementation(async ({ where }: any) =>
+        where.paidAt
+          ? []
+          : [{ runId: 'r1', pensionEmployee: 100, pensionEmployer: 200.5 }],
+      );
+    });
+    const run = (o: any = {}) => ({
+      id: 'r1', period: '2026-10', status: 'APPROVED', payDate: '2026-10-28', totalNet: 0, ...o,
+    });
+
+    it('an unremitted posted run owes its pension on the 15th of the next month', async () => {
+      runRepo.find.mockResolvedValue([run()]);
+      const f = await service.cashForecast(tenantId, 3);
+      expect(f.months.map((m) => m.pensionOut)).toEqual([0, 300.5, 0]);
+      expect(f.months[1].closing).toBe(10000 - 300.5);
+    });
+
+    it('an overdue remittance lands in month 1', async () => {
+      runRepo.find.mockResolvedValue([run({ period: '2026-08', status: 'PAID' })]);
+      const f = await service.cashForecast(tenantId, 2);
+      expect(f.months.map((m) => m.pensionOut)).toEqual([300.5, 0]);
+    });
+
+    it('a remitted period shows none; drafts are not posted', async () => {
+      runRepo.find.mockResolvedValue([run(), run({ id: 'r2', period: '2026-09', status: 'DRAFT' })]);
+      remittanceRepo.find.mockResolvedValue([{ period: '2026-10' }]);
+      const f = await service.cashForecast(tenantId, 3);
+      expect(f.months.map((m) => m.pensionOut)).toEqual([0, 0, 0]);
+    });
+
+    it('an approved settlement adds its net to month 1 payroll; a paid one does not', async () => {
+      settlementRepo.find.mockResolvedValue([{ status: 'APPROVED', netPay: 2500 }]);
+      const f = await service.cashForecast(tenantId, 2);
+      expect(f.months[0].payrollOut).toBe(2500);
+      expect(f.months[0].closing).toBe(7500);
+      expect(settlementRepo.find).toHaveBeenCalledWith({
+        where: { tenantId, status: 'APPROVED' },
+      });
     });
   });
 

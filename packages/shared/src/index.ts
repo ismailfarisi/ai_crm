@@ -63,5 +63,11 @@ export * from './schemas/recurring-expense';
 
 export * from './payroll/calc';
 export * from './payroll/gratuity';
+export * from './payroll/leave';
+export * from './payroll/pension';
+export * from './payroll/settlement';
+export * from './payroll/wps';
 export * from './schemas/payroll';
 export * from './payroll/types';
+export * from './schemas/payroll-compliance';
+export * from './payroll/compliance-types';

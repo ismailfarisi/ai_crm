@@ -23,6 +23,7 @@ const KIND_LABELS: Record<GratuityEntryKind, string> = {
   ACCRUAL: 'Payroll accrual',
   ADJUSTMENT: 'Adjustment',
   REVERSAL: 'Reversal',
+  SETTLEMENT: 'Settlement',
 };
 
 const EMPTY: FormIn = { amount: '', note: '' };

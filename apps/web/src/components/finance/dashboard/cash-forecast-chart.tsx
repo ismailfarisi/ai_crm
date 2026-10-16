@@ -45,7 +45,7 @@ export function CashForecastChart({
     const cw = W - PAD_L - PAD_R;
     const ch = H - PAD_T - PAD_B;
     const maxUp = Math.max(0, ...months.flatMap((m) => [m.inflows, m.closing]));
-    const maxDown = Math.max(0, ...months.flatMap((m) => [m.billsOut + m.recurringOut + m.payrollOut, -m.closing]));
+    const maxDown = Math.max(0, ...months.flatMap((m) => [m.billsOut + m.recurringOut + m.payrollOut + m.pensionOut, -m.closing]));
     const top = maxUp || 1;
     const bottom = -maxDown;
     const span = top - bottom || 1;
@@ -59,6 +59,7 @@ export function CashForecastChart({
       billsBottom: y(-m.billsOut),
       recurringBottom: y(-(m.billsOut + m.recurringOut)),
       payrollBottom: y(-(m.billsOut + m.recurringOut + m.payrollOut)),
+      pensionBottom: y(-(m.billsOut + m.recurringOut + m.payrollOut + m.pensionOut)),
       closingY: y(m.closing),
     }));
     return { ch, barW, points, zeroY: y(0) };
@@ -76,14 +77,14 @@ export function CashForecastChart({
     );
   }
 
-  const hasData = months.some((m) => m.inflows !== 0 || m.billsOut !== 0 || m.recurringOut !== 0 || m.payrollOut !== 0 || m.closing !== 0);
+  const hasData = months.some((m) => m.inflows !== 0 || m.billsOut !== 0 || m.recurringOut !== 0 || m.payrollOut !== 0 || m.pensionOut !== 0 || m.closing !== 0);
   const last = months[months.length - 1];
   const compact = (n: number) => formatFinanceCurrency(n, currency, { compact: true });
   const summary = hasData
     ? `Cash forecast for the next ${months.length} months in ${currency}. ${months
         .map(
           (m) =>
-            `${monthLabel(m.month)}: in ${compact(m.inflows)}, out ${compact(m.billsOut + m.recurringOut + m.payrollOut)} (bills ${compact(m.billsOut)}, recurring ${compact(m.recurringOut)}, payroll ${compact(m.payrollOut)}), closing ${compact(m.closing)}`,
+            `${monthLabel(m.month)}: in ${compact(m.inflows)}, out ${compact(m.billsOut + m.recurringOut + m.payrollOut + m.pensionOut)} (bills ${compact(m.billsOut)}, recurring ${compact(m.recurringOut)}, payroll ${compact(m.payrollOut)}, pension ${compact(m.pensionOut)}), closing ${compact(m.closing)}`,
         )
         .join('. ')}.`
     : 'No forecast cash movements.';
@@ -124,6 +125,9 @@ export function CashForecastChart({
         </span>
         <span className="flex items-center gap-1.5">
           <span className="size-2.5 rounded-sm bg-violet-500" /> Payroll
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="size-2.5 rounded-sm bg-teal-500" /> Pension
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-1 w-3 rounded-full bg-ink" /> Closing balance
@@ -181,6 +185,13 @@ export function CashForecastChart({
                   width={barW}
                   height={Math.max(0, p.payrollBottom - p.recurringBottom)}
                   className="fill-violet-500"
+                />
+                <rect
+                  x={p.cx - barW / 2}
+                  y={p.payrollBottom}
+                  width={barW}
+                  height={Math.max(0, p.pensionBottom - p.payrollBottom)}
+                  className="fill-teal-500"
                 />
                 <text x={p.cx} y={H - 12} textAnchor="middle" className="fill-ink-subtle text-[11px] font-medium">
                   {monthLabel(p.m.month)}

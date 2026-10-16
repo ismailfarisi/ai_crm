@@ -207,6 +207,20 @@ describe('AuditInterceptor', () => {
     expect(JSON.stringify(after)).not.toContain('AE0703');
   });
 
+  // REGRESSION PIN: passes without any change to the interceptor, which never
+  // stores response bodies. It keeps the WPS file (bank account numbers) out
+  // of the audit trail should that ever change.
+  it('regression pin: never keeps the response body of a WPS file export', async () => {
+    await run(
+      contextFor('POST', `/api/v1/payroll-runs/${QUOTE_ID}/wps-sif`, {
+        params: { id: QUOTE_ID },
+      }),
+      handlerReturning({ content: 'EDR,P1,012345678,AE070331234567890123456,' }),
+    );
+    expect(audit.record).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(audit.record.mock.calls[0][0])).not.toContain('EDR');
+  });
+
   it('still records the body of a non-sensitive route', async () => {
     audit.snapshot.mockResolvedValue(null);
     await run(contextFor('POST', '/api/v1/quotes', { body: { title: 'Boxes', qty: 3 } }));

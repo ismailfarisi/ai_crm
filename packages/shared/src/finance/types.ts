@@ -130,6 +130,8 @@ export interface CashForecastMonthDto {
   billsOut: number;
   recurringOut: number;
   payrollOut: number;
+  /** Pension contributions due to the fund. */
+  pensionOut: number;
   closing: number;
 }
 

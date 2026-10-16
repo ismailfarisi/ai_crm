@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Banknote, Users, type LucideIcon } from 'lucide-react';
+import { Banknote, Settings, UserMinus, Users, type LucideIcon } from 'lucide-react';
 import { PERMISSIONS } from '@saas/shared';
 import { useSession } from '@/lib/session-context';
 import type { AccessRule } from '@/lib/access';
@@ -18,6 +18,8 @@ interface PeopleTab {
 export const PEOPLE_NAV_ITEMS: PeopleTab[] = [
   { href: '/people/employees', label: 'Employees', icon: Users, rule: { permission: PERMISSIONS.EMPLOYEE_READ } },
   { href: '/people/payroll', label: 'Payroll', icon: Banknote, rule: { permission: PERMISSIONS.PAYROLL_READ } },
+  { href: '/people/settlements', label: 'Settlements', icon: UserMinus, rule: { permission: PERMISSIONS.PAYROLL_READ } },
+  { href: '/people/settings', label: 'Settings', icon: Settings, rule: { permission: PERMISSIONS.PAYROLL_READ } },
 ];
 
 export function PeopleNav({ className }: { className?: string }) {

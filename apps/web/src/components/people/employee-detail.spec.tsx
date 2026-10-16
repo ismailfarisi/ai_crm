@@ -5,6 +5,7 @@ import type { EmployeeDto } from '@saas/shared';
 import { EmployeeDetail } from './employee-detail';
 
 let granted = new Set<string>();
+let current: EmployeeDto;
 vi.mock('@/lib/session-context', () => ({
   useSession: () => ({ check: (rule: { permission: string }) => granted.has(rule.permission) }),
   useCan: (rule: { permission: string }) => granted.has(rule.permission),
@@ -16,23 +17,28 @@ const employee: EmployeeDto = {
   jobTitle: 'Designer', department: 'Studio', userId: null, joiningDate: '2024-01-01', leavingDate: null,
   status: 'ACTIVE', nationality: 'PK', isNational: false, paymentMethod: 'BANK', bankName: 'ENBD',
   iban: 'AE070331234567890123456', ibanMasked: 'AE07 **** 3456', email: null, phone: null,
+  wpsPersonId: null, bankRoutingCode: null, pensionSchemeId: null, annualLeaveDaysOverride: null, probationEndDate: null,
   createdAt: '', updatedAt: '',
 };
 
 vi.mock('@/hooks/use-payroll', () => ({
-  useEmployee: () => ({ data: employee, isPending: false, isError: false, error: null }),
+  useEmployee: () => ({ data: current, isPending: false, isError: false, error: null }),
   useUpdateEmployee: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useSalaryPackages: () => ({ data: [], isPending: false, isError: false }),
+  usePensionSchemes: () => ({ data: [], isPending: false, isError: false }),
   useAddSalaryPackage: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock('@/components/platform/attachments-panel', () => ({
   AttachmentsPanel: () => <div data-testid="attachments" />,
 }));
 vi.mock('./employee-gratuity-tab', () => ({ EmployeeGratuityTab: () => <div /> }));
+vi.mock('./employee-leave-tab', () => ({ EmployeeLeaveTab: () => <div /> }));
+vi.mock('./employee-pension-tab', () => ({ EmployeePensionTab: () => <div /> }));
 vi.mock('./employee-advances-tab', () => ({ EmployeeAdvancesTab: () => <div /> }));
 
 beforeEach(() => {
   granted = new Set(['employee:read']);
+  current = employee;
   HTMLDialogElement.prototype.showModal ||= function (this: HTMLDialogElement) {
     this.open = true;
   };
@@ -74,5 +80,27 @@ describe('EmployeeDetail', () => {
   it('hides the Documents tab without employee:manage', () => {
     render(<EmployeeDetail id="e1" />);
     expect(screen.queryByRole('tab', { name: 'Documents' })).not.toBeInTheDocument();
+  });
+
+  it('shows the Leave tab to employee:read holders', () => {
+    render(<EmployeeDetail id="e1" />);
+    expect(screen.getByRole('tab', { name: 'Leave' })).toBeInTheDocument();
+  });
+
+  it('shows the Pension tab only for nationals with payroll:read', () => {
+    granted.add('payroll:read');
+    const { unmount } = render(<EmployeeDetail id="e1" />);
+    expect(screen.queryByRole('tab', { name: 'Pension' })).not.toBeInTheDocument();
+    unmount();
+
+    current = { ...employee, isNational: true };
+    render(<EmployeeDetail id="e1" />);
+    expect(screen.getByRole('tab', { name: 'Pension' })).toBeInTheDocument();
+  });
+
+  it('hides the Pension tab from a national without payroll:read', () => {
+    current = { ...employee, isNational: true };
+    render(<EmployeeDetail id="e1" />);
+    expect(screen.queryByRole('tab', { name: 'Pension' })).not.toBeInTheDocument();
   });
 });

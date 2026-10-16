@@ -10,8 +10,7 @@ import { numericTransformer } from '../../finance/entities/finance-account.entit
 
 /**
  * Movements in one employee's end-of-service provision. Balance = Σ amount.
- * Append-only: a void writes REVERSAL rows rather than deleting. The CHECK in
- * the migration also admits SETTLEMENT, reserved for the final-settlement work.
+ * Append-only: a void writes REVERSAL rows rather than deleting.
  */
 @Entity('gratuity_ledger_entries')
 @Index('idx_gratuity_ledger_employee', ['tenantId', 'employeeId'])
@@ -26,7 +25,7 @@ export class GratuityLedgerEntry {
   employeeId: string;
 
   @Column({ type: 'varchar', length: 20 })
-  kind: GratuityEntryKind | 'SETTLEMENT';
+  kind: GratuityEntryKind;
 
   /** Signed: a true-up after a pay cut is negative. */
   @Column({
@@ -42,6 +41,9 @@ export class GratuityLedgerEntry {
 
   @Column({ name: 'run_line_id', type: 'uuid', nullable: true })
   runLineId: string | null;
+
+  @Column({ name: 'settlement_id', type: 'uuid', nullable: true })
+  settlementId: string | null;
 
   @Column({ name: 'journal_entry_id', type: 'uuid', nullable: true })
   journalEntryId: string | null;

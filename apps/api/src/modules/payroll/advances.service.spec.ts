@@ -6,6 +6,7 @@ import { JournalEntry } from '../finance/entities/journal-entry.entity';
 import { Employee } from './entities/employee.entity';
 import { EmployeeAdvance } from './entities/employee-advance.entity';
 import { PayrollRun, PayrollRunLine } from './entities/payroll-run.entity';
+import { Settlement, SettlementLine } from './entities/settlement.entity';
 import { AdvancesService } from './advances.service';
 
 const T = '11111111-1111-4111-8111-111111111111';
@@ -48,6 +49,8 @@ function setup() {
   const lines = repo([]);
   const entries = repo([]);
   const orgs = repo([{ id: T, baseCurrency: 'AED' }]);
+  const settlements = repo([]);
+  const settlementLines = repo([]);
   const repos = new Map<any, any>([
     [Employee, employees],
     [FinanceAccount, accounts],
@@ -56,6 +59,8 @@ function setup() {
     [PayrollRunLine, lines],
     [JournalEntry, entries],
     [Organization, orgs],
+    [Settlement, settlements],
+    [SettlementLine, settlementLines],
   ]);
   const manager: any = {
     getRepository: (e: any) => repos.get(e),
@@ -69,7 +74,7 @@ function setup() {
     ),
   };
   const service = new AdvancesService(dataSource, ledger);
-  return { service, manager, ledger, advances, runs, lines, entries };
+  return { service, manager, ledger, advances, runs, lines, entries, settlements, settlementLines };
 }
 
 describe('AdvancesService', () => {
@@ -143,6 +148,27 @@ describe('AdvancesService', () => {
     lines.rows.push({ id: 'l4', tenantId: T, runId: 'r-paid', employeeId: EMP, advanceRecovery: 250 });
     expect(await service.outstanding(manager, T, EMP)).toBe(3750);
     expect(await service.outstanding(manager, T, EMP, 'r-app')).toBe(4750);
+  });
+
+  it('outstanding counts recoveries on approved or paid settlements', async () => {
+    const { service, manager, advances, settlements, settlementLines } = setup();
+    advances.rows.push({ id: 'a1', tenantId: T, employeeId: EMP, amount: 5000 });
+    settlements.rows.push(
+      { id: 's-draft', tenantId: T, employeeId: EMP, status: 'DRAFT' },
+      { id: 's-void', tenantId: T, employeeId: EMP, status: 'VOIDED' },
+    );
+    settlementLines.rows.push(
+      { id: 'sl1', tenantId: T, settlementId: 's-draft', kind: 'ADVANCE_RECOVERY', amount: -5000 },
+      { id: 'sl2', tenantId: T, settlementId: 's-void', kind: 'ADVANCE_RECOVERY', amount: -5000 },
+    );
+    expect(await service.outstanding(manager, T, EMP)).toBe(5000);
+
+    settlements.rows.push({ id: 's-ok', tenantId: T, employeeId: EMP, status: 'APPROVED' });
+    settlementLines.rows.push(
+      { id: 'sl3', tenantId: T, settlementId: 's-ok', kind: 'ADVANCE_RECOVERY', amount: -1200 },
+      { id: 'sl4', tenantId: T, settlementId: 's-ok', kind: 'GRATUITY', amount: 9000 },
+    );
+    expect(await service.outstanding(manager, T, EMP)).toBe(3800);
   });
 
   it('list returns the advances with recovered and outstanding totals', async () => {

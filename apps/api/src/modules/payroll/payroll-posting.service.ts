@@ -8,6 +8,7 @@ import {
 import { InjectDataSource } from '@nestjs/typeorm';
 import type { DataSource, EntityManager } from 'typeorm';
 import {
+  daysEmployed,
   LEDGER_ROLES,
   periodBounds,
   PERMISSIONS,
@@ -25,8 +26,12 @@ import { baseCurrencyFor } from '../finance/fx';
 import { Employee } from './entities/employee.entity';
 import { PayrollRun, PayrollRunLine } from './entities/payroll-run.entity';
 import { GratuityLedgerEntry } from './entities/gratuity-ledger-entry.entity';
+import { LeaveLedgerEntry } from './entities/leave-ledger-entry.entity';
+import { PensionRemittance } from './entities/pension-remittance.entity';
+import { Settlement } from './entities/settlement.entity';
 import { AdvancesService, POSTED_RUN_STATUSES } from './advances.service';
 import { GratuityService, lockGratuityOpening } from './gratuity.service';
+import { LeaveService } from './leave.service';
 import {
   lockPayrollRun,
   PayrollRunsService,
@@ -43,9 +48,45 @@ const money = (n: number) => n.toFixed(2);
 const dayToDate = (day: string) => new Date(`${day}T00:00:00.000Z`);
 const todayUtc = () => dayToDate(new Date().toISOString().slice(0, 10));
 
+/** Line columns approval writes: leave and pension re-applied, flags, amounts, true-ups. */
+const APPROVAL_LINE_COLUMNS = [
+  'isNational',
+  'unpaidLeaveDays',
+  'halfPayDays',
+  'annualLeaveDays',
+  'leaveDaysInPeriod',
+  'pensionSchemeId',
+  'pensionSchemeName',
+  'pensionBase',
+  'pensionEmployee',
+  'pensionEmployer',
+  'flags',
+  'proratedGross',
+  'overtimeAmount',
+  'unpaidLeaveAmount',
+  'halfPayAmount',
+  'salaryCost',
+  'netPay',
+  'gratuityBefore',
+  'gratuityAccrual',
+  'gratuityAfter',
+  'leaveProvisionBefore',
+  'leaveProvisionChange',
+  'leaveProvisionAfter',
+] as const satisfies readonly (keyof PayrollRunLine)[];
+
+/** The days a line's leave ledger rows carry, worked out before the journal exists. */
+interface LeaveTrueUp {
+  line: PayrollRunLine;
+  accrualDays: number;
+  takenDays: number;
+  asOf: string;
+}
+
 /**
- * Approval posts a run to the ledger and trues each employee's gratuity
- * provision up to their entitlement at month end; void reverses both exactly.
+ * Approval posts a run to the ledger: salaries, pension contributions, and
+ * each employee's gratuity and leave salary provisions trued up to month end.
+ * Void reverses all of it exactly.
  */
 @Injectable()
 export class PayrollPostingService {
@@ -55,6 +96,7 @@ export class PayrollPostingService {
     private readonly runs: PayrollRunsService,
     private readonly advances: AdvancesService,
     private readonly gratuity: GratuityService,
+    private readonly leave: LeaveService,
   ) {}
 
   async approve(
@@ -93,6 +135,12 @@ export class PayrollPostingService {
           `Gratuity opening balances were set up as of ${cutover}; payroll for ${label} is already in them`,
         );
       }
+      const leaveCutover = await this.leave.latestCutover(manager, tenantId);
+      if (leaveCutover && asOf <= leaveCutover) {
+        throw new ConflictException(
+          `Leave opening balances were set up as of ${leaveCutover}; payroll for ${label} is already in them`,
+        );
+      }
 
       const lineRepo = manager.getRepository(PayrollRunLine);
       const lines = await lineRepo.find({ where: { tenantId, runId: run.id } });
@@ -101,17 +149,67 @@ export class PayrollPostingService {
           `Payroll run ${run.runNumber} has no lines to approve`,
         );
       }
-      await this.revalidate(manager, run, lines);
 
-      // Gratuity true-up: provision after = statutory entitlement at month
-      // end + Σ adjustments (they persist as an offset). This run is still a
-      // draft, so its own unpaid leave is passed in.
+      // Leave and pension as they stand now, not as the draft froze them: a
+      // record or scheme changed since must not post stale. Lines whose leave
+      // was typed by hand keep their unpaid and half-pay days.
+      // A settled leaver is paid off: a draft made before the settlement, or
+      // before their dates changed, must not pay or provision them again.
+      const settled = new Set(
+        (await manager.getRepository(Settlement).find({ where: { tenantId } }))
+          .filter((s) => s.status === 'APPROVED' || s.status === 'PAID')
+          .map((s) => s.employeeId),
+      );
+      const employees = new Map<string, Employee>();
+      const noScheme: string[] = [];
       for (const line of lines) {
+        if (settled.has(line.employeeId)) {
+          throw new ConflictException(
+            `${line.employeeName} is settled — refresh the run`,
+          );
+        }
+        // A soft-deleted employee can still have a line.
         const employee = await manager.getRepository(Employee).findOne({
           where: { id: line.employeeId, tenantId },
           withDeleted: true,
         });
         if (!employee) throw new NotFoundException('Employee not found');
+        const days = daysEmployed({
+          period: run.period,
+          joiningDate: employee.joiningDate,
+          leavingDate: employee.leavingDate,
+        });
+        if (days !== line.daysEmployed) {
+          throw new ConflictException(
+            `${line.employeeName}'s employment dates changed — refresh the run`,
+          );
+        }
+        employees.set(line.id, employee);
+        line.isNational = employee.isNational;
+        await this.runs.fillLeave(manager, line, employee, run.period);
+        await this.runs.applyPension(manager, line, employee);
+        line.flags = await this.runs.flagsFor(manager, line, employee, run.period);
+        if (line.isNational && !line.pensionSchemeId) {
+          noScheme.push(line.employeeName);
+        }
+      }
+      if (noScheme.length) {
+        throw new ConflictException(
+          `Assign an active pension scheme to ${noScheme.join(', ')} before approving`,
+        );
+      }
+      await this.revalidate(manager, run, lines);
+
+      // Gratuity true-up: provision after = statutory entitlement at month
+      // end + Σ adjustments (they persist as an offset). This run is still a
+      // draft, so its own unpaid leave is passed in.
+      //
+      // Leave true-up: provision after = days the employee will hold after
+      // this month × basic ÷ 30. Day adjustments are already in the balance,
+      // so they are valued like any other day.
+      const leaveTrueUps: LeaveTrueUp[] = [];
+      for (const line of lines) {
+        const employee = employees.get(line.id)!;
         const before = await this.gratuity.balance(
           manager,
           tenantId,
@@ -128,14 +226,59 @@ export class PayrollPostingService {
         line.gratuityBefore = before;
         line.gratuityAccrual = accrual;
         line.gratuityAfter = round2(before + accrual);
+
+        const acc = await this.leave.accruedTo(
+          manager,
+          tenantId,
+          employee,
+          asOf,
+          line.unpaidLeaveDays ?? 0,
+        );
+        const baseline = await this.leave.accrualBaseline(
+          manager,
+          tenantId,
+          employee.id,
+        );
+        const balance = await this.leave.balanceDays(
+          manager,
+          tenantId,
+          employee.id,
+        );
+        const provision = await this.leave.provisionBalance(
+          manager,
+          tenantId,
+          employee.id,
+        );
+        const accrualDays = round2(acc.accrued - baseline);
+        const takenDays = round2(0 - (line.annualLeaveDays ?? 0));
+        const balanceAfter = round2(balance + accrualDays + takenDays);
+        const leaveTarget = round2((balanceAfter * line.basic) / 30);
+        line.leaveProvisionBefore = provision;
+        line.leaveProvisionChange = round2(leaveTarget - provision);
+        line.leaveProvisionAfter = leaveTarget;
+        leaveTrueUps.push({
+          line,
+          accrualDays,
+          takenDays,
+          asOf:
+            employee.leavingDate && employee.leavingDate < asOf
+              ? employee.leavingDate
+              : asOf,
+        });
       }
-      await lineRepo.save(lines);
+      // Only the columns approval owns; the run lock keeps other writers out.
+      for (const line of lines) {
+        const patch: Record<string, unknown> = {};
+        for (const c of APPROVAL_LINE_COLUMNS) patch[c] = line[c];
+        await lineRepo.update({ id: line.id, tenantId }, patch as never);
+      }
 
       run.lines = lines;
       this.runs.recalcTotals(run);
 
       const description = `Payroll ${run.runNumber} (${label})`;
       const G = run.totalGratuityAccrual;
+      const LP = run.totalLeaveProvision;
       const input = (
         [
           [
@@ -166,6 +309,28 @@ export class PayrollPostingService {
             run.totalAdvanceRecovery,
             description,
           ],
+          // The employee's share is withheld from net pay.
+          [
+            LEDGER_ROLES.PENSION_PAYABLE,
+            'Pension contributions payable',
+            0,
+            run.totalPensionEmployee,
+            description,
+          ],
+          [
+            LEDGER_ROLES.PENSION_EXPENSE,
+            'Employer pension contribution',
+            run.totalPensionEmployer,
+            0,
+            description,
+          ],
+          [
+            LEDGER_ROLES.PENSION_PAYABLE,
+            'Pension contributions payable',
+            0,
+            run.totalPensionEmployer,
+            description,
+          ],
           [
             LEDGER_ROLES.GRATUITY_EXPENSE,
             'End-of-service gratuity',
@@ -178,6 +343,20 @@ export class PayrollPostingService {
             'End-of-service provision',
             Math.max(-G, 0),
             Math.max(G, 0),
+            description,
+          ],
+          [
+            LEDGER_ROLES.LEAVE_EXPENSE,
+            'Leave salary expense',
+            Math.max(LP, 0),
+            Math.max(-LP, 0),
+            description,
+          ],
+          [
+            LEDGER_ROLES.LEAVE_PROVISION,
+            'Leave salary provision',
+            Math.max(-LP, 0),
+            Math.max(LP, 0),
             description,
           ],
         ] as [LedgerRole, string, number, number, string][]
@@ -206,7 +385,12 @@ export class PayrollPostingService {
             referenceType: 'PAYROLL',
             referenceId: run.id,
             entryDate: dayToDate(asOf),
-            totalAmount: round2(run.totalSalaryCost + Math.abs(G)),
+            totalAmount: round2(
+              run.totalSalaryCost +
+                Math.abs(G) +
+                run.totalPensionEmployer +
+                Math.abs(LP),
+            ),
             currency: await baseCurrencyFor(manager, tenantId),
             fxRate: 1,
             lines: resolved,
@@ -232,6 +416,41 @@ export class PayrollPostingService {
         );
       if (accruals.length) await gratRepo.save(accruals);
 
+      // Every line gets an ACCRUAL row, even of 0 days: it carries the
+      // provision change, so Σ amount stays equal to the 2410 balance.
+      const leaveRepo = manager.getRepository(LeaveLedgerEntry);
+      const leaveRows: LeaveLedgerEntry[] = [];
+      for (const t of leaveTrueUps) {
+        const common = {
+          tenantId,
+          employeeId: t.line.employeeId,
+          asOf: t.asOf,
+          runLineId: t.line.id,
+          settlementId: null,
+          journalEntryId,
+          note: null,
+        };
+        leaveRows.push(
+          leaveRepo.create({
+            ...common,
+            kind: 'ACCRUAL',
+            days: t.accrualDays,
+            amount: t.line.leaveProvisionChange ?? 0,
+          }),
+        );
+        if (t.takenDays !== 0) {
+          leaveRows.push(
+            leaveRepo.create({
+              ...common,
+              kind: 'TAKEN',
+              days: t.takenDays,
+              amount: null,
+            }),
+          );
+        }
+      }
+      if (leaveRows.length) await leaveRepo.save(leaveRows);
+
       // Only the columns approval owns; never the row as this request read it.
       await manager.getRepository(PayrollRun).update(
         { id: run.id, tenantId },
@@ -248,6 +467,10 @@ export class PayrollPostingService {
           totalOtherDeductions: run.totalOtherDeductions,
           totalNet: run.totalNet,
           totalGratuityAccrual: run.totalGratuityAccrual,
+          totalHalfPay: run.totalHalfPay,
+          totalPensionEmployee: run.totalPensionEmployee,
+          totalPensionEmployer: run.totalPensionEmployer,
+          totalLeaveProvision: run.totalLeaveProvision,
         },
       );
     });
@@ -282,6 +505,35 @@ export class PayrollPostingService {
       const later = await this.laterPostedRun(manager, run);
       if (later) {
         throw new ConflictException(`Void ${periodLabel(later.period)} first`);
+      }
+
+      // The month's pension was paid to the fund from this run's lines.
+      const remittances = await manager
+        .getRepository(PensionRemittance)
+        .find({ where: { tenantId, period: run.period } });
+      if (remittances.some((r) => !r.voidedAt)) {
+        throw new ConflictException(
+          `Void the pension remittance for ${periodLabel(run.period)} first`,
+        );
+      }
+
+      const lines = await manager
+        .getRepository(PayrollRunLine)
+        .find({ where: { tenantId, runId: run.id } });
+      // A leaver's settlement is approved against their final month's run.
+      const onRun = new Set(lines.map((l) => l.employeeId));
+      const settled = (
+        await manager.getRepository(Settlement).find({ where: { tenantId } })
+      ).find(
+        (s) =>
+          (s.status === 'APPROVED' || s.status === 'PAID') &&
+          onRun.has(s.employeeId) &&
+          s.leavingDate.slice(0, 7) === run.period,
+      );
+      if (settled) {
+        throw new ConflictException(
+          `${settled.settlementNumber} for ${settled.employeeName} depends on this run; void it first`,
+        );
       }
 
       const entries = manager.getRepository(JournalEntry);
@@ -331,9 +583,7 @@ export class PayrollPostingService {
         voidEntryId = reversal.id;
       }
 
-      const lines = await manager
-        .getRepository(PayrollRunLine)
-        .find({ where: { tenantId, runId: run.id } });
+      const note = `Void of payroll ${run.runNumber}`;
       const gratRepo = manager.getRepository(GratuityLedgerEntry);
       const reversals: GratuityLedgerEntry[] = [];
       for (const line of lines) {
@@ -350,12 +600,38 @@ export class PayrollPostingService {
               asOf: r.asOf,
               runLineId: r.runLineId,
               journalEntryId: voidEntryId,
-              note: `Void of payroll ${run.runNumber}`,
+              note,
             }),
           );
         }
       }
       if (reversals.length) await gratRepo.save(reversals);
+
+      const leaveRepo = manager.getRepository(LeaveLedgerEntry);
+      const leaveReversals: LeaveLedgerEntry[] = [];
+      for (const line of lines) {
+        const rows = await leaveRepo.find({
+          where: { tenantId, runLineId: line.id },
+        });
+        for (const r of rows) {
+          if (r.kind !== 'ACCRUAL' && r.kind !== 'TAKEN') continue;
+          leaveReversals.push(
+            leaveRepo.create({
+              tenantId,
+              employeeId: r.employeeId,
+              kind: 'REVERSAL',
+              days: round2(0 - r.days),
+              amount: r.amount == null ? null : round2(0 - r.amount),
+              asOf: r.asOf,
+              runLineId: r.runLineId,
+              settlementId: null,
+              journalEntryId: voidEntryId,
+              note,
+            }),
+          );
+        }
+      }
+      if (leaveReversals.length) await leaveRepo.save(leaveReversals);
 
       await manager
         .getRepository(PayrollRun)
@@ -526,7 +802,7 @@ export class PayrollPostingService {
     for (const line of lines) {
       this.runs.recalcLine(line);
       const name = line.employeeName;
-      if (line.unpaidLeaveDays > line.daysEmployed) {
+      if ((line.unpaidLeaveDays ?? 0) + (line.halfPayDays ?? 0) > line.daysEmployed) {
         throw new BadRequestException(
           `${name} was employed for only ${line.daysEmployed} days in ${label}`,
         );

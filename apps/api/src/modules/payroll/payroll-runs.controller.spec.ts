@@ -16,7 +16,7 @@ describe('PayrollRunsController', () => {
     ]);
 
     const runs: any = { remove: jest.fn(async () => undefined) };
-    const controller = new PayrollRunsController(runs, {} as any);
+    const controller = new PayrollRunsController(runs, {} as any, {} as any);
     await controller.remove({ organizationId: 'tenant-1' } as any, 'run-1');
     expect(runs.remove).toHaveBeenCalledWith('tenant-1', 'run-1');
   });

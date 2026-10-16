@@ -22,6 +22,9 @@ import {
 import { User } from '../users/entities/user.entity';
 import { Employee } from './entities/employee.entity';
 import { SalaryPackage } from './entities/salary-package.entity';
+import { PensionScheme } from './entities/pension-scheme.entity';
+import { Settlement } from './entities/settlement.entity';
+import { lockGratuityOpening } from './gratuity-lock';
 import { PayrollCryptoService } from './payroll-crypto.service';
 import type { EmployeeView } from './employee-mask';
 
@@ -29,6 +32,9 @@ import type { EmployeeView } from './employee-mask';
 export interface ViewOptions {
   withIban?: boolean;
 }
+
+/** Fields a final settlement is worked out on. */
+const EMPLOYMENT_FIELDS = ['status', 'joiningDate', 'leavingDate'] as const;
 
 const today = () => new Date().toISOString().slice(0, 10);
 const IBAN_PATTERN = /^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/;
@@ -136,7 +142,13 @@ export class EmployeesService {
         ibanLast4: iban ? iban.slice(-4) : null,
         email: input.email ?? null,
         phone: input.phone ?? null,
+        wpsPersonId: input.wpsPersonId ?? null,
+        bankRoutingCode: input.bankRoutingCode ?? null,
+        pensionSchemeId: input.pensionSchemeId ?? null,
+        annualLeaveDaysOverride: input.annualLeaveDaysOverride ?? null,
+        probationEndDate: input.probationEndDate ?? null,
       });
+      await this.assertCompliance(manager, tenantId, row, input);
       return this.view(manager, await repo.save(row), opts);
     });
   }
@@ -148,9 +160,27 @@ export class EmployeesService {
     opts: ViewOptions = {},
   ): Promise<EmployeeView> {
     return this.dataSource.transaction(async (manager) => {
+      const employment = EMPLOYMENT_FIELDS.filter((k) => input[k] !== undefined);
+      // Settlement approval reads these dates under the same lock.
+      if (employment.length) await lockGratuityOpening(manager, tenantId);
       const repo = manager.getRepository(Employee);
       const row = await this.load(manager, tenantId, id);
       const { iban, ...fields } = input;
+
+      // A settled leaver's dates are what the settlement and their last run
+      // were worked out on; changing them would pay or provision them again.
+      if (employment.some((k) => input[k] !== row[k])) {
+        const settlement = (
+          await manager
+            .getRepository(Settlement)
+            .find({ where: { tenantId, employeeId: row.id } })
+        ).find((s) => s.status === 'APPROVED' || s.status === 'PAID');
+        if (settlement) {
+          throw new ConflictException(
+            `${row.firstName} ${row.lastName} is settled by ${settlement.settlementNumber}; void the settlement first`,
+          );
+        }
+      }
 
       if (fields.userId && fields.userId !== row.userId) {
         await this.assertUserLinkable(manager, tenantId, fields.userId, row.id);
@@ -165,6 +195,8 @@ export class EmployeesService {
       if (row.leavingDate && row.leavingDate < row.joiningDate) {
         throw new BadRequestException('Leaving date cannot be before joining');
       }
+
+      await this.assertCompliance(manager, tenantId, row, fields);
 
       if (row.paymentMethod === 'CASH') {
         row.ibanEncrypted = null;
@@ -270,6 +302,42 @@ export class EmployeesService {
     return row;
   }
 
+  /**
+   * Pension scheme and probation rules on the row as it will be saved. `patch`
+   * is what the caller sent: a scheme is only re-checked when it arrives, so an
+   * unrelated edit never trips over a scheme deactivated since.
+   */
+  private async assertCompliance(
+    manager: EntityManager,
+    tenantId: string,
+    row: Employee,
+    patch: { pensionSchemeId?: string | null },
+  ) {
+    if (row.probationEndDate && row.probationEndDate < row.joiningDate) {
+      throw new BadRequestException(
+        'Probation end date cannot be before joining',
+      );
+    }
+    if (!row.isNational) {
+      if (patch.pensionSchemeId) {
+        throw new BadRequestException(
+          'Pension schemes apply to UAE and GCC nationals',
+        );
+      }
+      row.pensionSchemeId = null;
+      return;
+    }
+    if (patch.pensionSchemeId) {
+      const scheme = await manager
+        .getRepository(PensionScheme)
+        .findOne({ where: { id: patch.pensionSchemeId, tenantId } });
+      if (!scheme) throw new NotFoundException('Pension scheme not found');
+      if (!scheme.isActive) {
+        throw new BadRequestException(`Activate ${scheme.name} before assigning it`);
+      }
+    }
+  }
+
   private async assertUserLinkable(
     manager: EntityManager,
     tenantId: string,
@@ -341,6 +409,11 @@ export class EmployeesService {
       ibanLast4: e.ibanLast4,
       email: e.email,
       phone: e.phone,
+      wpsPersonId: e.wpsPersonId ?? null,
+      bankRoutingCode: e.bankRoutingCode ?? null,
+      pensionSchemeId: e.pensionSchemeId ?? null,
+      annualLeaveDaysOverride: e.annualLeaveDaysOverride ?? null,
+      probationEndDate: e.probationEndDate ?? null,
       currentPackage: pkg ? toPackageDto(pkg) : null,
       createdAt: e.createdAt.toISOString(),
       updatedAt: e.updatedAt.toISOString(),

@@ -5,7 +5,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { FinanceAccount } from '../finance/entities/finance-account.entity';
-import { gratuityEntitlement, LEDGER_ROLES, PERMISSIONS } from '@saas/shared';
+import {
+  gratuityEntitlement,
+  leaveAccrued,
+  leaveServiceDays,
+  LEDGER_ROLES,
+  PERMISSIONS,
+} from '@saas/shared';
 import { Organization } from '../organizations/entities/organization.entity';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
 import { Employee } from './entities/employee.entity';
@@ -13,10 +19,19 @@ import { SalaryPackage } from './entities/salary-package.entity';
 import { EmployeeAdvance } from './entities/employee-advance.entity';
 import { PayrollRun, PayrollRunLine } from './entities/payroll-run.entity';
 import { GratuityLedgerEntry } from './entities/gratuity-ledger-entry.entity';
+import { LeaveRecord } from './entities/leave-record.entity';
+import { LeaveLedgerEntry } from './entities/leave-ledger-entry.entity';
+import { PensionScheme } from './entities/pension-scheme.entity';
+import { PayrollSettings } from './entities/payroll-settings.entity';
+import { PensionRemittance } from './entities/pension-remittance.entity';
+import { Settlement } from './entities/settlement.entity';
 import { EmployeesService } from './employees.service';
 import { PayrollCryptoService } from './payroll-crypto.service';
 import { AdvancesService } from './advances.service';
 import { GratuityService } from './gratuity.service';
+import { PayrollSettingsService } from './payroll-settings.service';
+import { LeaveService } from './leave.service';
+import { PensionService } from './pension.service';
 import { PayrollRunsService } from './payroll-runs.service';
 import { PayrollPostingService } from './payroll-posting.service';
 
@@ -139,6 +154,11 @@ function setup() {
   const gratuity = repo([]);
   const entries = repo([]);
   const orgs = repo([{ id: T, name: 'Acme', baseCurrency: 'AED' }]);
+  const leaveRecords = repo([]);
+  const leaveLedger = repo([]);
+  const schemes = repo([]);
+  const remittances = repo([]);
+  const settlements = repo([]);
   const repos = new Map<any, any>([
     [Employee, employees],
     [SalaryPackage, packages],
@@ -146,6 +166,12 @@ function setup() {
     [PayrollRun, runs],
     [PayrollRunLine, lines],
     [GratuityLedgerEntry, gratuity],
+    [LeaveRecord, leaveRecords],
+    [LeaveLedgerEntry, leaveLedger],
+    [PensionScheme, schemes],
+    [PayrollSettings, repo([])],
+    [PensionRemittance, remittances],
+    [Settlement, settlements],
     [JournalEntry, entries],
     [Organization, orgs],
   ]);
@@ -180,11 +206,20 @@ function setup() {
     ledger,
     employeesService,
   );
+  const leaveService = new LeaveService(
+    dataSource,
+    gratuityService,
+    new PayrollSettingsService(dataSource),
+    ledger,
+    employeesService,
+  );
   const runsService = new PayrollRunsService(
     dataSource,
     employeesService,
     advancesService,
     gratuityService,
+    leaveService,
+    new PensionService(dataSource),
   );
   const service = new PayrollPostingService(
     dataSource,
@@ -192,11 +227,18 @@ function setup() {
     runsService,
     advancesService,
     gratuityService,
+    leaveService,
   );
   return {
     service,
     runsService,
     gratuityService,
+    leaveService,
+    leaveRecords,
+    leaveLedger,
+    schemes,
+    remittances,
+    settlements,
     manager,
     calls,
     ledger,
@@ -246,6 +288,63 @@ const ent = (joiningDate: string, asOf: string, basic: number, unpaid = 0) =>
     isNational: false,
   });
 
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Statutory leave days earned by `asOf` at the default 30 days a year. */
+const accr = (joiningDate: string, asOf: string, unpaidDays = 0) =>
+  leaveAccrued({
+    serviceDays: leaveServiceDays({ joiningDate, asOf, unpaidDays }),
+    annualDays: 30,
+  });
+
+const GPSSA = {
+  id: 'gpssa',
+  tenantId: T,
+  name: 'GPSSA',
+  presetKey: 'GPSSA_2023',
+  employeePct: 11,
+  employerPct: 15,
+  base: 'GROSS',
+  minSalary: 3000,
+  maxSalary: 70000,
+  isActive: true,
+};
+
+/** A national on 20000 basic + 10000 housing; on GPSSA unless told otherwise. */
+function addNational(ctx: Ctx, schemeId: string | null = 'gpssa') {
+  if (!ctx.schemes.rows.some((s) => s.id === 'gpssa')) {
+    ctx.schemes.rows.push({ ...GPSSA });
+  }
+  ctx.employees.rows.push(
+    emp('n', 'EMP-003', {
+      isNational: true,
+      joiningDate: '2020-01-01',
+      pensionSchemeId: schemeId,
+    }),
+  );
+  ctx.packages.rows.push(pkg('pn', 'n', '2020-01-01', 20000, 10000));
+}
+
+function annualLeave(
+  ctx: Ctx,
+  employeeId: string,
+  startDate: string,
+  endDate: string,
+  days: number,
+) {
+  ctx.leaveRecords.rows.push({
+    id: `lr-${ctx.leaveRecords.rows.length + 1}`,
+    tenantId: T,
+    employeeId,
+    type: 'ANNUAL',
+    startDate,
+    endDate,
+    days,
+    note: null,
+    createdAt: new Date('2026-10-01T00:00:00Z'),
+  });
+}
+
 describe('PayrollPostingService', () => {
   describe('approve', () => {
     it('posts a balanced entry with exactly the role amounts for a two-employee run', async () => {
@@ -274,6 +373,8 @@ describe('PayrollPostingService', () => {
       const ga = ent('2023-11-01', '2026-10-31', 6000).amount;
       const gb = ent('2026-10-16', '2026-10-31', 3100).amount;
       const G = Math.round((ga + gb) * 100) / 100;
+      // b joined this month: under six months, no leave earned yet.
+      const LP = r2((accr('2023-11-01', '2026-10-31') * 6000) / 30);
       // a: 8500 + 500 bonus = 9000 cost, net 7800; b: 1600 prorated.
       expect(byRole(entry)).toEqual({
         [LEDGER_ROLES.SALARIES]: { debit: 10600, credit: 200 },
@@ -281,8 +382,10 @@ describe('PayrollPostingService', () => {
         [LEDGER_ROLES.EMPLOYEE_ADVANCES]: { debit: 0, credit: 1000 },
         [LEDGER_ROLES.GRATUITY_EXPENSE]: { debit: G, credit: 0 },
         [LEDGER_ROLES.GRATUITY_PROVISION]: { debit: 0, credit: G },
+        [LEDGER_ROLES.LEAVE_EXPENSE]: { debit: LP, credit: 0 },
+        [LEDGER_ROLES.LEAVE_PROVISION]: { debit: 0, credit: LP },
       });
-      expect(entry.totalAmount).toBeCloseTo(10600 + G, 2);
+      expect(entry.totalAmount).toBeCloseTo(10600 + G + LP, 2);
       expect(out.totals.gratuityAccrual).toBeCloseTo(G, 2);
       expect(out.totals.salaryCost).toBe(10600);
       expect(out.totals.net).toBe(9400);
@@ -408,7 +511,10 @@ describe('PayrollPostingService', () => {
 
     it('a national accrues 0 and gets no gratuity row', async () => {
       const ctx = setup();
-      ctx.employees.rows.push(emp('g', 'EMP-007', { isNational: true }));
+      ctx.schemes.rows.push({ ...GPSSA });
+      ctx.employees.rows.push(
+        emp('g', 'EMP-007', { isNational: true, pensionSchemeId: 'gpssa' }),
+      );
       ctx.packages.rows.push(pkg('pg', 'g', '2023-11-01', 9000));
       const run = await draft(ctx, '2026-10');
       const out = await ctx.service.approve(T, run.id, APPROVER);
@@ -486,11 +592,71 @@ describe('PayrollPostingService', () => {
       const ctx = setup();
       const run = await draft(ctx, '2026-10');
       const row = ctx.lines.rows.find((l) => l.employeeId === 'b');
+      row.leaveOverridden = true; // typed by hand, so approval keeps it
       row.unpaidLeaveDays = 20; // employed 16 days
       await expect(ctx.service.approve(T, run.id, APPROVER)).rejects.toThrow(
         /Emp EMP-002/,
       );
       expect(ctx.entries.rows).toHaveLength(0);
+    });
+
+    it('refuses (409) a line whose employee has an approved or paid settlement', async () => {
+      const ctx = setup();
+      const run = await draft(ctx, '2026-10');
+      ctx.settlements.rows.push({
+        id: 's1',
+        tenantId: T,
+        settlementNumber: 'FS-0001',
+        employeeId: 'b',
+        employeeName: 'Emp EMP-002',
+        leavingDate: '2026-09-30',
+        status: 'APPROVED',
+      });
+      for (const status of ['APPROVED', 'PAID']) {
+        ctx.settlements.rows[0].status = status;
+        const err = await ctx.service
+          .approve(T, run.id, APPROVER)
+          .catch((e) => e);
+        expect(err).toBeInstanceOf(ConflictException);
+        expect(err.message).toBe('Emp EMP-002 is settled — refresh the run');
+      }
+      expect(ctx.entries.rows).toHaveLength(0);
+      expect(ctx.gratuity.rows).toHaveLength(0);
+
+      ctx.settlements.rows[0].status = 'VOIDED';
+      const out = await ctx.service.approve(T, run.id, APPROVER);
+      expect(out.status).toBe('APPROVED');
+    });
+
+    it('refuses (409) when an employee’s dates changed since the draft (a leaving date recorded, a rehire)', async () => {
+      const ctx = setup();
+      const run = await draft(ctx, '2026-10');
+      const a = ctx.employees.rows.find((e) => e.id === 'a');
+      Object.assign(a, { status: 'LEFT', leavingDate: '2026-10-10' });
+      const err = await ctx.service.approve(T, run.id, APPROVER).catch((e) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect(err.message).toBe(
+        "Emp EMP-001's employment dates changed — refresh the run",
+      );
+      expect(ctx.entries.rows).toHaveLength(0);
+
+      // A leaver drafted for their final month, then set back to ACTIVE.
+      const ctx2 = setup();
+      const b = ctx2.employees.rows.find((e) => e.id === 'b');
+      Object.assign(b, { status: 'LEFT', leavingDate: '2026-10-20' });
+      const run2 = await draft(ctx2, '2026-10');
+      Object.assign(b, { status: 'ACTIVE', leavingDate: null });
+      await expect(
+        ctx2.service.approve(T, run2.id, APPROVER),
+      ).rejects.toThrow("Emp EMP-002's employment dates changed — refresh the run");
+
+      // Refreshing picks up the new dates and approval goes through.
+      await ctx2.runsService.refresh(T, run2.id);
+      expect(
+        ctx2.lines.rows.find((l) => l.employeeId === 'b').daysEmployed,
+      ).toBe(16);
+      const out = await ctx2.service.approve(T, run2.id, APPROVER);
+      expect(out.status).toBe('APPROVED');
     });
 
     it('refuses advance recovery across two drafts that together exceed the outstanding advance', async () => {
@@ -511,6 +677,236 @@ describe('PayrollPostingService', () => {
       expect(err).toBeInstanceOf(BadRequestException);
       expect(err.message).toMatch(/Emp EMP-001/);
       expect(ctx.entries.rows).toHaveLength(1);
+    });
+  });
+
+  describe('approve: pension and leave provision', () => {
+    it('posts pension and the leave provision for a national on GPSSA and an expat with 2 annual days', async () => {
+      const ctx = setup();
+      ctx.employees.rows.splice(
+        ctx.employees.rows.findIndex((e) => e.id === 'b'),
+        1,
+      );
+      addNational(ctx);
+      annualLeave(ctx, 'a', '2026-10-12', '2026-10-13', 2);
+      const run = await draft(ctx, '2026-10');
+
+      const out = await ctx.service.approve(T, run.id, APPROVER);
+
+      const entry = ctx.entries.rows.find((e) => e.id === out.journalEntryId);
+      expect(balanced(entry)).toBe(true);
+      const n = lineOf(out, 'EMP-003');
+      const a = lineOf(out, 'EMP-001');
+      // GROSS basis 30000 within [3000, 70000]: 11% and 15%.
+      expect(n).toMatchObject({
+        pensionBase: 30000,
+        pensionEmployee: 3300,
+        pensionEmployer: 4500,
+        netPay: 26700,
+        gratuityAccrual: 0,
+      });
+      expect(a.annualLeaveDays).toBe(2);
+
+      const daysA = accr('2023-11-01', '2026-10-31');
+      const daysN = accr('2020-01-01', '2026-10-31');
+      const lpA = r2(((daysA - 2) * 6000) / 30);
+      const lpN = r2((daysN * 20000) / 30);
+      const LP = r2(lpA + lpN);
+      const G = ent('2023-11-01', '2026-10-31', 6000).amount;
+      expect(byRole(entry)).toEqual({
+        [LEDGER_ROLES.SALARIES]: { debit: 38500, credit: 0 },
+        [LEDGER_ROLES.SALARIES_PAYABLE]: { debit: 0, credit: 35200 },
+        [LEDGER_ROLES.PENSION_PAYABLE]: { debit: 0, credit: 7800 },
+        [LEDGER_ROLES.PENSION_EXPENSE]: { debit: 4500, credit: 0 },
+        [LEDGER_ROLES.GRATUITY_EXPENSE]: { debit: G, credit: 0 },
+        [LEDGER_ROLES.GRATUITY_PROVISION]: { debit: 0, credit: G },
+        [LEDGER_ROLES.LEAVE_EXPENSE]: { debit: LP, credit: 0 },
+        [LEDGER_ROLES.LEAVE_PROVISION]: { debit: 0, credit: LP },
+      });
+      expect(entry.totalAmount).toBeCloseTo(38500 + G + 4500 + LP, 2);
+      expect(out.totals).toMatchObject({
+        pensionEmployee: 3300,
+        pensionEmployer: 4500,
+        leaveProvision: LP,
+      });
+
+      expect(a).toMatchObject({
+        leaveProvisionBefore: 0,
+        leaveProvisionChange: lpA,
+        leaveProvisionAfter: lpA,
+      });
+      const rowsA = ctx.leaveLedger.rows.filter((r) => r.employeeId === 'a');
+      expect(rowsA).toEqual([
+        expect.objectContaining({
+          kind: 'ACCRUAL',
+          days: daysA,
+          amount: lpA,
+          asOf: '2026-10-31',
+          runLineId: a.id,
+          journalEntryId: entry.id,
+        }),
+        expect.objectContaining({
+          kind: 'TAKEN',
+          days: -2,
+          amount: null,
+          asOf: '2026-10-31',
+          runLineId: a.id,
+          journalEntryId: entry.id,
+        }),
+      ]);
+      const rowsN = ctx.leaveLedger.rows.filter((r) => r.employeeId === 'n');
+      expect(rowsN).toEqual([
+        expect.objectContaining({ kind: 'ACCRUAL', days: daysN, amount: lpN }),
+      ]);
+      expect(await ctx.leaveService.provisionBalance(ctx.manager, T, 'a')).toBe(lpA);
+    });
+
+    it('first approval accrues the statutory days to month end; the next month only the difference; leave taken reduces balance and provision', async () => {
+      const ctx = setup();
+      const oct = await draft(ctx, '2026-10');
+      const outOct = await ctx.service.approve(T, oct.id, APPROVER);
+      const octDays = accr('2023-11-01', '2026-10-31');
+      const octProv = r2((octDays * 6000) / 30);
+      const aOct = lineOf(outOct, 'EMP-001');
+      expect(aOct.leaveProvisionAfter).toBe(octProv);
+      expect(
+        ctx.leaveLedger.rows.find((r) => r.runLineId === aOct.id && r.kind === 'ACCRUAL')
+          .days,
+      ).toBe(octDays);
+      // b is under six months: an ACCRUAL row of 0 days and 0 amount.
+      const bOct = lineOf(outOct, 'EMP-002');
+      expect(ctx.leaveLedger.rows.filter((r) => r.runLineId === bOct.id)).toEqual([
+        expect.objectContaining({ kind: 'ACCRUAL', days: 0, amount: 0 }),
+      ]);
+
+      annualLeave(ctx, 'a', '2026-11-09', '2026-11-11', 3);
+      const nov = await draft(ctx, '2026-11');
+      const outNov = await ctx.service.approve(T, nov.id, APPROVER);
+      const aNov = lineOf(outNov, 'EMP-001');
+      const novDays = accr('2023-11-01', '2026-11-30');
+      const balance = r2(novDays - 3);
+      const novProv = r2((balance * 6000) / 30);
+      const rows = ctx.leaveLedger.rows.filter((r) => r.runLineId === aNov.id);
+      expect(rows.find((r) => r.kind === 'ACCRUAL').days).toBe(r2(novDays - octDays));
+      expect(rows.find((r) => r.kind === 'TAKEN').days).toBe(-3);
+      expect(aNov).toMatchObject({
+        leaveProvisionBefore: octProv,
+        leaveProvisionChange: r2(novProv - octProv),
+        leaveProvisionAfter: novProv,
+      });
+      expect(await ctx.leaveService.balanceDays(ctx.manager, T, 'a')).toBe(balance);
+      expect(await ctx.leaveService.provisionBalance(ctx.manager, T, 'a')).toBe(novProv);
+    });
+
+    it('a raise re-values the provision: same days, higher basic → positive change with zero accrual days', async () => {
+      const ctx = setup();
+      // b is under six months, so accrues nothing; give them 5 days by adjustment.
+      await ctx.leaveService.adjust(T, 'b', ACTOR, { days: 5, note: 'Contract' }, [
+        PERMISSIONS.PAYROLL_APPROVE,
+      ]);
+      const oct = await draft(ctx, '2026-10');
+      const outOct = await ctx.service.approve(T, oct.id, APPROVER);
+      expect(lineOf(outOct, 'EMP-002').leaveProvisionAfter).toBe(r2((5 * 3100) / 30));
+
+      ctx.packages.rows.push(pkg('pb2', 'b', '2026-11-01', 4000));
+      const nov = await draft(ctx, '2026-11');
+      const outNov = await ctx.service.approve(T, nov.id, APPROVER);
+      const b = lineOf(outNov, 'EMP-002');
+      expect(b.leaveProvisionChange).toBe(r2((5 * 4000) / 30 - (5 * 3100) / 30));
+      expect(b.leaveProvisionChange).toBeGreaterThan(0);
+      expect(ctx.leaveLedger.rows.find((r) => r.runLineId === b.id)).toMatchObject({
+        kind: 'ACCRUAL',
+        days: 0,
+        amount: b.leaveProvisionChange,
+      });
+    });
+
+    it('approval applies the current scheme: a scheme assigned after the draft was created', async () => {
+      const ctx = setup();
+      addNational(ctx, null);
+      const run = await draft(ctx, '2026-10');
+      expect(lineOf(run, 'EMP-003').flags).toContain('NATIONAL_NO_PENSION_SCHEME');
+      expect(lineOf(run, 'EMP-003').pensionEmployee).toBe(0);
+
+      ctx.employees.rows.find((e) => e.id === 'n').pensionSchemeId = 'gpssa';
+      const out = await ctx.service.approve(T, run.id, APPROVER);
+      const n = lineOf(out, 'EMP-003');
+      expect(n.pensionSchemeName).toBe('GPSSA');
+      expect(n.pensionEmployee).toBe(3300);
+      expect(n.pensionEmployer).toBe(4500);
+      expect(n.netPay).toBe(26700);
+      expect(n.flags).not.toContain('NATIONAL_NO_PENSION_SCHEME');
+      const entry = ctx.entries.rows.find((e) => e.id === out.journalEntryId);
+      expect(byRole(entry)[LEDGER_ROLES.PENSION_PAYABLE]).toEqual({
+        debit: 0,
+        credit: 7800,
+      });
+    });
+
+    it('refuses (409) a national whose scheme is inactive, naming them', async () => {
+      const ctx = setup();
+      addNational(ctx);
+      const run = await draft(ctx, '2026-10');
+      ctx.schemes.rows.find((s) => s.id === 'gpssa').isActive = false;
+      const err = await ctx.service.approve(T, run.id, APPROVER).catch((e) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect(err.message).toBe(
+        'Assign an active pension scheme to Emp EMP-003 before approving',
+      );
+      expect(ctx.entries.rows).toHaveLength(0);
+      expect(ctx.leaveLedger.rows).toHaveLength(0);
+      expect(ctx.runs.rows[0].status).toBe('DRAFT');
+    });
+
+    it('refuses (400) unpaid plus half-pay days above the days employed', async () => {
+      const ctx = setup();
+      const run = await draft(ctx, '2026-10');
+      const row = ctx.lines.rows.find((l) => l.employeeId === 'b');
+      Object.assign(row, { leaveOverridden: true, unpaidLeaveDays: 10, halfPayDays: 10 });
+      const err = await ctx.service.approve(T, run.id, APPROVER).catch((e) => e);
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect(err.message).toMatch(/Emp EMP-002/);
+      expect(ctx.entries.rows).toHaveLength(0);
+    });
+
+    it('refuses (409) when leave opening balances were set up at or after the period end', async () => {
+      const ctx = setup();
+      const run = await draft(ctx, '2026-10');
+      ctx.leaveLedger.rows.push({
+        id: 'lo',
+        tenantId: T,
+        employeeId: 'a',
+        kind: 'OPENING',
+        days: 10,
+        amount: 2000,
+        asOf: '2026-10-31',
+        runLineId: null,
+      });
+      const err = await ctx.service.approve(T, run.id, APPROVER).catch((e) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect(err.message).toBe(
+        'Leave opening balances were set up as of 2026-10-31; payroll for October 2026 is already in them',
+      );
+      expect(ctx.entries.rows).toHaveLength(0);
+    });
+
+    it('re-applies leave from records on lines not overridden', async () => {
+      const ctx = setup();
+      const run = await draft(ctx, '2026-10');
+      // Recorded after the draft without refilling it.
+      ctx.leaveRecords.rows.push({
+        id: 'lr-u',
+        tenantId: T,
+        employeeId: 'a',
+        type: 'UNPAID',
+        startDate: '2026-10-05',
+        endDate: '2026-10-06',
+        days: 2,
+        note: null,
+        createdAt: new Date('2026-10-01T00:00:00Z'),
+      });
+      const out = await ctx.service.approve(T, run.id, APPROVER);
+      expect(lineOf(out, 'EMP-001').unpaidLeaveDays).toBe(2);
     });
   });
 
@@ -552,6 +948,103 @@ describe('PayrollPostingService', () => {
 
       const again = await draft(ctx, '2026-10');
       expect(again.status).toBe('DRAFT');
+    });
+
+    it('writes REVERSAL rows netting leave days and amounts to zero, and reverses pension and leave lines exactly', async () => {
+      const ctx = setup();
+      addNational(ctx);
+      annualLeave(ctx, 'a', '2026-10-12', '2026-10-13', 2);
+      const run = await draft(ctx, '2026-10');
+      await ctx.service.approve(T, run.id, APPROVER);
+      const posted = ctx.leaveLedger.rows.length;
+      expect(posted).toBe(4); // a ACCRUAL + TAKEN, b ACCRUAL, n ACCRUAL
+
+      await ctx.service.void(T, run.id, APPROVER);
+
+      const [approval, reversal] = ctx.entries.rows;
+      expect(balanced(reversal)).toBe(true);
+      const net = new Map<string, number>();
+      for (const l of [...approval.lines, ...reversal.lines]) {
+        net.set(l.ledgerAccountId, (net.get(l.ledgerAccountId) ?? 0) + l.debit - l.credit);
+      }
+      expect(net.has(`acct-${LEDGER_ROLES.PENSION_PAYABLE}`)).toBe(true);
+      expect(net.has(`acct-${LEDGER_ROLES.LEAVE_PROVISION}`)).toBe(true);
+      for (const v of net.values()) expect(Math.abs(v)).toBeLessThan(0.005);
+
+      const reversals = ctx.leaveLedger.rows.filter((r) => r.kind === 'REVERSAL');
+      expect(reversals).toHaveLength(posted);
+      for (const r of reversals) {
+        expect(r.journalEntryId).toBe(reversal.id);
+        expect(r.note).toBe(`Void of payroll ${run.runNumber}`);
+      }
+      expect(reversals.find((r) => r.days === 2)).toMatchObject({ amount: null });
+      for (const id of ['a', 'b', 'n']) {
+        expect(await ctx.leaveService.balanceDays(ctx.manager, T, id)).toBe(0);
+        expect(await ctx.leaveService.provisionBalance(ctx.manager, T, id)).toBe(0);
+        expect(await ctx.leaveService.accrualBaseline(ctx.manager, T, id)).toBe(0);
+      }
+    });
+
+    it('refuses (409) while the period has a live pension remittance', async () => {
+      const ctx = setup();
+      addNational(ctx);
+      const run = await draft(ctx, '2026-10');
+      await ctx.service.approve(T, run.id, APPROVER);
+      ctx.remittances.rows.push({
+        id: 'rem',
+        tenantId: T,
+        period: '2026-10',
+        amount: 7800,
+        voidedAt: null,
+      });
+      const err = await ctx.service.void(T, run.id, APPROVER).catch((e) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect(err.message).toBe('Void the pension remittance for October 2026 first');
+      expect(ctx.entries.rows).toHaveLength(1);
+      expect(ctx.leaveLedger.rows.some((r) => r.kind === 'REVERSAL')).toBe(false);
+
+      ctx.remittances.rows[0].voidedAt = new Date();
+      const out = await ctx.service.void(T, run.id, APPROVER);
+      expect(out.status).toBe('VOIDED');
+    });
+
+    it('refuses (409) while a leaver on the run is settled for this month', async () => {
+      const ctx = setup();
+      const b = ctx.employees.rows.find((e) => e.id === 'b');
+      Object.assign(b, { status: 'LEFT', leavingDate: '2026-10-30' });
+      const run = await draft(ctx, '2026-10');
+      await ctx.service.approve(T, run.id, APPROVER);
+      ctx.settlements.rows.push(
+        // Another month's settlement does not depend on this run.
+        {
+          id: 's0',
+          tenantId: T,
+          settlementNumber: 'FS-0001',
+          employeeId: 'a',
+          employeeName: 'Emp EMP-001',
+          leavingDate: '2026-11-15',
+          status: 'APPROVED',
+        },
+        {
+          id: 's1',
+          tenantId: T,
+          settlementNumber: 'FS-0002',
+          employeeId: 'b',
+          employeeName: 'Emp EMP-002',
+          leavingDate: '2026-10-30',
+          status: 'PAID',
+        },
+      );
+      const err = await ctx.service.void(T, run.id, APPROVER).catch((e) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect(err.message).toBe(
+        'FS-0002 for Emp EMP-002 depends on this run; void it first',
+      );
+      expect(ctx.entries.rows).toHaveLength(1);
+
+      ctx.settlements.rows[1].status = 'VOIDED';
+      const out = await ctx.service.void(T, run.id, APPROVER);
+      expect(out.status).toBe('VOIDED');
     });
 
     it('refuses a run that has been paid (409)', async () => {

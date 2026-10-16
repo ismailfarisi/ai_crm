@@ -21,6 +21,7 @@ import { baseCurrencyFor } from '../finance/fx';
 import { Employee } from './entities/employee.entity';
 import { EmployeeAdvance } from './entities/employee-advance.entity';
 import { PayrollRun, PayrollRunLine } from './entities/payroll-run.entity';
+import { Settlement, SettlementLine } from './entities/settlement.entity';
 
 /** Runs whose journal stands: approved and not voided. */
 export const POSTED_RUN_STATUSES: readonly PayrollRunStatus[] = [
@@ -206,6 +207,7 @@ export class AdvancesService {
     });
   }
 
+  /** Recovered through posted runs and through approved or paid settlements. */
   private async recovered(
     manager: EntityManager,
     tenantId: string,
@@ -213,11 +215,22 @@ export class AdvancesService {
     excludeRunId?: string,
   ): Promise<number> {
     const lines = await postedRunLines(manager, tenantId, employeeId);
-    return round2(
-      lines
-        .filter(({ run }) => run.id !== excludeRunId)
-        .reduce((s, { line }) => s + (line.advanceRecovery ?? 0), 0),
-    );
+    const byRuns = lines
+      .filter(({ run }) => run.id !== excludeRunId)
+      .reduce((s, { line }) => s + (line.advanceRecovery ?? 0), 0);
+    const settled = (
+      await manager
+        .getRepository(Settlement)
+        .find({ where: { tenantId, employeeId } })
+    ).filter((s) => s.status === 'APPROVED' || s.status === 'PAID');
+    let bySettlements = 0;
+    for (const s of settled) {
+      const rows = await manager.getRepository(SettlementLine).find({
+        where: { tenantId, settlementId: s.id, kind: 'ADVANCE_RECOVERY' },
+      });
+      bySettlements += rows.reduce((sum, r) => sum - r.amount, 0);
+    }
+    return round2(byRuns + bySettlements);
   }
 
   private async loadEmployee(

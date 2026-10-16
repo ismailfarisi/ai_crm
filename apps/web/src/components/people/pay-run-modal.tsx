@@ -18,10 +18,13 @@ export interface PayRunModalProps {
   isLoading?: boolean;
   /** Why recording is not possible yet (line edits still saving); submit stays disabled while set. */
   blockedReason?: string | null;
+  /** Overrides the run wording, e.g. for a settlement. */
+  title?: string;
+  description?: string;
 }
 
 /** One call per method: the server refuses a method with nobody to pay. */
-export function PayRunModal({ open, onClose, method, amount, onSubmit, isLoading = false, blockedReason = null }: PayRunModalProps) {
+export function PayRunModal({ open, onClose, method, amount, onSubmit, isLoading = false, blockedReason = null, title, description }: PayRunModalProps) {
   const { data: accounts = [] } = useFinanceAccounts();
   const { data: org } = useOrganization();
   const baseCurrency = org?.baseCurrency;
@@ -44,8 +47,8 @@ export function PayRunModal({ open, onClose, method, amount, onSubmit, isLoading
     <Dialog
       open={open}
       onClose={onClose}
-      title={method === 'BANK' ? 'Pay by bank transfer' : 'Pay cash employees'}
-      description={`Records ${money(amount)} paid to employees on ${label}.`}
+      title={title ?? (method === 'BANK' ? 'Pay by bank transfer' : 'Pay cash employees')}
+      description={description ?? `Records ${money(amount)} paid to employees on ${label}.`}
     >
       <form
         data-testid="pay-run-form"

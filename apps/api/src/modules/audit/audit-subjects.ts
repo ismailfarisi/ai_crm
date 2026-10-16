@@ -20,6 +20,11 @@ import { StockItem } from '../inventory/entities/stock-item.entity';
 import { User } from '../users/entities/user.entity';
 import { Employee } from '../payroll/entities/employee.entity';
 import { PayrollRun } from '../payroll/entities/payroll-run.entity';
+import { PayrollSettings } from '../payroll/entities/payroll-settings.entity';
+import { PensionScheme } from '../payroll/entities/pension-scheme.entity';
+import { PensionRemittance } from '../payroll/entities/pension-remittance.entity';
+import { LeaveLedgerEntry } from '../payroll/entities/leave-ledger-entry.entity';
+import { Settlement } from '../payroll/entities/settlement.entity';
 import { Role } from '../rbac/entities/role.entity';
 
 /**
@@ -53,6 +58,17 @@ export const AUDIT_SUBJECTS: Record<
   employees: { subject: 'EMPLOYEE', entity: Employee },
   'payroll-runs': { subject: 'PAYROLL_RUN', entity: PayrollRun },
   'payroll/opening-gratuity': { subject: 'PAYROLL', entity: PayrollRun },
+  'payroll/opening-leave': { subject: 'PAYROLL', entity: LeaveLedgerEntry },
+  'payroll/settings': { subject: 'PAYROLL_SETTINGS', entity: PayrollSettings },
+  'payroll/pension-schemes': {
+    subject: 'PENSION_SCHEME',
+    entity: PensionScheme,
+  },
+  'payroll/pension': {
+    subject: 'PENSION_REMITTANCE',
+    entity: PensionRemittance,
+  },
+  settlements: { subject: 'SETTLEMENT', entity: Settlement },
   'finance/expenses': { subject: 'EXPENSE_CLAIM', entity: ExpenseClaim },
   'finance/accounts': { subject: 'FINANCE_ACCOUNT', entity: FinanceAccount },
   'finance/subscriptions': {

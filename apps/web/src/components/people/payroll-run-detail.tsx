@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Banknote, CheckCircle2, RefreshCw, Trash2, Undo2 } from 'lucide-react';
+import { ArrowLeft, Banknote, CheckCircle2, FileDown, RefreshCw, Trash2, Undo2 } from 'lucide-react';
 import { PERMISSIONS, type PaymentMethod } from '@saas/shared';
 import {
   useApprovePayrollRun,
@@ -11,7 +11,9 @@ import {
   usePayPayrollRun,
   usePayrollLinesSaving,
   usePayrollRun,
+  usePayrollSettings,
   useRefreshPayrollRun,
+  useRunSif,
   useVoidPayrollRun,
 } from '@/hooks/use-payroll';
 import { useCan } from '@/lib/session-context';
@@ -22,6 +24,8 @@ import { PeopleNav } from './people-nav';
 import { PayrollLineEditor } from './payroll-line-editor';
 import { PayrollLinesProvider, usePayrollLines } from './payroll-lines-context';
 import { PayRunModal } from './pay-run-modal';
+import { PensionPanel } from './pension-panel';
+import { downloadSif } from './download-sif';
 import { RunStatusBadge } from './payroll-runs-view';
 import { money, periodLabel } from './payroll-format';
 
@@ -36,7 +40,7 @@ function Stat({ label, value, testId }: { label: string; value: number; testId: 
   );
 }
 
-function ConfirmDialog({
+export function ConfirmDialog({
   open,
   title,
   description,
@@ -94,6 +98,8 @@ export function PayrollRunDetail({ id }: { id: string }) {
   const voidRun = useVoidPayrollRun();
   const pay = usePayPayrollRun();
   const deleteRun = useDeletePayrollRun();
+  const runSif = useRunSif();
+  const settings = usePayrollSettings();
   const saving = usePayrollLinesSaving(id);
   const lineEdits = usePayrollLines();
   const [confirm, setConfirm] = useState<'approve' | 'void' | 'delete' | null>(null);
@@ -116,6 +122,10 @@ export function PayrollRunDetail({ id }: { id: string }) {
   const showApprove = isDraft && canApprove;
   const showPayBank = payable && canPay && run.totals.bankNet > 0 && !run.bankPaidAt;
   const showPayCash = payable && canPay && run.totals.cashNet > 0 && !run.cashPaidAt;
+  const posted = payable || run.status === 'PAID';
+  const showSif = posted && canPay;
+  const wpsOff = settings.data?.wpsEnabled === false;
+  const hasPension = run.totals.pensionEmployee + run.totals.pensionEmployer > 0;
   const showVoid = run.status === 'APPROVED' && nothingPaid && canApprove;
   const lines = run.lines ?? [];
   const payingAmount = paying === 'BANK' ? run.totals.bankNet : run.totals.cashNet;
@@ -169,6 +179,24 @@ export function PayrollRunDetail({ id }: { id: string }) {
                 Pay cash
               </Button>
             )}
+            {showSif && (
+              <Button
+                variant="outline"
+                loading={runSif.isPending}
+                disabled={wpsOff}
+                title={wpsOff ? 'Switch on WPS in payroll settings' : undefined}
+                onClick={async () => {
+                  try {
+                    downloadSif(await runSif.mutateAsync(run.id));
+                  } catch {
+                    // useRunSif already toasted the server's reason.
+                  }
+                }}
+              >
+                <FileDown className="size-4" />
+                Export SIF
+              </Button>
+            )}
             {showDelete && (
               <Button variant="ghost" onClick={() => setConfirm('delete')}>
                 <Trash2 className="size-4" />
@@ -192,13 +220,22 @@ export function PayrollRunDetail({ id }: { id: string }) {
 
       <Card>
         <CardBody>
-          <dl className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+          <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <Stat label="Salary cost" value={run.totals.salaryCost} testId="total-salary-cost" />
             <Stat label="Net pay" value={run.totals.net} testId="total-net" />
             <Stat label="Bank net" value={run.totals.bankNet} testId="total-bank-net" />
             <Stat label="Cash net" value={run.totals.cashNet} testId="total-cash-net" />
             <Stat label="Gratuity accrual" value={run.totals.gratuityAccrual} testId="total-gratuity" />
+            <Stat label="Half pay" value={run.totals.halfPay} testId="total-half-pay" />
+            <Stat label="Pension (employee)" value={run.totals.pensionEmployee} testId="total-pension-employee" />
+            <Stat label="Pension (employer)" value={run.totals.pensionEmployer} testId="total-pension-employer" />
+            <Stat label="Leave provision" value={run.totals.leaveProvision} testId="total-leave-provision" />
           </dl>
+          {showSif && wpsOff && (
+            <p className="mt-3 text-sm text-ink-muted" data-testid="sif-disabled-reason">
+              Switch on WPS in payroll settings to export the SIF file.
+            </p>
+          )}
           {run.status === 'PARTIALLY_PAID' && (
             <p className="mt-3 text-sm text-ink-muted">
               {run.bankPaidAt ? 'Bank payments recorded.' : 'Bank payments still to record.'}{' '}
@@ -207,6 +244,8 @@ export function PayrollRunDetail({ id }: { id: string }) {
           )}
         </CardBody>
       </Card>
+
+      {posted && hasPension && <PensionPanel period={run.period} />}
 
       <Card>
         <CardBody className="overflow-x-auto">
@@ -222,8 +261,12 @@ export function PayrollRunDetail({ id }: { id: string }) {
                 <th className="py-2 pr-2 text-right font-medium">Premium OT hrs</th>
                 <th className="py-2 pr-2 text-right font-medium">Bonus</th>
                 <th className="py-2 pr-2 text-right font-medium">Unpaid days</th>
+                <th className="py-2 pr-2 text-right font-medium">Half-pay days</th>
                 <th className="py-2 pr-2 text-right font-medium">Advance</th>
                 <th className="py-2 pr-2 text-right font-medium">Other ded.</th>
+                <th className="py-2 pr-2 text-right font-medium">Annual days</th>
+                <th className="py-2 pr-2 text-right font-medium">Pension (emp.)</th>
+                <th className="py-2 pr-2 text-right font-medium">Leave prov. change</th>
                 <th className="py-2 pr-3 text-right font-medium">Net</th>
                 <th className="py-2 text-right font-medium">
                   <span className="sr-only">Payslip</span>

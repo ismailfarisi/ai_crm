@@ -25,26 +25,15 @@ import { baseCurrencyFor } from '../finance/fx';
 import { Employee } from './entities/employee.entity';
 import { PayrollRun } from './entities/payroll-run.entity';
 import { GratuityLedgerEntry } from './entities/gratuity-ledger-entry.entity';
+import { Settlement } from './entities/settlement.entity';
 import { EmployeesService } from './employees.service';
 import { POSTED_RUN_STATUSES, postedRunLines } from './advances.service';
+import { lockGratuityOpening } from './gratuity-lock';
+
+export { lockGratuityOpening };
 
 const today = () => new Date().toISOString().slice(0, 10);
 const dayToDate = (day: string) => new Date(`${day}T00:00:00.000Z`);
-
-/**
- * The tenant's gratuity lock, held to the end of the caller's transaction.
- * Opening posts take it so two cannot both pass "no OPENING row yet";
- * approval and void take it so they never read a balance or cut-over that
- * another of them is about to change.
- */
-export async function lockGratuityOpening(
-  manager: EntityManager,
-  tenantId: string,
-): Promise<void> {
-  await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
-    `gratuity-opening:${tenantId}`,
-  ]);
-}
 
 /** 'YYYY-MM' of the month before `period`. */
 function previousPeriod(period: string): string {
@@ -381,7 +370,18 @@ export class GratuityService {
   ): Promise<GratuityLedgerEntryDto> {
     void actorId; // the audit trail records who
     return this.dataSource.transaction(async (manager) => {
+      // Serialises with settlement approval, so the settled check below holds.
+      await lockGratuityOpening(manager, tenantId);
       const employee = await this.loadEmployee(manager, tenantId, employeeId);
+      // The settlement cleared the provision; a change now would strand it.
+      const settlements = await manager
+        .getRepository(Settlement)
+        .find({ where: { tenantId, employeeId } });
+      if (settlements.some((s) => s.status === 'APPROVED' || s.status === 'PAID')) {
+        throw new ConflictException(
+          `${employee.firstName} ${employee.lastName} is settled`,
+        );
+      }
       const amount = round2(input.amount);
       if (amount === 0) throw new BadRequestException('Amount cannot be zero');
       const id = randomUUID();

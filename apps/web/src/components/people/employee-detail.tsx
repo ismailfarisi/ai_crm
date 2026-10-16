@@ -21,7 +21,10 @@ import { SalaryPackageModal } from './salary-package-modal';
 import { EmployeeGratuityTab } from './employee-gratuity-tab';
 import { EmployeeAdvancesTab } from './employee-advances-tab';
 
-type TabKey = 'profile' | 'salary' | 'gratuity' | 'advances' | 'documents';
+import { EmployeeLeaveTab } from './employee-leave-tab';
+import { EmployeePensionTab } from './employee-pension-tab';
+
+type TabKey = 'profile' | 'salary' | 'gratuity' | 'advances' | 'leave' | 'pension' | 'documents';
 
 const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const day = (d: string | null) => (d ? new Date(d).toLocaleDateString() : '—');
@@ -50,8 +53,11 @@ function ProfileTab({ employee, canManage }: { employee: EmployeeDto; canManage:
           <Field label="Nationality">{employee.nationality}</Field>
           <Field label="Joined">{day(employee.joiningDate)}</Field>
           <Field label="Left">{day(employee.leavingDate)}</Field>
+          <Field label="Probation ends">{employee.probationEndDate ? day(employee.probationEndDate) : null}</Field>
+          <Field label="WPS person ID">{employee.wpsPersonId}</Field>
           <Field label="Paid by">{employee.paymentMethod === 'BANK' ? 'Bank transfer' : 'Cash'}</Field>
           {employee.paymentMethod === 'BANK' && <Field label="Bank">{employee.bankName}</Field>}
+          {employee.paymentMethod === 'BANK' && <Field label="Bank routing code">{employee.bankRoutingCode}</Field>}
           {employee.paymentMethod === 'BANK' && (
             <div>
               <dt className="text-xs text-ink-subtle">IBAN</dt>
@@ -173,6 +179,8 @@ export function EmployeeDetail({ id }: { id: string }) {
           { key: 'advances', label: 'Advances' },
         ] as const)
       : []),
+    { key: 'leave', label: 'Leave' },
+    ...(canPay && employee.isNational ? ([{ key: 'pension', label: 'Pension' }] as const) : []),
     ...(canManage ? ([{ key: 'documents', label: 'Documents' }] as const) : []),
   ];
 
@@ -213,6 +221,8 @@ export function EmployeeDetail({ id }: { id: string }) {
       {tab === 'salary' && canPay && <SalaryTab employeeId={id} />}
       {tab === 'gratuity' && canPay && <EmployeeGratuityTab employeeId={id} />}
       {tab === 'advances' && canPay && <EmployeeAdvancesTab employeeId={id} />}
+      {tab === 'leave' && <EmployeeLeaveTab employeeId={id} />}
+      {tab === 'pension' && canPay && employee.isNational && <EmployeePensionTab employee={employee} />}
       {tab === 'documents' && canManage && <AttachmentsPanel ownerType="EMPLOYEE" ownerId={id} canEdit />}
     </div>
   );

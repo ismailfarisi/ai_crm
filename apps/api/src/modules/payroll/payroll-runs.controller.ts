@@ -23,6 +23,7 @@ import {
   type PayrollRunsListDto,
   type PayslipDto,
   type UpdatePayrollLinePayload,
+  type WpsSifDto,
 } from '@saas/shared';
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
 import { zodBody } from '@/common/pipes/zod-validation.pipe';
@@ -31,6 +32,7 @@ import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '@/modules/rbac/guards/permissions.guard';
 import { PayrollRunsService } from './payroll-runs.service';
 import { PayrollPostingService } from './payroll-posting.service';
+import { WpsExportService } from './wps-export.service';
 
 @ApiTags('payroll')
 @Controller('payroll-runs')
@@ -39,6 +41,7 @@ export class PayrollRunsController {
   constructor(
     private readonly runs: PayrollRunsService,
     private readonly posting: PayrollPostingService,
+    private readonly wps: WpsExportService,
   ) {}
 
   @Get()
@@ -160,5 +163,19 @@ export class PayrollRunsController {
       { userId: user.id, permissions: user.permissions },
       body,
     );
+  }
+
+  @Post(':id/wps-sif')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PERMISSIONS.PAYROLL_PAY)
+  @ApiOperation({ summary: 'WPS salary information file for an approved run' })
+  wpsSif(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<WpsSifDto> {
+    return this.wps.forRun(user.organizationId, id, {
+      userId: user.id,
+      permissions: user.permissions,
+    });
   }
 }

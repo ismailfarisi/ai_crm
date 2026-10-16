@@ -28,6 +28,8 @@ import {
   PayrollRun,
   PayrollRunLine,
 } from '../payroll/entities/payroll-run.entity';
+import { PensionRemittance } from '../payroll/entities/pension-remittance.entity';
+import { Settlement } from '../payroll/entities/settlement.entity';
 import { FinanceService } from './finance.service';
 import { LedgerService } from './ledger.service';
 import { ExpensesService } from './expenses.service';
@@ -63,6 +65,8 @@ import { TaxModule } from '../tax/tax.module';
       SalaryPackage,
       PayrollRun,
       PayrollRunLine,
+      PensionRemittance,
+      Settlement,
     ]),
     TemporalModule,
     AiModule,
