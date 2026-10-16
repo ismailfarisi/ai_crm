@@ -61,20 +61,27 @@ function makeWorld() {
         setLock: () => qb,
         where: (_: string, p: any = {}) => (Object.assign(params, p), qb),
         andWhere: (_: string, p: any = {}) => (Object.assign(params, p), qb),
-        getOne: async () =>
+        getOne: async () => (
+          events.push(`lock:${name}`),
           tables[name].find((r) =>
             name === 'WorkOrderMaterial'
               ? r.id === params.mid && r.workOrderId === params.wid
               : r.id === params.id && r.tenantId === params.tenantId,
-          ) ?? null,
+            ) ?? null
+        ),
       };
       return qb;
     },
   });
 
+  const events: string[] = [];
   const manager: any = {
     getRepository: (entity: { name: string }) => repo(entity.name),
-    query: async () => [{ current_value: ++sequence }],
+    query: async (sql: string) => {
+      events.push(sql);
+      return [{ current_value: ++sequence }];
+    },
+    transaction: (cb: any) => cb(manager),
   };
   const dataSource: any = { manager, transaction: (cb: any) => cb(manager) };
 
@@ -181,6 +188,16 @@ function makeWorld() {
     })),
   };
 
+  // Entries the clock wrote. 'linked' is the one user with an employee.
+  const clockEntries: any[] = [];
+  const timesheets = {
+    recordClock: jest.fn(async (_m: any, _t: string, a: any) => {
+      if (a.userId !== 'linked') return null;
+      clockEntries.push(a);
+      return a;
+    }),
+  };
+
   const service = new ProductionService(
     repo('WorkOrder') as any,
     repo('WorkOrderOperation') as any,
@@ -194,6 +211,7 @@ function makeWorld() {
     ledger as any,
     dataSource,
     jobCost as any,
+    timesheets as any,
   );
 
   tables.Quote.push({
@@ -239,7 +257,18 @@ function makeWorld() {
     },
   );
 
-  return { service, tables, stock, inventory, ledger, costing, jobCost };
+  return {
+    service,
+    tables,
+    stock,
+    inventory,
+    ledger,
+    costing,
+    jobCost,
+    timesheets,
+    clockEntries,
+    events,
+  };
 }
 
 async function planned(w: ReturnType<typeof makeWorld>) {
@@ -361,7 +390,7 @@ describe('ProductionService shop floor', () => {
     await w.service.startOperation(tenantId, wo.id, op.id, 'u1');
     expect(wo.status).toBe('IN_PROGRESS');
     op.runningSince = new Date(Date.now() - 25 * 60 * 1000);
-    await w.service.stopOperation(tenantId, wo.id, op.id, false);
+    await w.service.stopOperation(tenantId, wo.id, op.id, false, 'u1');
     expect(op.actualMinutes).toBeCloseTo(25, 0);
     expect(op.status).toBe('PAUSED');
 
@@ -372,10 +401,138 @@ describe('ProductionService shop floor', () => {
       wo.id,
       op.id,
       true,
+      'u1',
     );
     expect(capped).toBe(true);
     expect(op.actualMinutes).toBeCloseTo(25 + 720, 0);
     expect(op.status).toBe('DONE');
+  });
+
+  describe('the clock writes timesheet entries', () => {
+    // Started 30 minutes ago.
+    const running = async (w: ReturnType<typeof makeWorld>, actor: string) => {
+      const wo = await released(w);
+      const op = w.tables.WorkOrderOperation[0];
+      await w.service.startOperation(tenantId, wo.id, op.id, actor);
+      op.runningSince = new Date(Date.now() - 30 * 60 * 1000);
+      return { wo, op };
+    };
+
+    it('stop by a linked user writes one CLOCK entry dated the session start (UTC), minutes added once', async () => {
+      const w = makeWorld();
+      const { wo, op } = await running(w, 'linked');
+      // A session that began 23:30 UTC the day before it was stopped.
+      op.runningSince = new Date('2026-03-31T23:30:00.000Z');
+      jest.useFakeTimers({
+        now: new Date('2026-04-01T00:00:00.000Z'),
+        doNotFake: ['nextTick', 'setImmediate', 'setTimeout'],
+      });
+      try {
+        await w.service.stopOperation(tenantId, wo.id, op.id, false, 'linked');
+      } finally {
+        jest.useRealTimers();
+      }
+      expect(w.clockEntries).toEqual([
+        {
+          userId: 'linked',
+          workOrderId: wo.id,
+          operationId: op.id,
+          minutes: 30,
+          workDate: '2026-03-31',
+        },
+      ]);
+      expect(op.actualMinutes).toBe(30);
+    });
+
+    it('finish by a linked user writes the entry too', async () => {
+      const w = makeWorld();
+      const { wo, op } = await running(w, 'linked');
+      await w.service.stopOperation(tenantId, wo.id, op.id, true, 'linked');
+      expect(w.clockEntries).toHaveLength(1);
+      expect(op.status).toBe('DONE');
+    });
+
+    it('stop by an unlinked user writes no entry but adds the minutes', async () => {
+      const w = makeWorld();
+      const { wo, op } = await running(w, 'u1');
+      await w.service.stopOperation(tenantId, wo.id, op.id, false, 'u1');
+      expect(w.clockEntries).toHaveLength(0);
+      expect(op.actualMinutes).toBeCloseTo(30, 0);
+    });
+
+    it('skips the entry but keeps the minutes when recordClock returns null (posted month)', async () => {
+      const w = makeWorld();
+      const { wo, op } = await running(w, 'linked');
+      w.timesheets.recordClock.mockResolvedValueOnce(null as never);
+      await w.service.stopOperation(tenantId, wo.id, op.id, false, 'linked');
+      expect(w.timesheets.recordClock).toHaveBeenCalledTimes(1);
+      expect(op.status).toBe('PAUSED');
+      expect(op.actualMinutes).toBeCloseTo(30, 0);
+    });
+
+    it('keeps the minutes even when recordClock throws', async () => {
+      const w = makeWorld();
+      const { wo, op } = await running(w, 'linked');
+      w.timesheets.recordClock.mockRejectedValueOnce(new Error('boom'));
+      await w.service.stopOperation(tenantId, wo.id, op.id, false, 'linked');
+      expect(op.status).toBe('PAUSED');
+      expect(op.actualMinutes).toBeCloseTo(30, 0);
+    });
+
+    it('a stop with no running session writes no entry', async () => {
+      const w = makeWorld();
+      const wo = await released(w);
+      const op = w.tables.WorkOrderOperation[0];
+      await w.service.stopOperation(tenantId, wo.id, op.id, true, 'linked');
+      expect(w.timesheets.recordClock).not.toHaveBeenCalled();
+    });
+
+    it('a capped session records the capped minutes', async () => {
+      const w = makeWorld();
+      const { wo, op } = await running(w, 'linked');
+      op.runningSince = new Date(Date.now() - 20 * 60 * 60 * 1000);
+      await w.service.stopOperation(tenantId, wo.id, op.id, true, 'linked');
+      expect(w.clockEntries[0].minutes).toBe(720);
+    });
+
+    it('logTime by a linked user writes a CLOCK entry dated today (UTC)', async () => {
+      const w = makeWorld();
+      const wo = await released(w);
+      const op = w.tables.WorkOrderOperation[0];
+      await w.service.logTime(tenantId, wo.id, op.id, 'linked', 45);
+      expect(w.clockEntries).toEqual([
+        {
+          userId: 'linked',
+          workOrderId: wo.id,
+          operationId: op.id,
+          minutes: 45,
+          workDate: new Date().toISOString().slice(0, 10),
+        },
+      ]);
+      expect(op.actualMinutes).toBe(45);
+    });
+
+    it('stop, finish and logTime take the job-costing lock before the work order row', async () => {
+      const w = makeWorld();
+      const { wo, op } = await running(w, 'linked');
+      const firstTwo = () => w.events.splice(0).slice(0, 2);
+      w.events.length = 0;
+      await w.service.stopOperation(tenantId, wo.id, op.id, false, 'linked');
+      expect(firstTwo()).toEqual([
+        expect.stringContaining('pg_advisory_xact_lock'),
+        'lock:WorkOrder',
+      ]);
+      await w.service.stopOperation(tenantId, wo.id, op.id, true, 'linked');
+      expect(firstTwo()).toEqual([
+        expect.stringContaining('pg_advisory_xact_lock'),
+        'lock:WorkOrder',
+      ]);
+      await w.service.logTime(tenantId, wo.id, op.id, 'linked', 5);
+      expect(firstTwo()).toEqual([
+        expect.stringContaining('pg_advisory_xact_lock'),
+        'lock:WorkOrder',
+      ]);
+    });
   });
 
   it('issues material into WIP at the moving average: Dr WIP, Cr Inventory', async () => {
@@ -599,6 +756,7 @@ describe('Board Columns Configuration', () => {
       {} as any,
       dataSource,
       { breakdown: jest.fn().mockResolvedValue(null) } as any,
+      {} as any,
     );
   });
 

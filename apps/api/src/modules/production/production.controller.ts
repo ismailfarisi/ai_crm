@@ -192,6 +192,7 @@ export class ProductionController {
       id,
       operationId,
       false,
+      user.id,
     );
   }
 
@@ -208,6 +209,7 @@ export class ProductionController {
       id,
       operationId,
       true,
+      user.id,
     );
   }
 

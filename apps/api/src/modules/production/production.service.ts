@@ -39,6 +39,8 @@ import { LedgerService } from '../finance/ledger.service';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
 import { InventoryService } from '../inventory/inventory.service';
 import { JobCostService } from '../job-costing/job-cost.service';
+import { lockJobCosting } from '../job-costing/job-costing.lock';
+import { TimesheetsService } from '../job-costing/timesheets.service';
 import {
   SalesOrder,
   SalesOrderLine,
@@ -54,6 +56,8 @@ import { ProductionBoardSetting } from './entities/production-board-settings.ent
 const POSTGRES_UNIQUE_VIOLATION = '23505';
 const money = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const round4 = (n: number) => Math.round((n + Number.EPSILON) * 10000) / 10000;
+/** UTC calendar day: the platform has no tenant time zone. */
+const isoDay = (d: Date) => d.toISOString().slice(0, 10);
 
 export interface CreateWorkOrdersResult {
   created: WorkOrderDto[];
@@ -91,6 +95,7 @@ export class ProductionService {
     private readonly ledger: LedgerService,
     private readonly dataSource: DataSource,
     private readonly jobCost: JobCostService,
+    private readonly timesheets: TimesheetsService,
   ) {}
 
   /* ------------------------------------------------------------------ *
@@ -760,9 +765,11 @@ export class ProductionService {
     id: string,
     operationId: string,
     finish: boolean,
+    actorId: string,
   ): Promise<{ workOrder: WorkOrderDto; capped: boolean }> {
     let capped = false;
     await this.dataSource.transaction(async (manager) => {
+      await lockJobCosting(manager, tenantId);
       const wo = await this.lockOnFloor(manager, tenantId, id);
       const op = await this.findOperation(manager, wo, operationId);
       if (op.status === 'DONE' || op.status === 'SKIPPED') {
@@ -770,13 +777,13 @@ export class ProductionService {
         throw new BadRequestException(`"${op.label}" is already finished`);
       }
       const now = new Date();
+      let added = 0;
+      const sessionStart = op.runningSince;
       if (op.status === 'RUNNING' && op.runningSince) {
         const session = elapsedMinutes(op.runningSince, now);
         capped = session > MAX_SESSION_MINUTES;
-        op.actualMinutes =
-          Math.round(
-            (op.actualMinutes + Math.min(session, MAX_SESSION_MINUTES)) * 100,
-          ) / 100;
+        added = Math.min(session, MAX_SESSION_MINUTES);
+        op.actualMinutes = Math.round((op.actualMinutes + added) * 100) / 100;
       } else if (!finish) {
         throw new BadRequestException(`"${op.label}" is not running`);
       }
@@ -785,6 +792,16 @@ export class ProductionService {
       if (finish) op.completedAt = now;
       op.startedAt = op.startedAt ?? now;
       await manager.getRepository(WorkOrderOperation).save(op);
+      if (added > 0 && sessionStart) {
+        await this.recordClock(manager, tenantId, {
+          userId: actorId,
+          workOrderId: wo.id,
+          operationId: op.id,
+          minutes: added,
+          workDate: isoDay(sessionStart),
+        });
+      }
+      await this.recomputeIfComplete(manager, tenantId, wo);
     });
     return { workOrder: await this.get(tenantId, id, false), capped };
   }
@@ -800,6 +817,7 @@ export class ProductionService {
     if (!(minutes > 0))
       throw new BadRequestException('Log more than zero minutes');
     await this.dataSource.transaction(async (manager) => {
+      await lockJobCosting(manager, tenantId);
       const wo = await this.lockOnFloor(manager, tenantId, id);
       const op = await this.findOperation(manager, wo, operationId);
       if (op.status === 'SKIPPED') {
@@ -811,6 +829,14 @@ export class ProductionService {
       if (op.status === 'PENDING') op.status = 'PAUSED';
       await manager.getRepository(WorkOrderOperation).save(op);
       await this.markInProgress(manager, wo);
+      await this.recordClock(manager, tenantId, {
+        userId: actorId,
+        workOrderId: wo.id,
+        operationId: op.id,
+        minutes,
+        workDate: isoDay(new Date()),
+      });
+      await this.recomputeIfComplete(manager, tenantId, wo);
     });
     return this.get(tenantId, id, false);
   }
@@ -996,6 +1022,36 @@ export class ProductionService {
       .getOne();
     if (!wo) throw new NotFoundException('Work order not found');
     return wo;
+  }
+
+  /**
+   * The clock's timesheet entry. The floor is never blocked by accounting:
+   * recordClock returns null for every expected skip, and anything it throws
+   * is rolled back to a savepoint so the minutes still stand.
+   */
+  private async recordClock(
+    manager: EntityManager,
+    tenantId: string,
+    a: Parameters<TimesheetsService['recordClock']>[2],
+  ): Promise<void> {
+    try {
+      await manager.transaction((m) =>
+        this.timesheets.recordClock(m, tenantId, a),
+      );
+    } catch {
+      // Silent skip: the minutes stay on the operation, unlinked.
+    }
+  }
+
+  /** Time landing on a completed job (late) changes its actual labour. */
+  private async recomputeIfComplete(
+    manager: EntityManager,
+    tenantId: string,
+    wo: WorkOrder,
+  ): Promise<void> {
+    if (wo.status === 'COMPLETE') {
+      await this.jobCost.recompute(manager, tenantId, [wo.id]);
+    }
   }
 
   private async lockOnFloor(

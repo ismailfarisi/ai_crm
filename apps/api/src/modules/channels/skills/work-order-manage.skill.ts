@@ -218,17 +218,17 @@ export class WorkOrderManageSkill implements ChannelSkill<ResolvedWorkOrderManag
       }
       case 'STOP': {
         if (!value.operationId) throw new Error('Operation is required to stop clock');
-        await this.production.stopOperation(ctx.organizationId, value.workOrderId, value.operationId, false);
+        await this.production.stopOperation(ctx.organizationId, value.workOrderId, value.operationId, false, ctx.userId);
         return { reply: `⏸️ Paused "${value.operationLabel}" on ${value.woNumber}. Time logged.`, resultType: 'WORK_ORDER', resultId: value.workOrderId };
       }
       case 'FINISH': {
         if (!value.operationId) throw new Error('Operation is required to finish');
-        await this.production.stopOperation(ctx.organizationId, value.workOrderId, value.operationId, true);
+        await this.production.stopOperation(ctx.organizationId, value.workOrderId, value.operationId, true, ctx.userId);
         return { reply: `✅ Finished "${value.operationLabel}" on ${value.woNumber}. Step marked DONE.`, resultType: 'WORK_ORDER', resultId: value.workOrderId };
       }
       case 'ADVANCE': {
         if (!value.operationId) throw new Error('Operation is required to finish');
-        await this.production.stopOperation(ctx.organizationId, value.workOrderId, value.operationId, true);
+        await this.production.stopOperation(ctx.organizationId, value.workOrderId, value.operationId, true, ctx.userId);
         if (value.nextOperationId) {
           await this.production.startOperation(ctx.organizationId, value.workOrderId, value.nextOperationId, ctx.userId);
           return {
