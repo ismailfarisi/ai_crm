@@ -433,6 +433,8 @@ export class LeaveService {
     void actorId; // the audit trail records who
     this.assertCanApprove(permissions);
     return this.dataSource.transaction(async (manager) => {
+      // Serialises with settlement approval, so the settled check below holds.
+      await lockGratuityOpening(manager, tenantId);
       const employee = await manager
         .getRepository(Employee)
         .findOne({ where: { id: employeeId, tenantId } });

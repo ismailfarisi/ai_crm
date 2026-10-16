@@ -408,6 +408,31 @@ describe('LeaveService', () => {
       expect(entries.rows).toHaveLength(0);
     });
 
+    it('takes the gratuity-opening lock before its settled check, so it serialises with settlement approval', async () => {
+      const { service, manager, employees, settlements } = setup();
+      const order: string[] = [];
+      manager.query.mockImplementation(async (sql: string, params: any[]) => {
+        order.push(`${sql} ${params[0]}`);
+        return [];
+      });
+      const findEmployee = employees.findOne.getMockImplementation()!;
+      employees.findOne.mockImplementation(async (a: any) => {
+        order.push('employee');
+        return findEmployee(a);
+      });
+      const findSettlements = settlements.find.getMockImplementation()!;
+      settlements.find.mockImplementation(async (a: any) => {
+        order.push('settlements');
+        return findSettlements(a);
+      });
+      await service.adjust(T, E1, 'a', { days: 1, note: 'x' }, APPROVER);
+      expect(order).toEqual([
+        `SELECT pg_advisory_xact_lock(hashtext($1)) gratuity-opening:${T}`,
+        'employee',
+        'settlements',
+      ]);
+    });
+
     it('refuses a settled employee, an unknown one and a missing permission', async () => {
       const { service, settlements } = setup();
       settlements.rows.push({ id: 's', tenantId: T, employeeId: E1, status: 'APPROVED' });
