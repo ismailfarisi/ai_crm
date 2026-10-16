@@ -1,5 +1,13 @@
-import type { JournalLineInput } from '@saas/shared';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  createRecurringExpenseSchema,
+  PERMISSIONS,
+  type JournalLineInput,
+} from '@saas/shared';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { FinanceService } from './finance.service';
 import { LedgerService } from './ledger.service';
@@ -8,10 +16,14 @@ import { CategoryBudget } from './entities/category-budget.entity';
 import { RecurringExpense } from './entities/recurring-expense.entity';
 import { JournalEntry } from './entities/journal-entry.entity';
 import { ExpenseClaim } from './entities/expense-claim.entity';
+import { SupplierBill } from '../payables/entities/supplier-bill.entity';
+import { Invoice } from '../quotes/entities/invoice.entity';
+import { RecurringExpenseOccurrence } from './entities/recurring-expense-occurrence.entity';
+import { Supplier } from '../purchasing/entities/supplier.entity';
+import { TaxService } from '../tax/tax.service';
 import {
   CreateFinanceAccountDto,
   CreateCategoryBudgetDto,
-  CreateRecurringExpenseDto,
   TransferFundsDto,
 } from './dto';
 
@@ -24,6 +36,12 @@ describe('FinanceService', () => {
   let recurringRepo: jest.Mocked<Partial<Repository<RecurringExpense>>>;
   let journalRepo: jest.Mocked<Partial<Repository<JournalEntry>>>;
   let expenseRepo: jest.Mocked<Partial<Repository<ExpenseClaim>>>;
+  let occurrences: { count: jest.Mock; find: jest.Mock; findOne: jest.Mock };
+  let recurringRows: any[];
+  let billRepo: { find: jest.Mock };
+  let invoiceRepo: { find: jest.Mock };
+  let supplierRepo: { findOne: jest.Mock };
+  let tax: { purchaseTaxFor: jest.Mock; findCode: jest.Mock };
 
   const tenantId = '11111111-1111-1111-1111-111111111111';
 
@@ -80,13 +98,34 @@ describe('FinanceService', () => {
         .mockImplementation(async (bud) => ({ id: 'bud-1', ...bud })),
     };
 
+    recurringRows = [];
     recurringRepo = {
       find: jest.fn().mockResolvedValue([]),
-      findOne: jest.fn().mockResolvedValue(null),
+      findOne: jest.fn(
+        async ({ where }: any) =>
+          recurringRows.find(
+            (r) => r.id === where.id && r.tenantId === where.tenantId,
+          ) ?? null,
+      ),
       create: jest.fn().mockImplementation((dto) => ({ id: 'rec-1', ...dto })),
-      save: jest
-        .fn()
-        .mockImplementation(async (rec) => ({ id: 'rec-1', ...rec })),
+      save: jest.fn().mockImplementation(async (rec) => {
+        const row = {
+          id: 'rec-1',
+          createdAt: new Date('2026-01-01T00:00:00Z'),
+          updatedAt: new Date('2026-01-01T00:00:00Z'),
+          ...rec,
+        };
+        if (!recurringRows.includes(rec)) {
+          recurringRows = recurringRows.filter((r) => r.id !== row.id);
+          recurringRows.push(row);
+        }
+        return row;
+      }),
+    };
+    occurrences = {
+      count: jest.fn().mockResolvedValue(0),
+      find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValue(null),
     };
 
     journalRepo = {
@@ -124,6 +163,15 @@ describe('FinanceService', () => {
       provisionChartOfAccounts: jest.fn().mockResolvedValue([]),
     };
 
+    billRepo = { find: jest.fn().mockResolvedValue([]) };
+    invoiceRepo = { find: jest.fn().mockResolvedValue([]) };
+    // Every referenced supplier and tax code exists unless a test says not.
+    supplierRepo = { findOne: jest.fn(async ({ where }: any) => ({ id: where.id })) };
+    tax = {
+      purchaseTaxFor: jest.fn().mockResolvedValue({ code: null, rate: 0 }),
+      findCode: jest.fn(async (_t: string, id: string) => ({ id, kind: 'PURCHASE' })),
+    };
+
     service = new FinanceService(
       accountRepo as unknown as Repository<FinanceAccount>,
       budgetRepo as unknown as Repository<CategoryBudget>,
@@ -131,6 +179,11 @@ describe('FinanceService', () => {
       journalRepo as unknown as Repository<JournalEntry>,
       expenseRepo as unknown as Repository<ExpenseClaim>,
       ledger as unknown as LedgerService,
+      occurrences as unknown as Repository<RecurringExpenseOccurrence>,
+      billRepo as unknown as Repository<SupplierBill>,
+      invoiceRepo as unknown as Repository<Invoice>,
+      supplierRepo as unknown as Repository<Supplier>,
+      tax as unknown as TaxService,
     );
   });
 
@@ -154,7 +207,7 @@ describe('FinanceService', () => {
           name: 'Petty Cash',
           accountType: 'CASH',
           currency: 'USD',
-          balance: 10000,
+          balance: 20000,
           isDefault: false,
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -186,14 +239,14 @@ describe('FinanceService', () => {
         {
           id: 'exp-1',
           tenantId,
-          amount: 2500,
+          amount: 1500,
           status: 'APPROVED',
           createdAt: new Date(),
         },
         {
           id: 'exp-2',
           tenantId,
-          amount: 1000,
+          amount: 1500,
           status: 'PAID',
           createdAt: new Date(),
         },
@@ -205,12 +258,12 @@ describe('FinanceService', () => {
 
       const overview = await service.getOverview(tenantId);
 
-      expect(overview.totalCash).toBe(60000);
+      expect(overview.totalCash).toBe(70000);
       expect(overview.currency).toBe('USD');
       expect(overview.accounts).toHaveLength(2);
-      expect(overview.monthlyOutflow).toBe(6000); // 2000 + 500 + 2500 + 1000 = 6000
-      expect(overview.monthlyBurnRate).toBe(6000);
-      expect(overview.runwayMonths).toBe(10); // 60000 / 6000 = 10
+      expect(overview.monthlyOutflow).toBe(3500); // 2000 + 500 + (1500 + 1500) / 3 over the 90-day window
+      expect(overview.monthlyBurnRate).toBe(3500);
+      expect(overview.runwayMonths).toBe(20); // 70000 / 3500 = 20
       expect(overview.recentCashflowSeries).toHaveLength(30);
     });
 
@@ -232,6 +285,128 @@ describe('FinanceService', () => {
       expect(overview.totalCash).toBe(10000);
       expect(overview.monthlyBurnRate).toBe(0);
       expect(overview.runwayMonths).toBe(Infinity);
+    });
+  });
+
+  const seedAccounts = (rows: any[]) => {
+    accountRepo.find = jest.fn().mockResolvedValue(rows);
+  };
+  const seedRecurringRows = (rows: any[]) => {
+    // Honours the status filter, as the query would.
+    recurringRepo.find = jest.fn(async (opts?: any) =>
+      rows.filter((r) => !opts?.where?.status || r.status === opts.where.status),
+    );
+  };
+  const seedClaims = (rows: any[]) => {
+    expenseRepo.find = jest.fn().mockResolvedValue(rows);
+  };
+  const seedBills = (rows: any[]) => {
+    billRepo.find.mockResolvedValue(rows);
+  };
+  const seedInvoices = (rows: any[]) => {
+    invoiceRepo.find.mockResolvedValue(rows);
+  };
+
+  describe('runway', () => {
+    afterEach(() => jest.useRealTimers());
+
+    it('counts quarterly recurring at a third and only the last 90 days of claims', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-10-16T00:00:00Z'));
+      seedAccounts([{ balance: 100000 }]);
+      seedRecurringRows([
+        { amount: 3000, billingInterval: 'QUARTERLY', status: 'ACTIVE' },
+      ]);
+      seedClaims([
+        { amount: 900, status: 'APPROVED', expenseDate: '2026-09-01' },
+        { amount: 50000, status: 'PAID', expenseDate: '2025-01-01' },
+      ]);
+      const o = await service.getOverview(tenantId);
+      expect(o.monthlyOutflow).toBe(1000 + 300);
+    });
+  });
+
+  describe('cashForecast', () => {
+    afterEach(() => jest.useRealTimers());
+
+    it('buckets bills by due date, projects recurring, adds receivables, carries the balance', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-10-16T00:00:00Z'));
+      seedAccounts([{ balance: 50000 }]);
+      seedBills([
+        { status: 'APPROVED', totalAmount: 8000, paidAmount: 0, dueDate: '2026-10-30', fxRate: 1 },
+        { status: 'DRAFT', totalAmount: 2000, paidAmount: 0, dueDate: '2026-09-01', fxRate: 1 }, // overdue -> month 1
+      ]);
+      seedRecurringRows([
+        { amount: 120000, billingInterval: 'ANNUAL', status: 'ACTIVE', startDate: '2026-01-01', nextBillingDate: new Date('2027-01-01T00:00:00Z'), endDate: null },
+      ]);
+      seedInvoices([
+        { status: 'ISSUED', amount: 30000, paidAmount: 0, dueDate: '2026-11-10', fxRate: 1 },
+      ]);
+      const f = await service.cashForecast(tenantId, 4);
+      expect(f.months.map((m) => m.month)).toEqual(['2026-10', '2026-11', '2026-12', '2027-01']);
+      expect(f.months[0]).toMatchObject({ opening: 50000, billsOut: 10000, inflows: 0, closing: 40000 });
+      expect(f.months[1]).toMatchObject({ opening: 40000, inflows: 30000, closing: 70000 });
+      expect(f.months[3]).toMatchObject({ recurringOut: 120000, closing: -50000 });
+    });
+  });
+
+  describe('cashForecast recurring', () => {
+    afterEach(() => jest.useRealTimers());
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-10-16T00:00:00Z'));
+      seedAccounts([{ balance: 0 }]);
+    });
+
+    it('projects a never-billed (supplier-less) row from today, not from its old next date', async () => {
+      seedRecurringRows([
+        { amount: 1000, billingInterval: 'MONTHLY', status: 'ACTIVE', supplierId: null, taxCodeId: null, startDate: '2026-01-05', nextBillingDate: new Date('2026-01-05T00:00:00Z'), endDate: null },
+      ]);
+      const f = await service.cashForecast(tenantId, 3);
+      // 5 Oct is already past: November and December only, nothing piled into October.
+      expect(f.months.map((m) => m.recurringOut)).toEqual([0, 1000, 1000]);
+    });
+
+    it('a paused row contributes nothing', async () => {
+      seedRecurringRows([
+        { amount: 1000, billingInterval: 'MONTHLY', status: 'PAUSED', supplierId: null, taxCodeId: null, startDate: '2026-01-05', nextBillingDate: new Date('2026-01-05T00:00:00Z'), endDate: null },
+      ]);
+      const f = await service.cashForecast(tenantId, 3);
+      expect(f.months.map((m) => m.recurringOut)).toEqual([0, 0, 0]);
+    });
+
+    it('adds the tax the generated bill will carry', async () => {
+      tax.purchaseTaxFor.mockResolvedValue({ code: { id: 'tc-5' }, rate: 5 });
+      seedRecurringRows([
+        { amount: 120000, billingInterval: 'ANNUAL', status: 'ACTIVE', supplierId: 'sup-1', taxCodeId: null, startDate: '2026-11-01', nextBillingDate: new Date('2026-11-01T00:00:00Z'), endDate: null },
+      ]);
+      const f = await service.cashForecast(tenantId, 2);
+      expect(f.months[1].recurringOut).toBe(126000);
+      expect(tax.purchaseTaxFor).toHaveBeenCalledWith(tenantId, null, 'sup-1');
+    });
+
+    it('reports in the organization base currency, not the first cash account', async () => {
+      seedAccounts([{ balance: 0, currency: 'USD' }]);
+      const getRepository = (accountRepo as any).manager.getRepository;
+      (accountRepo as any).manager.getRepository = (entity: { name: string }) =>
+        entity.name === 'Organization'
+          ? { findOne: jest.fn().mockResolvedValue({ id: tenantId, baseCurrency: 'aed' }) }
+          : getRepository(entity);
+      const f = await service.cashForecast(tenantId, 1);
+      expect(f.baseCurrency).toBe('AED');
+    });
+  });
+
+  describe('cashForecast receivables', () => {
+    afterEach(() => jest.useRealTimers());
+
+    it('nets credit notes off invoice inflows and drops fully credited invoices', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-10-16T00:00:00Z'));
+      seedAccounts([{ balance: 0 }]);
+      seedInvoices([
+        { status: 'ISSUED', amount: 30000, paidAmount: 0, creditedAmount: 10000, refundedAmount: 0, dueDate: '2026-10-20', fxRate: 1 },
+        { status: 'ISSUED', amount: 5000, paidAmount: 0, creditedAmount: 5000, refundedAmount: 0, dueDate: '2026-10-21', fxRate: 1 },
+      ]);
+      const f = await service.cashForecast(tenantId, 1);
+      expect(f.months[0].inflows).toBe(20000);
     });
   });
 
@@ -757,25 +932,227 @@ describe('FinanceService', () => {
       expect(list).toHaveLength(1);
     });
 
-    it('creates and lists recurring SaaS subscriptions', async () => {
-      const subDto: CreateRecurringExpenseDto = {
-        vendorName: 'Figma',
-        category: 'Design Tools',
-        amount: 45,
-        billingInterval: 'MONTHLY',
-        nextBillingDate: '2026-09-01',
+    const SUPPLIER = '22222222-2222-4222-8222-222222222222';
+    const manager = {
+      userId: 'u-fin',
+      permissions: [PERMISSIONS.FINANCE_MANAGE],
+    };
+    const managerApprover = {
+      userId: 'u-boss',
+      permissions: [PERMISSIONS.FINANCE_MANAGE, PERMISSIONS.BILL_APPROVE],
+    };
+    const input = createRecurringExpenseSchema.parse({
+      supplierId: SUPPLIER,
+      vendorName: 'Landlord',
+      category: 'Rent & premises',
+      amount: 120000,
+      billingInterval: 'ANNUAL',
+      startDate: '2026-01-01',
+    });
+    const seedRecurring = (over: Record<string, unknown>) => {
+      recurringRows.push({
+        tenantId,
+        supplierId: SUPPLIER,
+        vendorName: 'Landlord',
+        category: 'Rent & premises',
+        amount: 120000,
+        billingInterval: 'ANNUAL',
+        startDate: '2026-01-01',
+        endDate: null,
+        nextBillingDate: new Date('2026-01-01T00:00:00Z'),
+        taxCodeId: null,
+        autoApprove: false,
+        autoApproveById: null,
+        spreadOverPeriod: false,
+        financeAccountId: null,
         status: 'ACTIVE',
-      };
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        updatedAt: new Date('2026-01-01T00:00:00Z'),
+        ...over,
+      });
+    };
 
-      const created = await service.createSubscription(tenantId, subDto);
+    it('refuses auto-approve from someone who cannot approve bills', async () => {
+      await expect(
+        service.createSubscription(tenantId, manager, {
+          ...input,
+          autoApprove: true,
+        }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('records who switched auto-approve on', async () => {
+      const row = await service.createSubscription(tenantId, managerApprover, {
+        ...input,
+        autoApprove: true,
+      });
+      expect(row).toMatchObject({
+        autoApprove: true,
+        createdAt: expect.any(String),
+      });
       expect(recurringRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ tenantId, vendorName: 'Figma', amount: 45 }),
+        expect.objectContaining({
+          autoApproveById: 'u-boss',
+          createdById: 'u-boss',
+          nextBillingDate: new Date('2026-01-01T00:00:00Z'),
+        }),
       );
-      expect(created.id).toBe('rec-1');
+    });
 
-      recurringRepo.find = jest.fn().mockResolvedValue([created]);
-      const list = await service.findAllSubscriptions(tenantId);
-      expect(list).toHaveLength(1);
+    it('edit after first occurrence: amount changes, start date and interval are refused', async () => {
+      seedRecurring({ id: 'r1' });
+      occurrences.count.mockResolvedValue(1);
+      const updated = await service.updateSubscription(tenantId, 'r1', manager, {
+        amount: 126000,
+      });
+      expect(updated.amount).toBe(126000);
+      await expect(
+        service.updateSubscription(tenantId, 'r1', manager, {
+          startDate: '2026-02-01',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.updateSubscription(tenantId, 'r1', manager, {
+          billingInterval: 'QUARTERLY',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('refuses a PATCH whose end date is not after the stored start date', async () => {
+      seedRecurring({ id: 'r1', startDate: '2026-06-01' });
+      await expect(
+        service.updateSubscription(tenantId, 'r1', manager, {
+          endDate: '2026-05-01',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('changing supplierId saves the new id with no stale supplier object', async () => {
+      const NEW = '33333333-3333-4333-8333-333333333333';
+      seedRecurring({ id: 'r1', supplier: { id: SUPPLIER, companyName: 'Old' } });
+      await service.updateSubscription(tenantId, 'r1', manager, { supplierId: NEW });
+      const saved = (recurringRepo.save as jest.Mock).mock.calls[0][0];
+      expect(saved.supplierId).toBe(NEW);
+      expect(saved.supplier).toBeUndefined();
+    });
+
+    describe('auto-approve schedules', () => {
+      beforeEach(() =>
+        seedRecurring({ id: 'r1', autoApprove: true, autoApproveById: 'u-boss' }),
+      );
+
+      it('refuses an amount change from someone who cannot approve bills', async () => {
+        await expect(
+          service.updateSubscription(tenantId, 'r1', manager, { amount: 1 }),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('allows a vendor name change from a non-approver', async () => {
+        await expect(
+          service.updateSubscription(tenantId, 'r1', manager, { vendorName: 'New name' }),
+        ).resolves.toBeDefined();
+      });
+
+      it('ignores values sent but unchanged', async () => {
+        await expect(
+          service.updateSubscription(tenantId, 'r1', manager, { amount: 120000 }),
+        ).resolves.toBeDefined();
+      });
+
+      it('allows an amount change from an approver', async () => {
+        await expect(
+          service.updateSubscription(tenantId, 'r1', managerApprover, { amount: 1 }),
+        ).resolves.toBeDefined();
+      });
+    });
+
+    describe('auto-approve schedules: when and how often it bills', () => {
+      beforeEach(() =>
+        seedRecurring({ id: 'r1', autoApprove: true, autoApproveById: 'u-boss', endDate: '2028-01-01' }),
+      );
+
+      it('refuses an interval change from someone who cannot approve bills', async () => {
+        await expect(
+          service.updateSubscription(tenantId, 'r1', manager, { billingInterval: 'QUARTERLY' }),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('refuses clearing the end date from someone who cannot approve bills', async () => {
+        await expect(
+          service.updateSubscription(tenantId, 'r1', manager, { endDate: null }),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('refuses a start date change from someone who cannot approve bills', async () => {
+        await expect(
+          service.updateSubscription(tenantId, 'r1', manager, { startDate: '2026-02-01' }),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('allows unchanged dates, and an interval change that also turns auto-approve off', async () => {
+        await expect(
+          service.updateSubscription(tenantId, 'r1', manager, { endDate: '2028-01-01', startDate: '2026-01-01' }),
+        ).resolves.toBeDefined();
+        await expect(
+          service.updateSubscription(tenantId, 'r1', manager, { autoApprove: false, billingInterval: 'QUARTERLY' }),
+        ).resolves.toBeDefined();
+      });
+    });
+
+    describe('references', () => {
+      it('refuses a supplier that does not exist in the tenant', async () => {
+        supplierRepo.findOne.mockResolvedValue(null);
+        await expect(service.createSubscription(tenantId, manager, input)).rejects.toThrow(
+          new BadRequestException('That supplier does not exist'),
+        );
+        expect(supplierRepo.findOne).toHaveBeenCalledWith(
+          expect.objectContaining({ where: { id: SUPPLIER, tenantId } }),
+        );
+      });
+
+      it('refuses a tax code that is not a purchase code of the tenant', async () => {
+        tax.findCode.mockRejectedValue(new NotFoundException('nope'));
+        await expect(
+          service.createSubscription(tenantId, manager, { ...input, taxCodeId: '44444444-4444-4444-8444-444444444444' }),
+        ).rejects.toThrow(new BadRequestException('That purchase tax code does not exist'));
+        expect(tax.findCode).toHaveBeenCalledWith(tenantId, '44444444-4444-4444-8444-444444444444', 'PURCHASE');
+      });
+
+      it('checks a new supplier on update but not an unchanged one', async () => {
+        seedRecurring({ id: 'r1' });
+        await service.updateSubscription(tenantId, 'r1', manager, { supplierId: SUPPLIER, amount: 5 });
+        expect(supplierRepo.findOne).not.toHaveBeenCalled();
+        supplierRepo.findOne.mockResolvedValue(null);
+        await expect(
+          service.updateSubscription(tenantId, 'r1', manager, { supplierId: '33333333-3333-4333-8333-333333333333' }),
+        ).rejects.toThrow(BadRequestException);
+      });
+    });
+
+    it('turning auto-approve off clears who it runs as', async () => {
+      seedRecurring({ id: 'r1', autoApprove: true, autoApproveById: 'u-boss' });
+      const updated = await service.updateSubscription(tenantId, 'r1', manager, {
+        autoApprove: false,
+      });
+      expect(updated.autoApprove).toBe(false);
+      expect(recurringRows[0].autoApproveById).toBeNull();
+    });
+
+    it('resume moves the next date to the first occurrence on or after today, no back-fill', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-10-16T08:00:00Z'));
+      try {
+        seedRecurring({
+          id: 'r1',
+          status: 'PAUSED',
+          startDate: '2026-01-15',
+          billingInterval: 'MONTHLY',
+        });
+        const row = await service.resumeSubscription(tenantId, 'r1');
+        expect(row.status).toBe('ACTIVE');
+        expect(row.nextBillingDate.slice(0, 10)).toBe('2026-11-15');
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 });

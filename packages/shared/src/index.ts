@@ -25,6 +25,7 @@ export * from './automations/types';
 export * from './finance/ledger';
 export * from './finance/types';
 export * from './finance/expense-categories';
+export * from './finance/recurring';
 export * from './ai/types';
 export * from './costing';
 export * from './inventory/valuation';
@@ -58,3 +59,4 @@ export * from './schemas/custom-object';
 export * from './rbac/permissions/custom-objects';
 export * from './assistant';
 
+export * from './schemas/recurring-expense';

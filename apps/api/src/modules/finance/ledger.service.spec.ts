@@ -450,3 +450,57 @@ describe('LedgerService', () => {
     });
   });
 });
+
+describe('provisionChartOfAccounts — hierarchy', () => {
+  it('sets parentId on the overhead accounts to the tenant 6000', async () => {
+    const { service, accounts } = makeService();
+    await service.provisionChartOfAccounts(tenantId);
+    const byCode = new Map(accounts.map((a: any) => [a.code, a]));
+    expect(byCode.get('6100')!.parentId).toBe(byCode.get('6000')!.id);
+    expect(byCode.get('1400')!.parentId ?? null).toBeNull();
+  });
+
+  it('does not add a second account for a role the tenant already has under another code', async () => {
+    const { service, accounts } = makeService({
+      accounts: [{ id: 'x', tenantId, code: '6150', role: 'RENT' }],
+    });
+    await service.provisionChartOfAccounts(tenantId);
+    expect(accounts.filter((a: any) => a.role === 'RENT')).toHaveLength(1);
+  });
+});
+
+describe('resolveLines — category fallback', () => {
+  const row = (id: string, code: string, role: string) => ({
+    id,
+    tenantId,
+    code,
+    role,
+    deletedAt: null,
+  });
+
+  it('falls back to operating expense when a category role is missing', async () => {
+    const { service } = makeService({
+      accounts: [
+        row('opex', '6000', 'OPERATING_EXPENSE'),
+        row('ap', '2100', 'ACCOUNTS_PAYABLE'),
+      ],
+    });
+    const lines = await service.resolveLines(tenantId, [
+      { role: 'RENT', accountName: 'Rent', debit: 100, credit: 0, description: 'x' },
+      { role: 'ACCOUNTS_PAYABLE', accountName: 'AP', debit: 0, credit: 100, description: 'x' },
+    ] as any);
+    expect(lines[0].ledgerAccountCode).toBe('6000');
+  });
+
+  it('still refuses a missing structural role', async () => {
+    const { service } = makeService({
+      accounts: [row('opex', '6000', 'OPERATING_EXPENSE')],
+    });
+    await expect(
+      service.resolveLines(tenantId, [
+        { role: 'OPERATING_EXPENSE', accountName: 'x', debit: 1, credit: 0, description: 'x' },
+        { role: 'ACCOUNTS_PAYABLE', accountName: 'AP', debit: 0, credit: 1, description: 'x' },
+      ] as any),
+    ).rejects.toThrow(/ACCOUNTS_PAYABLE/);
+  });
+});

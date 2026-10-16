@@ -356,7 +356,7 @@ describe('ExpensesService', () => {
         id: expenseId,
         tenantId,
         amount: 4200,
-        category: 'Other',
+        category: 'Travel',
         claimNumber: 'EXP-2026-0001',
         status: 'SUBMITTED',
         temporalWorkflowId: `expense-${expenseId}`,
@@ -373,10 +373,36 @@ describe('ExpensesService', () => {
           referenceId: expenseId,
           totalAmount: 4200,
           lines: expect.arrayContaining([
-            expect.objectContaining({ role: 'OPERATING_EXPENSE', debit: 4200 }),
+            expect.objectContaining({ role: 'TRAVEL', debit: 4200 }),
             expect.objectContaining({ role: 'ACCOUNTS_PAYABLE', credit: 4200 }),
           ]),
         }),
+      );
+    });
+
+    it('posts a cost-of-sales claim to COGS', async () => {
+      expenseRepo.findOne = jest.fn().mockResolvedValue({
+        id: expenseId,
+        tenantId,
+        amount: 4200,
+        category: 'Raw materials',
+        claimNumber: 'EXP-2026-0001',
+        status: 'SUBMITTED',
+        temporalWorkflowId: `expense-${expenseId}`,
+      });
+
+      await service.sendSignal(tenantId, expenseId, {
+        action: 'APPROVE',
+        approvedBy: 'manager-1',
+      });
+
+      expect(ledgerService.resolveLines).toHaveBeenCalledWith(
+        tenantId,
+        expect.arrayContaining([
+          expect.objectContaining({ role: 'COGS', debit: 4200 }),
+          expect.objectContaining({ role: 'ACCOUNTS_PAYABLE', credit: 4200 }),
+        ]),
+        expect.anything(),
       );
     });
 

@@ -217,6 +217,16 @@ export class SupplierBillLine extends BaseEntity {
     transformer: numericTransformer,
   })
   lineTotal: number;
+
+  /** Which account an unordered line posts to. */
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  category: string | null;
+
+  @Column({ name: 'service_period_start', type: 'date', nullable: true })
+  servicePeriodStart: string | null;
+
+  @Column({ name: 'service_period_end', type: 'date', nullable: true })
+  servicePeriodEnd: string | null;
 }
 
 /**

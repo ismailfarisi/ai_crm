@@ -1,5 +1,6 @@
 export type { JournalLineDto } from './ledger';
-import type { JournalLineDto } from './ledger';
+import type { JournalLineDto, JournalReferenceType } from './ledger';
+import type { RecurringInterval } from './recurring';
 
 export const FINANCE_PERMISSIONS = {
   FINANCE_READ: 'finance:read',
@@ -74,22 +75,73 @@ export interface CategoryBudgetDto {
 export interface RecurringExpenseDto {
   id: string;
   tenantId: string;
+  supplierId: string | null;
+  supplierName: string | null;
   vendorName: string;
   category: string;
   amount: number;
-  billingInterval: 'MONTHLY' | 'ANNUAL';
+  currency: string | null;
+  billingInterval: RecurringInterval;
+  startDate: string;
+  endDate: string | null;
   nextBillingDate: string;
+  taxCodeId: string | null;
+  autoApprove: boolean;
+  spreadOverPeriod: boolean;
   financeAccountId?: string | null;
   status: 'ACTIVE' | 'PAUSED' | 'CANCELLED';
+  /** Status of the most recent occurrence, for the table badge. */
+  lastOccurrenceStatus: 'GENERATED' | 'FAILED' | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface RecurringOccurrenceDto {
+  id: string;
+  periodStart: string;
+  periodEnd: string;
+  amount: number;
+  billId: string | null;
+  billNumber: string | null;
+  status: 'GENERATED' | 'FAILED';
+  error: string | null;
+  attempts: number;
+  createdAt: string;
+}
+
+export interface PrepaidScheduleDto {
+  id: string;
+  billId: string;
+  billLineId: string;
+  expenseRole: string;
+  totalBase: number;
+  firstMonth: string;
+  months: number;
+  releasedMonths: number;
+  releasedAmount: number;
+  remainingAmount: number;
+  status: 'ACTIVE' | 'COMPLETED' | 'ENDED_EARLY';
+}
+
+export interface CashForecastMonthDto {
+  month: string; // YYYY-MM
+  opening: number;
+  inflows: number;
+  billsOut: number;
+  recurringOut: number;
+  closing: number;
+}
+
+export interface CashForecastDto {
+  baseCurrency: string;
+  months: CashForecastMonthDto[];
 }
 
 export interface JournalEntryDto {
   id: string;
   tenantId: string;
   entryNumber: string;
-  referenceType: 'EXPENSE' | 'INVOICE' | 'TRANSFER' | 'MANUAL';
+  referenceType: JournalReferenceType;
   referenceId: string;
   entryDate: string;
   lines: JournalLineDto[];
@@ -156,16 +208,6 @@ export interface CreateCategoryBudgetPayload {
   alertThresholdPercent?: number;
   startDate: string;
   endDate: string;
-}
-
-export interface CreateRecurringExpensePayload {
-  vendorName: string;
-  category: string;
-  amount: number;
-  billingInterval: 'MONTHLY' | 'ANNUAL';
-  nextBillingDate: string;
-  financeAccountId?: string | null;
-  status?: 'ACTIVE' | 'PAUSED' | 'CANCELLED';
 }
 
 export interface CreateExpenseClaimPayload {

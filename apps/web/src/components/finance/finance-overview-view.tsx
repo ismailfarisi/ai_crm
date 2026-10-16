@@ -16,9 +16,11 @@ import { Button } from '@/components/ui/button';
 import { FinanceNav } from './finance-nav';
 import { TreasuryStatCards } from './dashboard/treasury-stat-cards';
 import { CashflowTrendChart } from './dashboard/cashflow-trend-chart';
+import { CashForecastChart } from './dashboard/cash-forecast-chart';
 import { AccountBalanceGrid } from './dashboard/account-balance-grid';
 import {
   useFinanceOverview,
+  useCashForecast,
   useFinanceAccounts,
   useCreateFinanceAccount,
   useTransferFunds,
@@ -33,6 +35,7 @@ import { CreateBudgetModal } from './budgets/create-budget-modal';
 export function FinanceOverviewView() {
   const { data: overview, isLoading: isOverviewLoading } = useFinanceOverview();
   const { data: accounts = [], isLoading: isAccountsLoading } = useFinanceAccounts();
+  const { data: forecast, isLoading: isForecastLoading } = useCashForecast(6);
   const { createClaim } = useExpenses();
 
   const createAccountMutation = useCreateFinanceAccount();
@@ -99,6 +102,7 @@ export function FinanceOverviewView() {
           currency={overview?.currency || 'USD'}
           isLoading={isOverviewLoading}
         />
+        <CashForecastChart forecast={forecast} isLoading={isForecastLoading} />
       </div>
 
       {/* Bank & Cash Accounts Grid */}

@@ -123,6 +123,15 @@ const mockSubscriptions: RecurringExpenseDto[] = [
   {
     id: 'sub-1',
     tenantId: 'tenant-1',
+    supplierId: 'sup-1',
+    supplierName: 'Supplier',
+    currency: null,
+    startDate: '2026-01-01',
+    endDate: null,
+    taxCodeId: null,
+    autoApprove: false,
+    spreadOverPeriod: false,
+    lastOccurrenceStatus: null,
     vendorName: 'AWS Cloud Services',
     category: 'Cloud Infrastructure',
     amount: 12500,
@@ -136,6 +145,15 @@ const mockSubscriptions: RecurringExpenseDto[] = [
   {
     id: 'sub-2',
     tenantId: 'tenant-1',
+    supplierId: 'sup-1',
+    supplierName: 'Supplier',
+    currency: null,
+    startDate: '2026-01-01',
+    endDate: null,
+    taxCodeId: null,
+    autoApprove: false,
+    spreadOverPeriod: false,
+    lastOccurrenceStatus: null,
     vendorName: 'GitHub Enterprise',
     category: 'Software & SaaS',
     amount: 2400,
@@ -216,6 +234,7 @@ vi.mock('@/components/platform/activity-timeline', () => ({
 const mockUpdateAccount = vi.fn();
 
 vi.mock('@/hooks/use-finance', () => ({
+  useCashForecast: () => ({ data: { baseCurrency: 'USD', months: [] }, isLoading: false }),
   useFinanceOverview: () => ({ data: mockOverview, isLoading: false }),
   useFinanceAccounts: () => ({ data: mockAccounts, isLoading: false }),
   useCategoryBudgets: () => ({ data: mockBudgets, isLoading: false }),
@@ -225,6 +244,15 @@ vi.mock('@/hooks/use-finance', () => ({
   useTransferFunds: () => ({ mutateAsync: mockTransferFunds, isPending: false }),
   useCreateCategoryBudget: () => ({ mutateAsync: mockCreateBudget, isPending: false }),
   useCreateRecurringExpense: () => ({ mutateAsync: mockCreateSub, isPending: false }),
+  useUpdateRecurringExpense: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  usePauseRecurringExpense: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useResumeRecurringExpense: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useCancelRecurringExpense: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useRecurringOccurrences: () => ({ data: [], isLoading: false, isError: false }),
+}));
+
+vi.mock('@/hooks/use-suppliers', () => ({
+  useSuppliers: () => ({ data: { items: [], meta: { total: 0, page: 1, limit: 100, totalPages: 0 } } }),
 }));
 
 vi.mock('@/hooks/use-expenses', () => ({
@@ -436,7 +464,7 @@ describe('Finance Routes & Views Suite', () => {
       renderWithClient(<SubscriptionsView />);
       const addSubBtn = screen.getByTestId('add-subscription-btn');
       fireEvent.click(addSubBtn);
-      expect(screen.getAllByText('Add Recurring Subscription').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('New recurring expense').length).toBeGreaterThan(0);
     });
   });
 });

@@ -20,6 +20,7 @@ import {
   journalDifference,
   LEDGER_ROLES,
   NORMAL_BALANCE,
+  OPERATING_EXPENSE_CHILD_ROLES,
   SYSTEM_LEDGER_ACCOUNTS,
   type JournalLineDto,
   type JournalLineInput,
@@ -75,28 +76,42 @@ export class LedgerService {
     const repo = manager.getRepository(LedgerAccount);
     const existing = await repo.find({ where: { tenantId } });
     const byCode = new Map(existing.map((a) => [a.code, a]));
+    const byRole = new Map(
+      existing.filter((a) => a.role).map((a) => [a.role!, a]),
+    );
 
     const created: LedgerAccount[] = [];
+    // System accounts this call resolved, by code, for linking parents.
+    const resolved = new Map<string, LedgerAccount>();
     for (const definition of SYSTEM_LEDGER_ACCOUNTS) {
-      const already = byCode.get(definition.code);
+      // A tenant that already uses the code or the role keeps what it has:
+      // two accounts for one role would break the unique index, and taking
+      // over their code would rename their account.
+      const already =
+        byRole.get(definition.role) ?? byCode.get(definition.code);
       if (already) {
         created.push(already);
+        resolved.set(definition.code, already);
         continue;
       }
-      created.push(
-        await repo.save(
-          repo.create({
-            tenantId,
-            code: definition.code,
-            name: definition.name,
-            type: definition.type,
-            role: definition.role,
-            description: definition.description,
-            isSystem: true,
-            isActive: true,
-          }),
-        ),
+      const parent = definition.parentCode
+        ? resolved.get(definition.parentCode)
+        : undefined;
+      const row = await repo.save(
+        repo.create({
+          tenantId,
+          code: definition.code,
+          name: definition.name,
+          type: definition.type,
+          role: definition.role,
+          description: definition.description,
+          parentId: parent?.id ?? null,
+          isSystem: true,
+          isActive: true,
+        }),
       );
+      created.push(row);
+      resolved.set(definition.code, row);
     }
     return created;
   }
@@ -185,6 +200,32 @@ export class LedgerService {
       );
     }
     return found;
+  }
+
+  /**
+   * An overhead role (rent, utilities…) can be missing for a tenant whose own
+   * chart already used that code when the account was introduced. Posting to
+   * 6000 is the same answer the ledger gave before those accounts existed;
+   * failing the whole bill would not be. Structural roles still 404.
+   */
+  private async byRoleWithOverheadFallback(
+    tenantId: string,
+    role: LedgerRole,
+    manager: EntityManager,
+  ): Promise<LedgerAccount> {
+    try {
+      return await this.byRole(tenantId, role, manager);
+    } catch (err) {
+      if (
+        !(err instanceof NotFoundException) ||
+        !OPERATING_EXPENSE_CHILD_ROLES.includes(role)
+      )
+        throw err;
+      this.logger.warn(
+        `Tenant ${tenantId} has no ${role} account; posting to operating expense`,
+      );
+      return this.byRole(tenantId, LEDGER_ROLES.OPERATING_EXPENSE, manager);
+    }
   }
 
   /* ------------------------------------------------------------------ *
@@ -276,9 +317,10 @@ export class LedgerService {
             `Journal line "${line.accountName}" has no role; posting to operating expense`,
           );
         }
-        ledger = await this.byRole(
+        const wanted = role ?? LEDGER_ROLES.OPERATING_EXPENSE;
+        ledger = await this.byRoleWithOverheadFallback(
           tenantId,
-          role ?? LEDGER_ROLES.OPERATING_EXPENSE,
+          wanted,
           manager,
         );
       }

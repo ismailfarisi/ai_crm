@@ -1,5 +1,5 @@
 import { condition, proxyActivities, setHandler } from '@temporalio/workflow';
-import { LEDGER_ROLES } from '@saas/shared';
+import { LEDGER_ROLES, expenseCategoryRole } from '@saas/shared';
 import type * as activities from './activities/expense.activities';
 import {
   approveExpenseSignal,
@@ -188,10 +188,9 @@ export async function expenseApprovalWorkflow(
     referenceId: input.expenseId,
     lines: [
       {
-        // A category ("Travel", "Software") is a label, not an account — every
-        // claim lands in operating expense until a tenant maps categories to
-        // their own accounts.
-        role: LEDGER_ROLES.OPERATING_EXPENSE,
+        // The category picks the account: cost-of-sales lands in COGS, travel
+        // in TRAVEL, and anything unmapped in operating expense.
+        role: expenseCategoryRole(input.category),
         accountName: input.category || 'Operating Expense',
         debit: input.amount,
         credit: 0,

@@ -212,3 +212,53 @@ describe('BILL_TRANSITIONS', () => {
     expect(canTransitionBill('DISPUTED', 'DRAFT')).toBe(true);
   });
 });
+
+import { LEDGER_ROLES } from '../finance/ledger';
+
+describe('billPostingLines — categories and spreading', () => {
+  const ref = { billNumber: 'BILL-2026-0001', supplierName: 'Landlord LLC' };
+  const sum = (ls: ReturnType<typeof billPostingLines>, k: 'debit' | 'credit') =>
+    Math.round(ls.reduce((s, l) => s + l[k], 0) * 100) / 100;
+
+  it('debits each unmatched line to its category role, grouped', () => {
+    const lines = billPostingLines([
+      { description: 'DEWA Jan', qty: 1, unitCost: 800, category: 'Utilities & Telecom' },
+      { description: 'Du Jan', qty: 1, unitCost: 200, category: 'Utilities' },
+      { description: 'Cardboard', qty: 1, unitCost: 500, category: 'Packaging' },
+    ], 0, ref);
+    expect(lines.find((l) => l.role === LEDGER_ROLES.UTILITIES)!.debit).toBe(1000);
+    expect(lines.find((l) => l.role === LEDGER_ROLES.COGS)!.debit).toBe(500);
+    expect(lines.some((l) => l.role === LEDGER_ROLES.OPERATING_EXPENSE)).toBe(false);
+  });
+
+  it('keeps an uncategorised line on operating expense', () => {
+    const lines = billPostingLines([{ description: 'Electricity', qty: 1, unitCost: 412.5 }], 0, ref);
+    expect(lines.find((l) => l.role === LEDGER_ROLES.OPERATING_EXPENSE)!.debit).toBe(412.5);
+  });
+
+  it('debits a multi-month line to prepaid expenses instead of its category', () => {
+    const lines = billPostingLines([
+      { description: 'Lease 2026', qty: 1, unitCost: 120_000, category: 'Rent & premises', servicePeriodStart: '2026-01-01', servicePeriodEnd: '2026-12-31' },
+    ], 0, ref);
+    expect(lines.find((l) => l.role === LEDGER_ROLES.PREPAID_EXPENSES)!.debit).toBe(120_000);
+    expect(lines.some((l) => l.role === LEDGER_ROLES.RENT)).toBe(false);
+  });
+
+  it('expenses a one-month service period directly', () => {
+    const lines = billPostingLines([
+      { description: 'Rent March', qty: 1, unitCost: 10_000, category: 'Rent & premises', servicePeriodStart: '2026-03-01', servicePeriodEnd: '2026-03-31' },
+    ], 0, ref);
+    expect(lines.find((l) => l.role === LEDGER_ROLES.RENT)!.debit).toBe(10_000);
+    expect(lines.find((l) => l.role === LEDGER_ROLES.RENT)!.accountName).toBe('Rent & premises');
+  });
+
+  it('mixed bill balances', () => {
+    const lines = billPostingLines([
+      { description: 'Board', qty: 500, unitCost: 0.45, orderUnitCost: 0.42 },
+      { description: 'Insurance 2026', qty: 1, unitCost: 6000, category: 'Insurance', servicePeriodStart: '2026-01-01', servicePeriodEnd: '2026-12-31' },
+      { description: 'Repairs', qty: 1, unitCost: 300, category: 'Repairs & maintenance' },
+    ], 315, ref);
+    expect(sum(lines, 'debit')).toBe(sum(lines, 'credit'));
+    expect(lines.find((l) => l.role === LEDGER_ROLES.ACCOUNTS_PAYABLE)!.credit).toBe(6840);
+  });
+});

@@ -145,3 +145,28 @@ describe('TaxService.applyToLines', () => {
     expect(out).toBe(section);
   });
 });
+
+describe('TaxService.purchaseTaxFor', () => {
+  function service(code: Record<string, unknown> | null, supplierCode: unknown = null) {
+    const codes = { findOne: jest.fn(async () => code), find: jest.fn(async () => []) };
+    const none = { find: jest.fn(async () => []), findOne: jest.fn(async () => null) };
+    const s = new TaxService(codes as any, none as any, none as any, none as any, none as any, none as any, none as any, none as any);
+    jest.spyOn(s, 'purchaseCodeForSupplier').mockResolvedValue(supplierCode as any);
+    return s;
+  }
+  const code = (over: Record<string, unknown>) => ({ id: 'tc', kind: 'PURCHASE', rate: 5, isReverseCharge: false, ...over });
+
+  it('uses the chosen code and its rate', async () => {
+    await expect(service(code({})).purchaseTaxFor(tenantId, 'tc', 'sup')).resolves.toMatchObject({ code: { id: 'tc' }, rate: 5 });
+  });
+
+  it('falls back to the supplier code', async () => {
+    await expect(service(null, code({ id: 'sup-code' })).purchaseTaxFor(tenantId, null, 'sup')).resolves.toMatchObject({ code: { id: 'sup-code' }, rate: 5 });
+  });
+
+  it('adds nothing for reverse charge, zero-rated or no code', async () => {
+    await expect(service(code({ isReverseCharge: true })).purchaseTaxFor(tenantId, 'tc', null)).resolves.toMatchObject({ rate: 0 });
+    await expect(service(code({ rate: 0 })).purchaseTaxFor(tenantId, 'tc', null)).resolves.toMatchObject({ rate: 0 });
+    await expect(service(null).purchaseTaxFor(tenantId, null, 'sup')).resolves.toEqual({ code: null, rate: 0 });
+  });
+});

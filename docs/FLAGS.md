@@ -404,6 +404,69 @@ running stack:
 
 ---
 
+## Overheads and recurring bills
+
+What overheads posting and recurring bills leave out, and the choices behind it.
+
+- **Budget actuals are still manual — open.** `CategoryBudget.spentAmount` is
+  typed in; posted bills do not feed it. Wiring it up means deciding which
+  accounts roll into which budget category.
+- **Spreading splits by whole months — by design.** A prepaid bill is cut into
+  equal monthly slices with no day proration. Proration needs a rule people
+  agree on (actual days, 30/360) and none was asked for.
+- **No billing in arrears — open.** The service period cannot precede the bill
+  date, so a utility bill like DEWA, which covers last month, is booked when it
+  arrives, not when it was incurred.
+- **No assistant skill for recurring expenses — open.** Changes made through
+  the web app only; a chat skill would have to call `AuditService.record`
+  itself.
+- **No chart-of-accounts editor — open.** Tenants cannot add accounts, so the
+  expense accounts the seed creates are the ones available.
+- **Journal lines posted to 6000 before this change were not re-routed — by
+  design.** Restating history into the new accounts would rewrite closed
+  periods.
+- **The subscription form has no payment-account picker — by design.** The
+  account money leaves from is chosen when the generated bill is paid. The old
+  `financeAccountId` column is kept, unused by new rows.
+- **A period claimed by a run that crashed stays `FAILED / in progress` — open.**
+  It is not retried automatically, because retrying could bill twice; it can
+  never double-bill. Finance managers are notified after 1 hour. If the bill
+  was already created, recover by setting the occurrence to status `'GENERATED'`
+  with its `billId`. If it was not, `UPDATE recurring_expense_occurrences SET
+  error = 'stale' WHERE id = …` lets the next run retry.
+- **Existing recurring rows are not back-billed — by design.** The migration
+  keeps each row's start date as its anchor and moves `nextBillingDate` to the
+  first occurrence on or after the migration date (UTC). Earlier periods were
+  paid and booked another way; anyone wanting them as bills enters them by
+  hand.
+- **Auto-approve runs as the user who enabled it — by design.** If they lose
+  `bill:approve`, bills stay draft and finance managers are notified.
+- **Recurring amounts are net of tax — by design.** Each generated bill adds
+  tax from the schedule's purchase code, else the supplier's (none for
+  reverse-charge, exempt or zero-rated codes), as a hand-entered bill would.
+  Rows created before this change are treated as net too, so a row whose
+  amount was typed gross now gets tax on top: check existing schedules for
+  taxable suppliers. The cash forecast projects the same tax.
+- **With auto-approve on, only a holder of `bill:approve` can change amount,
+  supplier, tax code, category, spreading, interval, start or end date.** Otherwise anyone who can edit a
+  schedule could push a different bill through someone else's approval.
+- **The cash forecast converts draft bills at their stored rate — open.** That
+  rate is 1 until approval, so foreign-currency drafts are mis-stated.
+- **The forecast's opening balance sums cash accounts without currency
+  conversion — open.** Same as the existing overview.
+- **Audit action names for `/finance` routes come from the first URL segment —
+  by design.** `finance.create`, `finance.pause` and so on; the subject type
+  says which record.
+- **Balance sheet sections now nest child accounts — by design.** It is a
+  shared component, so the P&L and the balance sheet render hierarchy alike.
+- **The seed checks its annual lease — resolved.** The billing job logs and
+  skips per-row failures, so the seed asserts afterwards that the lease made
+  one approved bill, one prepaid schedule and one release per elapsed month,
+  and fails otherwise.
+- **Expense claims are still not FX-converted** — see "Money and currency".
+
+---
+
 ## Smaller things found on the way
 
 - **A malformed quote body returns 500, not 400.** `POST /quotes` with a badly

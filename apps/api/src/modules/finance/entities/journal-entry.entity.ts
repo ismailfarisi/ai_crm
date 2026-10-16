@@ -50,6 +50,7 @@ export class JournalEntry {
       'BILL',
       'WORK_ORDER',
       'CREDIT_NOTE',
+      'PREPAID',
     ],
     enumName: 'journal_entries_reference_type_enum',
     default: 'MANUAL',

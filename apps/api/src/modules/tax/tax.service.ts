@@ -288,6 +288,27 @@ export class TaxService {
       : null;
   }
 
+  /**
+   * The purchase code a document carries — the one chosen, else the supplier's
+   * from the purchase rules — and the percentage it adds to a net amount.
+   * Reverse-charge codes add nothing (the buyer self-accounts); exempt and
+   * zero-rated codes have a rate of 0.
+   */
+  async purchaseTaxFor(
+    tenantId: string,
+    taxCodeId: string | null | undefined,
+    supplierId: string | null | undefined,
+  ): Promise<{ code: TaxCode | null; rate: number }> {
+    const code = taxCodeId
+      ? await this.findCode(tenantId, taxCodeId, 'PURCHASE')
+      : supplierId
+        ? await this.purchaseCodeForSupplier(tenantId, supplierId)
+        : null;
+    const rate =
+      code && !code.isReverseCharge ? Math.max(0, Number(code.rate) || 0) : 0;
+    return { code, rate };
+  }
+
   async findCode(
     tenantId: string,
     id: string,

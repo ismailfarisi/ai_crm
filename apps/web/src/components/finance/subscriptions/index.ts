@@ -1,3 +1,3 @@
 export * from './subscriptions-table';
-export * from './create-subscription-modal';
+export * from './subscription-form-modal';
 export * from './subscriptions-view';

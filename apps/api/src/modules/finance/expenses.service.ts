@@ -36,7 +36,11 @@ import {
   scannedReceiptResultSchema,
   scannedReceiptJsonSchema,
 } from './dto';
-import { LEDGER_ROLES, type ExpenseStatus } from '@saas/shared';
+import {
+  LEDGER_ROLES,
+  expenseCategoryRole,
+  type ExpenseStatus,
+} from '@saas/shared';
 import {
   allocateNextSequenceValue,
   formatSequenceNumber,
@@ -358,9 +362,9 @@ export class ExpensesService {
    * Recognises the cost when the claim is approved: the company owes the
    * employee from that moment, whether or not it has paid them yet.
    *
-   * A category ("Travel", "Software") is a label rather than an account, so
-   * every claim lands in operating expense until categories are mapped to a
-   * tenant's own accounts.
+   * The category picks the account (`expenseCategoryRole`): cost-of-sales
+   * categories land in COGS, overheads in their own account under 6000, and
+   * anything else in 6000.
    */
   private async postExpenseAccrual(
     tenantId: string,
@@ -390,7 +394,7 @@ export class ExpensesService {
         tenantId,
         [
           {
-            role: LEDGER_ROLES.OPERATING_EXPENSE,
+            role: expenseCategoryRole(claim.category),
             accountName: claim.category || 'Operating expense',
             debit: amount,
             credit: 0,

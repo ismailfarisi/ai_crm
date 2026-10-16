@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { Fragment, useState, useMemo } from 'react';
+import Link from 'next/link';
 import {
   Layers,
   Search,
@@ -25,12 +26,16 @@ import {
   Laptop,
   ShieldCheck,
   Briefcase,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/button';
 import { Input, Select } from '@/components/ui/field';
-import type { RecurringExpenseDto, FinanceAccountDto } from '@saas/shared';
+import { monthlyEquivalent, type RecurringExpenseDto, type RecurringInterval, type FinanceAccountDto } from '@saas/shared';
+import { useRecurringOccurrences } from '@/hooks/use-finance';
+import { INTERVAL_LABEL } from './subscription-form-modal';
 import { formatFinanceCurrency } from '../dashboard/treasury-stat-cards';
 
 export interface SubscriptionsTableProps {
@@ -103,8 +108,72 @@ export function formatNextBillingDate(dateStr: string) {
   }
 }
 
-export function calculateNormalizedMonthlyCost(amount: number, interval: 'MONTHLY' | 'ANNUAL'): number {
-  return interval === 'ANNUAL' ? amount / 12 : amount;
+export function calculateNormalizedMonthlyCost(amount: number, interval: RecurringInterval): number {
+  return monthlyEquivalent(amount, interval);
+}
+
+const INTERVAL_SUFFIX: Record<RecurringInterval, string> = {
+  MONTHLY: 'mo',
+  QUARTERLY: 'qtr',
+  SEMI_ANNUAL: '6 mo',
+  ANNUAL: 'yr',
+};
+
+/** Past its end date by the time the next bill would fall due: nothing more will be created. */
+export function hasEnded(sub: RecurringExpenseDto): boolean {
+  return Boolean(sub.endDate) && sub.endDate! <= sub.nextBillingDate;
+}
+
+function OccurrencesPanel({ id }: { id: string }) {
+  const { data = [], isLoading, isError } = useRecurringOccurrences(id);
+
+  return (
+    <div data-testid={`occurrences-${id}`} className="px-5 py-3">
+      {isLoading ? (
+        <Skeleton className="h-8 w-full" />
+      ) : isError ? (
+        <p className="text-xs text-danger">Could not load the bill history.</p>
+      ) : data.length === 0 ? (
+        <p className="text-xs text-ink-muted">No bills created yet.</p>
+      ) : (
+        <table className="w-full text-left text-xs">
+          <thead>
+            <tr className="text-[11px] font-bold uppercase tracking-wider text-ink-subtle">
+              <th className="py-1.5 pr-4">Period</th>
+              <th className="py-1.5 pr-4">Amount</th>
+              <th className="py-1.5 pr-4">Status</th>
+              <th className="py-1.5">Bill</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((o) => (
+              <tr key={o.id} data-testid={`occurrence-${o.id}`}>
+                <td className="py-1.5 pr-4">
+                  {o.periodStart} to {o.periodEnd}
+                </td>
+                <td className="py-1.5 pr-4 font-mono tabular-nums">{formatFinanceCurrency(o.amount)}</td>
+                <td className="py-1.5 pr-4">
+                  <Badge tone={o.status === 'FAILED' ? 'danger' : 'success'} className="text-[10px]">
+                    {o.status === 'FAILED' ? 'Failed' : 'Generated'}
+                  </Badge>
+                  {o.error && <span className="ml-2 text-danger">{o.error}</span>}
+                </td>
+                <td className="py-1.5">
+                  {o.billId ? (
+                    <Link href={`/purchasing/bills/${o.billId}`} className="font-medium text-accent hover:underline">
+                      {o.billNumber ?? 'View bill'}
+                    </Link>
+                  ) : (
+                    <span className="text-ink-subtle">None</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
 }
 
 export function SubscriptionsTable({
@@ -120,7 +189,8 @@ export function SubscriptionsTable({
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'PAUSED' | 'CANCELLED'>('ALL');
-  const [intervalFilter, setIntervalFilter] = useState<'ALL' | 'MONTHLY' | 'ANNUAL'>('ALL');
+  const [intervalFilter, setIntervalFilter] = useState<'ALL' | RecurringInterval>('ALL');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Accounts lookup map
   const accountsMap = useMemo(() => {
@@ -356,11 +426,13 @@ export function SubscriptionsTable({
             id="select-filter-subscription-interval"
             data-testid="select-filter-subscription-interval"
             value={intervalFilter}
-            onChange={(e) => setIntervalFilter(e.target.value as any)}
+            onChange={(e) => setIntervalFilter(e.target.value as 'ALL' | RecurringInterval)}
             options={[
               { value: 'ALL', label: 'All Intervals' },
-              { value: 'MONTHLY', label: 'Monthly' },
-              { value: 'ANNUAL', label: 'Annual' },
+              ...(Object.keys(INTERVAL_LABEL) as RecurringInterval[]).map((i) => ({
+                value: i,
+                label: INTERVAL_LABEL[i],
+              })),
             ]}
             containerClassName="w-36"
           />
@@ -442,15 +514,27 @@ export function SubscriptionsTable({
                     sub.billingInterval,
                   );
 
+                  const expanded = expandedId === sub.id;
+
                   return (
+                    <Fragment key={sub.id}>
                     <tr
-                      key={sub.id}
                       data-testid={`subscription-row-${sub.id}`}
                       className="group transition-colors hover:bg-surface-muted/30"
                     >
                       {/* Vendor & Category */}
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            data-testid={`btn-expand-sub-${sub.id}`}
+                            aria-expanded={expanded}
+                            aria-label={expanded ? 'Hide bills' : 'Show bills'}
+                            onClick={() => setExpandedId(expanded ? null : sub.id)}
+                            className="rounded-lg p-1 text-ink-subtle hover:bg-surface-muted hover:text-ink cursor-pointer"
+                          >
+                            {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+                          </button>
                           <div className="grid size-9 place-items-center rounded-xl border border-border/30 bg-surface-muted/60 text-ink-muted group-hover:border-amber-500/40 transition-colors">
                             <Icon className="size-4" />
                           </div>
@@ -468,6 +552,11 @@ export function SubscriptionsTable({
                               >
                                 {sub.category}
                               </span>
+                              {!sub.supplierId && (
+                                <Badge data-testid={`sub-badge-supplier-${sub.id}`} tone="warning" className="ml-2 text-[10px] py-0">
+                                  Link a supplier
+                                </Badge>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -484,10 +573,13 @@ export function SubscriptionsTable({
                               {formatFinanceCurrency(sub.amount)}
                             </span>
                             <span className="text-[10px] text-ink-subtle font-medium">
-                              / {sub.billingInterval === 'ANNUAL' ? 'yr' : 'mo'}
+                              / {INTERVAL_SUFFIX[sub.billingInterval]}
                             </span>
                           </div>
-                          {sub.billingInterval === 'ANNUAL' && (
+                          <p data-testid={`sub-interval-${sub.id}`} className="text-[10px] text-ink-subtle">
+                            {INTERVAL_LABEL[sub.billingInterval]}
+                          </p>
+                          {sub.billingInterval !== 'MONTHLY' && (
                             <p className="font-mono text-[10px] text-ink-muted">
                               ~{formatFinanceCurrency(normalizedMonthly)}/mo
                             </p>
@@ -551,12 +643,22 @@ export function SubscriptionsTable({
                         >
                           {sub.status}
                         </Badge>
+                        {sub.lastOccurrenceStatus === 'FAILED' && (
+                          <Badge data-testid={`sub-badge-failed-${sub.id}`} tone="danger" className="ml-1 text-[10px] py-0">
+                            Failed
+                          </Badge>
+                        )}
+                        {hasEnded(sub) && (
+                          <Badge data-testid={`sub-badge-ended-${sub.id}`} tone="neutral" className="ml-1 text-[10px] py-0">
+                            Ended
+                          </Badge>
+                        )}
                       </td>
 
                       {/* Actions */}
                       <td className="px-5 py-4 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          {onToggleStatus && (
+                          {onToggleStatus && sub.status !== 'CANCELLED' && (
                             <button
                               type="button"
                               data-testid={`btn-toggle-status-${sub.id}`}
@@ -567,7 +669,7 @@ export function SubscriptionsTable({
                                     : 'ACTIVE';
                                 onToggleStatus(sub, nextStatus);
                               }}
-                              title={sub.status === 'ACTIVE' ? 'Pause subscription' : 'Activate subscription'}
+                              title={sub.status === 'ACTIVE' ? 'Pause subscription' : 'Resume subscription'}
                               className="rounded-lg p-1.5 text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors cursor-pointer"
                             >
                               {sub.status === 'ACTIVE' ? (
@@ -578,7 +680,7 @@ export function SubscriptionsTable({
                             </button>
                           )}
 
-                          {onEditSubscription && (
+                          {onEditSubscription && sub.status !== 'CANCELLED' && (
                             <button
                               type="button"
                               data-testid={`btn-edit-sub-${sub.id}`}
@@ -590,12 +692,12 @@ export function SubscriptionsTable({
                             </button>
                           )}
 
-                          {onDeleteSubscription && (
+                          {onDeleteSubscription && sub.status !== 'CANCELLED' && (
                             <button
                               type="button"
                               data-testid={`btn-delete-sub-${sub.id}`}
                               onClick={() => onDeleteSubscription(sub)}
-                              aria-label="Delete subscription"
+                              aria-label="Cancel subscription"
                               className="rounded-lg p-1.5 text-ink-subtle hover:bg-surface-muted hover:text-rose-600 transition-colors cursor-pointer"
                             >
                               <Trash2 className="size-4" />
@@ -604,6 +706,14 @@ export function SubscriptionsTable({
                         </div>
                       </td>
                     </tr>
+                    {expanded && (
+                      <tr data-testid={`subscription-expanded-${sub.id}`} className="bg-surface-muted/20">
+                        <td colSpan={6}>
+                          <OccurrencesPanel id={sub.id} />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
               </tbody>

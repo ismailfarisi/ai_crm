@@ -16,7 +16,9 @@ import type { FinancialReport, ReportParams } from '@/lib/api/endpoints';
 import { useCan } from '@/lib/session-context';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/primitives';
+import { cn } from '@/lib/utils';
 import { FinanceNav } from '../finance-nav';
+import { nestStatementLines } from './nest-statement-lines';
 
 const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -108,13 +110,21 @@ function Section({ title, lines, total, totalLabel }: { title: string; lines: St
       <h2 className="border-b border-line px-4 py-2 text-sm font-medium text-ink">{title}</h2>
       <table className="w-full text-sm">
         <tbody className="divide-y divide-line">
-          {lines.map((l) => (
-            <tr key={l.ledgerAccountId}>
-              <td className="w-16 px-4 py-1.5 font-mono text-xs text-ink-subtle">{l.code}</td>
-              <td className="px-2 py-1.5 text-ink">{l.name}</td>
-              <td className="px-4 py-1.5 text-right tabular-nums">{money(l.amount)}</td>
-            </tr>
-          ))}
+          {nestStatementLines(lines).map(({ line: l, depth, subtotal, isSubtotalRow }) =>
+            isSubtotalRow ? (
+              <tr key={`${l.ledgerAccountId}-total`} className="font-medium">
+                <td />
+                <td className={cn('px-2 py-1.5 text-ink', depth > 0 && 'pl-6')}>Total {l.name}</td>
+                <td className="px-4 py-1.5 text-right tabular-nums">{money(subtotal ?? l.amount)}</td>
+              </tr>
+            ) : (
+              <tr key={l.ledgerAccountId}>
+                <td className="w-16 px-4 py-1.5 font-mono text-xs text-ink-subtle">{l.code}</td>
+                <td className={cn('px-2 py-1.5 text-ink', depth > 0 && 'pl-6')}>{l.name}</td>
+                <td className="px-4 py-1.5 text-right tabular-nums">{money(l.amount)}</td>
+              </tr>
+            ),
+          )}
           <tr className="font-medium">
             <td />
             <td className="px-2 py-1.5">{totalLabel}</td>
