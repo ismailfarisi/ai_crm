@@ -7,17 +7,28 @@ import {
   createEmployeeSchema,
   createPayrollRunSchema,
   createSalaryPackageSchema,
+  createSettlementSchema,
   isoDate,
+  leaveRecordSchema,
   LEDGER_ROLES,
   monthsTouched,
+  paySettlementSchema,
+  payrollSettingsSchema,
   PERMISSIONS,
   periodBounds,
   postOpeningGratuitySchema,
+  postOpeningLeaveSchema,
   recordAdvanceSchema,
+  remitPensionSchema,
+  round2,
   SYSTEM_ROLES,
+  updateEmployeeSchema,
   updatePayrollLineSchema,
+  updatePensionSchemeSchema,
   utcToday,
+  type LedgerRole,
   type PayrollRunDto,
+  type SettlementDto,
 } from '@saas/shared';
 import { AppModule } from '@/app.module';
 import { AuthService } from '@/modules/auth/auth.service';
@@ -37,11 +48,18 @@ import { FinanceService } from '@/modules/finance/finance.service';
 import { LedgerAccount } from '@/modules/finance/entities/ledger-account.entity';
 import { Employee } from '@/modules/payroll/entities/employee.entity';
 import { GratuityLedgerEntry } from '@/modules/payroll/entities/gratuity-ledger-entry.entity';
+import { LeaveLedgerEntry } from '@/modules/payroll/entities/leave-ledger-entry.entity';
 import { EmployeesService } from '@/modules/payroll/employees.service';
 import { GratuityService } from '@/modules/payroll/gratuity.service';
 import { AdvancesService } from '@/modules/payroll/advances.service';
 import { PayrollRunsService } from '@/modules/payroll/payroll-runs.service';
 import { PayrollPostingService } from '@/modules/payroll/payroll-posting.service';
+import { PayrollSettingsService } from '@/modules/payroll/payroll-settings.service';
+import { PensionService } from '@/modules/payroll/pension.service';
+import { PensionRemittanceService } from '@/modules/payroll/pension-remittance.service';
+import { LeaveService } from '@/modules/payroll/leave.service';
+import { LeaveRecordsService } from '@/modules/payroll/leave-records.service';
+import { SettlementsService } from '@/modules/payroll/settlements.service';
 import { DataSource, In } from 'typeorm';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { TenantContextService } from '@/common/context/tenant-context.service';
@@ -389,8 +407,6 @@ async function assertLeaseBilled(
 
 type SeedApp = Awaited<ReturnType<typeof NestFactory.createApplicationContext>>;
 
-const NATIONAL_FLAG = 'NATIONAL_PENSION_NOT_HANDLED';
-
 /** `YYYY-MM` for the month `back` months before this one (UTC). */
 function periodBack(back: number): string {
   const now = new Date();
@@ -408,9 +424,17 @@ function yearsAgo(years: number): string {
 }
 
 /**
- * Six employees (four bank, two cash), opening gratuity at the end of two
- * months ago, one advance, and last month's run approved and paid.
+ * Seven employees (five bank, two cash), the WPS profile, the GPSSA scheme on
+ * the national, opening gratuity and leave at the end of two months ago, one
+ * advance, leave in last month, last month's run approved and paid, its
+ * pension remitted, and one leaver (last month) settled and paid.
  * Skipped when the org already has employees.
+ *
+ * The order follows the services' guards: openings before anyone is marked
+ * LEFT (a leaver gets no opening); both cut-overs before last month (runs on
+ * or before a cut-over are refused); the scheme assigned before approval (a
+ * national without one blocks it); the run posted before the remittance and
+ * the settlement (both need last month's posted run).
  */
 async function seedPayroll(
   app: SeedApp,
@@ -432,6 +456,12 @@ async function seedPayroll(
   const posting = app.get(PayrollPostingService);
   const finance = app.get(FinanceService);
   const rbac = app.get(RbacService);
+  const settings = app.get(PayrollSettingsService);
+  const pension = app.get(PensionService);
+  const remittances = app.get(PensionRemittanceService);
+  const leave = app.get(LeaveService);
+  const leaveRecords = app.get(LeaveRecordsService);
+  const settlements = app.get(SettlementsService);
 
   const access = await rbac.resolveAccess(ownerId, tenantId);
   const actor = { userId: ownerId, permissions: access.permissions };
@@ -471,7 +501,20 @@ async function seedPayroll(
     });
   }
 
-  // 1. Employees and packages (effective on the joining date).
+  // 1. The WPS employer profile and the annual leave entitlement. The demo
+  // org is USD, so no SIF is exported (WPS files are AED only).
+  await settings.put(
+    tenantId,
+    payrollSettingsSchema.parse({
+      wpsEnabled: true,
+      employerIdType: 'MOHRE',
+      employerId: '0000001234567',
+      payerRoutingCode: '803320101',
+      annualLeaveDays: 30,
+    }),
+  );
+
+  // 2. Employees and packages (effective on the joining date).
   const people = [
     { first: 'Layla', last: 'Haddad', title: 'Operations Manager', joined: yearsAgo(6), method: 'BANK', iban: 'AE070331234567890123450', basic: 15000, housing: 6000, transport: 1000, national: false },
     { first: 'Omar', last: 'Khalid', title: 'Accountant', joined: yearsAgo(4), method: 'BANK', iban: 'AE070331234567890123451', basic: 9000, housing: 3150, transport: 800, national: false },
@@ -479,6 +522,7 @@ async function seedPayroll(
     { first: 'Sami', last: 'Rahman', title: 'Coordinator', joined: `${lastPeriod}-15`, method: 'BANK', iban: 'AE070331234567890123453', basic: 4000, housing: 1000, transport: 500, national: false },
     { first: 'Yusuf', last: 'Ali', title: 'Driver', joined: yearsAgo(3), method: 'CASH', iban: null, basic: 5000, housing: 1750, transport: 500, national: false },
     { first: 'Mariam', last: 'Al Mansoori', title: 'Public Relations Officer', joined: yearsAgo(1), method: 'CASH', iban: null, basic: 7000, housing: 2100, transport: 700, national: true },
+    { first: 'Hassan', last: 'Qureshi', title: 'Technician', joined: yearsAgo(3), method: 'BANK', iban: 'AE070331234567890123454', basic: 5500, housing: 1650, transport: 500, national: false },
   ];
   const ids: string[] = [];
   for (const p of people) {
@@ -509,9 +553,42 @@ async function seedPayroll(
     );
     ids.push(created.id);
   }
-  const [layla, omar, priya, , yusuf, mariam] = ids;
+  const [layla, omar, priya, , yusuf, mariam, hassan] = ids;
 
-  // 2. Opening gratuity as of the end of two months ago. The preview skips
+  // 3. WPS details for every bank payee: a 14-digit person ID and the
+  // agent's routing code.
+  let wpsSeq = 0;
+  for (const [i, p] of people.entries()) {
+    if (p.method !== 'BANK') continue;
+    wpsSeq += 1;
+    await employees.update(
+      tenantId,
+      ids[i],
+      updateEmployeeSchema.parse({
+        wpsPersonId: `1000000000000${wpsSeq}`,
+        bankRoutingCode: '803320101',
+      }),
+    );
+  }
+
+  // 4. The GPSSA preset (seeded inactive by list()) switched on and assigned
+  // to the national, so her line carries pension and approval is allowed.
+  const gpssa = (await pension.list(tenantId)).find(
+    (s) => s.presetKey === 'GPSSA_2023',
+  );
+  if (!gpssa) throw new Error('Seed payroll: GPSSA_2023 preset not found');
+  await pension.update(
+    tenantId,
+    gpssa.id,
+    updatePensionSchemeSchema.parse({ isActive: true }),
+  );
+  await employees.update(
+    tenantId,
+    mariam,
+    updateEmployeeSchema.parse({ pensionSchemeId: gpssa.id }),
+  );
+
+  // 5. Opening gratuity as of the end of two months ago. The preview skips
   // anyone who joined after the cut-over (Sami).
   const preview = await gratuity.previewOpening(tenantId, cutover);
   await gratuity.postOpening(
@@ -526,7 +603,35 @@ async function seedPayroll(
     }),
   );
 
-  // 3. One advance of 2,000 to Omar (bank), dated the 10th of two months ago.
+  // 6. Opening leave at the same cut-over: each balance is the statutory
+  // figure less five days taken before go-live. Same eligibility as the
+  // gratuity preview: Sami joined after the cut-over.
+  const leavePreview = await leave.previewOpening(tenantId, cutover);
+  await leave.postOpening(
+    tenantId,
+    ownerId,
+    postOpeningLeaveSchema.parse({
+      cutoverDate: cutover,
+      lines: leavePreview.lines.map((l) => ({
+        employeeId: l.employeeId,
+        balanceDays: Math.max(0, l.calculatedDays - 5),
+      })),
+    }),
+    actor.permissions,
+  );
+
+  // 7. Hassan left on the 20th of last month — after both openings (a leaver
+  // gets none) and before the run, which pays his final 20 days.
+  await employees.update(
+    tenantId,
+    hassan,
+    updateEmployeeSchema.parse({
+      status: 'LEFT',
+      leavingDate: `${lastPeriod}-20`,
+    }),
+  );
+
+  // 8. One advance of 2,000 to Omar (bank), dated the 10th of two months ago.
   await advances.record(
     tenantId,
     omar,
@@ -539,7 +644,27 @@ async function seedPayroll(
     }),
   );
 
-  // 4. Last month's run, extras, approval and payment.
+  // 9. Leave in last month, recorded before the run so its lines carry it:
+  // Priya's annual leave becomes a TAKEN row on approval; Layla's sick days
+  // are within the full-pay band.
+  const leaveInMonth: [string, 'ANNUAL' | 'SICK', string, string][] = [
+    [priya, 'ANNUAL', '06', '08'],
+    [layla, 'SICK', '12', '13'],
+  ];
+  for (const [employeeId, type, from, to] of leaveInMonth) {
+    await leaveRecords.create(
+      tenantId,
+      employeeId,
+      ownerId,
+      leaveRecordSchema.parse({
+        type,
+        startDate: `${lastPeriod}-${from}`,
+        endDate: `${lastPeriod}-${to}`,
+      }),
+    );
+  }
+
+  // 10. Last month's run, extras, approval and payment.
   const created = await runs.create(
     tenantId,
     ownerId,
@@ -579,19 +704,53 @@ async function seedPayroll(
     financeAccountId: petty.id,
   });
 
-  await assertPayrollSeeded(dataSource, tenantId, paid, mariam, logger);
+  // 11. Last month's pension to the fund, from the run just posted.
+  await remittances.remit(
+    tenantId,
+    lastPeriod,
+    actor,
+    remitPensionSchema.parse({ financeAccountId: bank.id }),
+  );
+
+  // 12. Hassan's final settlement: his final month is posted, so it can be
+  // drafted, approved (paying out his provisions) and paid.
+  const draft = await settlements.create(
+    tenantId,
+    ownerId,
+    createSettlementSchema.parse({ employeeId: hassan, reason: 'RESIGNATION' }),
+  );
+  await settlements.approve(tenantId, draft.id, actor);
+  const settled = await settlements.pay(
+    tenantId,
+    draft.id,
+    actor,
+    paySettlementSchema.parse({ financeAccountId: bank.id }),
+  );
+
+  await assertPayrollSeeded(dataSource, tenantId, {
+    run: paid,
+    lastPeriod,
+    nationalId: mariam,
+    settlement: settled,
+    logger,
+  });
   logger.log(
-    `Seeded 6 employees and paid payroll run ${paid.runNumber} (${lastPeriod}).`,
+    `Seeded ${people.length} employees, paid payroll run ${paid.runNumber} (${lastPeriod}), remitted its pension and paid settlement ${settled.settlementNumber}.`,
   );
 }
 
 async function assertPayrollSeeded(
   dataSource: DataSource,
   tenantId: string,
-  run: PayrollRunDto,
-  nationalEmployeeId: string,
-  logger: Logger,
+  seeded: {
+    run: PayrollRunDto;
+    lastPeriod: string;
+    nationalId: string;
+    settlement: SettlementDto;
+    logger: Logger;
+  },
 ): Promise<void> {
+  const { run, lastPeriod, nationalId, settlement, logger } = seeded;
   const fail = (msg: string): never => {
     throw new Error(`Seed payroll check: ${msg}`);
   };
@@ -618,49 +777,118 @@ async function assertPayrollSeeded(
     }
   }
 
-  const provision = await dataSource.getRepository(LedgerAccount).findOne({
-    where: { tenantId, role: LEDGER_ROLES.GRATUITY_PROVISION },
-  });
-  if (!provision) return fail('no GRATUITY_PROVISION ledger account');
   const allEntries = await dataSource
     .getRepository(JournalEntry)
     .find({ where: { tenantId } });
-  let ledgerBalance = 0;
-  for (const e of allEntries) {
-    for (const l of e.lines) {
-      if (l.ledgerAccountId === provision.id) {
-        ledgerBalance += (l.credit ?? 0) - (l.debit ?? 0);
+  const allNumbers = new Set(allEntries.map((e) => e.entryNumber));
+  for (const expected of [
+    `JE-PENSION-${lastPeriod}`,
+    `JE-${settlement.settlementNumber}`,
+  ]) {
+    if (!allNumbers.has(expected)) fail(`missing journal entry ${expected}`);
+  }
+
+  /** Credit-normal balance of the ledger account(s) holding `role`. */
+  const ledgerBalance = async (role: LedgerRole): Promise<number> => {
+    const accounts = await dataSource
+      .getRepository(LedgerAccount)
+      .find({ where: { tenantId, role } });
+    if (!accounts.length) return fail(`no ${role} ledger account`);
+    const ids = new Set(accounts.map((a) => a.id));
+    let balance = 0;
+    for (const e of allEntries) {
+      for (const l of e.lines) {
+        if (ids.has(l.ledgerAccountId)) {
+          balance += (l.credit ?? 0) - (l.debit ?? 0);
+        }
       }
     }
-  }
-  ledgerBalance = Math.round(ledgerBalance * 100) / 100;
-  const rows = await dataSource
+    return round2(balance);
+  };
+
+  // Each provision equals Σ amount of its ledger rows — openings, accruals,
+  // and the settlement's payout included.
+  const gratuityRows = await dataSource
     .getRepository(GratuityLedgerEntry)
     .find({ where: { tenantId } });
-  const gratuityTotal =
-    Math.round(
-      rows
-        .filter((r) => r.kind === 'OPENING' || r.kind === 'ACCRUAL')
-        .reduce((s, r) => s + r.amount, 0) * 100,
-    ) / 100;
-  if (ledgerBalance !== gratuityTotal) {
+  const gratuityTotal = round2(gratuityRows.reduce((s, r) => s + r.amount, 0));
+  const gratuityLedger = await ledgerBalance(LEDGER_ROLES.GRATUITY_PROVISION);
+  if (gratuityLedger !== gratuityTotal) {
     fail(
-      `GRATUITY_PROVISION balance ${ledgerBalance} != opening + accrual rows ${gratuityTotal}`,
+      `GRATUITY_PROVISION balance ${gratuityLedger} != gratuity ledger rows ${gratuityTotal}`,
+    );
+  }
+  const leaveRows = await dataSource
+    .getRepository(LeaveLedgerEntry)
+    .find({ where: { tenantId } });
+  const leaveTotal = round2(
+    leaveRows.reduce((s, r) => s + (r.amount ?? 0), 0),
+  );
+  const leaveLedger = await ledgerBalance(LEDGER_ROLES.LEAVE_PROVISION);
+  if (leaveLedger !== leaveTotal) {
+    fail(
+      `LEAVE_PROVISION balance ${leaveLedger} != leave ledger rows ${leaveTotal}`,
+    );
+  }
+  const pensionLedger = await ledgerBalance(LEDGER_ROLES.PENSION_PAYABLE);
+  if (pensionLedger !== 0) {
+    fail(`PENSION_PAYABLE balance ${pensionLedger}, expected 0 once remitted`);
+  }
+
+  // The national has a scheme, so nothing is flagged and her line carries pension.
+  const lines = run.lines ?? [];
+  const flagged = lines.filter((l) => l.flags.length > 0);
+  if (flagged.length) {
+    fail(
+      `expected no flagged lines, got [${flagged.map((l) => `${l.employeeName}: ${l.flags.join('/')}`).join('; ')}]`,
+    );
+  }
+  const national = lines.find((l) => l.employeeId === nationalId);
+  if (!national || !(national.pensionEmployee > 0)) {
+    fail(
+      `expected the national's line to withhold pension, got ${national?.pensionEmployee ?? 'no line'}`,
     );
   }
 
-  const flagged = (run.lines ?? []).filter((l) => l.flags.length > 0);
-  if (
-    flagged.length !== 1 ||
-    flagged[0].employeeId !== nationalEmployeeId ||
-    flagged[0].flags.join() !== NATIONAL_FLAG
-  ) {
+  // Every bank payee is ready for a SIF.
+  const bankIds = lines
+    .filter((l) => l.paymentMethod === 'BANK')
+    .map((l) => l.employeeId);
+  const bankPayees = bankIds.length
+    ? await dataSource
+        .getRepository(Employee)
+        .find({ where: { tenantId, id: In(bankIds) } })
+    : [];
+  const missingWps = bankIds.filter(
+    (id) => !bankPayees.find((e) => e.id === id)?.wpsPersonId,
+  );
+  if (missingWps.length) {
+    fail(`bank payees without a WPS person ID: ${missingWps.join(', ')}`);
+  }
+
+  // The leaver is settled and carries nothing.
+  if (settlement.status !== 'PAID') {
+    fail(`${settlement.settlementNumber} is ${settlement.status}, expected PAID`);
+  }
+  const leaverId = settlement.employeeId;
+  const leaverGratuity = round2(
+    gratuityRows
+      .filter((r) => r.employeeId === leaverId)
+      .reduce((s, r) => s + r.amount, 0),
+  );
+  const leaverLeave = leaveRows.filter((r) => r.employeeId === leaverId);
+  const leaverDays = round2(leaverLeave.reduce((s, r) => s + r.days, 0));
+  const leaverProvision = round2(
+    leaverLeave.reduce((s, r) => s + (r.amount ?? 0), 0),
+  );
+  if (leaverGratuity !== 0 || leaverDays !== 0 || leaverProvision !== 0) {
     fail(
-      `expected only the national employee flagged, got [${flagged.map((l) => `${l.employeeName}: ${l.flags.join('/')}`).join('; ')}]`,
+      `${settlement.employeeName} still carries gratuity ${leaverGratuity}, leave ${leaverDays} days / ${leaverProvision} after ${settlement.settlementNumber}`,
     );
   }
+
   logger.log(
-    `Seed payroll: ${entries.length} payroll journal entries, provision ${ledgerBalance}.`,
+    `Seed payroll: ${entries.length} payroll journal entries, gratuity provision ${gratuityLedger}, leave provision ${leaveLedger}, ${settlement.settlementNumber} paid.`,
   );
 }
 
