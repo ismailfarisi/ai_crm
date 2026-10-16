@@ -22,6 +22,7 @@ import {
 import { User } from '../users/entities/user.entity';
 import { Employee } from './entities/employee.entity';
 import { SalaryPackage } from './entities/salary-package.entity';
+import { PensionScheme } from './entities/pension-scheme.entity';
 import { PayrollCryptoService } from './payroll-crypto.service';
 import type { EmployeeView } from './employee-mask';
 
@@ -136,7 +137,13 @@ export class EmployeesService {
         ibanLast4: iban ? iban.slice(-4) : null,
         email: input.email ?? null,
         phone: input.phone ?? null,
+        wpsPersonId: input.wpsPersonId ?? null,
+        bankRoutingCode: input.bankRoutingCode ?? null,
+        pensionSchemeId: input.pensionSchemeId ?? null,
+        annualLeaveDaysOverride: input.annualLeaveDaysOverride ?? null,
+        probationEndDate: input.probationEndDate ?? null,
       });
+      await this.assertCompliance(manager, tenantId, row, input);
       return this.view(manager, await repo.save(row), opts);
     });
   }
@@ -165,6 +172,8 @@ export class EmployeesService {
       if (row.leavingDate && row.leavingDate < row.joiningDate) {
         throw new BadRequestException('Leaving date cannot be before joining');
       }
+
+      await this.assertCompliance(manager, tenantId, row, fields);
 
       if (row.paymentMethod === 'CASH') {
         row.ibanEncrypted = null;
@@ -268,6 +277,42 @@ export class EmployeesService {
       .findOne({ where: { id, tenantId } });
     if (!row) throw new NotFoundException('Employee not found');
     return row;
+  }
+
+  /**
+   * Pension scheme and probation rules on the row as it will be saved. `patch`
+   * is what the caller sent: a scheme is only re-checked when it arrives, so an
+   * unrelated edit never trips over a scheme deactivated since.
+   */
+  private async assertCompliance(
+    manager: EntityManager,
+    tenantId: string,
+    row: Employee,
+    patch: { pensionSchemeId?: string | null },
+  ) {
+    if (row.probationEndDate && row.probationEndDate < row.joiningDate) {
+      throw new BadRequestException(
+        'Probation end date cannot be before joining',
+      );
+    }
+    if (!row.isNational) {
+      if (patch.pensionSchemeId) {
+        throw new BadRequestException(
+          'Pension schemes apply to UAE and GCC nationals',
+        );
+      }
+      row.pensionSchemeId = null;
+      return;
+    }
+    if (patch.pensionSchemeId) {
+      const scheme = await manager
+        .getRepository(PensionScheme)
+        .findOne({ where: { id: patch.pensionSchemeId, tenantId } });
+      if (!scheme) throw new NotFoundException('Pension scheme not found');
+      if (!scheme.isActive) {
+        throw new BadRequestException(`Activate ${scheme.name} before assigning it`);
+      }
+    }
   }
 
   private async assertUserLinkable(

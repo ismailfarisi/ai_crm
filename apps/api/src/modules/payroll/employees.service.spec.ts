@@ -1,6 +1,7 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Employee } from './entities/employee.entity';
 import { SalaryPackage } from './entities/salary-package.entity';
+import { PensionScheme } from './entities/pension-scheme.entity';
 import { User } from '../users/entities/user.entity';
 import { EmployeesService } from './employees.service';
 import { PayrollCryptoService } from './payroll-crypto.service';
@@ -10,6 +11,8 @@ const OTHER = '22222222-2222-4222-8222-222222222222';
 const ACTOR = '33333333-3333-4333-8333-333333333333';
 const U1 = '44444444-4444-4444-8444-444444444444';
 const IBAN = 'AE070331234567890123456';
+const SCH_ON = '55555555-5555-4555-8555-555555555555';
+const SCH_OFF = '66666666-6666-4666-8666-666666666666';
 
 function repo(rows: any[]) {
   let n = 0;
@@ -36,10 +39,15 @@ function setup() {
   const employees = repo([]);
   const packages = repo([]);
   const users = repo([{ id: U1, tenantId: T }]);
+  const schemes = repo([
+    { id: SCH_ON, tenantId: T, name: 'GPSSA', isActive: true },
+    { id: SCH_OFF, tenantId: T, name: 'ADPF', isActive: false },
+  ]);
   const repos = new Map<any, any>([
     [Employee, employees],
     [SalaryPackage, packages],
     [User, users],
+    [PensionScheme, schemes],
   ]);
   const manager: any = {
     getRepository: (e: any) => repos.get(e),
@@ -169,5 +177,65 @@ describe('EmployeesService', () => {
     expect(log).toHaveBeenCalledTimes(1);
     expect(String(log.mock.calls[0][0])).toContain(employees.rows[1].id);
     expect(String(log.mock.calls[0][0])).not.toContain('corrupt');
+  });
+
+  describe('compliance fields', () => {
+    const national = { ...input, isNational: true, nationality: 'AE' };
+
+    it('round-trips the new fields through create and toView', async () => {
+      const { service } = setup();
+      const v = await service.create(T, ACTOR, {
+        ...national,
+        wpsPersonId: '10000000000001',
+        bankRoutingCode: '803320101',
+        pensionSchemeId: SCH_ON,
+        annualLeaveDaysOverride: 35,
+        probationEndDate: '2026-07-15',
+      });
+      expect(v).toMatchObject({
+        wpsPersonId: '10000000000001',
+        bankRoutingCode: '803320101',
+        pensionSchemeId: SCH_ON,
+        annualLeaveDaysOverride: 35,
+        probationEndDate: '2026-07-15',
+      });
+    });
+
+    it('refuses an inactive scheme', async () => {
+      const { service } = setup();
+      await expect(service.create(T, ACTOR, { ...national, pensionSchemeId: SCH_OFF })).rejects.toThrow('Activate ADPF before assigning it');
+    });
+
+    it('404s a scheme that is not in the tenant', async () => {
+      const { service } = setup();
+      await expect(service.create(OTHER, ACTOR, { ...national, pensionSchemeId: SCH_ON })).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('refuses a scheme for a non-national', async () => {
+      const { service } = setup();
+      await expect(service.create(T, ACTOR, { ...input, pensionSchemeId: SCH_ON })).rejects.toThrow('Pension schemes apply to UAE and GCC nationals');
+    });
+
+    it('clears the scheme when isNational becomes false', async () => {
+      const { service } = setup();
+      const v = await service.create(T, ACTOR, { ...national, pensionSchemeId: SCH_ON });
+      const after = await service.update(T, v.id, { isNational: false });
+      expect(after.pensionSchemeId).toBeNull();
+    });
+
+    it('keeps an assigned scheme through an unrelated edit after it is deactivated', async () => {
+      const { service, employees } = setup();
+      const v = await service.create(T, ACTOR, { ...national, pensionSchemeId: SCH_ON });
+      employees.rows[0].pensionSchemeId = SCH_OFF;
+      const after = await service.update(T, v.id, { jobTitle: 'Lead' });
+      expect(after.pensionSchemeId).toBe(SCH_OFF);
+    });
+
+    it('refuses a probation end before joining, on create and update', async () => {
+      const { service } = setup();
+      await expect(service.create(T, ACTOR, { ...input, probationEndDate: '2026-01-01' })).rejects.toBeInstanceOf(BadRequestException);
+      const v = await service.create(T, ACTOR, input);
+      await expect(service.update(T, v.id, { probationEndDate: '2026-01-01' })).rejects.toBeInstanceOf(BadRequestException);
+    });
   });
 });
