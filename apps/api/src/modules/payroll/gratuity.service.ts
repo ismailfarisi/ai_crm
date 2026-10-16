@@ -25,6 +25,7 @@ import { baseCurrencyFor } from '../finance/fx';
 import { Employee } from './entities/employee.entity';
 import { PayrollRun } from './entities/payroll-run.entity';
 import { GratuityLedgerEntry } from './entities/gratuity-ledger-entry.entity';
+import { Settlement } from './entities/settlement.entity';
 import { EmployeesService } from './employees.service';
 import { POSTED_RUN_STATUSES, postedRunLines } from './advances.service';
 
@@ -381,7 +382,18 @@ export class GratuityService {
   ): Promise<GratuityLedgerEntryDto> {
     void actorId; // the audit trail records who
     return this.dataSource.transaction(async (manager) => {
+      // Serialises with settlement approval, so the settled check below holds.
+      await lockGratuityOpening(manager, tenantId);
       const employee = await this.loadEmployee(manager, tenantId, employeeId);
+      // The settlement cleared the provision; a change now would strand it.
+      const settlements = await manager
+        .getRepository(Settlement)
+        .find({ where: { tenantId, employeeId } });
+      if (settlements.some((s) => s.status === 'APPROVED' || s.status === 'PAID')) {
+        throw new ConflictException(
+          `${employee.firstName} ${employee.lastName} is settled`,
+        );
+      }
       const amount = round2(input.amount);
       if (amount === 0) throw new BadRequestException('Amount cannot be zero');
       const id = randomUUID();

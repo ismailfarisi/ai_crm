@@ -13,6 +13,7 @@ import { LeaveLedgerEntry } from './entities/leave-ledger-entry.entity';
 import { LeaveRecord } from './entities/leave-record.entity';
 import { PensionScheme } from './entities/pension-scheme.entity';
 import { PayrollSettings } from './entities/payroll-settings.entity';
+import { Settlement, SettlementLine } from './entities/settlement.entity';
 import { EmployeesService } from './employees.service';
 import { PayrollCryptoService } from './payroll-crypto.service';
 import { AdvancesService } from './advances.service';
@@ -190,6 +191,8 @@ function setup() {
     [PensionScheme, schemes],
     [PayrollSettings, repo([])],
     [Organization, orgs],
+    [Settlement, repo([])],
+    [SettlementLine, repo([])],
   ]);
   let seq = 0;
   const manager: any = {

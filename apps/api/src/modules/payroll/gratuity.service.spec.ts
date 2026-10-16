@@ -10,6 +10,7 @@ import { Employee } from './entities/employee.entity';
 import { SalaryPackage } from './entities/salary-package.entity';
 import { PayrollRun, PayrollRunLine } from './entities/payroll-run.entity';
 import { GratuityLedgerEntry } from './entities/gratuity-ledger-entry.entity';
+import { Settlement } from './entities/settlement.entity';
 import { EmployeesService } from './employees.service';
 import { PayrollCryptoService } from './payroll-crypto.service';
 import { GratuityService } from './gratuity.service';
@@ -86,6 +87,7 @@ function setup() {
     [GratuityLedgerEntry, ledgerRows],
     [JournalEntry, entries],
     [Organization, orgs],
+    [Settlement, repo([])],
   ]);
   const manager: any = {
     getRepository: (e: any) => repos.get(e),
