@@ -12,6 +12,7 @@ export const payrollSettingsSchema = z
     employerId: optionalText(20),
     payerRoutingCode: routingCode,
     annualLeaveDays: z.coerce.number().int().min(30).max(60).default(30),
+    monthlyStandardHours: z.coerce.number().min(100).max(320).default(208),
   })
   .refine((v) => !v.wpsEnabled || (v.employerIdType && v.employerId && v.payerRoutingCode), { message: 'WPS needs the employer ID type, employer ID and payer routing code', path: ['employerId'] })
   .refine((v) => v.employerIdType !== 'MOHRE' || !v.employerId || /^\d{13}$/.test(v.employerId), { message: 'A MOHRE employer ID is 13 digits', path: ['employerId'] });

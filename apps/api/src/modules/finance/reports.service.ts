@@ -297,6 +297,7 @@ export class ReportsService {
         margin: 0,
         marginPct: null,
         measuredCostShare: 0,
+        provisionalLabourShare: 0,
         measured: 0,
         orderIds: new Set<string>(),
       };
@@ -364,6 +365,7 @@ export class ReportsService {
             : null,
         measuredCostShare:
           g.cost > 0 ? Math.round((measured / g.cost) * 1000) / 1000 : 0,
+        provisionalLabourShare: 0,
       }))
       .sort((a, b) => b.revenue - a.revenue);
     return { ...empty, rows };

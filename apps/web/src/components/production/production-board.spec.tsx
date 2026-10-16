@@ -144,6 +144,7 @@ const mockWorkOrders: WorkOrderDto[] = [
         estimatedUnitCost: 0.25,
       },
     ],
+    labour: null,
     createdAt: '2026-09-01T00:00:00.000Z',
   },
   {
@@ -185,6 +186,7 @@ const mockWorkOrders: WorkOrderDto[] = [
       },
     ],
     materials: [],
+    labour: null,
     createdAt: '2026-09-02T00:00:00.000Z',
   },
   {
@@ -226,6 +228,7 @@ const mockWorkOrders: WorkOrderDto[] = [
       },
     ],
     materials: [],
+    labour: null,
     createdAt: '2026-09-03T00:00:00.000Z',
   },
   {
@@ -267,6 +270,7 @@ const mockWorkOrders: WorkOrderDto[] = [
       },
     ],
     materials: [],
+    labour: null,
     createdAt: '2026-09-04T00:00:00.000Z',
   },
 ];

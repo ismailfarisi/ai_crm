@@ -1112,6 +1112,7 @@ export class ProductionService {
         quotedUnitCost: canSeeCost ? wo.quotedUnitCost : null,
         estimatedCost: canSeeCost ? wo.estimatedCost : null,
         actualCost: canSeeCost ? wo.actualCost : null,
+        labour: null,
         operations: ops
           .filter((op) => op.workOrderId === wo.id)
           .map((op) => ({

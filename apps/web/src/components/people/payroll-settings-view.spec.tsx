@@ -31,7 +31,7 @@ vi.mock('@/hooks/use-payroll', () => ({
 beforeEach(() => {
   granted = new Set(['payroll:read']);
   saveSettings.mockReset();
-  settings = { wpsEnabled: false, employerIdType: null, employerId: null, payerRoutingCode: null, annualLeaveDays: 30 };
+  settings = { wpsEnabled: false, employerIdType: null, employerId: null, payerRoutingCode: null, annualLeaveDays: 30, monthlyStandardHours: 208 };
   schemes = [scheme({}), scheme({ id: 's2', name: 'Assigned fund', assignedCount: 3, isActive: true })];
   HTMLDialogElement.prototype.showModal ||= function (this: HTMLDialogElement) {
     this.open = true;

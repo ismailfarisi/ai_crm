@@ -22,12 +22,12 @@ function setup() {
 describe('PayrollSettingsService', () => {
   it('get returns the defaults when no row exists', async () => {
     const { service } = setup();
-    expect(await service.get(T)).toEqual({ wpsEnabled: false, employerIdType: null, employerId: null, payerRoutingCode: null, annualLeaveDays: 30 });
+    expect(await service.get(T)).toEqual({ wpsEnabled: false, employerIdType: null, employerId: null, payerRoutingCode: null, annualLeaveDays: 30, monthlyStandardHours: 208 });
   });
 
   it('put upserts and get returns what was saved', async () => {
     const { service, manager } = setup();
-    const saved = { wpsEnabled: true, employerIdType: 'MOHRE' as const, employerId: '1234567890123', payerRoutingCode: '803320101', annualLeaveDays: 35 };
+    const saved = { wpsEnabled: true, employerIdType: 'MOHRE' as const, employerId: '1234567890123', payerRoutingCode: '803320101', annualLeaveDays: 35, monthlyStandardHours: 208 };
     expect(await service.put(T, saved)).toEqual(saved);
     await service.put(T, { ...saved, annualLeaveDays: 40 });
     expect((await service.get(T)).annualLeaveDays).toBe(40);
@@ -36,7 +36,7 @@ describe('PayrollSettingsService', () => {
 
   it('annualDaysFor prefers the employee override, else the tenant value', async () => {
     const { service, manager } = setup();
-    await service.put(T, { wpsEnabled: false, employerIdType: null, employerId: null, payerRoutingCode: null, annualLeaveDays: 36 });
+    await service.put(T, { wpsEnabled: false, employerIdType: null, employerId: null, payerRoutingCode: null, annualLeaveDays: 36, monthlyStandardHours: 208 });
     expect(await service.annualDaysFor(manager, T, { annualLeaveDaysOverride: 45 } as any)).toBe(45);
     expect(await service.annualDaysFor(manager, T, { annualLeaveDaysOverride: null } as any)).toBe(36);
   });

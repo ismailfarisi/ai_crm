@@ -128,4 +128,13 @@ describe('canTransitionWorkOrder', () => {
     expect(canTransitionWorkOrder('PLANNED', 'COMPLETE')).toBe(false);
     expect(canTransitionWorkOrder('IN_PROGRESS', 'COMPLETE')).toBe(true);
   });
+
+  it('uses the labour figure it is given instead of minutes x standard rate', () => {
+    const op = { workCenterId: 'w', workCenterName: 'Cut', status: 'DONE' as const, estimatedSetupMinutes: 0, estimatedRunMinutes: 60, estimatedChargedMinutes: 60, actualMinutes: 120, machineCostPerHour: 30, laborCostPerHour: 20 };
+    const r = actualCost({ operations: [op], materialValue: 100, toolingCost: 0, overheadPct: 0.1, qtyCompleted: 1, labour: 75 });
+    expect(r.machine).toBe(60);
+    expect(r.labor).toBe(75);
+    expect(r.overhead).toBe(23.5); // 10% of 100 + 60 + 75
+    expect(r.total).toBe(258.5);
+  });
 });

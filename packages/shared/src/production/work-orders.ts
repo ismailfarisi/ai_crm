@@ -12,6 +12,8 @@
  * same arithmetic the API stores on completion.
  */
 
+import type { LabourStatus } from '../payroll/labour';
+
 export type WorkOrderStatus = 'PLANNED' | 'RELEASED' | 'IN_PROGRESS' | 'COMPLETE' | 'CANCELLED';
 
 export type WorkOrderOperationStatus = 'PENDING' | 'RUNNING' | 'PAUSED' | 'DONE' | 'SKIPPED';
@@ -107,6 +109,8 @@ export function actualCost(input: {
   toolingCost: number;
   overheadPct: number;
   qtyCompleted: number;
+  /** Labour already costed from timesheets and payroll; when absent, actual minutes × the snapshotted labour rate. */
+  labour?: number;
 }): CostSplit {
   let machine = 0;
   let labor = 0;
@@ -116,6 +120,7 @@ export function actualCost(input: {
     machine += hours * op.machineCostPerHour;
     labor += hours * op.laborCostPerHour;
   }
+  if (input.labour != null) labor = input.labour;
   const material = Math.max(0, input.materialValue);
   const direct = material + machine + labor + input.toolingCost;
   const overhead = direct * Math.max(0, input.overheadPct);
@@ -261,6 +266,18 @@ export interface WorkOrderMaterialDto {
   estimatedUnitCost: number;
 }
 
+export interface LabourSplit { actual: number; provisional: number; unlinked: number }
+
+export interface WorkOrderLabourEmployeeDto {
+  employeeId: string; employeeName: string; hours: number;
+  rate: number | null; amount: number | null; status: 'ACTUAL' | 'PROVISIONAL';
+}
+
+export interface WorkOrderLabourDto {
+  actual: number | null; provisional: number | null; unlinked: number | null; total: number | null;
+  unlinkedHours: number; status: LabourStatus | null; byEmployee: WorkOrderLabourEmployeeDto[];
+}
+
 export interface WorkOrderDto {
   id: string;
   woNumber: string;
@@ -283,6 +300,8 @@ export interface WorkOrderDto {
   quotedUnitCost: number | null;
   estimatedCost: CostSplit | null;
   actualCost: CostSplit | null;
+  /** Null on list responses; amounts null without quote:view_cost, per-employee rate/amount null without payroll:read. */
+  labour: WorkOrderLabourDto | null;
   operations: WorkOrderOperationDto[];
   materials: WorkOrderMaterialDto[];
   createdAt: string;

@@ -17,6 +17,7 @@ const line = {
   halfPayDays: 0, halfPayAmount: 0, annualLeaveDays: 0, leaveDaysInPeriod: 0, leaveOverridden: false,
   pensionSchemeName: null, pensionBase: 0, pensionEmployee: 0, pensionEmployer: 0,
   leaveProvisionBefore: null, leaveProvisionChange: null, leaveProvisionAfter: null,
+  standardHours: 0, loggedHours: 0, directHours: 0, labourRate: 0, labourAbsorbed: 0,
 } as PayrollRunLineDto;
 
 beforeEach(() => {

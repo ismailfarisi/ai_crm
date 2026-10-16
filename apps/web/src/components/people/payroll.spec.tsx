@@ -30,12 +30,13 @@ const line: PayrollRunLineDto = {
   halfPayDays: 0, halfPayAmount: 0, annualLeaveDays: 0, leaveDaysInPeriod: 0, leaveOverridden: false,
   pensionSchemeName: null, pensionBase: 0, pensionEmployee: 0, pensionEmployer: 0,
   leaveProvisionBefore: null, leaveProvisionChange: null, leaveProvisionAfter: null,
+  standardHours: 0, loggedHours: 0, directHours: 0, labourRate: 0, labourAbsorbed: 0,
 };
 
 function makeRun(over: Partial<PayrollRunDto> = {}): PayrollRunDto {
   return {
     id: 'r1', runNumber: 'PAY-0001', period: '2026-11', payDate: '2026-11-30', status: 'DRAFT',
-    totals: { salaryCost: 7500, overtime: 0, bonus: 0, unpaidLeave: 0, advanceRecovery: 0, otherDeductions: 0, net: 7500, gratuityAccrual: 100, halfPay: 0, pensionEmployee: 0, pensionEmployer: 0, leaveProvision: 0, bankNet: 7500, cashNet: 0 },
+    totals: { salaryCost: 7500, overtime: 0, bonus: 0, unpaidLeave: 0, advanceRecovery: 0, otherDeductions: 0, net: 7500, gratuityAccrual: 100, halfPay: 0, pensionEmployee: 0, pensionEmployer: 0, leaveProvision: 0, bankNet: 7500, cashNet: 0, labourAbsorbed: 0 },
     bankPaidAt: null, cashPaidAt: null, approvedAt: null, approvedById: null, journalEntryId: null,
     lines: [line], createdAt: '', updatedAt: '', ...over,
   };

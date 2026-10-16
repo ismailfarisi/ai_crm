@@ -11,6 +11,7 @@ const DEFAULTS: PayrollSettingsDto = {
   employerId: null,
   payerRoutingCode: null,
   annualLeaveDays: 30,
+  monthlyStandardHours: 208,
 };
 
 const toDto = (s: PayrollSettings): PayrollSettingsDto => ({
@@ -19,6 +20,7 @@ const toDto = (s: PayrollSettings): PayrollSettingsDto => ({
   employerId: s.employerId,
   payerRoutingCode: s.payerRoutingCode,
   annualLeaveDays: s.annualLeaveDays,
+  monthlyStandardHours: 208,
 });
 
 /** A tenant's WPS employer details and annual leave entitlement (one row per tenant). */
