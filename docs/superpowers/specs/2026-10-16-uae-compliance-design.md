@@ -71,7 +71,7 @@ New reference types: `SETTLEMENT`, `PENSION_REMITTANCE`.
 
 Days are calendar days (UAE law counts annual leave in calendar days). A record spanning months contributes to each month the calendar days that fall in it, scaled by `days / calendarDays` when edited down.
 
-**Lock:** creating, editing or deleting a record that touches a period with an approved (non-voided) run, or a date on or before an approved settlement's leaving date, is refused (409, naming the run). Records may overlap only if one is ANNUAL/OTHER_PAID and… no: overlapping records for the same employee are refused.
+**Lock:** creating, editing or deleting a record that touches a period with an approved (non-voided) run, or a date on or before an approved settlement's leaving date, is refused (409, naming the run). Overlapping records for the same employee are refused.
 
 ### Statutory accrual (`packages/shared/src/payroll/leave.ts`, pure)
 
@@ -90,7 +90,7 @@ accrued     = months < 6  ? 0
 `id, tenantId, employeeId, kind ('OPENING' | 'ACCRUAL' | 'TAKEN' | 'ADJUSTMENT' | 'ENCASHMENT' | 'REVERSAL'), days (numeric 7,2, signed), amount (numeric, the provision value posted with it, signed, nullable), asOf, runLineId, settlementId, journalEntryId, note, createdAt`.
 
 - Balance (days) = Σ days.
-- On run approval, per line: `ACCRUAL` = `accrued(asOf = min(period end, leavingDate)) − Σ prior OPENING + ACCRUAL days`; `TAKEN` = −(ANNUAL days in the period). Rows reference the run line.
+- On run approval, per line: `ACCRUAL` = `accrued(asOf = min(period end, leavingDate)) − Σ prior OPENING + ACCRUAL days`; `TAKEN` = −(ANNUAL days in the period). Rows reference the run line. The ACCRUAL row is written for every line, even when its days are 0, because it carries the provision change (below).
 - Void inserts `REVERSAL` rows for that line's ACCRUAL and TAKEN.
 - Balance may go negative (leave in advance); the run line carries a warning.
 
@@ -197,7 +197,7 @@ Pure formatter `packages/shared/src/payroll/wps.ts`: `buildSif({ employer, rows,
   - Settlement: payStart = payEnd = leaving date, days = 0, fixed = 0, variable = net, leaveDays = 0.
 - One `SCR` row: `SCR,{employerId},{payerRoutingCode},{fileDate yyyy-mm-dd},{HHMM},{MMYYYY},{edrCount},{total 2dp},AED,{reference}` where reference is the run/settlement number.
 - Amounts with two decimals, no thousands separators; CRLF line endings.
-- **Pre-flight:** every BANK line needs `wpsPersonId`, `bankRoutingCode` and a decryptable IBAN; otherwise 422 listing each employee and what is missing. Cash-paid lines are excluded and returned as `warnings` in a JSON response header-companion (the endpoint returns `{ fileName, content, warnings }`; the web saves the file).
+- **Pre-flight:** every BANK line needs `wpsPersonId`, `bankRoutingCode` and a decryptable IBAN; otherwise 422 listing each employee and what is missing. Cash-paid lines are excluded. The endpoint returns JSON `{ fileName, content, warnings }` (warnings name the cash-paid employees left out); the web saves `content` as the file.
 
 ## 6. Forecast, API, permissions, audit, web
 
