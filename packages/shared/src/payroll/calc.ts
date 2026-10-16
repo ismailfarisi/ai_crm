@@ -50,12 +50,17 @@ export interface LineInput {
   unpaidLeaveDays: number;
   advanceRecovery: number;
   otherDeductionAmount: number;
+  /** Sick or maternity days at half pay. */
+  halfPayDays?: number;
+  /** A national's pension share, deducted from net pay. */
+  pensionEmployee?: number;
 }
 
 export interface LineAmounts {
   proratedGross: number;
   overtimeAmount: number;
   unpaidLeaveAmount: number;
+  halfPayAmount: number;
   /** What the employee receives. */
   netPay: number;
   /** What the business expenses as salary: before recoveries and deductions. */
@@ -68,7 +73,8 @@ export function computeLine(i: LineInput): LineAmounts {
   const hourly = i.basic / 30 / 8;
   const overtimeAmount = round2(hourly * (1.25 * i.overtimeHours + 1.5 * i.overtimeHoursPremium));
   const unpaidLeaveAmount = round2((i.gross / 30) * i.unpaidLeaveDays);
-  const salaryCost = round2(proratedGross + overtimeAmount + i.bonusAmount - unpaidLeaveAmount);
-  const netPay = round2(salaryCost - i.advanceRecovery - i.otherDeductionAmount);
-  return { proratedGross, overtimeAmount, unpaidLeaveAmount, netPay, salaryCost };
+  const halfPayAmount = round2((i.gross / 30) * 0.5 * (i.halfPayDays ?? 0));
+  const salaryCost = round2(proratedGross + overtimeAmount + i.bonusAmount - unpaidLeaveAmount - halfPayAmount);
+  const netPay = round2(salaryCost - i.advanceRecovery - i.otherDeductionAmount - (i.pensionEmployee ?? 0));
+  return { proratedGross, overtimeAmount, unpaidLeaveAmount, halfPayAmount, netPay, salaryCost };
 }

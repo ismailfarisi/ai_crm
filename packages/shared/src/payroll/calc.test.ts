@@ -21,7 +21,7 @@ describe('computeLine', () => {
   const base = { gross: 9000, basic: 6000, daysEmployed: 31, daysInMonth: 31, overtimeHours: 0, overtimeHoursPremium: 0, bonusAmount: 0, unpaidLeaveDays: 0, advanceRecovery: 0, otherDeductionAmount: 0 };
 
   it('full month, no extras', () => {
-    expect(computeLine(base)).toEqual({ proratedGross: 9000, overtimeAmount: 0, unpaidLeaveAmount: 0, netPay: 9000, salaryCost: 9000 });
+    expect(computeLine(base)).toEqual({ proratedGross: 9000, overtimeAmount: 0, unpaidLeaveAmount: 0, halfPayAmount: 0, netPay: 9000, salaryCost: 9000 });
   });
 
   it('prorates by calendar days', () => {
@@ -43,6 +43,18 @@ describe('computeLine', () => {
     const r = computeLine({ ...base, bonusAmount: 500, advanceRecovery: 1000, otherDeductionAmount: 200 });
     expect(r.netPay).toBe(8300);
     expect(r.salaryCost).toBe(9500);
+  });
+
+  it('half pay days cost half a day each, on gross ÷ 30', () => {
+    const r = computeLine({ ...base, halfPayDays: 4 });
+    expect(r.halfPayAmount).toBe(600);
+    expect(r.salaryCost).toBe(8400);
+  });
+
+  it('employee pension reduces net pay, not salary cost', () => {
+    const r = computeLine({ ...base, pensionEmployee: 990 });
+    expect(r.salaryCost).toBe(9000);
+    expect(r.netPay).toBe(8010);
   });
 });
 
