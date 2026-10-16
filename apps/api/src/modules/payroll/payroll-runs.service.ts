@@ -233,7 +233,7 @@ export class PayrollRunsService {
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       )
       .map((r) => this.toDto(r));
-    return { runs: sorted, openingGratuityCutover };
+    return { runs: sorted, openingGratuityCutover, openingLeaveCutover: null };
   }
 
   async get(tenantId: string, id: string): Promise<PayrollRunDto> {

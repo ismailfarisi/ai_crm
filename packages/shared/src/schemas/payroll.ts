@@ -1,9 +1,15 @@
 import { z } from 'zod';
 
-const optionalText = (max: number) =>
+export const optionalText = (max: number) =>
   z.string().trim().max(max).nullish().transform((v) => (v == null || v === '' ? null : v));
-const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
-const money = z.coerce.number().min(0).transform((n) => Math.round(n * 100) / 100);
+export const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
+export const money = z.coerce.number().min(0).transform((n) => Math.round(n * 100) / 100);
+
+/** A 9-digit bank routing code, blank becoming null. */
+export const routingCode = z.string().trim().nullish().transform((v) => (v ? v : null)).refine((v) => v === null || /^\d{9}$/.test(v), 'A routing code is 9 digits');
+
+/** Drops keys a partial schema left undefined, so an update only touches what was sent. */
+export const stripUndefined = <T extends object>(v: T): T => Object.fromEntries(Object.entries(v).filter(([, x]) => x !== undefined)) as T;
 
 const employeeFields = {
   firstName: z.string().trim().min(1, 'First name is required').max(80),
@@ -21,6 +27,11 @@ const employeeFields = {
   iban: z.string().nullish().transform((v) => (v == null ? null : v.replace(/\s+/g, '').toUpperCase() || null)),
   email: z.string().trim().email().nullish().or(z.literal('')).transform((v) => (v ? v : null)),
   phone: optionalText(40),
+  wpsPersonId: z.string().trim().nullish().transform((v) => (v ? v : null)).refine((v) => v === null || /^\d{14}$/.test(v), 'A WPS person ID is 14 digits'),
+  bankRoutingCode: routingCode,
+  pensionSchemeId: z.string().uuid().nullish().transform((v) => v ?? null),
+  annualLeaveDaysOverride: z.coerce.number().int().min(30).max(60).nullish().transform((v) => v ?? null),
+  probationEndDate: isoDay.nullish().transform((v) => v ?? null),
 };
 
 export const createEmployeeSchema = z
@@ -33,7 +44,7 @@ export const createEmployeeSchema = z
 export const updateEmployeeSchema = z
   .object(employeeFields)
   .partial()
-  .transform((v) => Object.fromEntries(Object.entries(v).filter(([, x]) => x !== undefined)) as Partial<CreateEmployeePayload>);
+  .transform((v) => stripUndefined(v) as Partial<CreateEmployeePayload>);
 
 export const createSalaryPackageSchema = z.object({
   effectiveFrom: isoDay,
@@ -58,8 +69,11 @@ export const updatePayrollLineSchema = z
     advanceRecovery: money.optional(),
     otherDeductionAmount: money.optional(),
     otherDeductionLabel: optionalText(80).optional(),
+    halfPayDays: z.coerce.number().min(0).max(31).optional(),
+    /** Only `false`: hand the leave fields back to the records. */
+    leaveOverridden: z.literal(false).optional(),
   })
-  .transform((v) => Object.fromEntries(Object.entries(v).filter(([, x]) => x !== undefined)) as typeof v);
+  .transform(stripUndefined);
 
 export const payPayrollRunSchema = z.object({
   method: z.enum(['BANK', 'CASH']),

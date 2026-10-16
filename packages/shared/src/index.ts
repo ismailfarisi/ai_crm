@@ -69,3 +69,5 @@ export * from './payroll/settlement';
 export * from './payroll/wps';
 export * from './schemas/payroll';
 export * from './payroll/types';
+export * from './schemas/payroll-compliance';
+export * from './payroll/compliance-types';

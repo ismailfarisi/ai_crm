@@ -61,3 +61,26 @@ describe('payroll schemas', () => {
     expect(() => gratuityAdjustmentSchema.parse({ amount: 0, note: 'x' })).toThrow();
   });
 });
+
+describe('employee compliance fields', () => {
+  const base = { firstName: 'A', lastName: 'B', joiningDate: '2024-01-01', paymentMethod: 'CASH' as const };
+  it('validates WPS person ID and routing code', () => {
+    expect(createEmployeeSchema.safeParse({ ...base, wpsPersonId: '123' }).success).toBe(false);
+    expect(createEmployeeSchema.safeParse({ ...base, bankRoutingCode: '12345' }).success).toBe(false);
+    const ok = createEmployeeSchema.parse({ ...base, wpsPersonId: '10000000000001', bankRoutingCode: '803320101', probationEndDate: '2024-06-30' });
+    expect(ok.wpsPersonId).toBe('10000000000001');
+    expect(ok.pensionSchemeId).toBeNull();
+    expect(ok.annualLeaveDaysOverride).toBeNull();
+  });
+  it('the update schema still applies no defaults', () => {
+    expect(updateEmployeeSchema.parse({ wpsPersonId: '10000000000001' })).toEqual({ wpsPersonId: '10000000000001' });
+  });
+});
+
+describe('updatePayrollLineSchema leave fields', () => {
+  it('accepts half pay days and a reset to automatic', () => {
+    expect(updatePayrollLineSchema.parse({ halfPayDays: 2 })).toEqual({ halfPayDays: 2 });
+    expect(updatePayrollLineSchema.parse({ leaveOverridden: false })).toEqual({ leaveOverridden: false });
+    expect(updatePayrollLineSchema.safeParse({ leaveOverridden: true }).success).toBe(false);
+  });
+});
