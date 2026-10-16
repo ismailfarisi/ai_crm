@@ -16,7 +16,9 @@ import {
   type LedgerRole,
   type Permission,
   type PayrollRunDto,
+  type PayPayrollRunPayload,
 } from '@saas/shared';
+import { FinanceAccount } from '../finance/entities/finance-account.entity';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
 import { LedgerService } from '../finance/ledger.service';
 import { baseCurrencyFor } from '../finance/fx';
@@ -360,6 +362,119 @@ export class PayrollPostingService {
           { id: run.id, tenantId },
           { status: 'VOIDED', voidJournalEntryId: voidEntryId },
         );
+    });
+
+    return this.runs.get(tenantId, runId);
+  }
+
+  async pay(
+    tenantId: string,
+    runId: string,
+    actor: PayrollActor,
+    input: PayPayrollRunPayload,
+  ): Promise<PayrollRunDto> {
+    if (!actor.permissions.includes(PERMISSIONS.PAYROLL_PAY)) {
+      throw new ForbiddenException(
+        'You do not have permission to pay payroll runs.',
+      );
+    }
+
+    await this.dataSource.transaction(async (manager) => {
+      const run = await lockPayrollRun(manager, tenantId, runId);
+      if (run.status === 'PAID') {
+        throw new ConflictException('Nothing left to pay');
+      }
+      if (run.status !== 'APPROVED' && run.status !== 'PARTIALLY_PAID') {
+        throw new ConflictException(
+          `Payroll run ${run.runNumber} is ${run.status.toLowerCase().replace(/_/g, ' ')}; only an approved run can be paid`,
+        );
+      }
+      const bank = input.method === 'BANK';
+      const label = bank ? 'Bank' : 'Cash';
+      if (bank ? run.bankPaidAt : run.cashPaidAt) {
+        throw new ConflictException(
+          `${label} payees on ${run.runNumber} are already paid`,
+        );
+      }
+
+      const lineRepo = manager.getRepository(PayrollRunLine);
+      const lines = await lineRepo.find({ where: { tenantId, runId: run.id } });
+      const paidAt = input.paidAt ?? new Date();
+      const mine = lines.filter(
+        (l) => l.paymentMethod === input.method && !l.paidAt,
+      );
+      const total = round2(mine.reduce((s, l) => s + l.netPay, 0));
+
+      if (mine.length && total > 0) {
+        const account = await manager
+          .getRepository(FinanceAccount)
+          .findOne({ where: { id: input.financeAccountId, tenantId } });
+        if (!account) throw new NotFoundException('Account not found');
+        const base = await baseCurrencyFor(manager, tenantId);
+        if ((account.currency ?? '').trim().toUpperCase() !== base) {
+          throw new BadRequestException(`Pay payroll from a ${base} account`);
+        }
+
+        await manager.query(
+          `UPDATE "finance_accounts" SET "balance" = "balance" - $1, "updatedAt" = now()
+           WHERE "id" = $2 AND "tenantId" = $3`,
+          [total, account.id, tenantId],
+        );
+
+        const description = `Payroll ${run.runNumber} (${periodLabel(run.period)}) paid by ${label.toLowerCase()}`;
+        const resolved = await this.ledger.resolveLines(
+          tenantId,
+          [
+            {
+              role: LEDGER_ROLES.SALARIES_PAYABLE,
+              accountName: 'Salaries payable',
+              debit: total,
+              credit: 0,
+              description,
+            },
+            {
+              financeAccountId: account.id,
+              accountName: account.name,
+              debit: 0,
+              credit: total,
+              description,
+            },
+          ],
+          manager,
+        );
+        const entries = manager.getRepository(JournalEntry);
+        await entries.save(
+          entries.create({
+            tenantId,
+            entryNumber: `JE-${run.runNumber}-${input.method}`,
+            referenceType: 'PAYROLL',
+            referenceId: run.id,
+            entryDate: paidAt,
+            totalAmount: total,
+            currency: base,
+            fxRate: 1,
+            lines: resolved,
+          }),
+        );
+      }
+
+      if (mine.length) {
+        await lineRepo.update(
+          { tenantId, runId: run.id, paymentMethod: input.method },
+          { paidAt },
+        );
+      }
+      const remaining = lines.some(
+        (l) => l.paymentMethod !== input.method && !l.paidAt,
+      );
+      await manager.getRepository(PayrollRun).update(
+        { id: run.id, tenantId },
+        {
+          status: remaining ? 'PARTIALLY_PAID' : 'PAID',
+          ...(bank ? { bankPaidAt: paidAt } : { cashPaidAt: paidAt }),
+          updatedAt: new Date(),
+        },
+      );
     });
 
     return this.runs.get(tenantId, runId);

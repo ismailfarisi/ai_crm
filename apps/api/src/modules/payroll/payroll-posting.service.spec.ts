@@ -2,7 +2,9 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  NotFoundException,
 } from '@nestjs/common';
+import { FinanceAccount } from '../finance/entities/finance-account.entity';
 import { gratuityEntitlement, LEDGER_ROLES, PERMISSIONS } from '@saas/shared';
 import { Organization } from '../organizations/entities/organization.entity';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
@@ -598,6 +600,173 @@ describe('PayrollPostingService', () => {
       } finally {
         jest.useRealTimers();
       }
+    });
+  });
+
+  describe('pay', () => {
+    const PAYER = {
+      userId: ACTOR,
+      permissions: [PERMISSIONS.PAYROLL_APPROVE, PERMISSIONS.PAYROLL_PAY],
+    };
+    const BANK_ACCT = '44444444-4444-4444-8444-444444444444';
+    const CASH_ACCT = '55555555-5555-4555-8555-555555555555';
+    const withAccounts = (ctx: Ctx) => {
+      const accts = repo([
+        { id: BANK_ACCT, tenantId: T, name: 'ENBD', currency: 'AED' },
+        { id: CASH_ACCT, tenantId: T, name: 'Petty cash', currency: 'AED' },
+        { id: 'usd', tenantId: T, name: 'USD acct', currency: 'USD' },
+      ]);
+      ctx.manager.getRepository = ((orig) => (e: any) =>
+        e === FinanceAccount ? accts : orig(e))(ctx.manager.getRepository);
+    };
+    const approved = async (ctx: Ctx) => {
+      withAccounts(ctx);
+      const run = await draft(ctx, '2026-10');
+      await ctx.service.approve(T, run.id, APPROVER);
+      return run;
+    };
+    const decrements = (ctx: Ctx) =>
+      ctx.manager.query.mock.calls.filter(([sql]: any) =>
+        /UPDATE "finance_accounts"/.test(sql),
+      );
+
+    it('bank then cash: PARTIALLY_PAID then PAID, two balanced entries, two decrements', async () => {
+      const ctx = setup();
+      const run = await approved(ctx);
+      ctx.runs.save.mockClear();
+      const first = await ctx.service.pay(T, run.id, PAYER, {
+        method: 'BANK',
+        financeAccountId: BANK_ACCT,
+      });
+      expect(first.status).toBe('PARTIALLY_PAID');
+      const bankEntry = ctx.entries.rows.find(
+        (e) => e.entryNumber === `JE-${run.runNumber}-BANK`,
+      );
+      expect(bankEntry.referenceType).toBe('PAYROLL');
+      expect(bankEntry.referenceId).toBe(run.id);
+      expect(balanced(bankEntry)).toBe(true);
+      expect(bankEntry.lines[0]).toMatchObject({
+        role: LEDGER_ROLES.SALARIES_PAYABLE,
+        debit: 8500,
+      });
+      expect(bankEntry.lines[1]).toMatchObject({
+        financeAccountId: BANK_ACCT,
+        credit: 8500,
+      });
+      expect(
+        ctx.lines.rows.filter((l) => l.paymentMethod === 'BANK')[0].paidAt,
+      ).toBeInstanceOf(Date);
+      expect(
+        ctx.lines.rows.filter((l) => l.paymentMethod === 'CASH')[0].paidAt,
+      ).toBeFalsy();
+
+      const second = await ctx.service.pay(T, run.id, PAYER, {
+        method: 'CASH',
+        financeAccountId: CASH_ACCT,
+      });
+      expect(second.status).toBe('PAID');
+      const cashEntry = ctx.entries.rows.find(
+        (e) => e.entryNumber === `JE-${run.runNumber}-CASH`,
+      );
+      expect(balanced(cashEntry)).toBe(true);
+      expect(cashEntry.totalAmount).toBe(1600);
+      expect(decrements(ctx).map(([, p]: any) => p)).toEqual([
+        [8500, BANK_ACCT, T],
+        [1600, CASH_ACCT, T],
+      ]);
+      expect(ctx.runs.save).not.toHaveBeenCalled();
+      expect(ctx.runs.rows[0].bankPaidAt).toBeInstanceOf(Date);
+      expect(ctx.runs.rows[0].cashPaidAt).toBeInstanceOf(Date);
+    });
+
+    it('paying bank twice is 409 and posts nothing more', async () => {
+      const ctx = setup();
+      const run = await approved(ctx);
+      const body = { method: 'BANK' as const, financeAccountId: BANK_ACCT };
+      await ctx.service.pay(T, run.id, PAYER, body);
+      const err = await ctx.service.pay(T, run.id, PAYER, body).catch((e) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect(err.message).toBe(
+        `Bank payees on ${run.runNumber} are already paid`,
+      );
+      expect(decrements(ctx)).toHaveLength(1);
+    });
+
+    it('a bank-only run paid by bank is PAID, and a later cash call is 409 "Nothing left to pay"', async () => {
+      const ctx = setup();
+      ctx.employees.rows.find((e) => e.id === 'b').paymentMethod = 'BANK';
+      const run = await approved(ctx);
+      const out = await ctx.service.pay(T, run.id, PAYER, {
+        method: 'BANK',
+        financeAccountId: BANK_ACCT,
+      });
+      expect(out.status).toBe('PAID');
+      const err = await ctx.service
+        .pay(T, run.id, PAYER, { method: 'CASH', financeAccountId: CASH_ACCT })
+        .catch((e) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect(err.message).toBe('Nothing left to pay');
+    });
+
+    it('a method with no lines is marked paid with no journal and status recomputed', async () => {
+      const ctx = setup();
+      const run = await approved(ctx);
+      ctx.lines.rows.splice(
+        ctx.lines.rows.findIndex((l) => l.paymentMethod === 'CASH'),
+        1,
+      );
+      const out = await ctx.service.pay(T, run.id, PAYER, {
+        method: 'CASH',
+        financeAccountId: CASH_ACCT,
+      });
+      expect(ctx.runs.rows[0].cashPaidAt).toBeInstanceOf(Date);
+      expect(out.status).toBe('PARTIALLY_PAID');
+      expect(ctx.entries.rows).toHaveLength(1);
+      expect(decrements(ctx)).toHaveLength(0);
+      const done = await ctx.service.pay(T, run.id, PAYER, {
+        method: 'BANK',
+        financeAccountId: BANK_ACCT,
+      });
+      expect(done.status).toBe('PAID');
+    });
+
+    it('refuses a DRAFT run (409), a foreign-currency account (400), an unknown account (404) and no payroll:pay (403)', async () => {
+      const ctx = setup();
+      withAccounts(ctx);
+      const run = await draft(ctx, '2026-10');
+      const body = { method: 'BANK' as const, financeAccountId: BANK_ACCT };
+      await expect(
+        ctx.service.pay(T, run.id, PAYER, body),
+      ).rejects.toBeInstanceOf(ConflictException);
+      await ctx.service.approve(T, run.id, APPROVER);
+      await expect(
+        ctx.service.pay(T, run.id, APPROVER, body),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      const err = await ctx.service
+        .pay(T, run.id, PAYER, { ...body, financeAccountId: 'usd' })
+        .catch((e) => e);
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect(err.message).toBe('Pay payroll from a AED account');
+      await expect(
+        ctx.service.pay(T, run.id, PAYER, { ...body, financeAccountId: 'nope' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(decrements(ctx)).toHaveLength(0);
+      expect(ctx.entries.rows).toHaveLength(1);
+    });
+
+    it('locks the run and writes it by targeted update', async () => {
+      const ctx = setup();
+      const run = await approved(ctx);
+      ctx.runs.locks.length = 0;
+      await ctx.service.pay(T, run.id, PAYER, {
+        method: 'BANK',
+        financeAccountId: BANK_ACCT,
+      });
+      expect(ctx.runs.locks).toContain('pessimistic_write');
+      expect(ctx.runs.update).toHaveBeenLastCalledWith(
+        { id: run.id, tenantId: T },
+        expect.objectContaining({ status: 'PARTIALLY_PAID' }),
+      );
     });
   });
 

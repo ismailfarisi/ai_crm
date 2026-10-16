@@ -13,9 +13,11 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   createPayrollRunSchema,
+  payPayrollRunSchema,
   PERMISSIONS,
   updatePayrollLineSchema,
   type CreatePayrollRunPayload,
+  type PayPayrollRunPayload,
   type PayrollRunDto,
   type PayslipDto,
   type UpdatePayrollLinePayload,
@@ -128,5 +130,22 @@ export class PayrollRunsController {
       userId: user.id,
       permissions: user.permissions,
     });
+  }
+
+  @Post(':id/pay')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PERMISSIONS.PAYROLL_PAY)
+  @ApiOperation({ summary: 'Pay the bank or cash payees of an approved run' })
+  pay(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(zodBody(payPayrollRunSchema)) body: PayPayrollRunPayload,
+  ): Promise<PayrollRunDto> {
+    return this.posting.pay(
+      user.organizationId,
+      id,
+      { userId: user.id, permissions: user.permissions },
+      body,
+    );
   }
 }
