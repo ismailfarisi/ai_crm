@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import type { PayrollRunLineDto } from '@saas/shared';
-import { PayrollLineEditor, EDIT_DEBOUNCE_MS } from './payroll-line-editor';
+import { PayrollLineEditor, EDIT_DEBOUNCE_MS, FLAG_LABELS } from './payroll-line-editor';
 
 const mutateAsync = vi.fn();
 vi.mock('@/hooks/use-payroll', () => ({ useUpdatePayrollLine: () => ({ mutateAsync }) }));
@@ -68,5 +68,40 @@ describe('PayrollLineEditor', () => {
     expect(mutateAsync).toHaveBeenCalledTimes(1);
     expect(mutateAsync.mock.calls[0][0].input).toEqual({ bonusAmount: 0, bonusLabel: null });
     expect(screen.getByLabelText('Bonus for Amina Khan')).toHaveValue(null);
+  });
+
+  it('shows the auto badge until a leave field is edited, and flag labels for the new flags', async () => {
+    mutateAsync.mockResolvedValue({});
+    render(
+      <table>
+        <tbody>
+          <PayrollLineEditor runId="r1" line={{ ...line, flags: ['NATIONAL_NO_PENSION_SCHEME', 'LEAVE_IN_ADVANCE'] }} editable />
+        </tbody>
+      </table>,
+    );
+    expect(screen.getAllByText('auto').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /use leave records/i })).toBeNull();
+    expect(screen.getByText('No pension scheme')).toBeInTheDocument();
+    expect(screen.getByText('Leave in advance')).toBeInTheDocument();
+    expect(FLAG_LABELS.NATIONAL_PENSION_NOT_HANDLED).toBeUndefined();
+    fireEvent.change(screen.getByLabelText('Half-pay days for Amina Khan'), { target: { value: '3' } });
+    expect(screen.queryByText('auto')).toBeNull();
+    await act(async () => { vi.advanceTimersByTime(EDIT_DEBOUNCE_MS + 10); });
+    expect(mutateAsync.mock.calls[0][0].input).toEqual({ halfPayDays: 3 });
+  });
+
+  it('Use leave records sends leaveOverridden false through the serialised save', async () => {
+    mutateAsync.mockResolvedValue({});
+    render(
+      <table>
+        <tbody>
+          <PayrollLineEditor runId="r1" line={{ ...line, unpaidLeaveDays: 2, leaveOverridden: true }} editable />
+        </tbody>
+      </table>,
+    );
+    expect(screen.queryByText('auto')).toBeNull();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /use leave records/i })); });
+    expect(mutateAsync).toHaveBeenCalledTimes(1);
+    expect(mutateAsync.mock.calls[0][0].input).toEqual({ leaveOverridden: false });
   });
 });

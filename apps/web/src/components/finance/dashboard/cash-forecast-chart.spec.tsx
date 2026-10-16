@@ -1,12 +1,12 @@
 import React from 'react';
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { CashForecastChart } from './cash-forecast-chart';
 
 const forecast = {
   baseCurrency: 'AED',
   months: [
-    { month: '2026-11', opening: 1000, inflows: 500, billsOut: 200, recurringOut: 100, payrollOut: 3000, pensionOut: 0, closing: 1200 },
+    { month: '2026-11', opening: 1000, inflows: 500, billsOut: 200, recurringOut: 100, payrollOut: 3000, pensionOut: 250, closing: 1200 },
     { month: '2026-12', opening: 1200, inflows: 0, billsOut: 0, recurringOut: 5000, payrollOut: 0, pensionOut: 0, closing: -3800 },
   ],
 };
@@ -22,6 +22,16 @@ describe('CashForecastChart', () => {
     render(<CashForecastChart forecast={forecast} />);
     expect(document.getElementById('cash-forecast-desc')?.textContent).toMatch(/payroll/i);
     expect(screen.getByText('Payroll')).toBeTruthy();
+  });
+
+  it('mentions pension in the summary and legend, and counts it as a forecast movement', () => {
+    render(<CashForecastChart forecast={forecast} />);
+    expect(document.getElementById('cash-forecast-desc')?.textContent).toMatch(/pension/i);
+    expect(screen.getByText('Pension')).toBeTruthy();
+    cleanup();
+    const onlyPension = { baseCurrency: 'AED', months: [{ ...forecast.months[0], inflows: 0, billsOut: 0, recurringOut: 0, payrollOut: 0, closing: 0 }] };
+    render(<CashForecastChart forecast={onlyPension} />);
+    expect(screen.queryByTestId('cash-forecast-empty')).toBeNull();
   });
 
   it('shows an empty state with no movements', () => {

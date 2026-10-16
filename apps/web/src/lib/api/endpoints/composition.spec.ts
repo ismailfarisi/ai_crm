@@ -93,7 +93,7 @@ const QUERY_KEYS = [
   'savedViews', 'savedView', 'customObjects',
   'assistantConversations', 'assistantConversation',
   'employees', 'employee', 'employeePackages', 'employeeAdvances', 'employeeGratuity', 'employeeLeave', 'payrollSettings', 'pensionSchemes',
-  'payrollRuns', 'payrollRun', 'payslip', 'openingGratuityPreview',
+  'payrollRuns', 'payrollRun', 'payslip', 'openingGratuityPreview', 'openingLeavePreview', 'pensionPeriod',
 ];
 
 describe('api surface composition', () => {

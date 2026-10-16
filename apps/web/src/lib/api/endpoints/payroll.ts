@@ -24,6 +24,12 @@ import type {
   PayrollRunsListDto,
   PayslipDto,
   PostOpeningGratuityPayload,
+  OpeningLeavePreviewDto,
+  PensionPeriodDto,
+  PensionRemittanceDto,
+  PostOpeningLeavePayload,
+  RemitPensionPayload,
+  WpsSifDto,
   UpdatePayrollLinePayload,
   CreatePayrollRunPayload,
   RecordAdvancePayload,
@@ -58,6 +64,19 @@ export const payrollEndpoints = {
         method: 'POST',
         body: cutoverDate ? { cutoverDate } : {},
       }),
+    runSif: (id: string) => apiFetch<WpsSifDto>(`/payroll-runs/${id}/wps-sif`, { method: 'POST' }),
+    pensionPeriod: (period: string) => apiFetch<PensionPeriodDto>(`/payroll/pension/${period}`),
+    remitPension: (period: string, input: RemitPensionPayload) =>
+      apiFetch<PensionRemittanceDto>(`/payroll/pension/${period}/remit`, { method: 'POST', body: input }),
+    voidPension: (period: string) =>
+      apiFetch<PensionRemittanceDto>(`/payroll/pension/${period}/void`, { method: 'POST' }),
+    previewOpeningLeave: (cutoverDate?: string) =>
+      apiFetch<OpeningLeavePreviewDto>('/payroll/opening-leave/preview', {
+        method: 'POST',
+        body: cutoverDate ? { cutoverDate } : {},
+      }),
+    postOpeningLeave: (input: PostOpeningLeavePayload) =>
+      apiFetch<unknown>('/payroll/opening-leave', { method: 'POST', body: input }),
     settings: () => apiFetch<PayrollSettingsDto>('/payroll/settings'),
     saveSettings: (input: PayrollSettingsPayload) =>
       apiFetch<PayrollSettingsDto>('/payroll/settings', { method: 'PUT', body: input }),
@@ -113,5 +132,7 @@ export const payrollKeys = {
   payrollRuns: () => ['payroll', 'runs'] as const,
   payrollRun: (id: string) => ['payroll', 'run', id] as const,
   payslip: (runId: string, lineId: string) => ['payroll', 'payslip', runId, lineId] as const,
+  pensionPeriod: (period: string) => ['payroll', 'pension', period] as const,
+  openingLeavePreview: (cutover?: string) => ['payroll', 'opening-leave', cutover ?? ''] as const,
   openingGratuityPreview: (cutover?: string) => ['payroll', 'opening-gratuity', cutover ?? ''] as const,
 };

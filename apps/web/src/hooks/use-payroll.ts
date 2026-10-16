@@ -8,6 +8,8 @@ import type {
   CreateSalaryPackagePayload,
   PayPayrollRunPayload,
   PostOpeningGratuityPayload,
+  PostOpeningLeavePayload,
+  RemitPensionPayload,
   UpdatePayrollLinePayload,
   GratuityAdjustmentPayload,
   CreatePensionSchemePayload,
@@ -408,5 +410,68 @@ export function useAdjustLeave() {
       toast.success('Leave balance adjusted');
     },
     onError: (error) => toast.error(describeServer(error, 'Could not adjust the leave balance')),
+  });
+}
+
+// ── SIF, pension remittance and opening leave ─────────────────────────────
+
+/** The caller downloads the file; the hook only turns a refusal into a toast. */
+export function useRunSif() {
+  return useMutation({
+    mutationFn: (id: string) => api.payroll.runSif(id),
+    onError: (error) => toast.error(describeServer(error, 'Could not build the SIF file')),
+  });
+}
+
+export function usePensionPeriod(period: string | null, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.pensionPeriod(period ?? ''),
+    queryFn: () => api.payroll.pensionPeriod(period as string),
+    enabled: Boolean(period) && enabled,
+  });
+}
+
+export function useRemitPension() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ period, input }: { period: string; input: RemitPensionPayload }) =>
+      api.payroll.remitPension(period, input),
+    onSuccess: async () => {
+      await invalidatePayroll(queryClient);
+      toast.success('Pension remittance recorded');
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not record the remittance')),
+  });
+}
+
+export function useVoidPension() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (period: string) => api.payroll.voidPension(period),
+    onSuccess: async () => {
+      await invalidatePayroll(queryClient);
+      toast.success('Pension remittance voided');
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not void the remittance')),
+  });
+}
+
+export function useOpeningLeavePreview(cutover?: string) {
+  return useQuery({
+    queryKey: queryKeys.openingLeavePreview(cutover),
+    queryFn: () => api.payroll.previewOpeningLeave(cutover),
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function usePostOpeningLeave() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: PostOpeningLeavePayload) => api.payroll.postOpeningLeave(input),
+    onSuccess: async () => {
+      await invalidatePayroll(queryClient);
+      toast.success('Opening leave balances posted');
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not post the opening leave balances')),
   });
 }

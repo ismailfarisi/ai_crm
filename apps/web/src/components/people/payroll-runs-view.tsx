@@ -82,6 +82,7 @@ export function PayrollRunsView() {
   const defaultPeriod = defaultNextPeriod(runs, cutover);
   // Once a run is posted its employees are accrued, and an opening for them would be
   // refused; the prompt is only useful before go-live.
+  const leaveCutover = data?.openingLeaveCutover ?? null;
   const anyPosted = runs.some((r) => POSTED_STATUSES.includes(r.status));
 
   return (
@@ -109,6 +110,20 @@ export function PayrollRunsView() {
                 Set them up
               </Link>{' '}
               before your first run.
+            </Alert>
+          </div>
+        </Can>
+      )}
+
+      {data && leaveCutover === null && (
+        <Can permission={PERMISSIONS.PAYROLL_MANAGE}>
+          <div data-testid="opening-leave-prompt">
+            <Alert tone="info">
+              Leave balances haven&apos;t been carried over yet.{' '}
+              <Link href="/people/payroll/opening-leave" className="font-medium underline">
+                Set up opening leave balances
+              </Link>
+              .
             </Alert>
           </div>
         </Can>
