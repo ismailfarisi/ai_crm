@@ -16,6 +16,9 @@ import {
 } from '../payroll/entities/payroll-run.entity';
 import { TimesheetEntry } from './entities/timesheet-entry.entity';
 import { WorkOrderLabour } from './entities/work-order-labour.entity';
+import { JobCostService } from './job-cost.service';
+import { TimesheetsController } from './timesheets.controller';
+import { TimesheetsService } from './timesheets.service';
 
 /** Timesheets, labour absorbed by payroll, and the actual labour cost of jobs. */
 @Module({
@@ -36,8 +39,9 @@ import { WorkOrderLabour } from './entities/work-order-labour.entity';
     // LedgerService posts the labour journals.
     FinanceModule,
   ],
-  controllers: [],
-  providers: [],
-  exports: [],
+  controllers: [TimesheetsController],
+  providers: [TimesheetsService, JobCostService],
+  // Production writes the clock's entries (recordClock) and recomputes jobs.
+  exports: [TimesheetsService, JobCostService],
 })
 export class JobCostingModule {}
