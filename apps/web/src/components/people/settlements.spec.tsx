@@ -41,12 +41,13 @@ const approve = vi.fn();
 const refresh = vi.fn();
 const sif = vi.fn();
 const create = vi.fn();
+const update = vi.fn();
 vi.mock('@/hooks/use-payroll', () => ({
   useSettlements: () => ({ data: list, isPending: false, isError: false, error: null }),
   useSettlement: () => ({ data: settlement, isPending: false, isError: false, error: null, isFetching: false }),
   useEmployees: () => ({ data: leavers }),
   useCreateSettlement: () => ({ mutateAsync: (v: unknown) => create(v), isPending: false }),
-  useUpdateSettlement: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateSettlement: () => ({ mutateAsync: (v: unknown) => update(v), isPending: false }),
   useRefreshSettlement: () => ({ mutate: (id: string) => refresh(id), isPending: false }),
   useDeleteSettlement: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useApproveSettlement: () => ({ mutateAsync: (id: string) => approve(id), isPending: false }),
@@ -66,6 +67,7 @@ beforeEach(() => {
   refresh.mockReset();
   sif.mockReset();
   create.mockReset();
+  update.mockReset();
   push.mockReset();
   HTMLDialogElement.prototype.showModal ||= function (this: HTMLDialogElement) {
     this.open = true;
@@ -215,6 +217,41 @@ describe('SettlementDetail', () => {
     render(<SettlementDetail id="s1" />);
     expect(btn(/export sif/i)).toBeDisabled();
     expect(screen.getByTestId('sif-disabled-reason')).toHaveTextContent('Switch on WPS in payroll settings');
+  });
+
+  it('saves a cleared notice days and advance recovery as 0', async () => {
+    granted = new Set(['payroll:read', 'payroll:manage']);
+    update.mockResolvedValue({});
+    render(<SettlementDetail id="s1" />);
+    fireEvent.change(screen.getByLabelText('Notice days'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Advance recovery'), { target: { value: '' } });
+    await act(async () => {
+      fireEvent.submit(screen.getByTestId('settlement-form'));
+    });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update.mock.calls[0][0]).toMatchObject({ id: 's1', input: { noticeDays: 0, advanceRecovery: 0 } });
+  });
+
+  it('refuses to save a cleared encashment field and says how to restore it', async () => {
+    granted = new Set(['payroll:read', 'payroll:manage']);
+    render(<SettlementDetail id="s1" />);
+    fireEvent.change(screen.getByLabelText('Leave encashment days'), { target: { value: '' } });
+    await act(async () => {
+      fireEvent.submit(screen.getByTestId('settlement-form'));
+    });
+    expect(update).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(/enter the days, or use refresh/i);
+  });
+
+  it('blocks Approve while the form has unsaved changes', async () => {
+    granted = new Set(['payroll:read', 'payroll:manage', 'payroll:approve']);
+    render(<SettlementDetail id="s1" />);
+    fireEvent.change(screen.getByLabelText('Notice days'), { target: { value: '3' } });
+    await act(async () => {
+      fireEvent.click(btn(/^approve$/i)!);
+    });
+    expect(screen.getByRole('button', { name: /approve settlement/i, hidden: true })).toBeDisabled();
+    expect(screen.getByTestId('confirm-blocked')).toHaveTextContent(/unsaved changes/i);
   });
 
   it('links to the statement', () => {

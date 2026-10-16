@@ -37,6 +37,8 @@ import { downloadSif } from './download-sif';
 import { SETTLEMENT_REASON_LABELS, money, serviceLabel } from './payroll-format';
 
 const optionalNumber = (v: unknown) => (v === '' || v == null || Number.isNaN(v) ? undefined : Number(v));
+/** A cleared notice or recovery field means none, which the server only learns from an explicit 0. */
+const zeroIfCleared = (v: unknown) => optionalNumber(v) ?? 0;
 
 const NOTICE_OPTIONS = [
   { value: 'PAY', label: 'Paid to the employee' },
@@ -103,6 +105,10 @@ function SettlementEditor({ settlement, onDirty }: { settlement: SettlementDto; 
       noValidate
       className="space-y-4"
       onSubmit={form.handleSubmit(async (values) => {
+        if (!negativeBalance && values.leaveEncashmentDays === undefined) {
+          form.setError('leaveEncashmentDays', { message: 'Enter the days, or use Refresh to restore the computed figure' });
+          return;
+        }
         setError(null);
         try {
           await update.mutateAsync({ id: settlement.id, input: values });
@@ -127,7 +133,7 @@ function SettlementEditor({ settlement, onDirty }: { settlement: SettlementDto; 
           label="Notice days"
           type="number"
           step="0.01"
-          {...form.register('noticeDays', { setValueAs: optionalNumber })}
+          {...form.register('noticeDays', { setValueAs: zeroIfCleared })}
           error={errors.noticeDays?.message}
         />
         <Select
@@ -141,7 +147,7 @@ function SettlementEditor({ settlement, onDirty }: { settlement: SettlementDto; 
           type="number"
           step="0.01"
           hint="Recovered from the settlement, up to what is outstanding."
-          {...form.register('advanceRecovery', { setValueAs: optionalNumber })}
+          {...form.register('advanceRecovery', { setValueAs: zeroIfCleared })}
           error={errors.advanceRecovery?.message}
         />
       </div>
