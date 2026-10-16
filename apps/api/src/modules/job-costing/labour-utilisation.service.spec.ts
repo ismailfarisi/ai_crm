@@ -1,7 +1,8 @@
 import { RequestMethod } from '@nestjs/common';
 import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { PERMISSIONS } from '@saas/shared';
-import { PERMISSIONS_KEY } from '@/common/decorators';
+import { PERMISSIONS_KEY, PERMISSIONS_MODE_KEY } from '@/common/decorators';
+import { POSTED_RUN_STATUSES } from '../payroll/advances.service';
 import { Employee } from '../payroll/entities/employee.entity';
 import { PayrollSettings } from '../payroll/entities/payroll-settings.entity';
 import {
@@ -167,6 +168,7 @@ describe('LabourUtilisationService.forPeriod', () => {
           employeeNumber: 'E-001',
           firstName: 'Amal',
           lastName: 'One',
+          status: 'ACTIVE',
           joiningDate: '2024-01-01',
           leavingDate: null,
         },
@@ -176,6 +178,7 @@ describe('LabourUtilisationService.forPeriod', () => {
           employeeNumber: 'E-002',
           firstName: 'Bilal',
           lastName: 'Two',
+          status: 'ACTIVE',
           joiningDate: '2026-06-16',
           leavingDate: null,
         },
@@ -185,14 +188,46 @@ describe('LabourUtilisationService.forPeriod', () => {
           employeeNumber: 'E-003',
           firstName: 'Cara',
           lastName: 'Three',
+          status: 'ACTIVE',
           joiningDate: '2023-01-01',
           leavingDate: '2026-03-31',
+        },
+        {
+          // On hold, no hours: payroll would not run them.
+          id: 'e4',
+          employeeNumber: 'E-004',
+          firstName: 'Dina',
+          lastName: 'Four',
+          status: 'ON_HOLD',
+          joiningDate: '2024-01-01',
+          leavingDate: null,
+        },
+        {
+          // On hold but with hours: their time must show.
+          id: 'e5',
+          employeeNumber: 'E-005',
+          firstName: 'Essa',
+          lastName: 'Five',
+          status: 'ON_HOLD',
+          joiningDate: '2024-01-01',
+          leavingDate: null,
+        },
+        {
+          // LEFT with no leaving date, no hours: excluded.
+          id: 'e6',
+          employeeNumber: 'E-006',
+          firstName: 'Fadi',
+          lastName: 'Six',
+          status: 'LEFT',
+          joiningDate: '2024-01-01',
+          leavingDate: null,
         },
       ],
       entries: [
         direct('e1', 100, 'wo-live'),
         direct('e1', 20, 'wo-cancelled'),
         indirect('e1', 8, 'CLEANING'),
+        indirect('e5', 6, 'IDLE'),
       ],
       workOrders: [{ id: 'wo-cancelled', status: 'CANCELLED' }],
       rates: { e1: 20, e2: 10 },
@@ -204,8 +239,10 @@ describe('LabourUtilisationService.forPeriod', () => {
     expect(report.rows.map((r) => r.employeeNumber)).toEqual([
       'E-001',
       'E-002',
+      'E-005',
     ]);
-    const [a, b] = report.rows;
+    const [a, b, c] = report.rows;
+    expect(c.indirectHours.IDLE).toBe(6);
     expect(a).toMatchObject({
       standardHours: 208,
       directHours: 120,
@@ -223,12 +260,22 @@ describe('LabourUtilisationService.forPeriod', () => {
       unloggedHours: 104,
     });
     expect(report.totals).toMatchObject({
-      standardHours: 312,
+      standardHours: 520, // 208 + 104 + 208 (E-005, on hold, has hours)
       cost: 5200,
       absorbed: 2000,
       unabsorbed: 3200,
     });
     for (const w of wheres) expect(w.where.tenantId).toBe(T);
+  });
+
+  it('only treats APPROVED, PARTIALLY_PAID and PAID runs as posted', async () => {
+    const { service, wheres } = harness({});
+    await service.forPeriod(T, '2026-06');
+    const runQuery = wheres.find((w) => w.entity === PayrollRun)!;
+    expect((runQuery.where.status as { value: string[] }).value).toEqual([
+      ...POSTED_RUN_STATUSES,
+    ]);
+    expect(runQuery.where.period).toBe('2026-06');
   });
 });
 
@@ -249,6 +296,7 @@ describe('LabourUtilisationController', () => {
       PERMISSIONS.FINANCE_READ,
       PERMISSIONS.PAYROLL_READ,
     ]);
+    expect(Reflect.getMetadata(PERMISSIONS_MODE_KEY, handler)).toBe('all');
   });
 
   it('passes the caller tenant and period to the service', async () => {

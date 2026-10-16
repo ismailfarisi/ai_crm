@@ -169,7 +169,11 @@ export class LabourUtilisationService {
         leavingDate: emp.leavingDate,
       });
       const mine = byEmployee.get(emp.id) ?? [];
-      if (days <= 0 && !mine.length) continue;
+      // The employees payroll would run (payroll-runs.service `eligible`), plus
+      // anyone with hours in the month, so logged time always shows.
+      const payrollRuns =
+        emp.status === 'ACTIVE' || (emp.status === 'LEFT' && !!emp.leavingDate);
+      if (!(payrollRuns && days > 0) && !mine.length) continue;
       const standard = round2((Math.max(days, 0) / daysInMonth) * monthlyHours);
       const rate = await this.jobCost.estimatedRate(
         manager,
