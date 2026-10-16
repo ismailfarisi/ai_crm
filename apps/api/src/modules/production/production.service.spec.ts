@@ -76,7 +76,7 @@ function makeWorld() {
     getRepository: (entity: { name: string }) => repo(entity.name),
     query: async () => [{ current_value: ++sequence }],
   };
-  const dataSource: any = { transaction: (cb: any) => cb(manager) };
+  const dataSource: any = { manager, transaction: (cb: any) => cb(manager) };
 
   const ledger = {
     resolveLines: jest.fn(async (_t: string, lines: any[]) =>
@@ -168,6 +168,19 @@ function makeWorld() {
     })),
   };
 
+  // The labour panel is JobCostService's; here it only has to arrive on the DTO.
+  const jobCost = {
+    breakdown: jest.fn(async () => ({
+      actual: 20,
+      provisional: 0,
+      unlinked: 0,
+      total: 20,
+      unlinkedHours: 0,
+      status: 'ACTUAL',
+      byEmployee: [],
+    })),
+  };
+
   const service = new ProductionService(
     repo('WorkOrder') as any,
     repo('WorkOrderOperation') as any,
@@ -180,6 +193,7 @@ function makeWorld() {
     inventory as any,
     ledger as any,
     dataSource,
+    jobCost as any,
   );
 
   tables.Quote.push({
@@ -225,7 +239,7 @@ function makeWorld() {
     },
   );
 
-  return { service, tables, stock, inventory, ledger, costing };
+  return { service, tables, stock, inventory, ledger, costing, jobCost };
 }
 
 async function planned(w: ReturnType<typeof makeWorld>) {
@@ -289,6 +303,43 @@ describe('ProductionService.createFromSalesOrder', () => {
     expect(again.skipped.map((s) => s.reason)).toContain(
       'Already has a work order',
     );
+  });
+});
+
+describe('ProductionService reading', () => {
+  it('get carries the labour panel, with the caller’s cost and pay visibility', async () => {
+    const w = makeWorld();
+    const { wo } = await planned(w);
+    const dto = await w.service.get(tenantId, wo.id, true, false);
+    expect(dto.labour).toEqual(expect.objectContaining({ total: 20 }));
+    expect(w.jobCost.breakdown).toHaveBeenCalledWith(
+      expect.anything(),
+      tenantId,
+      wo.id,
+      { cost: true, pay: false },
+    );
+  });
+
+  it('list leaves labour null and never computes it', async () => {
+    const w = makeWorld();
+    const { wo } = await planned(w);
+    // Planning returns each new work order through get().
+    w.jobCost.breakdown.mockClear();
+    (w.service as any).workOrders.createQueryBuilder = () => {
+      const qb: any = {
+        where: () => qb,
+        andWhere: () => qb,
+        orderBy: () => qb,
+        addOrderBy: () => qb,
+        take: () => qb,
+        getMany: async () => [wo],
+      };
+      return qb;
+    };
+    const rows = await w.service.list(tenantId, {} as any, true);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].labour).toBeNull();
+    expect(w.jobCost.breakdown).not.toHaveBeenCalled();
   });
 });
 
@@ -547,6 +598,7 @@ describe('Board Columns Configuration', () => {
       {} as any,
       {} as any,
       dataSource,
+      { breakdown: jest.fn().mockResolvedValue(null) } as any,
     );
   });
 

@@ -38,6 +38,7 @@ import { CostingService } from '../catalog/costing.service';
 import { LedgerService } from '../finance/ledger.service';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
 import { InventoryService } from '../inventory/inventory.service';
+import { JobCostService } from '../job-costing/job-cost.service';
 import {
   SalesOrder,
   SalesOrderLine,
@@ -89,6 +90,7 @@ export class ProductionService {
     private readonly inventory: InventoryService,
     private readonly ledger: LedgerService,
     private readonly dataSource: DataSource,
+    private readonly jobCost: JobCostService,
   ) {}
 
   /* ------------------------------------------------------------------ *
@@ -126,14 +128,26 @@ export class ProductionService {
     return this.toDtos(tenantId, rows, canSeeCost);
   }
 
+  /**
+   * One work order with its labour panel (lists leave `labour` null).
+   * Labour amounts follow `canSeeCost`; per-employee rates and amounts
+   * also need `canSeePay` (payroll:read).
+   */
   async get(
     tenantId: string,
     id: string,
     canSeeCost: boolean,
+    canSeePay = false,
   ): Promise<WorkOrderDto> {
     const wo = await this.workOrders.findOne({ where: { id, tenantId } });
     if (!wo) throw new NotFoundException('Work order not found');
     const [dto] = await this.toDtos(tenantId, [wo], canSeeCost);
+    dto.labour = await this.jobCost.breakdown(
+      this.dataSource.manager,
+      tenantId,
+      id,
+      { cost: canSeeCost, pay: canSeePay },
+    );
     return dto;
   }
 
