@@ -13,12 +13,17 @@ import { SalaryPackage } from './entities/salary-package.entity';
 import { EmployeeAdvance } from './entities/employee-advance.entity';
 import { PayrollRun, PayrollRunLine } from './entities/payroll-run.entity';
 import { GratuityLedgerEntry } from './entities/gratuity-ledger-entry.entity';
+import { LeaveRecord } from './entities/leave-record.entity';
+import { LeaveLedgerEntry } from './entities/leave-ledger-entry.entity';
+import { PensionScheme } from './entities/pension-scheme.entity';
+import { PayrollSettings } from './entities/payroll-settings.entity';
 import { EmployeesService } from './employees.service';
 import { PayrollCryptoService } from './payroll-crypto.service';
 import { AdvancesService } from './advances.service';
 import { GratuityService } from './gratuity.service';
 import { PayrollSettingsService } from './payroll-settings.service';
 import { LeaveService } from './leave.service';
+import { PensionService } from './pension.service';
 import { PayrollRunsService } from './payroll-runs.service';
 import { PayrollPostingService } from './payroll-posting.service';
 
@@ -148,6 +153,10 @@ function setup() {
     [PayrollRun, runs],
     [PayrollRunLine, lines],
     [GratuityLedgerEntry, gratuity],
+    [LeaveRecord, repo([])],
+    [LeaveLedgerEntry, repo([])],
+    [PensionScheme, repo([])],
+    [PayrollSettings, repo([])],
     [JournalEntry, entries],
     [Organization, orgs],
   ]);
@@ -195,6 +204,7 @@ function setup() {
     advancesService,
     gratuityService,
     leaveService,
+    new PensionService(dataSource),
   );
   const service = new PayrollPostingService(
     dataSource,

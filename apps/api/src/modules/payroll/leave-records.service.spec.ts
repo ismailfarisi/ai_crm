@@ -19,6 +19,7 @@ import { GratuityService } from './gratuity.service';
 import { PayrollSettingsService } from './payroll-settings.service';
 import { PayrollRunsService } from './payroll-runs.service';
 import { LeaveService } from './leave.service';
+import { PensionService } from './pension.service';
 import { LeaveRecordsService } from './leave-records.service';
 
 const T = '11111111-1111-4111-8111-111111111111';
@@ -166,6 +167,7 @@ function setup() {
     new AdvancesService(dataSource, ledger),
     gratuity,
     leave,
+    new PensionService(dataSource),
   );
   const service = new LeaveRecordsService(dataSource, leave, runsService);
   return { service, runsService, events, employees, runs, lines, records, settlements };

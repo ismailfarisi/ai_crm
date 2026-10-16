@@ -10,6 +10,7 @@ import {
   computeLine,
   daysEmployed,
   packageGross,
+  pensionContribution,
   periodBounds,
   round2,
   type CreatePayrollRunPayload,
@@ -31,9 +32,61 @@ import { EmployeesService } from './employees.service';
 import { AdvancesService } from './advances.service';
 import { GratuityService } from './gratuity.service';
 import { LeaveService } from './leave.service';
+import { PensionService } from './pension.service';
 import { maskIban } from './employee-mask';
 
-export const NATIONAL_PENSION_FLAG = 'NATIONAL_PENSION_NOT_HANDLED';
+/** A national with no active pension scheme: approval is refused until one is assigned. */
+export const NATIONAL_NO_SCHEME_FLAG = 'NATIONAL_NO_PENSION_SCHEME';
+/** Annual leave in the month exceeds the balance the employee will have earned. */
+export const LEAVE_IN_ADVANCE_FLAG = 'LEAVE_IN_ADVANCE';
+
+/** Line columns a refresh rewrites; the extras typed on the line are not among them. */
+const REFRESHED_COLUMNS = [
+  'employeeName',
+  'employeeNumber',
+  'paymentMethod',
+  'isNational',
+  'packageId',
+  'basic',
+  'housing',
+  'transport',
+  'otherAllowances',
+  'gross',
+  'daysEmployed',
+  'daysInMonth',
+  'unpaidLeaveDays',
+  'halfPayDays',
+  'annualLeaveDays',
+  'leaveDaysInPeriod',
+  'pensionSchemeId',
+  'pensionSchemeName',
+  'pensionBase',
+  'pensionEmployee',
+  'pensionEmployer',
+  'flags',
+] as const satisfies readonly (keyof PayrollRunLine)[];
+
+/** Columns `recalcLine` derives. */
+const AMOUNT_COLUMNS = [
+  'proratedGross',
+  'overtimeAmount',
+  'unpaidLeaveAmount',
+  'halfPayAmount',
+  'salaryCost',
+  'netPay',
+] as const satisfies readonly (keyof PayrollRunLine)[];
+
+/** Columns a leave change (a record edit, an override) moves. */
+const LEAVE_COLUMNS = [
+  'unpaidLeaveDays',
+  'halfPayDays',
+  'annualLeaveDays',
+  'leaveDaysInPeriod',
+  'leaveOverridden',
+  'flags',
+] as const satisfies readonly (keyof PayrollRunLine)[];
+
+const LEAVE_INPUT_KEYS = ['unpaidLeaveDays', 'halfPayDays'] as const;
 
 const PERIOD_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -142,6 +195,7 @@ export class PayrollRunsService {
     private readonly advances: AdvancesService,
     private readonly gratuity: GratuityService,
     private readonly leave: LeaveService,
+    private readonly pension: PensionService,
   ) {}
 
   async create(
@@ -173,6 +227,12 @@ export class PayrollRunsService {
             `Gratuity opening balances were set up as of ${cutover}; payroll for ${label} is already in them`,
           );
         }
+        const leaveCutover = await this.leave.latestCutover(manager, tenantId);
+        if (leaveCutover && leaveCutover >= last) {
+          throw new ConflictException(
+            `Leave opening balances were set up as of ${leaveCutover}; payroll for ${label} is already in them`,
+          );
+        }
 
         const seq = await allocateNextSequenceValue(
           manager,
@@ -196,41 +256,12 @@ export class PayrollRunsService {
           period,
         );
         const lineRepo = manager.getRepository(PayrollRunLine);
-        const lines = eligible.map((el) => {
-          const line = lineRepo.create({
-            tenantId,
-            runId: run.id,
-            employeeId: el.employee.id,
-            overtimeHours: 0,
-            overtimeHoursPremium: 0,
-            bonusAmount: 0,
-            bonusLabel: null,
-            unpaidLeaveDays: 0,
-            advanceRecovery: 0,
-            otherDeductionAmount: 0,
-            otherDeductionLabel: null,
-            gratuityBefore: null,
-            gratuityAccrual: null,
-            gratuityAfter: null,
-            halfPayDays: 0,
-            halfPayAmount: 0,
-            annualLeaveDays: 0,
-            leaveDaysInPeriod: 0,
-            leaveOverridden: false,
-            pensionSchemeId: null,
-            pensionSchemeName: null,
-            pensionBase: 0,
-            pensionEmployee: 0,
-            pensionEmployer: 0,
-            leaveProvisionBefore: null,
-            leaveProvisionChange: null,
-            leaveProvisionAfter: null,
-            paidAt: null,
-          });
-          this.snapshot(line, el, period);
-          this.recalcLine(line);
-          return line;
-        });
+        const lines: PayrollRunLine[] = [];
+        for (const el of eligible) {
+          const line = this.newLine(manager, tenantId, run.id, el.employee.id);
+          await this.fillFromEmployee(manager, line, el, period);
+          lines.push(line);
+        }
         const saved = lines.length ? await lineRepo.save(lines) : [];
         run.lines = saved;
         this.recalcTotals(run);
@@ -292,6 +323,24 @@ export class PayrollRunsService {
       }
       const name = line.employeeName;
 
+      // Typing leave days takes them off the records; `leaveOverridden: false`
+      // hands them back (and wins if both arrive together).
+      const leaveTyped = LEAVE_INPUT_KEYS.some((k) => input[k] !== undefined);
+      const leaveRestored = input.leaveOverridden === false;
+      if (leaveTyped || leaveRestored) {
+        // A soft-deleted employee can still have a draft line.
+        const employee = await manager.getRepository(Employee).findOne({
+          where: { id: line.employeeId, tenantId },
+          withDeleted: true,
+        });
+        if (!employee) throw new NotFoundException('Employee not found');
+        line.leaveOverridden = !leaveRestored;
+        if (leaveRestored) {
+          await this.fillLeave(manager, line, employee, run.period);
+        }
+        line.flags = await this.flagsFor(manager, line, employee, run.period);
+      }
+
       if (line.advanceRecovery > 0) {
         const outstanding = await this.advances.outstanding(
           manager,
@@ -305,9 +354,9 @@ export class PayrollRunsService {
           );
         }
       }
-      if (line.unpaidLeaveDays > line.daysEmployed) {
+      if (this.tooMuchLeave(line)) {
         throw new BadRequestException(
-          `${name} was employed for only ${line.daysEmployed} days in ${periodLabel(run.period)}`,
+          `${name} has more leave days than days employed in ${periodLabel(run.period)}`,
         );
       }
 
@@ -315,7 +364,14 @@ export class PayrollRunsService {
       if (line.netPay < 0) {
         throw new BadRequestException(`${name}'s deductions exceed their pay`);
       }
-      await lineRepo.save(line);
+      const typed = Object.keys(input).filter(
+        (k) => (input as Record<string, unknown>)[k] !== undefined,
+      ) as (keyof PayrollRunLine)[];
+      await this.writeColumns(manager, line, [
+        ...typed,
+        ...LEAVE_COLUMNS,
+        ...AMOUNT_COLUMNS,
+      ]);
 
       const lines = await this.loadLines(manager, tenantId, run.id);
       run.lines = lines;
@@ -345,52 +401,29 @@ export class PayrollRunsService {
       const keep = new Set<string>();
       const toSave: PayrollRunLine[] = [];
       for (const el of eligible) {
-        let line = byEmployee.get(el.employee.id);
-        if (!line) {
-          line = lineRepo.create({
-            tenantId,
-            runId: run.id,
-            employeeId: el.employee.id,
-            overtimeHours: 0,
-            overtimeHoursPremium: 0,
-            bonusAmount: 0,
-            bonusLabel: null,
-            unpaidLeaveDays: 0,
-            advanceRecovery: 0,
-            otherDeductionAmount: 0,
-            otherDeductionLabel: null,
-            gratuityBefore: null,
-            gratuityAccrual: null,
-            gratuityAfter: null,
-            halfPayDays: 0,
-            halfPayAmount: 0,
-            annualLeaveDays: 0,
-            leaveDaysInPeriod: 0,
-            leaveOverridden: false,
-            pensionSchemeId: null,
-            pensionSchemeName: null,
-            pensionBase: 0,
-            pensionEmployee: 0,
-            pensionEmployer: 0,
-            leaveProvisionBefore: null,
-            leaveProvisionChange: null,
-            leaveProvisionAfter: null,
-            paidAt: null,
-          });
-        }
+        const existing = byEmployee.get(el.employee.id);
+        const line =
+          existing ?? this.newLine(manager, tenantId, run.id, el.employee.id);
         keep.add(el.employee.id);
-        this.snapshot(line, el, run.period);
-        this.recalcLine(line);
+        await this.fillFromEmployee(manager, line, el, run.period);
         // Fewer days or a smaller package can invalidate extras entered earlier;
         // say so rather than silently changing what was typed.
-        if (line.unpaidLeaveDays > line.daysEmployed) {
+        if (this.tooMuchLeave(line)) {
           warnings.push(
-            `${line.employeeName} has more unpaid leave days than days employed in ${periodLabel(run.period)}`,
+            `${line.employeeName} has more leave days than days employed in ${periodLabel(run.period)}`,
           );
         } else if (line.netPay < 0) {
           warnings.push(`${line.employeeName}'s deductions exceed their pay`);
         }
-        toSave.push(line);
+        if (existing) {
+          // Only what a refresh owns: the extras typed on the line stay as stored.
+          await this.writeColumns(manager, line, [
+            ...REFRESHED_COLUMNS,
+            ...AMOUNT_COLUMNS,
+          ]);
+        } else {
+          toSave.push(line);
+        }
       }
 
       const gone = current.filter((l) => !keep.has(l.employeeId));
@@ -542,7 +575,6 @@ export class PayrollRunsService {
     });
     if (!employee) return;
 
-    const lineRepo = manager.getRepository(PayrollRunLine);
     for (const draft of drafts) {
       const run = await this.lockRun(manager, tenantId, draft.id);
       if (run.status !== 'DRAFT') continue;
@@ -550,26 +582,89 @@ export class PayrollRunsService {
       const line = lines.find((l) => l.employeeId === employeeId);
       if (!line) continue;
       await this.fillLeave(manager, line, employee, run.period);
+      line.flags = await this.flagsFor(manager, line, employee, run.period);
       this.recalcLine(line);
-      await lineRepo.update(
-        { id: line.id, tenantId },
-        {
-          unpaidLeaveDays: line.unpaidLeaveDays,
-          halfPayDays: line.halfPayDays,
-          annualLeaveDays: line.annualLeaveDays,
-          leaveDaysInPeriod: line.leaveDaysInPeriod,
-          proratedGross: line.proratedGross,
-          overtimeAmount: line.overtimeAmount,
-          unpaidLeaveAmount: line.unpaidLeaveAmount,
-          halfPayAmount: line.halfPayAmount,
-          salaryCost: line.salaryCost,
-          netPay: line.netPay,
-        },
-      );
+      await this.writeColumns(manager, line, [
+        ...LEAVE_COLUMNS,
+        ...AMOUNT_COLUMNS,
+      ]);
       run.lines = lines;
       this.recalcTotals(run);
       await this.saveTotals(manager, run);
     }
+  }
+
+  /**
+   * The national's pension from their active scheme, frozen on the line. A
+   * non-national, or a national with no active scheme, contributes nothing
+   * (the latter is flagged and blocks approval). Needs the line's snapshot.
+   */
+  async applyPension(
+    manager: EntityManager,
+    line: PayrollRunLine,
+    employee: Employee,
+  ): Promise<void> {
+    const scheme = employee.isNational
+      ? await this.pension.activeSchemeFor(manager, employee.tenantId, employee)
+      : null;
+    if (!scheme) {
+      line.pensionSchemeId = null;
+      line.pensionSchemeName = null;
+      line.pensionBase = 0;
+      line.pensionEmployee = 0;
+      line.pensionEmployer = 0;
+      return;
+    }
+    const got = pensionContribution({
+      rates: this.pension.ratesOf(scheme),
+      basic: line.basic,
+      housing: line.housing,
+      gross: line.gross,
+      daysEmployed: line.daysEmployed,
+      daysInMonth: line.daysInMonth,
+    });
+    line.pensionSchemeId = scheme.id;
+    line.pensionSchemeName = scheme.name;
+    line.pensionBase = got.base;
+    line.pensionEmployee = got.employee;
+    line.pensionEmployer = got.employer;
+  }
+
+  /**
+   * The line's warnings from its pension and leave as they stand: a national
+   * with no active scheme, and annual leave beyond what the employee will
+   * have by month end (balance plus this month's accrual, less the month's
+   * annual leave, below zero).
+   */
+  private async flagsFor(
+    manager: EntityManager,
+    line: PayrollRunLine,
+    employee: Employee,
+    period: string,
+  ): Promise<string[]> {
+    const flags: string[] = [];
+    if (line.isNational && !line.pensionSchemeId) {
+      flags.push(NATIONAL_NO_SCHEME_FLAG);
+    }
+    const tenantId = employee.tenantId;
+    const balance = await this.leave.balanceDays(manager, tenantId, employee.id);
+    const { accrued } = await this.leave.accruedTo(
+      manager,
+      tenantId,
+      employee,
+      periodBounds(period).last,
+      line.unpaidLeaveDays,
+    );
+    const baseline = await this.leave.accrualBaseline(
+      manager,
+      tenantId,
+      employee.id,
+    );
+    // A balance still negative from an earlier month stays flagged too.
+    if (round2(balance + (accrued - baseline) - (line.annualLeaveDays ?? 0)) < 0) {
+      flags.push(LEAVE_IN_ADVANCE_FLAG);
+    }
+    return flags;
   }
 
   /** Amounts from the snapshot and extras. */
@@ -729,7 +824,85 @@ export class PayrollRunsService {
     });
     line.daysEmployed = days;
     line.daysInMonth = periodBounds(period).daysInMonth;
-    line.flags = e.isNational ? [NATIONAL_PENSION_FLAG] : [];
+  }
+
+  /**
+   * Everything a draft line takes from the employee, in order: snapshot,
+   * leave from records, pension, flags, then the amounts.
+   */
+  private async fillFromEmployee(
+    manager: EntityManager,
+    line: PayrollRunLine,
+    el: Eligible,
+    period: string,
+  ): Promise<void> {
+    this.snapshot(line, el, period);
+    await this.fillLeave(manager, line, el.employee, period);
+    await this.applyPension(manager, line, el.employee);
+    line.flags = await this.flagsFor(manager, line, el.employee, period);
+    this.recalcLine(line);
+  }
+
+  /** A new line with no extras, leave, pension or gratuity yet. */
+  private newLine(
+    manager: EntityManager,
+    tenantId: string,
+    runId: string,
+    employeeId: string,
+  ): PayrollRunLine {
+    return manager.getRepository(PayrollRunLine).create({
+      tenantId,
+      runId,
+      employeeId,
+      overtimeHours: 0,
+      overtimeHoursPremium: 0,
+      bonusAmount: 0,
+      bonusLabel: null,
+      unpaidLeaveDays: 0,
+      advanceRecovery: 0,
+      otherDeductionAmount: 0,
+      otherDeductionLabel: null,
+      gratuityBefore: null,
+      gratuityAccrual: null,
+      gratuityAfter: null,
+      halfPayDays: 0,
+      halfPayAmount: 0,
+      annualLeaveDays: 0,
+      leaveDaysInPeriod: 0,
+      leaveOverridden: false,
+      pensionSchemeId: null,
+      pensionSchemeName: null,
+      pensionBase: 0,
+      pensionEmployee: 0,
+      pensionEmployer: 0,
+      leaveProvisionBefore: null,
+      leaveProvisionChange: null,
+      leaveProvisionAfter: null,
+      paidAt: null,
+    });
+  }
+
+  /** Unpaid and half-pay days together exceed the days employed. */
+  private tooMuchLeave(line: PayrollRunLine): boolean {
+    return (
+      (line.unpaidLeaveDays ?? 0) + (line.halfPayDays ?? 0) > line.daysEmployed
+    );
+  }
+
+  /**
+   * Writes just `columns` of an existing line, so a column this operation
+   * does not own is never rewritten from the state it read.
+   */
+  private async writeColumns(
+    manager: EntityManager,
+    line: PayrollRunLine,
+    columns: readonly (keyof PayrollRunLine)[],
+  ): Promise<void> {
+    const patch: Record<string, unknown> = {};
+    for (const c of new Set(columns)) patch[c] = line[c];
+    await manager
+      .getRepository(PayrollRunLine)
+      .update({ id: line.id, tenantId: line.tenantId }, patch as never);
   }
 
   private assertDraft(run: PayrollRun): void {
