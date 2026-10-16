@@ -8,6 +8,7 @@ import { useUpdatePayrollLine } from '@/hooks/use-payroll';
 import { describeServer } from '@/lib/api/describe';
 import { Badge } from '@/components/ui/primitives';
 import { money } from './payroll-format';
+import { usePayrollLinesRegistry } from './payroll-lines-context';
 
 export const FLAG_LABELS: Record<string, string> = {
   NATIONAL_PENSION_NOT_HANDLED: 'Pension not handled',
@@ -65,20 +66,22 @@ export function PayrollLineEditor({
   });
   // Errors are kept per field, so a later successful save of another field cannot hide this one.
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const inFlight = useRef(false);
+  // An edit typed but not yet saved (debouncing or in flight).
+  const [unsaved, setUnsaved] = useState(false);
+  const loop = useRef<Promise<void> | null>(null);
   const pending = useRef<UpdatePayrollLinePayload>({});
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Flush on unmount rather than lose a half-typed edit.
-  const flushRef = useRef<() => void>(() => {});
+  const flushRef = useRef<() => Promise<void>>(() => Promise.resolve());
   // One PATCH at a time per line: edits made meanwhile merge into `pending` and go out
-  // when the current one settles, so responses (and errors) arrive in order.
+  // when the current one settles, so responses (and errors) arrive in order. The
+  // returned promise settles once nothing is pending.
   flushRef.current = () => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
-    if (inFlight.current) return;
-    inFlight.current = true;
-    void (async () => {
+    if (loop.current) return loop.current;
+    if (Object.keys(pending.current).length === 0) return Promise.resolve();
+    loop.current = (async () => {
       try {
         while (Object.keys(pending.current).length > 0) {
           const patch = pending.current;
@@ -97,26 +100,50 @@ export function PayrollLineEditor({
           }
         }
       } finally {
-        inFlight.current = false;
+        loop.current = null;
+        if (!timer.current) setUnsaved(false);
       }
     })();
+    return loop.current;
   };
-  useEffect(() => () => flushRef.current(), []);
+
+  // Approve and Pay flush every line first; on unmount, flush rather than lose a half-typed edit.
+  const registry = usePayrollLinesRegistry();
+  useEffect(() => {
+    const unregister = registry?.register(line.id, () => flushRef.current());
+    return () => {
+      unregister?.();
+      void flushRef.current();
+    };
+  }, [registry, line.id]);
+
+  const invalid = Object.values(values).some((raw) => raw.trim() !== '' && Number.isNaN(Number(raw)));
+  const rejected = Object.keys(errors).length > 0;
+  useEffect(() => {
+    registry?.report(line.id, { unsaved: unsaved || invalid, rejected });
+  }, [registry, line.id, unsaved, invalid, rejected]);
+  useEffect(() => () => registry?.report(line.id, null), [registry, line.id]);
 
   const schedule = () => {
+    setUnsaved(true);
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => flushRef.current(), EDIT_DEBOUNCE_MS);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      void flushRef.current();
+    }, EDIT_DEBOUNCE_MS);
   };
 
   const onNumber = (key: NumericField, raw: string) => {
     setValues((v) => ({ ...v, [key]: raw }));
-    if (raw.trim() === '' || Number.isNaN(Number(raw))) return;
-    pending.current = { ...pending.current, [key]: Number(raw) };
+    // A cleared box means none: send 0 rather than keep the old amount.
+    const value = raw.trim() === '' ? 0 : Number(raw);
+    if (Number.isNaN(value)) return;
+    pending.current = { ...pending.current, [key]: value };
     schedule();
   };
   const onLabel = (key: LabelField, raw: string) => {
     setLabels((l) => ({ ...l, [key]: raw }));
-    pending.current = { ...pending.current, [key]: raw };
+    pending.current = { ...pending.current, [key]: raw.trim() === '' ? null : raw };
     schedule();
   };
 

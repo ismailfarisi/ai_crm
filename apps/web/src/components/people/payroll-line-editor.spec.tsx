@@ -49,4 +49,21 @@ describe('PayrollLineEditor', () => {
     expect(mutateAsync.mock.calls[1][0].input).toEqual({ unpaidLeaveDays: 2 });
     expect(screen.getByRole('alert')).toHaveTextContent('Bonus too large');
   });
+
+  it('a cleared amount is saved as 0 and a cleared label as null', async () => {
+    mutateAsync.mockResolvedValue({});
+    render(
+      <table>
+        <tbody>
+          <PayrollLineEditor runId="r1" line={{ ...line, bonusAmount: 300, bonusLabel: 'Q3' }} editable />
+        </tbody>
+      </table>,
+    );
+    fireEvent.change(screen.getByLabelText('Bonus for Amina Khan'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Bonus label for Amina Khan'), { target: { value: '' } });
+    await act(async () => { vi.advanceTimersByTime(EDIT_DEBOUNCE_MS + 10); });
+    expect(mutateAsync).toHaveBeenCalledTimes(1);
+    expect(mutateAsync.mock.calls[0][0].input).toEqual({ bonusAmount: 0, bonusLabel: null });
+    expect(screen.getByLabelText('Bonus for Amina Khan')).toHaveValue(null);
+  });
 });
