@@ -185,7 +185,7 @@ export class PayrollRunsService {
         const saved = lines.length ? await lineRepo.save(lines) : [];
         run.lines = saved;
         this.recalcTotals(run);
-        await this.saveRun(manager, run);
+        await this.saveTotals(manager, run);
         return this.toDto(run, saved, warnings);
       });
     } catch (err) {
@@ -227,7 +227,7 @@ export class PayrollRunsService {
     input: UpdatePayrollLinePayload,
   ): Promise<PayrollRunDto> {
     return this.dataSource.transaction(async (manager) => {
-      const run = await this.loadRun(manager, tenantId, runId);
+      const run = await this.lockRun(manager, tenantId, runId);
       this.assertDraft(run);
       const lineRepo = manager.getRepository(PayrollRunLine);
       const line = await lineRepo.findOne({
@@ -269,7 +269,7 @@ export class PayrollRunsService {
       const lines = await this.loadLines(manager, tenantId, run.id);
       run.lines = lines;
       this.recalcTotals(run);
-      await this.saveRun(manager, run);
+      await this.saveTotals(manager, run);
       return this.toDto(run, lines);
     });
   }
@@ -280,7 +280,7 @@ export class PayrollRunsService {
    */
   async refresh(tenantId: string, runId: string): Promise<PayrollRunDto> {
     return this.dataSource.transaction(async (manager) => {
-      const run = await this.loadRun(manager, tenantId, runId);
+      const run = await this.lockRun(manager, tenantId, runId);
       this.assertDraft(run);
       const lineRepo = manager.getRepository(PayrollRunLine);
       const current = await this.loadLines(manager, tenantId, run.id);
@@ -336,7 +336,7 @@ export class PayrollRunsService {
       const lines = await this.loadLines(manager, tenantId, run.id);
       run.lines = lines;
       this.recalcTotals(run);
-      await this.saveRun(manager, run);
+      await this.saveTotals(manager, run);
       return this.toDto(run, lines, warnings);
     });
   }
@@ -581,14 +581,49 @@ export class PayrollRunsService {
   }
 
   /** Saves the run's own columns; lines are saved separately. */
-  private async saveRun(
+  /**
+   * Reads a run `FOR UPDATE` inside the caller's transaction, so concurrent
+   * line edits serialise and an approval cannot commit between the DRAFT
+   * check and the write.
+   */
+  private async lockRun(
+    manager: EntityManager,
+    tenantId: string,
+    id: string,
+  ): Promise<PayrollRun> {
+    const run = await manager
+      .getRepository(PayrollRun)
+      .createQueryBuilder('r')
+      .setLock('pessimistic_write')
+      .where('r.id = :id', { id })
+      .andWhere('r.tenant_id = :tenantId', { tenantId })
+      .getOne();
+    if (!run) throw new NotFoundException('Payroll run not found');
+    return run;
+  }
+
+  /**
+   * Writes only the total columns: the run row is never rewritten from the
+   * state this request read, so status and approval fields stay whoever set them.
+   */
+  private async saveTotals(
     manager: EntityManager,
     run: PayrollRun,
   ): Promise<void> {
-    // Without `lines`, so the cascade never re-inserts lines saved on their own.
-    const columns: Partial<PayrollRun> = { ...run };
-    delete columns.lines;
-    const saved = await manager.getRepository(PayrollRun).save(columns);
-    Object.assign(run, saved, { lines: run.lines });
+    await manager.getRepository(PayrollRun).update(
+      { id: run.id, tenantId: run.tenantId },
+      {
+        totalSalaryCost: run.totalSalaryCost,
+        totalOvertime: run.totalOvertime,
+        totalBonus: run.totalBonus,
+        totalUnpaidLeave: run.totalUnpaidLeave,
+        totalAdvanceRecovery: run.totalAdvanceRecovery,
+        totalOtherDeductions: run.totalOtherDeductions,
+        totalNet: run.totalNet,
+        totalGratuityAccrual: run.totalGratuityAccrual,
+      },
+    );
+    // update() bumps updated_at in the database; mirror it for the response.
+    run.updatedAt = new Date();
   }
 }

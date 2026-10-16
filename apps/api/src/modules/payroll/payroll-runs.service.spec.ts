@@ -16,6 +16,7 @@ const ACTOR = '33333333-3333-4333-8333-333333333333';
 
 function repo(rows: any[]) {
   let n = 0;
+  const locks: string[] = [];
   const match = (r: any, where: any) =>
     Object.entries(where ?? {}).every(([k, v]) => r[k] === v);
   return {
@@ -42,6 +43,33 @@ function repo(rows: any[]) {
         return rows[i];
       });
       return Array.isArray(e) ? out : out[0];
+    }),
+    update: jest.fn(async (where: any, patch: any) => {
+      for (const r of rows.filter((x) => match(x, where)))
+        Object.assign(r, patch);
+      return { affected: 1 };
+    }),
+    /** Only what lockRun uses; records the lock mode and returns a copy, like a row read. */
+    locks,
+    createQueryBuilder: jest.fn(() => {
+      const params: any = {};
+      const qb: any = {
+        setLock: jest.fn((mode: string) => {
+          locks.push(mode);
+          return qb;
+        }),
+        where: jest.fn((_s: string, p: any) => (Object.assign(params, p), qb)),
+        andWhere: jest.fn(
+          (_s: string, p: any) => (Object.assign(params, p), qb),
+        ),
+        getOne: jest.fn(async () => {
+          const r = rows.find(
+            (x) => x.id === params.id && x.tenantId === params.tenantId,
+          );
+          return r ? { ...r } : null;
+        }),
+      };
+      return qb;
     }),
     remove: jest.fn(async (e: any) => {
       const list = Array.isArray(e) ? e : [e];
@@ -333,6 +361,30 @@ describe('PayrollRunsService', () => {
       });
     });
 
+    it('locks the run before reading lines and writes back only the totals', async () => {
+      const { service, run, a, runs, lines } = await draft();
+      runs.save.mockClear();
+      runs.locks.length = 0;
+      lines.findOne.mockClear();
+      // An approval field set by someone else must survive this edit.
+      runs.rows.find((r) => r.id === run.id).approvedById = 'someone';
+
+      await service.updateLine(T, run.id, a.id, { bonusAmount: 100 });
+
+      expect(runs.locks).toEqual(['pessimistic_write']);
+      expect(runs.createQueryBuilder.mock.invocationCallOrder[0]).toBeLessThan(
+        lines.findOne.mock.invocationCallOrder[0],
+      );
+      expect(runs.save).not.toHaveBeenCalled();
+      const [where, patch] = runs.update.mock.calls.at(-1);
+      expect(where).toEqual({ id: run.id, tenantId: T });
+      expect(Object.keys(patch).every((k) => k.startsWith('total'))).toBe(true);
+      const stored = runs.rows.find((r) => r.id === run.id);
+      expect(stored.totalBonus).toBe(100);
+      expect(stored.status).toBe('DRAFT');
+      expect(stored.approvedById).toBe('someone');
+    });
+
     it('refuses a run that is not DRAFT', async () => {
       const { service, run, a, runs } = await draft();
       runs.rows.find((r) => r.id === run.id).status = 'APPROVED';
@@ -411,6 +463,27 @@ describe('PayrollRunsService', () => {
         'EMP-008 has no salary package for October 2026',
       ]);
       expect(got.totals.net).toBe(10000 + 1600 + 1200);
+    });
+
+    it('locks the run before reading lines and writes back only the totals', async () => {
+      const { service, runs, lines } = setup();
+      const run = await service.create(T, ACTOR, {
+        period: '2026-10',
+        payDate: null,
+      });
+      runs.save.mockClear();
+      runs.locks.length = 0;
+      lines.find.mockClear();
+
+      await service.refresh(T, run.id);
+
+      expect(runs.locks).toEqual(['pessimistic_write']);
+      expect(runs.createQueryBuilder.mock.invocationCallOrder[0]).toBeLessThan(
+        lines.find.mock.invocationCallOrder[0],
+      );
+      expect(runs.save).not.toHaveBeenCalled();
+      const [, patch] = runs.update.mock.calls.at(-1);
+      expect(Object.keys(patch).every((k) => k.startsWith('total'))).toBe(true);
     });
 
     it('refuses a run that is not DRAFT', async () => {
