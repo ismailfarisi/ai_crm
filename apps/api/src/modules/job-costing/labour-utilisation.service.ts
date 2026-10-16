@@ -132,7 +132,10 @@ export class LabourUtilisationService {
   ): Promise<LabourUtilisationRowDto[]> {
     const manager = this.dataSource.manager;
     const [employees, settings] = await Promise.all([
-      manager.getRepository(Employee).find({ where: { tenantId } }),
+      // Soft-deleted too: one removed after logging hours still shows them.
+      manager
+        .getRepository(Employee)
+        .find({ where: { tenantId }, withDeleted: true }),
       manager.getRepository(PayrollSettings).findOne({ where: { tenantId } }),
     ]);
     const monthlyHours =
@@ -172,7 +175,9 @@ export class LabourUtilisationService {
       // The employees payroll would run (payroll-runs.service `eligible`), plus
       // anyone with hours in the month, so logged time always shows.
       const payrollRuns =
-        emp.status === 'ACTIVE' || (emp.status === 'LEFT' && !!emp.leavingDate);
+        !emp.deletedAt &&
+        (emp.status === 'ACTIVE' ||
+          (emp.status === 'LEFT' && !!emp.leavingDate));
       if (!(payrollRuns && days > 0) && !mine.length) continue;
       const standard = round2((Math.max(days, 0) / daysInMonth) * monthlyHours);
       const rate = await this.jobCost.estimatedRate(
@@ -189,7 +194,8 @@ export class LabourUtilisationService {
         direct.filter((e) => e.workOrderId && !cancelled.has(e.workOrderId)),
       );
       const cost = round2(rate * standard);
-      const absorbed = round2(rate * chargedHours);
+      // As approval does: never more than the month's cost.
+      const absorbed = Math.min(round2(rate * chargedHours), cost);
       rows.push({
         employeeId: emp.id,
         employeeNumber: emp.employeeNumber,

@@ -31,13 +31,27 @@ function harness(fixtures: {
     [Employee, fixtures.employees ?? []],
     [WorkOrder, fixtures.workOrders ?? []],
   ]);
-  const wheres: { entity: unknown; where: Record<string, unknown> }[] = [];
+  const wheres: {
+    entity: unknown;
+    where: Record<string, unknown>;
+    withDeleted?: boolean;
+  }[] = [];
   const manager = {
     getRepository: (entity: unknown) => ({
-      find: jest.fn(async ({ where }: { where: Record<string, unknown> }) => {
-        wheres.push({ entity, where });
-        return find.get(entity) ?? [];
-      }),
+      find: jest.fn(
+        async ({
+          where,
+          withDeleted,
+        }: {
+          where: Record<string, unknown>;
+          withDeleted?: boolean;
+        }) => {
+          wheres.push({ entity, where, withDeleted });
+          return (find.get(entity) ?? []).filter(
+            (r) => withDeleted || !(r as { deletedAt?: Date }).deletedAt,
+          );
+        },
+      ),
       findOne: jest.fn(async ({ where }: { where: Record<string, unknown> }) => {
         wheres.push({ entity, where });
         return entity === PayrollSettings ? { monthlyStandardHours: 208 } : null;
@@ -266,6 +280,59 @@ describe('LabourUtilisationService.forPeriod', () => {
       unabsorbed: 3200,
     });
     for (const w of wheres) expect(w.where.tenantId).toBe(T);
+  });
+
+  it('provisional: absorbed never exceeds cost, and a soft-deleted employee with hours still shows', async () => {
+    const { service, wheres } = harness({
+      employees: [
+        {
+          // 300 direct hours against a 208-hour month.
+          id: 'e1',
+          employeeNumber: 'E-001',
+          firstName: 'Amal',
+          lastName: 'One',
+          status: 'ACTIVE',
+          joiningDate: '2024-01-01',
+          leavingDate: null,
+        },
+        {
+          // Removed after logging hours: they still count.
+          id: 'e2',
+          employeeNumber: 'E-002',
+          firstName: 'Bilal',
+          lastName: 'Two',
+          status: 'ACTIVE',
+          joiningDate: '2024-01-01',
+          leavingDate: null,
+          deletedAt: new Date('2026-07-02T00:00:00.000Z'),
+        },
+        {
+          // Removed, no hours: not in the report.
+          id: 'e3',
+          employeeNumber: 'E-003',
+          firstName: 'Cara',
+          lastName: 'Three',
+          status: 'ACTIVE',
+          joiningDate: '2024-01-01',
+          leavingDate: null,
+          deletedAt: new Date('2026-07-02T00:00:00.000Z'),
+        },
+      ],
+      entries: [direct('e1', 300), direct('e2', 10)],
+      rates: { e1: 20, e2: 10, e3: 10 },
+    });
+
+    const report = await service.forPeriod(T, '2026-06');
+
+    expect(wheres.find((w) => w.entity === Employee)!.withDeleted).toBe(true);
+    expect(report.rows.map((r) => r.employeeNumber)).toEqual([
+      'E-001',
+      'E-002',
+    ]);
+    const [a, b] = report.rows;
+    expect(a).toMatchObject({ cost: 4160, absorbed: 4160, unabsorbed: 0 });
+    expect(b).toMatchObject({ directHours: 10, absorbed: 100 });
+    for (const r of report.rows) expect(r.unabsorbed).toBeGreaterThanOrEqual(0);
   });
 
   it('only treats APPROVED, PARTIALLY_PAID and PAID runs as posted', async () => {
