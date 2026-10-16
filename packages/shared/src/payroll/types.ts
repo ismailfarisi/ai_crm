@@ -46,5 +46,7 @@ export interface PayrollRunDto {
   warnings?: string[];
   createdAt: string; updatedAt: string;
 }
+/** The runs list, plus the go-live gratuity cut-over (null until opening balances are posted). */
+export interface PayrollRunsListDto { runs: PayrollRunDto[]; openingGratuityCutover: string | null; }
 export interface OpeningGratuityPreviewDto { cutoverDate: string; lines: { employeeId: string; employeeName: string; joiningDate: string; basic: number; serviceDays: number; calculated: number }[]; }
 export interface PayslipDto { run: Pick<PayrollRunDto, 'id' | 'runNumber' | 'period' | 'payDate' | 'status'>; line: PayrollRunLineDto; employee: Pick<EmployeeDto, 'id' | 'employeeNumber' | 'fullName' | 'jobTitle' | 'department' | 'joiningDate' | 'paymentMethod' | 'bankName' | 'ibanMasked'>; organization: { name: string; legalName: string | null; address: string | null; baseCurrency: string }; }

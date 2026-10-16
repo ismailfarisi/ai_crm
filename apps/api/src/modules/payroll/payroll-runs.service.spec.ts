@@ -506,7 +506,8 @@ describe('PayrollRunsService', () => {
         period: '2026-10',
         payDate: null,
       });
-      const list = await service.list(T);
+      const { runs: list, openingGratuityCutover } = await service.list(T);
+      expect(openingGratuityCutover).toBeNull();
       expect(list).toHaveLength(1);
       expect(list[0].lines).toBeUndefined();
       const got = await service.get(T, run.id);
@@ -515,6 +516,23 @@ describe('PayrollRunsService', () => {
         'EMP-002',
         'EMP-007',
       ]);
+    });
+  });
+
+  describe('list cut-over', () => {
+    it('reports the latest opening gratuity cut-over', async () => {
+      const { service, gratuity } = setup();
+      gratuity.rows.push({
+        id: 'g1',
+        tenantId: T,
+        employeeId: 'a',
+        kind: 'OPENING',
+        amount: 100,
+        asOf: '2026-09-30',
+      });
+      const out = await service.list(T);
+      expect(out.openingGratuityCutover).toBe('2026-09-30');
+      expect(out.runs).toEqual([]);
     });
   });
 

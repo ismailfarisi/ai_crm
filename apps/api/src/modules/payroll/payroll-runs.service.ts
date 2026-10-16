@@ -14,6 +14,7 @@ import {
   round2,
   type CreatePayrollRunPayload,
   type PayrollRunDto,
+  type PayrollRunsListDto,
   type PayrollRunLineDto,
   type PayslipDto,
   type UpdatePayrollLinePayload,
@@ -221,17 +222,18 @@ export class PayrollRunsService {
     }
   }
 
-  async list(tenantId: string): Promise<PayrollRunDto[]> {
-    const runs = await this.dataSource.manager
-      .getRepository(PayrollRun)
-      .find({ where: { tenantId } });
-    return runs
+  async list(tenantId: string): Promise<PayrollRunsListDto> {
+    const manager = this.dataSource.manager;
+    const runs = await manager.getRepository(PayrollRun).find({ where: { tenantId } });
+    const openingGratuityCutover = await this.gratuity.latestCutover(manager, tenantId);
+    const sorted = runs
       .sort(
         (a, b) =>
           b.period.localeCompare(a.period) ||
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       )
       .map((r) => this.toDto(r));
+    return { runs: sorted, openingGratuityCutover };
   }
 
   async get(tenantId: string, id: string): Promise<PayrollRunDto> {

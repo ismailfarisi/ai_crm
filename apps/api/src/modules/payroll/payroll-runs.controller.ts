@@ -19,6 +19,7 @@ import {
   type CreatePayrollRunPayload,
   type PayPayrollRunPayload,
   type PayrollRunDto,
+  type PayrollRunsListDto,
   type PayslipDto,
   type UpdatePayrollLinePayload,
 } from '@saas/shared';
@@ -42,7 +43,7 @@ export class PayrollRunsController {
   @Get()
   @RequirePermissions(PERMISSIONS.PAYROLL_READ)
   @ApiOperation({ summary: 'List payroll runs' })
-  list(@CurrentUser() user: AuthenticatedUser): Promise<PayrollRunDto[]> {
+  list(@CurrentUser() user: AuthenticatedUser): Promise<PayrollRunsListDto> {
     return this.runs.list(user.organizationId);
   }
 
