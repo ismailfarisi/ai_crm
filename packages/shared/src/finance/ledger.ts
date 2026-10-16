@@ -51,6 +51,10 @@ export const LEDGER_ROLES = {
   RENT: 'RENT',
   UTILITIES: 'UTILITIES',
   SALARIES: 'SALARIES',
+  EMPLOYEE_ADVANCES: 'EMPLOYEE_ADVANCES',
+  SALARIES_PAYABLE: 'SALARIES_PAYABLE',
+  GRATUITY_PROVISION: 'GRATUITY_PROVISION',
+  GRATUITY_EXPENSE: 'GRATUITY_EXPENSE',
   REPAIRS: 'REPAIRS',
   INSURANCE: 'INSURANCE',
   TRAVEL: 'TRAVEL',
@@ -126,6 +130,7 @@ export const SYSTEM_LEDGER_ACCOUNTS: SystemLedgerAccount[] = [
     role: LEDGER_ROLES.PREPAID_EXPENSES,
     description: 'Paid or billed ahead for a period not yet used — an annual lease, a yearly policy. Released to expense one month at a time.',
   },
+  { code: '1450', name: 'Employee advances', type: 'ASSET', role: LEDGER_ROLES.EMPLOYEE_ADVANCES, description: 'Salary advances paid to employees and not yet recovered through payroll' },
   {
     code: '2100',
     name: 'Accounts payable',
@@ -140,6 +145,8 @@ export const SYSTEM_LEDGER_ACCOUNTS: SystemLedgerAccount[] = [
     role: LEDGER_ROLES.TAX_PAYABLE,
     description: 'Sales tax collected and not yet remitted',
   },
+  { code: '2300', name: 'Salaries payable', type: 'LIABILITY', role: LEDGER_ROLES.SALARIES_PAYABLE, description: 'Net pay from approved payroll runs not yet paid' },
+  { code: '2400', name: 'End-of-service provision', type: 'LIABILITY', role: LEDGER_ROLES.GRATUITY_PROVISION, description: 'End-of-service gratuity earned by employees to date' },
   {
     code: '3000',
     name: 'Retained earnings',
@@ -179,6 +186,7 @@ export const SYSTEM_LEDGER_ACCOUNTS: SystemLedgerAccount[] = [
   { code: '6100', name: 'Rent & premises', type: 'EXPENSE', role: LEDGER_ROLES.RENT, parentCode: '6000', description: 'Rent, service charges and premises costs' },
   { code: '6200', name: 'Utilities & telecom', type: 'EXPENSE', role: LEDGER_ROLES.UTILITIES, parentCode: '6000', description: 'Electricity, water, cooling, internet and phones' },
   { code: '6300', name: 'Salaries & wages', type: 'EXPENSE', role: LEDGER_ROLES.SALARIES, parentCode: '6000', description: 'Payroll, allowances and contractors' },
+  { code: '6310', name: 'End-of-service gratuity', type: 'EXPENSE', role: LEDGER_ROLES.GRATUITY_EXPENSE, parentCode: '6000', description: 'Monthly change in the end-of-service provision' },
   { code: '6400', name: 'Repairs & maintenance', type: 'EXPENSE', role: LEDGER_ROLES.REPAIRS, parentCode: '6000', description: 'Upkeep of premises, plant and machinery' },
   { code: '6450', name: 'Insurance', type: 'EXPENSE', role: LEDGER_ROLES.INSURANCE, parentCode: '6000', description: 'Insurance premiums' },
   { code: '6500', name: 'Travel & entertainment', type: 'EXPENSE', role: LEDGER_ROLES.TRAVEL, parentCode: '6000', description: 'Travel, lodging, meals and entertainment' },
@@ -274,7 +282,8 @@ export type JournalReferenceType =
   | 'BILL'
   | 'WORK_ORDER'
   | 'CREDIT_NOTE'
-  | 'PREPAID';
+  | 'PREPAID'
+  | 'PAYROLL';
 
 export interface TrialBalanceRowDto {
   ledgerAccountId: string;

@@ -30,6 +30,7 @@ import { SavedViewsModule } from '@/modules/saved-views/saved-views.module';
 import { CustomObjectsModule } from '@/modules/custom-objects/custom-objects.module';
 import { AssistantModule } from '@/modules/assistant/assistant.module';
 import { OverheadsModule } from '@/modules/overheads/overheads.module';
+import { PayrollModule } from '@/modules/payroll/payroll.module';
 
 /**
  * The feature module registry, kept out of `app.module.ts` and
@@ -76,6 +77,8 @@ export const FEATURE_MODULES = [
   AssistantModule,
   // Recurring bills and prepaid release run on @Cron, so API process only.
   OverheadsModule,
+  // Employees, salary packages, payroll runs and end-of-service gratuity.
+  PayrollModule,
 ];
 
 /**

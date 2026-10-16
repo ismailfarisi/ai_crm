@@ -28,6 +28,7 @@ export const APP_ROUTES = [
   'invoices',
   'objects',
   'orders',
+  'people',
   'production',
   'purchasing',
   'quotes',

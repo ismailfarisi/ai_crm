@@ -18,6 +18,8 @@ import { RecurringExpense } from '../finance/entities/recurring-expense.entity';
 import { PrepaidSchedule } from '../payables/entities/prepaid-schedule.entity';
 import { StockItem } from '../inventory/entities/stock-item.entity';
 import { User } from '../users/entities/user.entity';
+import { Employee } from '../payroll/entities/employee.entity';
+import { PayrollRun } from '../payroll/entities/payroll-run.entity';
 import { Role } from '../rbac/entities/role.entity';
 
 /**
@@ -48,6 +50,9 @@ export const AUDIT_SUBJECTS: Record<
   users: { subject: 'USER', entity: User },
   roles: { subject: 'ROLE', entity: Role },
   'stock-items': { subject: 'STOCK_ITEM', entity: StockItem },
+  employees: { subject: 'EMPLOYEE', entity: Employee },
+  'payroll-runs': { subject: 'PAYROLL_RUN', entity: PayrollRun },
+  'payroll/opening-gratuity': { subject: 'PAYROLL', entity: PayrollRun },
   'finance/expenses': { subject: 'EXPENSE_CLAIM', entity: ExpenseClaim },
   'finance/accounts': { subject: 'FINANCE_ACCOUNT', entity: FinanceAccount },
   'finance/subscriptions': {
@@ -66,6 +71,38 @@ export const AUDIT_SUBJECTS: Record<
  * never their request or response bodies.
  */
 export const AUDIT_BODYLESS_PREFIXES = ['auth', 'ai', 'channels', 'assistant'];
+
+/**
+ * Request-body keys never written to the trail, at any depth. The fallback
+ * `after` is the raw body, so a failed snapshot must not leak a plaintext
+ * IBAN or password. Superset of `AUDIT_REDACTED_COLUMNS` (snapshots).
+ */
+export const AUDIT_REDACTED_BODY_KEYS = new Set(
+  [
+    'iban',
+    'ibanEncrypted',
+    'password',
+    'passwordHash',
+    'token',
+    'accessToken',
+    'refreshToken',
+    'currentPassword',
+    'newPassword',
+  ].map((k) => k.toLowerCase()),
+);
+
+/** Copies `value` with every sensitive key replaced by '[redacted]'. */
+export function redactBody(value: unknown, depth = 0): unknown {
+  if (depth > 8 || value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map((v) => redactBody(v, depth + 1));
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value)) {
+    out[k] = AUDIT_REDACTED_BODY_KEYS.has(k.toLowerCase())
+      ? '[redacted]'
+      : redactBody(v, depth + 1);
+  }
+  return out;
+}
 
 /** Not recorded at all: reads dressed as writes, and the audit trail itself. */
 export const AUDIT_SKIPPED_PREFIXES = ['audit', 'health', 'notifications'];

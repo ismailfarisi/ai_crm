@@ -43,6 +43,9 @@ export interface AuditRecordInput {
 /** Outbox kind for audit rows whose first insert failed. */
 export const AUDIT_OUTBOX_KIND = 'audit';
 
+/** Never copied into a snapshot: ciphertext and credentials have no business in the trail. */
+export const AUDIT_REDACTED_COLUMNS = new Set(['ibanEncrypted', 'passwordHash']);
+
 interface QueuedAuditRow {
   row: Record<string, unknown> & { id: string };
   /** When the change happened, so a late retry is still filed in order. */
@@ -196,6 +199,7 @@ export class AuditService {
       const record = row as Record<string, unknown>;
       const flat: Record<string, unknown> = {};
       for (const column of meta.columns) {
+        if (AUDIT_REDACTED_COLUMNS.has(column.propertyName)) continue;
         const value = record[column.propertyName];
         if (value !== undefined) flat[column.propertyName] = value;
       }

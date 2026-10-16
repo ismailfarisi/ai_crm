@@ -8,6 +8,7 @@ import { ExpenseClaim } from '../finance/entities/expense-claim.entity';
 import { SupplierBill } from '../payables/entities/supplier-bill.entity';
 import { PurchaseOrder } from '../purchasing/entities/purchase-order.entity';
 import { Invoice } from '../quotes/entities/invoice.entity';
+import { Employee } from '../payroll/entities/employee.entity';
 import { Quote } from '../quotes/entities/quote.entity';
 
 /**
@@ -56,5 +57,11 @@ export const ATTACHMENT_OWNERS: Record<
     read: PERMISSIONS.FINANCE_READ,
     write: PERMISSIONS.FINANCE_MANAGE,
     label: 'expense claim',
+  },
+  EMPLOYEE: {
+    entity: Employee,
+    read: PERMISSIONS.EMPLOYEE_MANAGE,
+    write: PERMISSIONS.EMPLOYEE_MANAGE,
+    label: 'employee',
   },
 };

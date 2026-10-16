@@ -51,6 +51,7 @@ export class JournalEntry {
       'WORK_ORDER',
       'CREDIT_NOTE',
       'PREPAID',
+      'PAYROLL',
     ],
     enumName: 'journal_entries_reference_type_enum',
     default: 'MANUAL',

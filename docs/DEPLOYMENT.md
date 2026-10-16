@@ -28,6 +28,7 @@ The following commands run on the staging host. Keep `.env.staging` and its back
 
    - `DB_ADMIN_USERNAME` and `DB_ADMIN_PASSWORD` identify the existing Postgres owner and are used only for migrations and provisioning.
    - `DB_USERNAME` and `DB_PASSWORD` identify a non-superuser role with `NOBYPASSRLS` used by the API and worker.
+   - `PAYROLL_DATA_KEY` is the 32-byte base64 AES key for employee bank details (`openssl rand -base64 32`). The API refuses to boot in production without it, and changing it makes existing encrypted IBANs unreadable, so back it up with `.env.staging`.
 
    For a fresh volume, Compose creates the app role during Postgres initialization. For an existing volume, back up `.env.staging`, set the admin values to the existing database owner and the app values to the restricted role, then recreate only the Postgres container so it receives the new environment and SQL mount:
 

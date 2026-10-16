@@ -467,6 +467,71 @@ What overheads posting and recurring bills leave out, and the choices behind it.
 
 ---
 
+## Employees and payroll
+
+What payroll leaves for compliance and job costing, and the choices behind it.
+
+- **UAE/GCC nationals have no GPSSA pension yet — open.** Their lines are
+  flagged; handle the pension outside Kerf until #3.
+- **No WPS SIF export, leave balances or final settlement — open (#3).** The
+  2400 gratuity provision is never paid out until then.
+- **Gratuity accrues from day one — by design.** Nothing is payable before one
+  year of service, but #3's settlement applies eligibility, so accruing from
+  the start avoids a catch-up entry.
+- **The package in effect on the last day of the month applies to the whole
+  month — by design.** No split-month proration of raises.
+- **Off-cycle (bonus-only) runs are not supported — open.** One run per month.
+- **Payroll is base-currency only — by design.** Paying from a foreign-currency
+  account is refused, because payroll is not FX-converted.
+- **Payslips are printable pages — open.** No emailing or server-side PDF.
+- **The forecast projects payroll as gross on the 28th for months without a
+  run — by design.** It is an estimate; a real run replaces it.
+- **`PAYROLL_DATA_KEY` must be set in production.** Losing it makes stored
+  IBANs unreadable; they have to be re-entered.
+- **The opening gratuity cut-over blocks runs for months it already covers — by
+  design.** Otherwise those months would accrue gratuity twice.
+- **Payroll runs post in month order — by design.** Approving or voiding a
+  month is refused while a later month is posted, because each month's
+  gratuity true-up builds on the balance the earlier months left. To correct an
+  old month, void the later unpaid runs and re-approve in order; once a later
+  run is paid (paid runs cannot be voided), post a gratuity adjustment instead,
+  which persists as an offset (next bullet).
+- **Gratuity adjustments and opening overrides persist as an offset above the
+  statutory amount — by design.** Each approval trues the provision up to the
+  statutory entitlement plus the sum of the employee's ADJUSTMENT rows, so a
+  correction or contractual extra survives later runs instead of being clawed
+  back. An opening balance typed above or below the calculated figure is booked
+  as OPENING (calculated) plus an "Opening override" ADJUSTMENT for the
+  difference; the journal is the same. The flip side: an adjustment is
+  permanent until a counter-adjustment is posted.
+- **Opening gratuity is refused for employees already accrued by a posted run
+  — by design.** That run already trued them up to their full entitlement, so
+  an opening would count past service twice. They are left out of the preview,
+  posting them is a 409, and the "set up opening balances" prompt disappears
+  once any run is posted. Consequence: a tenant that runs payroll before
+  setting up openings books those employees' past service as gratuity expense
+  in that first run, not against opening balance equity.
+- **Leavers are paid for their final month — by design.** A LEFT employee is
+  on the run for any month with days employed up to the leaving date (prorated),
+  and that run's approval is their last gratuity true-up. The forecast still
+  projects only ACTIVE employees.
+- **Draft runs can be deleted — by design.** `DELETE /payroll-runs/:id`
+  (payroll:manage) removes a draft and its lines; drafts post nothing, so a
+  stuck draft no longer blocks its month or inflates the forecast. Approved
+  runs are voided instead.
+- **Paying a method with no payees is refused — by design.** A run becomes
+  PAID once every existing line is paid.
+- **Approval re-checks every line — by design.** Net pay >= 0, unpaid leave <=
+  days employed, and advance recovery <= outstanding across drafts, because
+  refresh keeps stale extras.
+- **Gratuity for leavers is computed to the leaving date — by design.**
+  Service stops at the leaving date, but unpaid leave recorded on the final
+  month's run (which ends after it) still reduces it.
+- **No database index yet on `employee_advances(tenant, employee)` or
+  `payroll_runs(tenant)` — open.** Fine at SME volumes.
+
+---
+
 ## Smaller things found on the way
 
 - **A malformed quote body returns 500, not 400.** `POST /quotes` with a badly

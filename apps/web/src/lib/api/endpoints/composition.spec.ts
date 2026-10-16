@@ -20,6 +20,7 @@ import { documentTemplatesEndpoints, documentTemplatesKeys } from './document-te
 import { savedViewsEndpoints, savedViewsKeys } from './saved-views';
 import { customObjectsEndpoints, customObjectsKeys } from './custom-objects';
 import { assistantEndpoints, assistantKeys } from './assistant';
+import { payrollEndpoints, payrollKeys } from './payroll';
 
 /**
  * Guards for the composed API surface.
@@ -53,6 +54,7 @@ const SLICES = [
   ['savedViews', savedViewsEndpoints, savedViewsKeys],
   ['customObjects', customObjectsEndpoints, customObjectsKeys],
   ['assistant', assistantEndpoints, assistantKeys],
+  ['payroll', payrollEndpoints, payrollKeys],
 ] as const;
 
 const API_SECTIONS = [
@@ -63,6 +65,7 @@ const API_SECTIONS = [
   'salesOrders', 'quoteAcceptance', 'workOrders', 'board', 'creditNotes', 'deliveryNotes', 'tax',
   'notifications', 'billing', 'currencies', 'reports', 'organization', 'audit', 'attachments',
   'documentTemplates', 'savedViews', 'customObjects', 'assistant',
+  'employees', 'payroll',
 ];
 
 const QUERY_KEYS = [
@@ -89,6 +92,8 @@ const QUERY_KEYS = [
   'documentTemplates', 'documentTemplate', 'resolveTemplate',
   'savedViews', 'savedView', 'customObjects',
   'assistantConversations', 'assistantConversation',
+  'employees', 'employee', 'employeePackages', 'employeeAdvances', 'employeeGratuity',
+  'payrollRuns', 'payrollRun', 'payslip', 'openingGratuityPreview',
 ];
 
 describe('api surface composition', () => {

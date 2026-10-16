@@ -28,3 +28,12 @@ describe('system chart of accounts', () => {
     expect(SYSTEM_LEDGER_ACCOUNTS.find((a) => a.code === '6000')!.name).toBe('Other operating expense');
   });
 });
+
+it('adds payroll accounts with the right types and parents', () => {
+  const byCode = new Map(SYSTEM_LEDGER_ACCOUNTS.map((a) => [a.code, a]));
+  expect(byCode.get('1450')).toMatchObject({ type: 'ASSET', role: 'EMPLOYEE_ADVANCES' });
+  expect(byCode.get('2300')).toMatchObject({ type: 'LIABILITY', role: 'SALARIES_PAYABLE' });
+  expect(byCode.get('2400')).toMatchObject({ type: 'LIABILITY', role: 'GRATUITY_PROVISION' });
+  expect(byCode.get('6310')).toMatchObject({ type: 'EXPENSE', role: 'GRATUITY_EXPENSE', parentCode: '6000' });
+  expect(OPERATING_EXPENSE_CHILD_ROLES).toContain('GRATUITY_EXPENSE');
+});

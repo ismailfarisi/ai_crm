@@ -21,6 +21,9 @@ import { Invoice } from '../quotes/entities/invoice.entity';
 import { RecurringExpenseOccurrence } from './entities/recurring-expense-occurrence.entity';
 import { Supplier } from '../purchasing/entities/supplier.entity';
 import { TaxService } from '../tax/tax.service';
+import { Employee } from '../payroll/entities/employee.entity';
+import { SalaryPackage } from '../payroll/entities/salary-package.entity';
+import { PayrollRun, PayrollRunLine } from '../payroll/entities/payroll-run.entity';
 import {
   CreateFinanceAccountDto,
   CreateCategoryBudgetDto,
@@ -42,6 +45,10 @@ describe('FinanceService', () => {
   let invoiceRepo: { find: jest.Mock };
   let supplierRepo: { findOne: jest.Mock };
   let tax: { purchaseTaxFor: jest.Mock; findCode: jest.Mock };
+  let employeeRepo: { find: jest.Mock };
+  let packageRepo: { find: jest.Mock };
+  let runRepo: { find: jest.Mock };
+  let lineRepo: { find: jest.Mock };
 
   const tenantId = '11111111-1111-1111-1111-111111111111';
 
@@ -172,6 +179,11 @@ describe('FinanceService', () => {
       findCode: jest.fn(async (_t: string, id: string) => ({ id, kind: 'PURCHASE' })),
     };
 
+    employeeRepo = { find: jest.fn().mockResolvedValue([]) };
+    packageRepo = { find: jest.fn().mockResolvedValue([]) };
+    runRepo = { find: jest.fn().mockResolvedValue([]) };
+    lineRepo = { find: jest.fn().mockResolvedValue([]) };
+
     service = new FinanceService(
       accountRepo as unknown as Repository<FinanceAccount>,
       budgetRepo as unknown as Repository<CategoryBudget>,
@@ -184,6 +196,10 @@ describe('FinanceService', () => {
       invoiceRepo as unknown as Repository<Invoice>,
       supplierRepo as unknown as Repository<Supplier>,
       tax as unknown as TaxService,
+      employeeRepo as unknown as Repository<Employee>,
+      packageRepo as unknown as Repository<SalaryPackage>,
+      runRepo as unknown as Repository<PayrollRun>,
+      lineRepo as unknown as Repository<PayrollRunLine>,
     );
   });
 
@@ -325,6 +341,24 @@ describe('FinanceService', () => {
     });
   });
 
+  describe('getOverview payroll', () => {
+    it('adds the current gross of active employees to the committed burn', async () => {
+      seedAccounts([{ balance: 100000 }]);
+      employeeRepo.find.mockResolvedValue([
+        { id: 'a', status: 'ACTIVE' },
+        { id: 'b', status: 'ACTIVE' },
+      ]);
+      packageRepo.find.mockResolvedValue([
+        { employeeId: 'a', effectiveFrom: '2020-01-01', basic: 1000, housing: 500, transport: 0, otherAllowances: [] },
+        { employeeId: 'a', effectiveFrom: '2099-01-01', basic: 9999, housing: 0, transport: 0, otherAllowances: [] },
+        { employeeId: 'b', effectiveFrom: '2020-01-01', basic: 2000, housing: 0, transport: 0, otherAllowances: [{ label: 'x', amount: 500 }] },
+      ]);
+      const o = await service.getOverview(tenantId);
+      expect(o.monthlyBurnRate).toBe(4000);
+      expect(o.runwayMonths).toBe(25);
+    });
+  });
+
   describe('cashForecast', () => {
     afterEach(() => jest.useRealTimers());
 
@@ -346,6 +380,76 @@ describe('FinanceService', () => {
       expect(f.months[0]).toMatchObject({ opening: 50000, billsOut: 10000, inflows: 0, closing: 40000 });
       expect(f.months[1]).toMatchObject({ opening: 40000, inflows: 30000, closing: 70000 });
       expect(f.months[3]).toMatchObject({ recurringOut: 120000, closing: -50000 });
+    });
+  });
+
+  describe('cashForecast payroll', () => {
+    afterEach(() => jest.useRealTimers());
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-10-16T00:00:00Z'));
+      seedAccounts([{ balance: 100000 }]);
+    });
+    const emp = (id: string, o: any = {}) => ({
+      id, tenantId, status: 'ACTIVE', joiningDate: '2020-01-01', leavingDate: null, ...o,
+    });
+    const pkg = (employeeId: string, effectiveFrom: string, basic: number, o: any = {}) => ({
+      employeeId, effectiveFrom, basic, housing: 0, transport: 0, otherAllowances: [], ...o,
+    });
+
+    it('an approved run contributes only its unpaid net, on its pay date', async () => {
+      runRepo.find.mockResolvedValue([
+        { id: 'r1', period: '2026-10', status: 'PARTIALLY_PAID', payDate: '2026-10-28', totalNet: 9000 },
+      ]);
+      lineRepo.find.mockResolvedValue([{ runId: 'r1', netPay: 3000, paidAt: null }]);
+      const f = await service.cashForecast(tenantId, 2);
+      expect(f.months[0].payrollOut).toBe(3000);
+      expect(f.months[0].closing).toBe(97000);
+      expect(f.months[1].payrollOut).toBe(0);
+    });
+
+    it('an overdue unpaid run lands in month 1', async () => {
+      runRepo.find.mockResolvedValue([
+        { id: 'r0', period: '2026-09', status: 'APPROVED', payDate: '2026-09-28', totalNet: 5000 },
+      ]);
+      lineRepo.find.mockResolvedValue([{ runId: 'r0', netPay: 5000, paidAt: null }]);
+      const f = await service.cashForecast(tenantId, 1);
+      expect(f.months[0].payrollOut).toBe(5000);
+    });
+
+    it('projects months with no run from active gross, skipping LEFT and starting joiners in their month', async () => {
+      employeeRepo.find.mockResolvedValue([
+        emp('a'),
+        emp('b', { status: 'LEFT', leavingDate: '2026-06-30' }),
+        emp('c', { joiningDate: '2026-12-10' }),
+      ]);
+      packageRepo.find.mockResolvedValue([
+        pkg('a', '2020-01-01', 1000),
+        pkg('a', '2026-11-15', 1500, { housing: 500 }),
+        pkg('b', '2020-01-01', 7000),
+        pkg('c', '2026-12-01', 800, { otherAllowances: [{ label: 'x', amount: 200 }] }),
+      ]);
+      const f = await service.cashForecast(tenantId, 3);
+      expect(f.months.map((m) => m.payrollOut)).toEqual([1000, 2000, 3000]);
+    });
+
+    it('a draft run uses its total net instead of the projection', async () => {
+      employeeRepo.find.mockResolvedValue([emp('a')]);
+      packageRepo.find.mockResolvedValue([pkg('a', '2020-01-01', 1000)]);
+      runRepo.find.mockResolvedValue([
+        { id: 'r2', period: '2026-11', status: 'DRAFT', payDate: '2026-11-27', totalNet: 4321 },
+      ]);
+      const f = await service.cashForecast(tenantId, 2);
+      expect(f.months.map((m) => m.payrollOut)).toEqual([1000, 4321]);
+    });
+
+    it('a paid run adds nothing and suppresses the projection for its month', async () => {
+      employeeRepo.find.mockResolvedValue([emp('a')]);
+      packageRepo.find.mockResolvedValue([pkg('a', '2020-01-01', 1000)]);
+      runRepo.find.mockResolvedValue([
+        { id: 'r3', period: '2026-10', status: 'PAID', payDate: '2026-10-28', totalNet: 900 },
+      ]);
+      const f = await service.cashForecast(tenantId, 2);
+      expect(f.months.map((m) => m.payrollOut)).toEqual([0, 1000]);
     });
   });
 

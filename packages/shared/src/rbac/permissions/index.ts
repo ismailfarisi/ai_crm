@@ -22,6 +22,7 @@ import { quotesDomain, catalogDomain, invoicesDomain, QUOTE_PERMISSIONS, CATALOG
 import { channelsDomain, emailDomain, CHANNEL_PERMISSIONS, EMAIL_PERMISSIONS } from './comms';
 import { automationsDomain, AUTOMATION_PERMISSIONS } from './automations';
 import { financeDomain, FINANCE_PERMISSIONS } from './finance';
+import { payrollDomain, PAYROLL_PERMISSIONS } from './payroll';
 import { aiDomain, AI_PERMISSIONS } from './ai';
 import {
   suppliersDomain,
@@ -108,6 +109,7 @@ export const PERMISSION_DOMAINS: PermissionDomain[] = [
   emailDomain,
   automationsDomain,
   financeDomain,
+  payrollDomain,
   aiDomain,
   suppliersDomain,
   purchaseOrdersDomain,
@@ -141,6 +143,7 @@ export const PERMISSIONS = {
   ...EMAIL_PERMISSIONS,
   ...AUTOMATION_PERMISSIONS,
   ...FINANCE_PERMISSIONS,
+  ...PAYROLL_PERMISSIONS,
   ...AI_PERMISSIONS,
   ...SUPPLIER_PERMISSIONS,
   ...PURCHASE_ORDER_PERMISSIONS,
