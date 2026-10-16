@@ -15,6 +15,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input, Select } from '@/components/ui/field';
 import { CountrySelect } from '@/components/ui/country-select';
+import { usePensionSchemes } from '@/hooks/use-payroll';
 import { useCan } from '@/lib/session-context';
 
 type FormIn = z.input<typeof createEmployeeSchema>;
@@ -36,6 +37,11 @@ const DIFF_KEYS = [
   'iban',
   'email',
   'phone',
+  'wpsPersonId',
+  'bankRoutingCode',
+  'pensionSchemeId',
+  'annualLeaveDaysOverride',
+  'probationEndDate',
 ] as const;
 
 /** Only what changed, so an edit never asks the server to touch what the user left alone. */
@@ -70,6 +76,11 @@ function toDefaults(e?: EmployeeDto | null): FormIn {
       iban: '',
       email: '',
       phone: '',
+      wpsPersonId: '',
+      bankRoutingCode: '',
+      pensionSchemeId: null,
+      annualLeaveDaysOverride: null,
+      probationEndDate: null,
     };
   }
   return {
@@ -88,6 +99,11 @@ function toDefaults(e?: EmployeeDto | null): FormIn {
     iban: e.iban ?? '',
     email: e.email ?? '',
     phone: e.phone ?? '',
+    wpsPersonId: e.wpsPersonId ?? '',
+    bankRoutingCode: e.bankRoutingCode ?? '',
+    pensionSchemeId: e.pensionSchemeId,
+    annualLeaveDaysOverride: e.annualLeaveDaysOverride,
+    probationEndDate: e.probationEndDate,
   };
 }
 
@@ -102,6 +118,9 @@ export interface EmployeeFormModalProps {
 
 export function EmployeeFormModal({ open, onClose, existing, onSubmit, isLoading = false }: EmployeeFormModalProps) {
   const canManage = useCan({ permission: PERMISSIONS.EMPLOYEE_MANAGE });
+  // Listing schemes needs payroll:read, so without it the picker is hidden (the API would 403).
+  const canReadPayroll = useCan({ permission: PERMISSIONS.PAYROLL_READ });
+  const schemes = usePensionSchemes(open && canReadPayroll);
   const form = useForm<FormIn, unknown, FormOut>({
     resolver: zodResolver(createEmployeeSchema),
     defaultValues: toDefaults(existing),
@@ -113,6 +132,11 @@ export function EmployeeFormModal({ open, onClose, existing, onSubmit, isLoading
 
   const errors = form.formState.errors;
   const method = form.watch('paymentMethod');
+  const isNational = form.watch('isNational');
+  // Active schemes only, but keep the one already assigned so an edit never silently drops it.
+  const schemeOptions = (schemes.data ?? [])
+    .filter((s) => s.isActive || s.id === existing?.pensionSchemeId)
+    .map((s) => ({ value: s.id, label: s.isActive ? s.name : `${s.name} (inactive)` }));
 
   return (
     <Dialog
@@ -126,7 +150,8 @@ export function EmployeeFormModal({ open, onClose, existing, onSubmit, isLoading
         noValidate
         onSubmit={form.handleSubmit(async (values) => {
           try {
-            await onSubmit(values);
+            // A scheme only applies to nationals; unticking the box un-assigns it.
+            await onSubmit(values.isNational ? values : { ...values, pensionSchemeId: null });
           } catch {
             // The mutation has already toasted the server's reason; keep the form open to retry.
             return;
@@ -170,10 +195,17 @@ export function EmployeeFormModal({ open, onClose, existing, onSubmit, isLoading
         </div>
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" {...form.register('isNational')} />
-          <span>
-            UAE national
-          </span>
+          <span>UAE/GCC national</span>
         </label>
+        {isNational && canReadPayroll && (
+          <Select
+            label="Pension scheme"
+            placeholder="No scheme"
+            options={schemeOptions}
+            {...form.register('pensionSchemeId', { setValueAs: (v: string) => (v ? v : null) })}
+            error={errors.pensionSchemeId?.message}
+          />
+        )}
 
         <Select
           label="Paid by"
@@ -197,6 +229,44 @@ export function EmployeeFormModal({ open, onClose, existing, onSubmit, isLoading
             )}
           </div>
         )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="WPS person ID"
+            inputMode="numeric"
+            hint="14 digits, from the labour card"
+            {...form.register('wpsPersonId')}
+            error={errors.wpsPersonId?.message}
+          />
+          {method === 'BANK' && (
+            <Input
+              label="Bank routing code"
+              inputMode="numeric"
+              hint="9 digits"
+              {...form.register('bankRoutingCode')}
+              error={errors.bankRoutingCode?.message}
+            />
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="Probation ends (optional)"
+            type="date"
+            {...form.register('probationEndDate', { setValueAs: (v: string) => (v ? v : null) })}
+            error={errors.probationEndDate?.message}
+          />
+          <Input
+            label="Annual leave days (optional)"
+            type="number"
+            min={30}
+            max={60}
+            hint="Blank uses the company default"
+            {...form.register('annualLeaveDaysOverride', {
+              setValueAs: (v: string) => (v === '' || v == null ? null : Number(v)),
+            })}
+            error={errors.annualLeaveDaysOverride?.message}
+          />
+        </div>
 
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>

@@ -92,7 +92,7 @@ const QUERY_KEYS = [
   'documentTemplates', 'documentTemplate', 'resolveTemplate',
   'savedViews', 'savedView', 'customObjects',
   'assistantConversations', 'assistantConversation',
-  'employees', 'employee', 'employeePackages', 'employeeAdvances', 'employeeGratuity',
+  'employees', 'employee', 'employeePackages', 'employeeAdvances', 'employeeGratuity', 'employeeLeave', 'payrollSettings', 'pensionSchemes',
   'payrollRuns', 'payrollRun', 'payslip', 'openingGratuityPreview',
 ];
 

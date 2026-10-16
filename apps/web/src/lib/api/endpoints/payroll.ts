@@ -6,7 +6,16 @@ import type {
   EmployeeAdvancesDto,
   EmployeeDto,
   EmployeeGratuityDto,
+  EmployeeLeaveDto,
   EmployeeStatus,
+  LeaveAdjustmentPayload,
+  LeaveRecordDto,
+  LeaveRecordPayload,
+  PayrollSettingsDto,
+  PayrollSettingsPayload,
+  PensionSchemeDto,
+  CreatePensionSchemePayload,
+  UpdatePensionSchemePayload,
   GratuityAdjustmentPayload,
   GratuityLedgerEntryDto,
   OpeningGratuityPreviewDto,
@@ -49,6 +58,15 @@ export const payrollEndpoints = {
         method: 'POST',
         body: cutoverDate ? { cutoverDate } : {},
       }),
+    settings: () => apiFetch<PayrollSettingsDto>('/payroll/settings'),
+    saveSettings: (input: PayrollSettingsPayload) =>
+      apiFetch<PayrollSettingsDto>('/payroll/settings', { method: 'PUT', body: input }),
+    pensionSchemes: () => apiFetch<PensionSchemeDto[]>('/payroll/pension-schemes'),
+    createPensionScheme: (input: CreatePensionSchemePayload) =>
+      apiFetch<PensionSchemeDto>('/payroll/pension-schemes', { method: 'POST', body: input }),
+    updatePensionScheme: (id: string, input: UpdatePensionSchemePayload) =>
+      apiFetch<PensionSchemeDto>(`/payroll/pension-schemes/${id}`, { method: 'PATCH', body: input }),
+    deletePensionScheme: (id: string) => apiFetch<void>(`/payroll/pension-schemes/${id}`, { method: 'DELETE' }),
     postOpeningGratuity: (input: PostOpeningGratuityPayload) =>
       apiFetch<unknown>('/payroll/opening-gratuity', { method: 'POST', body: input }),
   },
@@ -66,6 +84,15 @@ export const payrollEndpoints = {
     recordAdvance: (id: string, input: RecordAdvancePayload) =>
       apiFetch<EmployeeAdvanceDto>(`/employees/${id}/advances`, { method: 'POST', body: input }),
     gratuity: (id: string) => apiFetch<EmployeeGratuityDto>(`/employees/${id}/gratuity`),
+    leave: (id: string) => apiFetch<EmployeeLeaveDto>(`/employees/${id}/leave`),
+    createLeaveRecord: (id: string, input: LeaveRecordPayload) =>
+      apiFetch<LeaveRecordDto>(`/employees/${id}/leave-records`, { method: 'POST', body: input }),
+    updateLeaveRecord: (id: string, recordId: string, input: LeaveRecordPayload) =>
+      apiFetch<LeaveRecordDto>(`/employees/${id}/leave-records/${recordId}`, { method: 'PATCH', body: input }),
+    deleteLeaveRecord: (id: string, recordId: string) =>
+      apiFetch<void>(`/employees/${id}/leave-records/${recordId}`, { method: 'DELETE' }),
+    adjustLeave: (id: string, input: LeaveAdjustmentPayload) =>
+      apiFetch<unknown>(`/employees/${id}/leave-adjustments`, { method: 'POST', body: input }),
     adjustGratuity: (id: string, input: GratuityAdjustmentPayload) =>
       apiFetch<GratuityLedgerEntryDto>(`/employees/${id}/gratuity-adjustments`, {
         method: 'POST',
@@ -80,6 +107,9 @@ export const payrollKeys = {
   employeePackages: (id: string) => ['employees', id, 'packages'] as const,
   employeeAdvances: (id: string) => ['employees', id, 'advances'] as const,
   employeeGratuity: (id: string) => ['employees', id, 'gratuity'] as const,
+  employeeLeave: (id: string) => ['employees', id, 'leave'] as const,
+  payrollSettings: () => ['payroll', 'settings'] as const,
+  pensionSchemes: () => ['payroll', 'pension-schemes'] as const,
   payrollRuns: () => ['payroll', 'runs'] as const,
   payrollRun: (id: string) => ['payroll', 'run', id] as const,
   payslip: (runId: string, lineId: string) => ['payroll', 'payslip', runId, lineId] as const,

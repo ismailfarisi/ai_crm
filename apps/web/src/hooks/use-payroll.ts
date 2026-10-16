@@ -10,6 +10,11 @@ import type {
   PostOpeningGratuityPayload,
   UpdatePayrollLinePayload,
   GratuityAdjustmentPayload,
+  CreatePensionSchemePayload,
+  LeaveAdjustmentPayload,
+  LeaveRecordPayload,
+  PayrollSettingsPayload,
+  UpdatePensionSchemePayload,
   RecordAdvancePayload,
   UpdateEmployeePayload,
 } from '@saas/shared';
@@ -278,5 +283,128 @@ export function usePostOpeningGratuity() {
       toast.success('Opening gratuity balances posted');
     },
     onError: (error) => toast.error(describeServer(error, 'Could not post the opening balances')),
+  });
+}
+
+// ── Settings, pension schemes and leave ───────────────────────────────────
+
+export function usePayrollSettings() {
+  return useQuery({ queryKey: queryKeys.payrollSettings(), queryFn: () => api.payroll.settings() });
+}
+
+export function useSavePayrollSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: PayrollSettingsPayload) => api.payroll.saveSettings(input),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['payroll'] });
+      await queryClient.invalidateQueries({ queryKey: ['employees'] });
+      toast.success('Payroll settings saved');
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not save the settings')),
+  });
+}
+
+export function usePensionSchemes(enabled = true) {
+  return useQuery({ queryKey: queryKeys.pensionSchemes(), queryFn: () => api.payroll.pensionSchemes(), enabled });
+}
+
+export function useCreatePensionScheme() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreatePensionSchemePayload) => api.payroll.createPensionScheme(input),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pensionSchemes() });
+      toast.success('Pension scheme added');
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not add the scheme')),
+  });
+}
+
+export function useUpdatePensionScheme() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: UpdatePensionSchemePayload }) =>
+      api.payroll.updatePensionScheme(id, input),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pensionSchemes() });
+      toast.success('Pension scheme saved');
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not save the scheme')),
+  });
+}
+
+export function useDeletePensionScheme() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.payroll.deletePensionScheme(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pensionSchemes() });
+      toast.success('Pension scheme deleted');
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not delete the scheme')),
+  });
+}
+
+export function useEmployeeLeave(id: string | null, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.employeeLeave(id ?? ''),
+    queryFn: () => api.employees.leave(id as string),
+    enabled: Boolean(id) && enabled,
+  });
+}
+
+/** Leave feeds draft runs (they are re-filled), so employees and payroll both go stale. */
+async function invalidateLeave(queryClient: ReturnType<typeof useQueryClient>) {
+  await queryClient.invalidateQueries({ queryKey: ['employees'] });
+  await queryClient.invalidateQueries({ queryKey: ['payroll'] });
+}
+
+/** No toast on failure for create/update: the modal shows the server's reason inline. */
+export function useCreateLeaveRecord() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: LeaveRecordPayload }) => api.employees.createLeaveRecord(id, input),
+    onSuccess: async () => {
+      await invalidateLeave(queryClient);
+      toast.success('Leave recorded');
+    },
+  });
+}
+
+export function useUpdateLeaveRecord() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, recordId, input }: { id: string; recordId: string; input: LeaveRecordPayload }) =>
+      api.employees.updateLeaveRecord(id, recordId, input),
+    onSuccess: async () => {
+      await invalidateLeave(queryClient);
+      toast.success('Leave record saved');
+    },
+  });
+}
+
+export function useDeleteLeaveRecord() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, recordId }: { id: string; recordId: string }) => api.employees.deleteLeaveRecord(id, recordId),
+    onSuccess: async () => {
+      await invalidateLeave(queryClient);
+      toast.success('Leave record deleted');
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not delete the leave record')),
+  });
+}
+
+export function useAdjustLeave() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: LeaveAdjustmentPayload }) => api.employees.adjustLeave(id, input),
+    onSuccess: async () => {
+      await invalidateLeave(queryClient);
+      await queryClient.invalidateQueries({ queryKey: ['finance'] });
+      toast.success('Leave balance adjusted');
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not adjust the leave balance')),
   });
 }

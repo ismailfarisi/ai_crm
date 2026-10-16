@@ -31,6 +31,7 @@ const employees: EmployeeDto[] = [
 vi.mock('@/hooks/use-payroll', () => ({
   useEmployees: () => ({ data: employees, isPending: false, isError: false, error: null }),
   useCreateEmployee: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  usePensionSchemes: () => ({ data: [], isPending: false, isError: false }),
 }));
 
 beforeEach(() => {
