@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
+import { QueryFailedError } from 'typeorm';
 import { LEDGER_ROLES, PERMISSIONS } from '@saas/shared';
 import { FinanceAccount } from '../finance/entities/finance-account.entity';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
@@ -274,5 +275,29 @@ describe('PensionRemittanceService', () => {
     await expect(
       ctx.service.void(T, '2026-10', PAYER),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('a unique-index race (23505) on insert is a 409', async () => {
+    const ctx = setup();
+    ctx.remittances.save.mockRejectedValueOnce(
+      new QueryFailedError('INSERT', [], { code: '23505' } as any),
+    );
+    const err = await ctx.service
+      .remit(T, '2026-10', PAYER, { financeAccountId: BANK })
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(err.message).toBe('Pension for October 2026 is already remitted');
+  });
+
+  it('void takes the tenant advisory lock before reading', async () => {
+    const ctx = setup();
+    await ctx.service.remit(T, '2026-10', PAYER, { financeAccountId: BANK });
+    ctx.manager.query.mockClear();
+    ctx.remittances.find.mockClear();
+    await ctx.service.void(T, '2026-10', PAYER);
+    expect(ctx.manager.query.mock.calls[0][0]).toContain(ADVISORY);
+    expect(
+      ctx.manager.query.mock.invocationCallOrder[0],
+    ).toBeLessThan(ctx.remittances.find.mock.invocationCallOrder[0]);
   });
 });

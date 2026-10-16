@@ -39,8 +39,8 @@ import type { PayrollActor } from './payroll-posting.service';
 import { PensionRemittanceService } from './pension-remittance.service';
 import { PensionService } from './pension.service';
 
-const PERIOD = /^d{4}-(0[1-9]|1[0-2])$/;
-const validPeriod = (period: string): string => {
+const PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
+export const validPeriod =(period: string): string => {
   if (!PERIOD.test(period)) {
     throw new BadRequestException('Period must be YYYY-MM');
   }
