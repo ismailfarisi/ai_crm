@@ -51,6 +51,27 @@ const iso = (d: Date | string | null | undefined) =>
 const byEmployeeNumber = (a: PayrollRunLine, b: PayrollRunLine) =>
   a.employeeNumber.localeCompare(b.employeeNumber);
 
+/**
+ * Reads a run `FOR UPDATE` inside the caller's transaction, so line edits,
+ * refreshes, approval and void of one run serialise: none can commit between
+ * another's status check and its write.
+ */
+export async function lockPayrollRun(
+  manager: EntityManager,
+  tenantId: string,
+  id: string,
+): Promise<PayrollRun> {
+  const run = await manager
+    .getRepository(PayrollRun)
+    .createQueryBuilder('r')
+    .setLock('pessimistic_write')
+    .where('r.id = :id', { id })
+    .andWhere('r.tenant_id = :tenantId', { tenantId })
+    .getOne();
+  if (!run) throw new NotFoundException('Payroll run not found');
+  return run;
+}
+
 /** An employee who belongs on the run, with the package in force at month end. */
 interface Eligible {
   employee: Employee;
@@ -580,26 +601,12 @@ export class PayrollRunsService {
     return lines.sort(byEmployeeNumber);
   }
 
-  /** Saves the run's own columns; lines are saved separately. */
-  /**
-   * Reads a run `FOR UPDATE` inside the caller's transaction, so concurrent
-   * line edits serialise and an approval cannot commit between the DRAFT
-   * check and the write.
-   */
-  private async lockRun(
+  private lockRun(
     manager: EntityManager,
     tenantId: string,
     id: string,
   ): Promise<PayrollRun> {
-    const run = await manager
-      .getRepository(PayrollRun)
-      .createQueryBuilder('r')
-      .setLock('pessimistic_write')
-      .where('r.id = :id', { id })
-      .andWhere('r.tenant_id = :tenantId', { tenantId })
-      .getOne();
-    if (!run) throw new NotFoundException('Payroll run not found');
-    return run;
+    return lockPayrollRun(manager, tenantId, id);
   }
 
   /**

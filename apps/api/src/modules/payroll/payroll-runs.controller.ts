@@ -26,12 +26,16 @@ import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '@/modules/rbac/guards/permissions.guard';
 import { PayrollRunsService } from './payroll-runs.service';
+import { PayrollPostingService } from './payroll-posting.service';
 
 @ApiTags('payroll')
 @Controller('payroll-runs')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PayrollRunsController {
-  constructor(private readonly runs: PayrollRunsService) {}
+  constructor(
+    private readonly runs: PayrollRunsService,
+    private readonly posting: PayrollPostingService,
+  ) {}
 
   @Get()
   @RequirePermissions(PERMISSIONS.PAYROLL_READ)
@@ -92,5 +96,37 @@ export class PayrollRunsController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<PayrollRunDto> {
     return this.runs.refresh(user.organizationId, id);
+  }
+
+  @Post(':id/approve')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PERMISSIONS.PAYROLL_APPROVE)
+  @ApiOperation({
+    summary: 'Approve a draft run: post its journal and the gratuity true-up',
+  })
+  approve(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<PayrollRunDto> {
+    return this.posting.approve(user.organizationId, id, {
+      userId: user.id,
+      permissions: user.permissions,
+    });
+  }
+
+  @Post(':id/void')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PERMISSIONS.PAYROLL_APPROVE)
+  @ApiOperation({
+    summary: 'Void an unpaid approved run: reverse its journal and gratuity',
+  })
+  void(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<PayrollRunDto> {
+    return this.posting.void(user.organizationId, id, {
+      userId: user.id,
+      permissions: user.permissions,
+    });
   }
 }

@@ -14,6 +14,7 @@ import { GratuityService } from './gratuity.service';
 import { PayrollController } from './payroll.controller';
 import { PayrollRunsService } from './payroll-runs.service';
 import { PayrollRunsController } from './payroll-runs.controller';
+import { PayrollPostingService } from './payroll-posting.service';
 
 /** Employees, salary packages, payroll runs, advances and the gratuity ledger. */
 @Module({
@@ -35,6 +36,7 @@ import { PayrollRunsController } from './payroll-runs.controller';
     AdvancesService,
     GratuityService,
     PayrollRunsService,
+    PayrollPostingService,
     // Built from process.env so a missing PAYROLL_DATA_KEY fails boot in production.
     {
       provide: PayrollCryptoService,
