@@ -2,10 +2,12 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Banknote, CheckCircle2, RefreshCw, Undo2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ArrowLeft, Banknote, CheckCircle2, RefreshCw, Trash2, Undo2 } from 'lucide-react';
 import { PERMISSIONS, type PaymentMethod } from '@saas/shared';
 import {
   useApprovePayrollRun,
+  useDeletePayrollRun,
   usePayPayrollRun,
   usePayrollLinesSaving,
   usePayrollRun,
@@ -18,6 +20,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { Card, CardBody, EmptyState, PageHeader, Skeleton } from '@/components/ui/primitives';
 import { PeopleNav } from './people-nav';
 import { PayrollLineEditor } from './payroll-line-editor';
+import { PayrollLinesProvider, usePayrollLines } from './payroll-lines-context';
 import { PayRunModal } from './pay-run-modal';
 import { RunStatusBadge } from './payroll-runs-view';
 import { money, periodLabel } from './payroll-format';
@@ -40,6 +43,7 @@ function ConfirmDialog({
   confirmLabel,
   danger,
   loading,
+  blockedReason,
   onConfirm,
   onClose,
 }: {
@@ -49,16 +53,29 @@ function ConfirmDialog({
   confirmLabel: string;
   danger?: boolean;
   loading: boolean;
+  /** Why confirming is not possible yet; the confirm button stays disabled while set. */
+  blockedReason?: string | null;
   onConfirm: () => void;
   onClose: () => void;
 }) {
   return (
     <Dialog open={open} onClose={onClose} title={title} description={description}>
+      {blockedReason && (
+        <p className="mb-3 text-sm text-ink-muted" role="status" data-testid="confirm-blocked">
+          {blockedReason}
+        </p>
+      )}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" onClick={onClose}>
           Cancel
         </Button>
-        <Button type="button" variant={danger ? 'danger' : 'primary'} loading={loading} onClick={onConfirm}>
+        <Button
+          type="button"
+          variant={danger ? 'danger' : 'primary'}
+          loading={loading}
+          disabled={Boolean(blockedReason)}
+          onClick={onConfirm}
+        >
           {confirmLabel}
         </Button>
       </div>
@@ -67,7 +84,8 @@ function ConfirmDialog({
 }
 
 export function PayrollRunDetail({ id }: { id: string }) {
-  const { data: run, isPending, isError, error } = usePayrollRun(id);
+  const { data: run, isPending, isError, error, isFetching } = usePayrollRun(id);
+  const router = useRouter();
   const canManage = useCan({ permission: PERMISSIONS.PAYROLL_MANAGE });
   const canApprove = useCan({ permission: PERMISSIONS.PAYROLL_APPROVE });
   const canPay = useCan({ permission: PERMISSIONS.PAYROLL_PAY });
@@ -75,8 +93,10 @@ export function PayrollRunDetail({ id }: { id: string }) {
   const approve = useApprovePayrollRun();
   const voidRun = useVoidPayrollRun();
   const pay = usePayPayrollRun();
+  const deleteRun = useDeletePayrollRun();
   const saving = usePayrollLinesSaving(id);
-  const [confirm, setConfirm] = useState<'approve' | 'void' | null>(null);
+  const lineEdits = usePayrollLines();
+  const [confirm, setConfirm] = useState<'approve' | 'void' | 'delete' | null>(null);
   const [paying, setPaying] = useState<PaymentMethod | null>(null);
 
   if (isPending) return <Skeleton className="h-64 w-full" />;
@@ -99,6 +119,18 @@ export function PayrollRunDetail({ id }: { id: string }) {
   const showVoid = run.status === 'APPROVED' && nothingPaid && canApprove;
   const lines = run.lines ?? [];
   const payingAmount = paying === 'BANK' ? run.totals.bankNet : run.totals.cashNet;
+  const showDelete = isDraft && canManage;
+  // Approve and Pay quote the run's totals, so they wait for every line edit to be
+  // saved and the run refetched; a refused edit has to be fixed first.
+  const blockedReason = lineEdits.rejected
+    ? 'A line has a change the server refused. Fix the highlighted row first.'
+    : lineEdits.unsaved || saving || isFetching
+      ? 'Saving line changes…'
+      : null;
+  const startPaying = (method: PaymentMethod) => {
+    setPaying(method);
+    void lineEdits.flushAll();
+  };
 
   return (
     <div className="space-y-6">
@@ -115,21 +147,32 @@ export function PayrollRunDetail({ id }: { id: string }) {
               </Button>
             )}
             {showApprove && (
-              <Button disabled={saving} onClick={() => setConfirm('approve')}>
+              <Button
+                onClick={() => {
+                  setConfirm('approve');
+                  void lineEdits.flushAll();
+                }}
+              >
                 <CheckCircle2 className="size-4" />
                 Approve
               </Button>
             )}
             {showPayBank && (
-              <Button disabled={saving} onClick={() => setPaying('BANK')}>
+              <Button onClick={() => startPaying('BANK')}>
                 <Banknote className="size-4" />
                 Pay bank
               </Button>
             )}
             {showPayCash && (
-              <Button variant="outline" disabled={saving} onClick={() => setPaying('CASH')}>
+              <Button variant="outline" onClick={() => startPaying('CASH')}>
                 <Banknote className="size-4" />
                 Pay cash
+              </Button>
+            )}
+            {showDelete && (
+              <Button variant="ghost" onClick={() => setConfirm('delete')}>
+                <Trash2 className="size-4" />
+                Delete draft
               </Button>
             )}
             {showVoid && (
@@ -188,9 +231,11 @@ export function PayrollRunDetail({ id }: { id: string }) {
               </tr>
             </thead>
             <tbody>
-              {lines.map((line) => (
-                <PayrollLineEditor key={line.id} runId={run.id} line={line} editable={isDraft && canManage} />
-              ))}
+              <PayrollLinesProvider value={lineEdits.registry}>
+                {lines.map((line) => (
+                  <PayrollLineEditor key={line.id} runId={run.id} line={line} editable={isDraft && canManage} />
+                ))}
+              </PayrollLinesProvider>
             </tbody>
           </table>
           {lines.length === 0 && <p className="py-4 text-sm text-ink-muted">This run has no lines.</p>}
@@ -203,9 +248,11 @@ export function PayrollRunDetail({ id }: { id: string }) {
         description={`This posts ${money(run.totals.salaryCost)} of salary cost, ${money(run.totals.net)} net pay and a ${money(run.totals.gratuityAccrual)} gratuity accrual to the books. Runs must be approved in month order.`}
         confirmLabel="Approve run"
         loading={approve.isPending}
+        blockedReason={blockedReason}
         onClose={() => setConfirm(null)}
         onConfirm={async () => {
           try {
+            await lineEdits.flushAll();
             await approve.mutateAsync(run.id);
           } catch {
             return;
@@ -232,12 +279,31 @@ export function PayrollRunDetail({ id }: { id: string }) {
           }
         }}
       />
+      <ConfirmDialog
+        open={confirm === 'delete'}
+        title="Delete this draft?"
+        description={`${run.runNumber} and its lines are discarded. Nothing was posted, so the books do not change.`}
+        confirmLabel="Delete draft"
+        danger
+        loading={deleteRun.isPending}
+        onClose={() => setConfirm(null)}
+        onConfirm={async () => {
+          try {
+            await deleteRun.mutateAsync(run.id);
+          } catch {
+            setConfirm(null);
+            return;
+          }
+          router.push('/people/payroll');
+        }}
+      />
       {paying && (
         <PayRunModal
           open
           method={paying}
           amount={payingAmount}
           isLoading={pay.isPending}
+          blockedReason={blockedReason}
           onClose={() => setPaying(null)}
           onSubmit={async (input) => {
             await pay.mutateAsync({ id: run.id, input });

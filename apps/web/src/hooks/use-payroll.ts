@@ -211,6 +211,20 @@ export function useRefreshPayrollRun() {
   });
 }
 
+/** Discards a draft run; it posted nothing, so only the payroll lists go stale. */
+export function useDeletePayrollRun() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.payroll.deleteRun(id),
+    onSuccess: async (_void, id) => {
+      queryClient.removeQueries({ queryKey: queryKeys.payrollRun(id) });
+      await invalidatePayroll(queryClient);
+      toast.success('Draft payroll run deleted');
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not delete the draft')),
+  });
+}
+
 export function useApprovePayrollRun() {
   const queryClient = useQueryClient();
   return useMutation({

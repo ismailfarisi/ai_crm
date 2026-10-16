@@ -13,6 +13,8 @@ import { Alert, Badge, Card, CardBody, EmptyState, PageHeader, Skeleton } from '
 import { PeopleNav } from './people-nav';
 import { STATUS_LABELS, STATUS_TONES, defaultNextPeriod, money, periodLabel } from './payroll-format';
 
+const POSTED_STATUSES: PayrollRunDto['status'][] = ['APPROVED', 'PARTIALLY_PAID', 'PAID'];
+
 export function RunStatusBadge({ status }: { status: PayrollRunDto['status'] }) {
   return <Badge tone={STATUS_TONES[status]}>{STATUS_LABELS[status]}</Badge>;
 }
@@ -78,6 +80,9 @@ export function PayrollRunsView() {
   const runs = data?.runs ?? [];
   const cutover = data?.openingGratuityCutover ?? null;
   const defaultPeriod = defaultNextPeriod(runs, cutover);
+  // Once a run is posted its employees are accrued, and an opening for them would be
+  // refused; the prompt is only useful before go-live.
+  const anyPosted = runs.some((r) => POSTED_STATUSES.includes(r.status));
 
   return (
     <div className="space-y-6">
@@ -95,7 +100,7 @@ export function PayrollRunsView() {
       />
       <PeopleNav />
 
-      {data && cutover === null && (
+      {data && cutover === null && !anyPosted && (
         <Can permission={PERMISSIONS.PAYROLL_MANAGE}>
           <div data-testid="opening-gratuity-prompt">
             <Alert tone="info">

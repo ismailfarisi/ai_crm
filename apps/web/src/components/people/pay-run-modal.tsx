@@ -16,10 +16,12 @@ export interface PayRunModalProps {
   amount: number;
   onSubmit: (input: { method: PaymentMethod; financeAccountId: string; paidAt?: Date }) => Promise<void> | void;
   isLoading?: boolean;
+  /** Why recording is not possible yet (line edits still saving); submit stays disabled while set. */
+  blockedReason?: string | null;
 }
 
 /** One call per method: the server refuses a method with nobody to pay. */
-export function PayRunModal({ open, onClose, method, amount, onSubmit, isLoading = false }: PayRunModalProps) {
+export function PayRunModal({ open, onClose, method, amount, onSubmit, isLoading = false, blockedReason = null }: PayRunModalProps) {
   const { data: accounts = [] } = useFinanceAccounts();
   const { data: org } = useOrganization();
   const baseCurrency = org?.baseCurrency;
@@ -51,6 +53,7 @@ export function PayRunModal({ open, onClose, method, amount, onSubmit, isLoading
         className="space-y-4"
         onSubmit={async (e) => {
           e.preventDefault();
+          if (blockedReason) return;
           if (!accountId) {
             setShowError(true);
             return;
@@ -72,11 +75,16 @@ export function PayRunModal({ open, onClose, method, amount, onSubmit, isLoading
           error={showError && !accountId ? 'Choose the account it was paid from' : undefined}
         />
         <Input label="Date (optional)" type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} />
+        {blockedReason && (
+          <p className="text-sm text-ink-muted" role="status" data-testid="pay-blocked">
+            {blockedReason}
+          </p>
+        )}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" loading={isLoading}>
+          <Button type="submit" loading={isLoading} disabled={Boolean(blockedReason)}>
             Record payment
           </Button>
         </div>

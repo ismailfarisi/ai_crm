@@ -38,6 +38,7 @@ export const payrollEndpoints = {
       apiFetch<PayrollRunDto>('/payroll-runs', { method: 'POST', body: input }),
     updateLine: (runId: string, lineId: string, input: UpdatePayrollLinePayload) =>
       apiFetch<PayrollRunDto>(`/payroll-runs/${runId}/lines/${lineId}`, { method: 'PATCH', body: input }),
+    deleteRun: (id: string) => apiFetch<void>(`/payroll-runs/${id}`, { method: 'DELETE' }),
     refreshRun: (id: string) => apiFetch<PayrollRunDto>(`/payroll-runs/${id}/refresh`, { method: 'POST' }),
     approveRun: (id: string) => apiFetch<PayrollRunDto>(`/payroll-runs/${id}/approve`, { method: 'POST' }),
     voidRun: (id: string) => apiFetch<PayrollRunDto>(`/payroll-runs/${id}/void`, { method: 'POST' }),

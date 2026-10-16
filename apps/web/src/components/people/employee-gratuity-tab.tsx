@@ -57,6 +57,12 @@ export function EmployeeGratuityTab({ employeeId }: { employeeId: string }) {
           <div>
             <dt className="text-xs text-ink-subtle">Entitled today</dt>
             <dd className="text-lg font-semibold tabular-nums text-ink-muted">{money(data.entitlementToday)}</dd>
+            {data.statutoryEntitlementToday !== undefined &&
+              data.statutoryEntitlementToday !== data.entitlementToday && (
+                <p className="text-xs text-ink-subtle">
+                  {money(data.statutoryEntitlementToday)} statutory, adjustments on top
+                </p>
+              )}
           </div>
           <div>
             <dt className="text-xs text-ink-subtle">Service days</dt>

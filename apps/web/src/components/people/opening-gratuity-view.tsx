@@ -24,13 +24,17 @@ export function OpeningGratuityView() {
 
   const posted = runs.data?.openingGratuityCutover ?? null;
   const data = preview.data;
-  const amountOf = (employeeId: string, calculated: number): number => {
+  /** The amount to post, or null when the override box holds nothing usable. */
+  const amountOf = (employeeId: string, calculated: number): number | null => {
     const raw = overrides[employeeId];
-    if (raw === undefined || raw.trim() === '' || Number.isNaN(Number(raw))) return calculated;
-    return Math.max(0, Math.round(Number(raw) * 100) / 100);
+    if (raw === undefined) return calculated;
+    const n = Number(raw);
+    if (raw.trim() === '' || Number.isNaN(n) || n < 0) return null;
+    return Math.round(n * 100) / 100;
   };
   const lines = (data?.lines ?? []).map((l) => ({ ...l, amount: amountOf(l.employeeId, l.calculated) }));
-  const total = lines.reduce((s, l) => s + l.amount, 0);
+  const invalid = lines.some((l) => l.amount === null);
+  const total = lines.reduce((s, l) => s + (l.amount ?? 0), 0);
   // Lines on screen may belong to the previous cut-over until the new preview lands.
   const stale = preview.isPlaceholderData || preview.isFetching;
   const effectiveCutover = cutover || data?.cutoverDate || '';
@@ -72,7 +76,7 @@ export function OpeningGratuityView() {
           ) : lines.length === 0 ? (
             <EmptyState
               title="Nobody to carry over"
-              description="No employee has joined on or before this date."
+              description="Everyone has joined after this date, already has an opening balance, or has been accrued by a posted payroll run."
             />
           ) : (
             <Card>
@@ -104,8 +108,14 @@ export function OpeningGratuityView() {
                             step="0.01"
                             value={overrides[l.employeeId] ?? String(l.calculated)}
                             onChange={(e) => setOverrides((o) => ({ ...o, [l.employeeId]: e.target.value }))}
+                            aria-invalid={l.amount === null}
                             className="w-28 rounded-lg border border-border/80 bg-surface px-2 py-1 text-right text-sm tabular-nums"
                           />
+                          {l.amount === null && (
+                            <p className="mt-1 text-xs text-danger" role="alert">
+                              Enter an amount of 0 or more
+                            </p>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -128,7 +138,8 @@ export function OpeningGratuityView() {
           {lines.length > 0 && (
             <div className="flex items-center justify-end gap-3">
               {!canPost && <p className="text-xs text-ink-subtle">Posting needs payroll approval access.</p>}
-              <Button disabled={!canPost || !effectiveCutover || stale} onClick={() => setConfirming(true)}>
+              {invalid && <p className="text-xs text-danger">Fix the highlighted opening balances first.</p>}
+              <Button disabled={!canPost || !effectiveCutover || stale || invalid} onClick={() => setConfirming(true)}>
                 Post opening balances
               </Button>
             </div>
@@ -149,12 +160,13 @@ export function OpeningGratuityView() {
           <Button
             type="button"
             loading={post.isPending}
-            disabled={stale}
+            disabled={stale || invalid}
             onClick={async () => {
+              if (invalid) return;
               try {
                 await post.mutateAsync({
                   cutoverDate: effectiveCutover,
-                  lines: lines.map((l) => ({ employeeId: l.employeeId, amount: l.amount })),
+                  lines: lines.map((l) => ({ employeeId: l.employeeId, amount: l.amount ?? 0 })),
                 });
               } catch {
                 return;

@@ -1,10 +1,11 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { PayrollRunDto, PayrollRunLineDto, PayslipDto } from '@saas/shared';
 import { PayrollRunDetail } from './payroll-run-detail';
 import { Payslip } from './payslip-view';
 import { OpeningGratuityView } from './opening-gratuity-view';
+import { PayrollRunsView } from './payroll-runs-view';
 import { defaultNextPeriod } from './payroll-format';
 
 let granted = new Set<string>();
@@ -12,7 +13,8 @@ vi.mock('@/lib/session-context', () => ({
   useSession: () => ({ check: (rule: { permission: string }) => granted.has(rule.permission) }),
   useCan: (rule: { permission: string }) => granted.has(rule.permission),
 }));
-vi.mock('next/navigation', () => ({ usePathname: () => '/people/payroll' }));
+const push = vi.fn();
+vi.mock('next/navigation', () => ({ usePathname: () => '/people/payroll', useRouter: () => ({ push }) }));
 vi.mock('@/hooks/use-finance', () => ({ useFinanceAccounts: () => ({ data: [] }) }));
 vi.mock('@/hooks/use-organization', () => ({ useOrganization: () => ({ data: { baseCurrency: 'AED' } }) }));
 
@@ -37,17 +39,22 @@ function makeRun(over: Partial<PayrollRunDto> = {}): PayrollRunDto {
 let run = makeRun();
 let saving = false;
 let previewState = { isPlaceholderData: false, isFetching: false };
+let runsList: PayrollRunDto[] = [];
+const updateLine = vi.fn();
+const deleteRun = vi.fn();
 vi.mock('@/hooks/use-payroll', () => {
   const mutation = () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false });
   return {
+    useDeletePayrollRun: () => ({ mutateAsync: (id: string) => deleteRun(id), isPending: false }),
+    useCreatePayrollRun: mutation,
     usePayrollRun: () => ({ data: run, isPending: false, isError: false, error: null }),
     useRefreshPayrollRun: mutation,
     useApprovePayrollRun: mutation,
     useVoidPayrollRun: mutation,
     usePayPayrollRun: mutation,
-    useUpdatePayrollLine: mutation,
+    useUpdatePayrollLine: () => ({ mutateAsync: (v: unknown) => updateLine(v) }),
     usePayrollLinesSaving: () => saving,
-    usePayrollRuns: () => ({ data: { runs: [], openingGratuityCutover: null } }),
+    usePayrollRuns: () => ({ data: { runs: runsList, openingGratuityCutover: null }, isPending: false, isError: false }),
     useOpeningGratuityPreview: () => ({
       data: {
         cutoverDate: '2026-09-30',
@@ -66,6 +73,10 @@ beforeEach(() => {
   run = makeRun();
   saving = false;
   previewState = { isPlaceholderData: false, isFetching: false };
+  runsList = [];
+  updateLine.mockReset();
+  deleteRun.mockReset();
+  push.mockReset();
   HTMLDialogElement.prototype.showModal ||= function (this: HTMLDialogElement) {
     this.open = true;
   };
@@ -133,15 +144,70 @@ describe('PayrollRunDetail actions', () => {
     expect(screen.queryByLabelText('Bonus for Amina Khan')).not.toBeInTheDocument();
   });
 
-  it('disables Approve and Pay while a line update is saving', () => {
+  it('disables the Approve and Pay confirmations while a line update is saving', async () => {
     granted = new Set(['payroll:read', 'payroll:approve', 'payroll:pay']);
     saving = true;
     const { unmount } = render(<PayrollRunDetail id="r1" />);
-    expect(btn(/^approve$/i)).toBeDisabled();
+    await act(async () => { fireEvent.click(btn(/^approve$/i)!); });
+    expect(screen.getByRole('button', { name: /approve run/i, hidden: true })).toBeDisabled();
     unmount();
     run = makeRun({ status: 'APPROVED' });
     render(<PayrollRunDetail id="r1" />);
-    expect(btn(/pay bank/i)).toBeDisabled();
+    await act(async () => { fireEvent.click(btn(/pay bank/i)!); });
+    expect(screen.getByRole('button', { name: /record payment/i, hidden: true })).toBeDisabled();
+    expect(screen.getByTestId('pay-blocked')).toHaveTextContent(/saving line changes/i);
+  });
+
+  it('Approve flushes a just-typed line edit and keeps confirm disabled until it is saved', async () => {
+    granted = new Set(['payroll:read', 'payroll:manage', 'payroll:approve']);
+    let resolve!: (v: unknown) => void;
+    updateLine.mockImplementationOnce(() => new Promise((r) => { resolve = r; }));
+    render(<PayrollRunDetail id="r1" />);
+    fireEvent.change(screen.getByLabelText('Bonus for Amina Khan'), { target: { value: '250' } });
+    // No wait for the debounce: Approve sends the pending edit at once.
+    await act(async () => { fireEvent.click(btn(/^approve$/i)!); });
+    expect(updateLine).toHaveBeenCalledTimes(1);
+    expect(updateLine.mock.calls[0][0]).toMatchObject({ lineId: 'l1', input: { bonusAmount: 250 } });
+    const confirm = screen.getByRole('button', { name: /approve run/i, hidden: true });
+    expect(confirm).toBeDisabled();
+    expect(screen.getByTestId('confirm-blocked')).toHaveTextContent(/saving line changes/i);
+
+    await act(async () => { resolve({}); });
+    expect(confirm).toBeEnabled();
+    expect(screen.queryByTestId('confirm-blocked')).toBeNull();
+  });
+
+  it('keeps Approve confirm disabled while a line edit was refused', async () => {
+    granted = new Set(['payroll:read', 'payroll:manage', 'payroll:approve']);
+    updateLine.mockRejectedValueOnce(new Error('Only 0.00 of the advance is outstanding'));
+    render(<PayrollRunDetail id="r1" />);
+    fireEvent.change(screen.getByLabelText('Advance recovery for Amina Khan'), { target: { value: '500' } });
+    await act(async () => { fireEvent.click(btn(/^approve$/i)!); });
+    const confirm = screen.getByRole('button', { name: /approve run/i, hidden: true });
+    expect(confirm).toBeDisabled();
+    expect(screen.getByTestId('confirm-blocked')).toHaveTextContent(/refused/i);
+  });
+
+  it('offers Delete draft only on a draft with payroll:manage, and goes back to the list', async () => {
+    granted = new Set(['payroll:read', 'payroll:approve']);
+    const { unmount } = render(<PayrollRunDetail id="r1" />);
+    expect(btn(/delete draft/i)).toBeNull();
+    unmount();
+
+    granted = new Set(['payroll:read', 'payroll:manage']);
+    run = makeRun({ status: 'APPROVED' });
+    const second = render(<PayrollRunDetail id="r1" />);
+    expect(btn(/delete draft/i)).toBeNull();
+    second.unmount();
+
+    run = makeRun();
+    deleteRun.mockResolvedValueOnce(undefined);
+    render(<PayrollRunDetail id="r1" />);
+    fireEvent.click(screen.getByRole('button', { name: /delete draft/i }));
+    const buttons = screen.getAllByRole('button', { name: /delete draft/i, hidden: true });
+    await act(async () => { fireEvent.click(buttons[buttons.length - 1]); });
+    expect(deleteRun).toHaveBeenCalledWith('r1');
+    expect(push).toHaveBeenCalledWith('/people/payroll');
   });
 
   it('links each line to its payslip', () => {
@@ -188,10 +254,40 @@ describe('OpeningGratuityView', () => {
     expect(screen.getByRole('button', { name: /post opening balances/i })).toBeDisabled();
   });
 
+  it('a cleared or negative override marks the row invalid and disables Post', () => {
+    granted = new Set(['payroll:read', 'payroll:manage', 'payroll:approve']);
+    render(<OpeningGratuityView />);
+    const input = screen.getByLabelText('Opening balance for Amina Khan');
+    fireEvent.change(input, { target: { value: '' } });
+    expect(screen.getByRole('button', { name: /post opening balances/i })).toBeDisabled();
+    expect(screen.getByRole('alert')).toHaveTextContent(/enter an amount/i);
+    fireEvent.change(input, { target: { value: '-5' } });
+    expect(screen.getByRole('button', { name: /post opening balances/i })).toBeDisabled();
+    fireEvent.change(input, { target: { value: '1500' } });
+    expect(screen.getByRole('button', { name: /post opening balances/i })).toBeEnabled();
+    expect(screen.getByTestId('opening-total')).toHaveTextContent('1,500.00');
+  });
+
   it('enables Post with payroll:approve', () => {
     granted = new Set(['payroll:read', 'payroll:manage', 'payroll:approve']);
     render(<OpeningGratuityView />);
     expect(screen.getByRole('button', { name: /post opening balances/i })).toBeEnabled();
+  });
+});
+
+describe('PayrollRunsView opening prompt', () => {
+  it('prompts for opening balances before go-live, and not once a run is posted', () => {
+    granted = new Set(['payroll:read', 'payroll:manage']);
+    runsList = [makeRun({ status: 'DRAFT' })];
+    const { unmount } = render(<PayrollRunsView />);
+    expect(screen.getByTestId('opening-gratuity-prompt')).toBeInTheDocument();
+    unmount();
+    for (const status of ['APPROVED', 'PARTIALLY_PAID', 'PAID'] as const) {
+      runsList = [makeRun({ status })];
+      const view = render(<PayrollRunsView />);
+      expect(screen.queryByTestId('opening-gratuity-prompt')).toBeNull();
+      view.unmount();
+    }
   });
 });
 
