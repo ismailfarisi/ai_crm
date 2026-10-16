@@ -26,6 +26,7 @@ import { savedViewsEndpoints, savedViewsKeys } from './saved-views';
 import { customObjectsEndpoints, customObjectsKeys } from './custom-objects';
 import { assistantEndpoints, assistantKeys } from './assistant';
 import { payrollEndpoints, payrollKeys } from './payroll';
+import { timesheetsEndpoints, timesheetsKeys } from './timesheets';
 
 export * from './auth';
 export * from './contacts';
@@ -48,6 +49,7 @@ export * from './saved-views';
 export * from './custom-objects';
 export * from './assistant';
 export * from './payroll';
+export * from './timesheets';
 
 export const api = {
   ...authEndpoints,
@@ -71,6 +73,7 @@ export const api = {
   ...customObjectsEndpoints,
   ...assistantEndpoints,
   ...payrollEndpoints,
+  ...timesheetsEndpoints,
 };
 
 export const queryKeys = {
@@ -95,4 +98,5 @@ export const queryKeys = {
   ...customObjectsKeys,
   ...assistantKeys,
   ...payrollKeys,
+  ...timesheetsKeys,
 };
