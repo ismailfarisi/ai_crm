@@ -476,7 +476,7 @@ What payroll leaves for compliance and job costing, and the choices behind it.
 - **WPS, leave and final settlement are modelled — see [UAE payroll compliance](#uae-payroll-compliance).**
   Their trade-offs are listed there.
 - **Gratuity accrues from day one — by design.** Nothing is payable before one
-  year of service, but #3's settlement applies eligibility, so accruing from
+  year of service, but the final settlement applies eligibility, so accruing from
   the start avoids a catch-up entry.
 - **The package in effect on the last day of the month applies to the whole
   month — by design.** No split-month proration of raises.
@@ -557,6 +557,10 @@ The trade-offs behind the GPSSA pension, WPS, leave and final settlement.
 - **Opening leave is not blocked by runs posted before this release — by
   design.** Those runs carry no leave rows, so nothing is double-counted. It is
   refused per employee once a run has accrued their leave.
+- **Approving a run before opening leave balances are posted accrues each
+  employee's statutory leave since joining as untaken in that run — by
+  design.** Opening leave is then refused for them; correct the balance with a
+  leave adjustment. Gratuity behaves the same way.
 - **Pension presets start inactive — by design.** They must be confirmed against
   the fund's current rates before use.
 - **The government's 2.5% GPSSA top-up is not modelled — open.**
@@ -574,6 +578,11 @@ The trade-offs behind the GPSSA pension, WPS, leave and final settlement.
   the company more than the settlement pays; recover that amount outside payroll.
 - **A paid settlement cannot be voided — by design.** Money has left the bank;
   a correction is a new entry, not a reversal of the payment.
+- **A settled employee's status, joining and leaving dates are locked — by
+  design.** Void an approved settlement to change them; a paid one cannot be
+  voided, so a rehire is added as a new employee. A draft run that still
+  carries a settled employee, or whose dates have changed, is refused until it
+  is refreshed.
 - **WPS files follow the standard MOHRE SIF layout — by design.** Agent-specific
   variants are not produced — open.
 - **WPS is AED base currency only, and cash-paid employees are left out with a
