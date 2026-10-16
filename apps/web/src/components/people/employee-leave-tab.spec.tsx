@@ -80,6 +80,25 @@ describe('EmployeeLeaveTab', () => {
 });
 
 describe('LeaveRecordModal', () => {
+  it('extending the dates of an existing record extends the days', async () => {
+    const onSubmit = vi.fn();
+    const record = { id: 'r1', employeeId: 'e1', type: 'SICK' as const, startDate: '2026-03-02', endDate: '2026-03-04', days: 3, note: null, createdAt: '' };
+    render(<LeaveRecordModal open onClose={() => {}} existing={record} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-03-06' } });
+    fireEvent.submit(screen.getByTestId('leave-record-form'));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ endDate: '2026-03-06', days: 5 });
+  });
+
+  it('keeps an explicit half-day count when the dates are untouched', async () => {
+    const onSubmit = vi.fn();
+    const record = { id: 'r1', employeeId: 'e1', type: 'SICK' as const, startDate: '2026-03-02', endDate: '2026-03-04', days: 2.5, note: null, createdAt: '' };
+    render(<LeaveRecordModal open onClose={() => {}} existing={record} onSubmit={onSubmit} />);
+    fireEvent.submit(screen.getByTestId('leave-record-form'));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ days: 2.5 });
+  });
+
   it('defaults days to the calendar span and sends days as a number', async () => {
     const onSubmit = vi.fn();
     render(<LeaveRecordModal open onClose={() => {}} onSubmit={onSubmit} />);

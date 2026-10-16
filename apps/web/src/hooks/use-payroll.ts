@@ -43,6 +43,7 @@ export function useCreateEmployee() {
     mutationFn: (input: CreateEmployeePayload) => api.employees.create(input),
     onSuccess: async (employee) => {
       await queryClient.invalidateQueries({ queryKey: ['employees'] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pensionSchemes() });
       toast.success(`${employee.fullName} added as ${employee.employeeNumber}`);
     },
     onError: (error) => toast.error(describeServer(error, 'Could not add the employee')),
@@ -56,6 +57,7 @@ export function useUpdateEmployee() {
       api.employees.update(id, input),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['employees'] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pensionSchemes() });
       toast.success('Employee saved');
     },
     onError: (error) => toast.error(describeServer(error, 'Could not save the employee')),

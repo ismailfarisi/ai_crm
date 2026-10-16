@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { PayrollSettingsDto, PensionSchemeDto } from '@saas/shared';
 import { PayrollSettingsView } from './payroll-settings-view';
 
@@ -17,10 +17,11 @@ const scheme = (over: Partial<PensionSchemeDto>): PensionSchemeDto => ({
   minSalary: null, maxSalary: null, isActive: false, assignedCount: 0, createdAt: '', ...over,
 });
 let schemes: PensionSchemeDto[];
+const saveSettings = vi.fn();
 
 vi.mock('@/hooks/use-payroll', () => ({
   usePayrollSettings: () => ({ data: settings, isPending: false, isError: false, error: null }),
-  useSavePayrollSettings: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useSavePayrollSettings: () => ({ mutateAsync: saveSettings, isPending: false }),
   usePensionSchemes: () => ({ data: schemes, isPending: false, isError: false, error: null }),
   useCreatePensionScheme: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdatePensionScheme: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
@@ -29,6 +30,7 @@ vi.mock('@/hooks/use-payroll', () => ({
 
 beforeEach(() => {
   granted = new Set(['payroll:read']);
+  saveSettings.mockReset();
   settings = { wpsEnabled: false, employerIdType: null, employerId: null, payerRoutingCode: null, annualLeaveDays: 30 };
   schemes = [scheme({}), scheme({ id: 's2', name: 'Assigned fund', assignedCount: 3, isActive: true })];
   HTMLDialogElement.prototype.showModal ||= function (this: HTMLDialogElement) {
@@ -69,5 +71,14 @@ describe('PayrollSettingsView', () => {
     const free = screen.getByTestId('scheme-s1');
     expect(free.querySelectorAll('button[disabled]')).toHaveLength(0);
     expect(screen.getByText(/Presets start inactive/)).toBeInTheDocument();
+  });
+
+  it('saves with WPS off even when a stale hidden WPS value is invalid', async () => {
+    granted.add('payroll:manage');
+    settings = { ...settings, wpsEnabled: false, employerIdType: 'MOHRE', employerId: 'not-13-digits', payerRoutingCode: '12' };
+    render(<PayrollSettingsView />);
+    fireEvent.submit(screen.getByTestId('payroll-settings-form'));
+    await waitFor(() => expect(saveSettings).toHaveBeenCalledTimes(1));
+    expect(saveSettings.mock.calls[0][0]).toMatchObject({ wpsEnabled: false, employerId: null, payerRoutingCode: null });
   });
 });

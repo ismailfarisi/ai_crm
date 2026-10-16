@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   LEAVE_TYPES,
+  daysBetweenInclusive,
   leaveRecordSchema,
   type LeaveRecordDto,
   type LeaveRecordFormInput,
@@ -29,7 +30,9 @@ const EMPTY: LeaveRecordFormInput = { type: 'ANNUAL', startDate: '', endDate: ''
 
 function toDefaults(r?: LeaveRecordDto | null): LeaveRecordFormInput {
   if (!r) return EMPTY;
-  return { type: r.type, startDate: r.startDate, endDate: r.endDate, days: r.days, note: r.note ?? '' };
+  // Blank means "every calendar day", so extending the dates extends the leave; keep an explicit figure only for half days.
+  const span = daysBetweenInclusive(r.startDate, r.endDate);
+  return { type: r.type, startDate: r.startDate, endDate: r.endDate, days: r.days === span ? null : r.days, note: r.note ?? '' };
 }
 
 export interface LeaveRecordModalProps {
@@ -56,6 +59,11 @@ export function LeaveRecordModal({ open, onClose, existing, isLoading = false, o
   }, [open, existing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const errors = form.formState.errors;
+  const { dirtyFields } = form.formState;
+  // A stale explicit count must not survive a change of dates the user never reconciled it with.
+  const resetDaysUnlessEdited = () => {
+    if (!dirtyFields.days) form.setValue('days', null);
+  };
 
   return (
     <Dialog
@@ -91,8 +99,8 @@ export function LeaveRecordModal({ open, onClose, existing, isLoading = false, o
           {...form.register('type')}
         />
         <div className="grid grid-cols-2 gap-3">
-          <Input label="From" type="date" {...form.register('startDate')} error={errors.startDate?.message} />
-          <Input label="To" type="date" {...form.register('endDate')} error={errors.endDate?.message} />
+          <Input label="From" type="date" {...form.register('startDate', { onChange: resetDaysUnlessEdited })} error={errors.startDate?.message} />
+          <Input label="To" type="date" {...form.register('endDate', { onChange: resetDaysUnlessEdited })} error={errors.endDate?.message} />
         </div>
         <Input
           label="Days (optional)"

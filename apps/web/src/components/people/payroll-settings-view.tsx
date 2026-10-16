@@ -56,7 +56,13 @@ function SettingsCard({ settings }: { settings: PayrollSettingsDto }) {
   const canManage = useCan({ permission: PERMISSIONS.PAYROLL_MANAGE });
   const save = useSavePayrollSettings();
   const form = useForm<PayrollSettingsInput, unknown, PayrollSettingsPayload>({
-    resolver: zodResolver(payrollSettingsSchema),
+    // With WPS off its fields are hidden, so a stale invalid value must not block Save: validate them as blank.
+    resolver: (values, context, options) =>
+      zodResolver(payrollSettingsSchema)(
+        values.wpsEnabled ? values : { ...values, employerIdType: null, employerId: '', payerRoutingCode: '' },
+        context,
+        options,
+      ),
     defaultValues: toSettingsDefaults(settings),
   });
   useEffect(() => {
