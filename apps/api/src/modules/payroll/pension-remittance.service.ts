@@ -139,12 +139,19 @@ export class PensionRemittanceService {
           manager,
         );
 
+        // A month remitted again after a void needs its own entry number:
+        // JE-PENSION-<period>, then -2, -3… Counting under the lock is safe.
+        const earlier = (
+          await manager
+            .getRepository(PensionRemittance)
+            .find({ where: { tenantId, period } })
+        ).length;
         const remittanceId = randomUUID();
         const entries = manager.getRepository(JournalEntry);
         const entry = await entries.save(
           entries.create({
             tenantId,
-            entryNumber: `JE-PENSION-${period}`,
+            entryNumber: `JE-PENSION-${period}${earlier ? `-${earlier + 1}` : ''}`,
             referenceType: 'PENSION_REMITTANCE',
             referenceId: remittanceId,
             entryDate: paidAt,
@@ -227,7 +234,7 @@ export class PensionRemittanceService {
       const reversal = await entries.save(
         entries.create({
           tenantId,
-          entryNumber: `JE-PENSION-${period}-VOID`,
+          entryNumber: `${original.entryNumber}-VOID`,
           referenceType: 'PENSION_REMITTANCE',
           referenceId: live.id,
           // Never before the entry it reverses.

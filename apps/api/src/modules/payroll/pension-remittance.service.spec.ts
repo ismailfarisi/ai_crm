@@ -270,6 +270,22 @@ describe('PensionRemittanceService', () => {
     );
   });
 
+  it('a re-remit after a void, and its void, take new entry numbers', async () => {
+    const ctx = setup();
+    for (let i = 0; i < 3; i++) {
+      await ctx.service.remit(T, '2026-10', PAYER, { financeAccountId: BANK });
+      await ctx.service.void(T, '2026-10', PAYER);
+    }
+    expect(ctx.entries.rows.map((e: any) => e.entryNumber)).toEqual([
+      'JE-PENSION-2026-10',
+      'JE-PENSION-2026-10-VOID',
+      'JE-PENSION-2026-10-2',
+      'JE-PENSION-2026-10-2-VOID',
+      'JE-PENSION-2026-10-3',
+      'JE-PENSION-2026-10-3-VOID',
+    ]);
+  });
+
   it('void with nothing live is 404', async () => {
     const ctx = setup();
     await expect(
