@@ -19,7 +19,7 @@ export interface EmployeeDto {
 export interface SalaryPackageDto { id: string; employeeId: string; effectiveFrom: string; basic: number; housing: number; transport: number; otherAllowances: { label: string; amount: number }[]; gross: number; createdAt: string; }
 export interface EmployeeAdvanceDto { id: string; employeeId: string; amount: number; issuedAt: string; financeAccountId: string; note: string | null; createdAt: string; }
 export interface EmployeeAdvancesDto { advances: EmployeeAdvanceDto[]; recovered: number; outstanding: number; }
-export type GratuityEntryKind = 'OPENING' | 'ACCRUAL' | 'ADJUSTMENT' | 'REVERSAL';
+export type GratuityEntryKind = 'OPENING' | 'ACCRUAL' | 'ADJUSTMENT' | 'REVERSAL' | 'SETTLEMENT';
 export interface GratuityLedgerEntryDto { id: string; kind: GratuityEntryKind; amount: number; asOf: string; runLineId: string | null; note: string | null; createdAt: string; }
 export interface EmployeeGratuityDto {
   balance: number;

@@ -55,6 +55,10 @@ export const LEDGER_ROLES = {
   SALARIES_PAYABLE: 'SALARIES_PAYABLE',
   GRATUITY_PROVISION: 'GRATUITY_PROVISION',
   GRATUITY_EXPENSE: 'GRATUITY_EXPENSE',
+  LEAVE_PROVISION: 'LEAVE_PROVISION',
+  PENSION_PAYABLE: 'PENSION_PAYABLE',
+  LEAVE_EXPENSE: 'LEAVE_EXPENSE',
+  PENSION_EXPENSE: 'PENSION_EXPENSE',
   REPAIRS: 'REPAIRS',
   INSURANCE: 'INSURANCE',
   TRAVEL: 'TRAVEL',
@@ -147,6 +151,8 @@ export const SYSTEM_LEDGER_ACCOUNTS: SystemLedgerAccount[] = [
   },
   { code: '2300', name: 'Salaries payable', type: 'LIABILITY', role: LEDGER_ROLES.SALARIES_PAYABLE, description: 'Net pay from approved payroll runs not yet paid' },
   { code: '2400', name: 'End-of-service provision', type: 'LIABILITY', role: LEDGER_ROLES.GRATUITY_PROVISION, description: 'End-of-service gratuity earned by employees to date' },
+  { code: '2410', name: 'Leave salary provision', type: 'LIABILITY', role: LEDGER_ROLES.LEAVE_PROVISION, description: 'Annual leave earned by employees and not yet taken or paid out' },
+  { code: '2420', name: 'Pension contributions payable', type: 'LIABILITY', role: LEDGER_ROLES.PENSION_PAYABLE, description: 'Employee and employer pension contributions not yet remitted to the fund' },
   {
     code: '3000',
     name: 'Retained earnings',
@@ -187,6 +193,8 @@ export const SYSTEM_LEDGER_ACCOUNTS: SystemLedgerAccount[] = [
   { code: '6200', name: 'Utilities & telecom', type: 'EXPENSE', role: LEDGER_ROLES.UTILITIES, parentCode: '6000', description: 'Electricity, water, cooling, internet and phones' },
   { code: '6300', name: 'Salaries & wages', type: 'EXPENSE', role: LEDGER_ROLES.SALARIES, parentCode: '6000', description: 'Payroll, allowances and contractors' },
   { code: '6310', name: 'End-of-service gratuity', type: 'EXPENSE', role: LEDGER_ROLES.GRATUITY_EXPENSE, parentCode: '6000', description: 'Monthly change in the end-of-service provision' },
+  { code: '6320', name: 'Leave salary expense', type: 'EXPENSE', role: LEDGER_ROLES.LEAVE_EXPENSE, parentCode: '6000', description: 'Monthly change in the leave salary provision' },
+  { code: '6330', name: 'Employer pension contribution', type: 'EXPENSE', role: LEDGER_ROLES.PENSION_EXPENSE, parentCode: '6000', description: "The employer's share of nationals' pension contributions" },
   { code: '6400', name: 'Repairs & maintenance', type: 'EXPENSE', role: LEDGER_ROLES.REPAIRS, parentCode: '6000', description: 'Upkeep of premises, plant and machinery' },
   { code: '6450', name: 'Insurance', type: 'EXPENSE', role: LEDGER_ROLES.INSURANCE, parentCode: '6000', description: 'Insurance premiums' },
   { code: '6500', name: 'Travel & entertainment', type: 'EXPENSE', role: LEDGER_ROLES.TRAVEL, parentCode: '6000', description: 'Travel, lodging, meals and entertainment' },
@@ -283,7 +291,9 @@ export type JournalReferenceType =
   | 'WORK_ORDER'
   | 'CREDIT_NOTE'
   | 'PREPAID'
-  | 'PAYROLL';
+  | 'PAYROLL'
+  | 'SETTLEMENT'
+  | 'PENSION_REMITTANCE';
 
 export interface TrialBalanceRowDto {
   ledgerAccountId: string;
