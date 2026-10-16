@@ -383,6 +383,7 @@ export class SettlementsService {
       // A gratuity or leave change since the draft must not post stale figures.
       if (
         b.leavingDate !== s.leavingDate ||
+        b.serviceDays !== s.serviceDays ||
         b.basic !== s.basic ||
         b.gross !== s.gross ||
         b.gratuity !== G ||

@@ -543,6 +543,20 @@ describe('SettlementsService', () => {
       expect(err.message).toBe(`Balances changed since ${FS1} was drafted; refresh it`);
     });
 
+    it('refuses a stale settlement whose service days changed though every amount is the same', async () => {
+      const ctx = setup();
+      // Under a year either way, so the gratuity stays 0.
+      const { id } = await ctx.service.create(T, ACTOR, { employeeId: 'y', reason: 'RESIGNATION' });
+      ctx.employees.rows.find((e) => e.id === 'y')!.joiningDate = '2026-02-01';
+      const err = await ctx.service.approve(T, id, APPROVER).catch((e) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect(err.message).toBe(`Balances changed since ${FS1} was drafted; refresh it`);
+
+      const refreshed = await ctx.service.refresh(T, id);
+      expect(refreshed.serviceDays).toBe(227);
+      expect((await ctx.service.approve(T, id, APPROVER)).status).toBe('APPROVED');
+    });
+
     it('refuses when the advance recovered exceeds what is now outstanding', async () => {
       const ctx = setup();
       const { id } = await ctx.service.create(T, ACTOR, { employeeId: 'x', reason: 'RESIGNATION' });
