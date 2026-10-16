@@ -18,6 +18,8 @@ import { TimesheetEntry } from './entities/timesheet-entry.entity';
 import { WorkOrderLabour } from './entities/work-order-labour.entity';
 import { JobCostService } from './job-cost.service';
 import { LabourAbsorptionService } from './labour-absorption.service';
+import { LabourUtilisationController } from './labour-utilisation.controller';
+import { LabourUtilisationService } from './labour-utilisation.service';
 import { TimesheetsController } from './timesheets.controller';
 import { TimesheetsService } from './timesheets.service';
 
@@ -40,8 +42,13 @@ import { TimesheetsService } from './timesheets.service';
     // LedgerService posts the labour journals.
     FinanceModule,
   ],
-  controllers: [TimesheetsController],
-  providers: [TimesheetsService, JobCostService, LabourAbsorptionService],
+  controllers: [TimesheetsController, LabourUtilisationController],
+  providers: [
+    TimesheetsService,
+    JobCostService,
+    LabourAbsorptionService,
+    LabourUtilisationService,
+  ],
   // Production writes the clock's entries (recordClock) and recomputes jobs;
   // payroll's approval and void absorb and reverse labour. This module never
   // imports PayrollModule (it reads payroll's tables directly), so no cycle.

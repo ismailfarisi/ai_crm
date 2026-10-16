@@ -285,7 +285,11 @@ export class ReportsService {
 
     const groups = new Map<
       string,
-      MarginRowDto & { measured: number; orderIds: Set<string> }
+      MarginRowDto & {
+        measured: number;
+        provisional: number;
+        orderIds: Set<string>;
+      }
     >();
     const group = (key: string, label: string) => {
       const g = groups.get(key) ?? {
@@ -299,6 +303,7 @@ export class ReportsService {
         measuredCostShare: 0,
         provisionalLabourShare: 0,
         measured: 0,
+        provisional: 0,
         orderIds: new Set<string>(),
       };
       groups.set(key, g);
@@ -350,12 +355,15 @@ export class ReportsService {
         g.cost = round2(g.cost + cost);
         if (measuredCost != null)
           g.measured = round2(g.measured + measuredCost);
+        g.provisional = round2(
+          g.provisional + (wo?.labourSplit?.provisional ?? 0),
+        );
         g.orderIds.add(order.id);
       }
     }
 
     const rows = [...groups.values()]
-      .map(({ measured, orderIds, ...g }) => ({
+      .map(({ measured, provisional, orderIds, ...g }) => ({
         ...g,
         orders: orderIds.size,
         margin: round2(g.revenue - g.cost),
@@ -365,7 +373,8 @@ export class ReportsService {
             : null,
         measuredCostShare:
           g.cost > 0 ? Math.round((measured / g.cost) * 1000) / 1000 : 0,
-        provisionalLabourShare: 0,
+        provisionalLabourShare:
+          g.cost > 0 ? Math.round((provisional / g.cost) * 1000) / 1000 : 0,
       }))
       .sort((a, b) => b.revenue - a.revenue);
     return { ...empty, rows };
