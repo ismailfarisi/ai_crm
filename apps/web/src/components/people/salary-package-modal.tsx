@@ -78,12 +78,18 @@ export function SalaryPackageModal({ open, onClose, onSubmit, isLoading = false 
         <div className="space-y-2">
           {others.fields.map((field, index) => (
             <div key={field.id} className="grid grid-cols-[1fr_8rem_auto] items-end gap-2">
-              <Input label={index === 0 ? 'Other allowance' : undefined} placeholder="Label" {...form.register(`otherAllowances.${index}.label`)} />
+              <Input
+                label={index === 0 ? 'Other allowance' : undefined}
+                placeholder="Label"
+                {...form.register(`otherAllowances.${index}.label`)}
+                error={errors.otherAllowances?.[index]?.label?.message}
+              />
               <Input
                 label={index === 0 ? 'Amount' : undefined}
                 type="number"
                 step="0.01"
                 {...form.register(`otherAllowances.${index}.amount`)}
+                error={errors.otherAllowances?.[index]?.amount?.message}
               />
               <Button type="button" variant="ghost" aria-label="Remove allowance" onClick={() => others.remove(index)}>
                 <Trash2 className="size-4" />

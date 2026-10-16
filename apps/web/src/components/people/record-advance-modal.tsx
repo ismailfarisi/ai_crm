@@ -76,7 +76,7 @@ export function RecordAdvanceModal({ open, onClose, onSubmit, isLoading = false 
           {...form.register('financeAccountId')}
           error={errors.financeAccountId ? 'Choose the account it was paid from' : undefined}
         />
-        <Input label="Date (optional)" type="date" {...form.register('issuedAt')} error={errors.issuedAt?.message} />
+        <Input label="Date (optional)" type="date" {...form.register('issuedAt', { setValueAs: (v: string) => v || undefined })} error={errors.issuedAt?.message} />
         <Input label="Note (optional)" {...form.register('note')} error={errors.note?.message} />
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>
