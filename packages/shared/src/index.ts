@@ -66,5 +66,6 @@ export * from './payroll/gratuity';
 export * from './payroll/leave';
 export * from './payroll/pension';
 export * from './payroll/settlement';
+export * from './payroll/wps';
 export * from './schemas/payroll';
 export * from './payroll/types';
