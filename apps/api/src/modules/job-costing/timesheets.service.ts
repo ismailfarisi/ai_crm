@@ -397,7 +397,7 @@ export class TimesheetsService {
           .getRepository(WorkOrderOperation)
           .find({ where: { tenantId, id: In(opIds) } })
       : [];
-    const opById = new Map(ops.map((o) => [o.id, o]));
+    let opById = new Map(ops.map((o) => [o.id, o]));
     for (const id of opIds) {
       if (!opById.has(id)) {
         throw new NotFoundException('That operation is not on a work order');
@@ -422,6 +422,14 @@ export class TimesheetsService {
           .getMany()
       : [];
     const woById = new Map(workOrders.map((w) => [w.id, w]));
+    // Re-read the operations under the work order locks: a concurrent skip
+    // must not let this write add minutes to a SKIPPED operation.
+    if (opIds.length) {
+      const locked = await manager
+        .getRepository(WorkOrderOperation)
+        .find({ where: { tenantId, id: In(opIds) } });
+      opById = new Map(locked.map((o) => [o.id, o]));
+    }
 
     // 3. Refusals: the hours taken away, then the hours written.
     const posted = new Map<string, { runNumber: string } | null>();
@@ -437,7 +445,7 @@ export class TimesheetsService {
       const run = posted.get(key);
       if (run) {
         throw new ConflictException(
-          `Payroll for ${periodLabel(period)} is posted (${run.runNumber}); void it to change these hours`,
+          `Payroll for ${periodLabel(period)} is posted (${run.runNumber}); void the run to change this entry`,
         );
       }
     };
@@ -486,7 +494,7 @@ export class TimesheetsService {
     if (deletes.length) {
       await entryRepo.delete({ tenantId, id: In(deletes.map((e) => e.id)) });
     }
-    const updated: TimesheetEntry[] = [];
+    const changed = new Map<string, TimesheetEntry>();
     // An edit keeps the entry's creator and source (a CLOCK entry stays one).
     for (const { before, prev, after } of updates) {
       const patch: Partial<TimesheetEntry> = {};
@@ -497,7 +505,7 @@ export class TimesheetsService {
       if (workOrderId !== before.workOrderId) patch.workOrderId = workOrderId;
       await entryRepo.update({ tenantId, id: before.id }, patch);
       // A copy: `before` still drives the minute deltas below.
-      updated.push({ ...before, ...patch });
+      changed.set(before.id, { ...before, ...patch });
     }
     const created: TimesheetEntry[] = [];
     for (const a of changes.creates) {
@@ -532,7 +540,7 @@ export class TimesheetsService {
     )) {
       const delta = round2(raw);
       if (delta === 0) continue;
-      await this.moveMinutes(manager, opId, delta);
+      await this.moveMinutes(manager, tenantId, opId, delta);
       if (delta > 0) {
         const woId = opById.get(opId)?.workOrderId;
         if (woId) started.add(woId);
@@ -576,6 +584,11 @@ export class TimesheetsService {
     if (complete.length)
       await this.jobCost.recompute(manager, tenantId, complete);
 
+    // Every edit sent, in order: an edit that changed nothing returns the
+    // entry as it stands.
+    const updated = changes.updates.map(
+      (u) => changed.get(u.id) ?? byId.get(u.id)!,
+    );
     return { created, updated };
   }
 
@@ -587,6 +600,7 @@ export class TimesheetsService {
    */
   private async moveMinutes(
     manager: EntityManager,
+    tenantId: string,
     operationId: string,
     delta: number,
   ): Promise<void> {
@@ -596,8 +610,8 @@ export class TimesheetsService {
               "status" = CASE WHEN $1::numeric > 0 AND "status" = 'PENDING' THEN 'PAUSED' ELSE "status" END,
               "started_at" = CASE WHEN $1::numeric > 0 THEN COALESCE("started_at", now()) ELSE "started_at" END,
               "updatedAt" = now()
-        WHERE "id" = $2`,
-      [delta, operationId],
+        WHERE "id" = $2 AND "tenant_id" = $3`,
+      [delta, operationId, tenantId],
     );
   }
 

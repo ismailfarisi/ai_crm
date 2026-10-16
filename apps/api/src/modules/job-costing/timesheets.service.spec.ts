@@ -107,8 +107,10 @@ function makeWorld() {
     }
     if (sql.includes('UPDATE "work_order_operations"')) {
       calls.push('minutes');
-      const [delta, id] = params;
-      const row = tables.WorkOrderOperation.find((r) => r.id === id);
+      const [delta, id, tenant] = params;
+      const row = tables.WorkOrderOperation.find(
+        (r) => r.id === id && r.tenantId === tenant,
+      );
       row.actualMinutes = Math.max(
         0,
         Math.round((row.actualMinutes + delta) * 100) / 100,
@@ -290,7 +292,12 @@ describe('TimesheetsService', () => {
         entry({ hours: 2 }),
       );
       w.query.mockClear();
-      await w.service.update(tenantId, dto.id, {});
+      await expect(w.service.update(tenantId, dto.id, {})).resolves.toEqual(
+        dto,
+      );
+      await expect(
+        w.service.update(tenantId, dto.id, { hours: 2 }),
+      ).resolves.toEqual(dto);
       expect(
         w.query.mock.calls.some(([sql]) =>
           sql.includes('work_order_operations'),
@@ -371,7 +378,7 @@ describe('TimesheetsService', () => {
       await expect(
         w.service.update(tenantId, dto.id, { hours: 3 }),
       ).rejects.toThrow(
-        'Payroll for October 2026 is posted (PR-2026-0010); void it to change these hours',
+        'Payroll for October 2026 is posted (PR-2026-0010); void the run to change this entry',
       );
       await expect(w.service.remove(tenantId, dto.id)).rejects.toBeInstanceOf(
         ConflictException,
@@ -525,6 +532,72 @@ describe('TimesheetsService', () => {
       expect(w.tables.TimesheetEntry).toHaveLength(1);
       expect(w.tables.TimesheetEntry[0].hours).toBe(1);
       expect(w.opRow('op-a').actualMinutes).toBe(60);
+    });
+
+    it('returns every upsert in order, unchanged ones included', async () => {
+      const w = makeWorld();
+      const same = await w.service.create(tenantId, 'a', entry({ hours: 1 }));
+      const edit = await w.service.create(
+        tenantId,
+        'a',
+        entry({ hours: 2, workDate: '2026-10-15' }),
+      );
+      const saved = await w.service.bulk(tenantId, 'a', {
+        upserts: [
+          { ...entry({ hours: 1 }), id: same.id },
+          entry({ hours: 3, workDate: '2026-10-16' }),
+          { ...entry({ hours: 4, workDate: '2026-10-15' }), id: edit.id },
+        ],
+        deletes: [],
+      });
+      expect(saved.map((s) => [s.workDate, s.hours])).toEqual([
+        ['2026-10-14', 1],
+        ['2026-10-16', 3],
+        ['2026-10-15', 4],
+      ]);
+      expect(saved[0]).toEqual(same);
+    });
+
+    it('a note-only edit in a posted month is refused too', async () => {
+      const w = makeWorld();
+      const e = await w.service.create(tenantId, 'a', entry());
+      w.posted.push({
+        employeeId: 'emp-1',
+        period: '2026-10',
+        runNumber: 'PR-1',
+      });
+      await expect(
+        w.service.update(tenantId, e.id, { note: 'late' }),
+      ).rejects.toThrow(
+        'Payroll for October 2026 is posted (PR-1); void the run to change this entry',
+      );
+      // Unchanged is fine.
+      await expect(w.service.update(tenantId, e.id, {})).resolves.toMatchObject(
+        { locked: true },
+      );
+    });
+
+    it('re-reads operations under the work order lock, so a concurrent skip is refused', async () => {
+      const w = makeWorld();
+      const realFind = w.manager.getRepository;
+      let reads = 0;
+      w.manager.getRepository = (entity: { name: string }) => {
+        const r = realFind(entity);
+        if (entity.name !== 'WorkOrderOperation') return r;
+        return {
+          ...r,
+          find: async (o: any) => {
+            const rows = await r.find(o);
+            // The floor skips the operation between the first read and the lock.
+            if (reads++ === 0) w.opRow('op-a').status = 'SKIPPED';
+            return rows;
+          },
+        };
+      };
+      await expect(w.service.create(tenantId, 'a', entry())).rejects.toThrow(
+        '"Op op-a" was skipped',
+      );
+      expect(w.opRow('op-a').actualMinutes).toBe(0);
     });
 
     it('refuses an entry both saved and deleted', async () => {
