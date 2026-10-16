@@ -62,6 +62,7 @@ export * from './assistant';
 export * from './schemas/recurring-expense';
 
 export * from './payroll/calc';
+export * from './payroll/labour';
 export * from './payroll/gratuity';
 export * from './payroll/leave';
 export * from './payroll/pension';
