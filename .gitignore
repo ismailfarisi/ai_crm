@@ -26,6 +26,10 @@ playwright-report/
 test-results/
 blob-report/
 
+# local agent tooling (worktrees, browser-tool screenshots and logs)
+.claude/
+.playwright-mcp/
+
 # editor / os
 .DS_Store
 Thumbs.db
