@@ -65,7 +65,7 @@ const API_SECTIONS = [
   'salesOrders', 'quoteAcceptance', 'workOrders', 'board', 'creditNotes', 'deliveryNotes', 'tax',
   'notifications', 'billing', 'currencies', 'reports', 'organization', 'audit', 'attachments',
   'documentTemplates', 'savedViews', 'customObjects', 'assistant',
-  'employees',
+  'employees', 'payroll',
 ];
 
 const QUERY_KEYS = [
@@ -93,6 +93,7 @@ const QUERY_KEYS = [
   'savedViews', 'savedView', 'customObjects',
   'assistantConversations', 'assistantConversation',
   'employees', 'employee', 'employeePackages', 'employeeAdvances', 'employeeGratuity',
+  'payrollRuns', 'payrollRun', 'payslip', 'openingGratuityPreview',
 ];
 
 describe('api surface composition', () => {

@@ -9,6 +9,14 @@ import type {
   EmployeeStatus,
   GratuityAdjustmentPayload,
   GratuityLedgerEntryDto,
+  OpeningGratuityPreviewDto,
+  PayPayrollRunPayload,
+  PayrollRunDto,
+  PayrollRunsListDto,
+  PayslipDto,
+  PostOpeningGratuityPayload,
+  UpdatePayrollLinePayload,
+  CreatePayrollRunPayload,
   RecordAdvancePayload,
   SalaryPackageDto,
   UpdateEmployeePayload,
@@ -21,6 +29,28 @@ export interface EmployeeListParams {
 }
 
 export const payrollEndpoints = {
+  payroll: {
+    runs: () => apiFetch<PayrollRunsListDto>('/payroll-runs'),
+    run: (id: string) => apiFetch<PayrollRunDto>(`/payroll-runs/${id}`),
+    payslip: (runId: string, lineId: string) =>
+      apiFetch<PayslipDto>(`/payroll-runs/${runId}/lines/${lineId}`),
+    createRun: (input: CreatePayrollRunPayload) =>
+      apiFetch<PayrollRunDto>('/payroll-runs', { method: 'POST', body: input }),
+    updateLine: (runId: string, lineId: string, input: UpdatePayrollLinePayload) =>
+      apiFetch<PayrollRunDto>(`/payroll-runs/${runId}/lines/${lineId}`, { method: 'PATCH', body: input }),
+    refreshRun: (id: string) => apiFetch<PayrollRunDto>(`/payroll-runs/${id}/refresh`, { method: 'POST' }),
+    approveRun: (id: string) => apiFetch<PayrollRunDto>(`/payroll-runs/${id}/approve`, { method: 'POST' }),
+    voidRun: (id: string) => apiFetch<PayrollRunDto>(`/payroll-runs/${id}/void`, { method: 'POST' }),
+    payRun: (id: string, input: PayPayrollRunPayload) =>
+      apiFetch<PayrollRunDto>(`/payroll-runs/${id}/pay`, { method: 'POST', body: input }),
+    previewOpeningGratuity: (cutoverDate?: string) =>
+      apiFetch<OpeningGratuityPreviewDto>('/payroll/opening-gratuity/preview', {
+        method: 'POST',
+        body: cutoverDate ? { cutoverDate } : {},
+      }),
+    postOpeningGratuity: (input: PostOpeningGratuityPayload) =>
+      apiFetch<unknown>('/payroll/opening-gratuity', { method: 'POST', body: input }),
+  },
   employees: {
     list: (params: EmployeeListParams = {}) => apiFetch<EmployeeDto[]>('/employees', { query: params }),
     get: (id: string) => apiFetch<EmployeeDto>(`/employees/${id}`),
@@ -49,4 +79,8 @@ export const payrollKeys = {
   employeePackages: (id: string) => ['employees', id, 'packages'] as const,
   employeeAdvances: (id: string) => ['employees', id, 'advances'] as const,
   employeeGratuity: (id: string) => ['employees', id, 'gratuity'] as const,
+  payrollRuns: () => ['payroll', 'runs'] as const,
+  payrollRun: (id: string) => ['payroll', 'run', id] as const,
+  payslip: (runId: string, lineId: string) => ['payroll', 'payslip', runId, lineId] as const,
+  openingGratuityPreview: (cutover?: string) => ['payroll', 'opening-gratuity', cutover ?? ''] as const,
 };

@@ -4,7 +4,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type {
   CreateEmployeePayload,
+  CreatePayrollRunPayload,
   CreateSalaryPackagePayload,
+  PayPayrollRunPayload,
+  PostOpeningGratuityPayload,
+  UpdatePayrollLinePayload,
   GratuityAdjustmentPayload,
   RecordAdvancePayload,
   UpdateEmployeePayload,
@@ -116,5 +120,129 @@ export function useRecordAdvance() {
       toast.success('Advance recorded');
     },
     onError: (error) => toast.error(describeServer(error, 'Could not record the advance')),
+  });
+}
+
+// ── Payroll runs ──────────────────────────────────────────────────────────
+
+export function usePayrollRuns() {
+  return useQuery({ queryKey: queryKeys.payrollRuns(), queryFn: () => api.payroll.runs() });
+}
+
+export function usePayrollRun(id: string | null) {
+  return useQuery({
+    queryKey: queryKeys.payrollRun(id ?? ''),
+    queryFn: () => api.payroll.run(id as string),
+    enabled: Boolean(id),
+  });
+}
+
+export function usePayslip(runId: string | null, lineId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.payslip(runId ?? '', lineId ?? ''),
+    queryFn: () => api.payroll.payslip(runId as string, lineId as string),
+    enabled: Boolean(runId) && Boolean(lineId),
+  });
+}
+
+/** Run state feeds the books (journals, advances, gratuity), so all three go stale together. */
+async function invalidatePayroll(queryClient: ReturnType<typeof useQueryClient>) {
+  await queryClient.invalidateQueries({ queryKey: ['payroll'] });
+  await queryClient.invalidateQueries({ queryKey: ['employees'] });
+  await queryClient.invalidateQueries({ queryKey: ['finance'] });
+}
+
+export function useCreatePayrollRun() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreatePayrollRunPayload) => api.payroll.createRun(input),
+    onSuccess: async (run) => {
+      await invalidatePayroll(queryClient);
+      toast.success(`Payroll run ${run.runNumber} created`);
+      if (run.warnings?.length) toast.warning(run.warnings.join('\n'));
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not create the payroll run')),
+  });
+}
+
+/** No toast: the editor shows the failure on the row it came from. */
+export function useUpdatePayrollLine() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ runId, lineId, input }: { runId: string; lineId: string; input: UpdatePayrollLinePayload }) =>
+      api.payroll.updateLine(runId, lineId, input),
+    onSuccess: (run) => {
+      queryClient.setQueryData(queryKeys.payrollRun(run.id), run);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.payrollRuns() });
+    },
+  });
+}
+
+export function useRefreshPayrollRun() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.payroll.refreshRun(id),
+    onSuccess: async (run) => {
+      await invalidatePayroll(queryClient);
+      toast.success('Run refreshed from current salaries');
+      if (run.warnings?.length) toast.warning(run.warnings.join('\n'));
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not refresh the run')),
+  });
+}
+
+export function useApprovePayrollRun() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.payroll.approveRun(id),
+    onSuccess: async (run) => {
+      await invalidatePayroll(queryClient);
+      toast.success(`${run.runNumber} approved`);
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not approve the run')),
+  });
+}
+
+export function useVoidPayrollRun() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.payroll.voidRun(id),
+    onSuccess: async (run) => {
+      await invalidatePayroll(queryClient);
+      toast.success(`${run.runNumber} voided`);
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not void the run')),
+  });
+}
+
+export function usePayPayrollRun() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: PayPayrollRunPayload }) => api.payroll.payRun(id, input),
+    onSuccess: async (_run, { input }) => {
+      await invalidatePayroll(queryClient);
+      toast.success(input.method === 'BANK' ? 'Bank payments recorded' : 'Cash payments recorded');
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not record the payment')),
+  });
+}
+
+export function useOpeningGratuityPreview(cutover?: string) {
+  return useQuery({
+    queryKey: queryKeys.openingGratuityPreview(cutover),
+    queryFn: () => api.payroll.previewOpeningGratuity(cutover),
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function usePostOpeningGratuity() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: PostOpeningGratuityPayload) => api.payroll.postOpeningGratuity(input),
+    onSuccess: async () => {
+      await invalidatePayroll(queryClient);
+      toast.success('Opening gratuity balances posted');
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not post the opening balances')),
   });
 }
