@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type {
   CreateEmployeePayload,
@@ -165,15 +165,35 @@ export function useCreatePayrollRun() {
   });
 }
 
+const lineKey = (runId: string) => ['payroll', 'line', runId] as const;
+/** Line PATCHes in flight per run, so only the last one to settle refetches the run. */
+const linesInFlight = new Map<string, number>();
+
+/** True while any line edit on this run is being saved (totals are not final yet). */
+export function usePayrollLinesSaving(runId: string): boolean {
+  return useIsMutating({ mutationKey: lineKey(runId) }) > 0;
+}
+
 /** No toast: the editor shows the failure on the row it came from. */
-export function useUpdatePayrollLine() {
+export function useUpdatePayrollLine(runId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ runId, lineId, input }: { runId: string; lineId: string; input: UpdatePayrollLinePayload }) =>
-      api.payroll.updateLine(runId, lineId, input),
-    onSuccess: (run) => {
-      queryClient.setQueryData(queryKeys.payrollRun(run.id), run);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.payrollRuns() });
+    mutationKey: lineKey(runId),
+    mutationFn: async ({ lineId, input }: { runId: string; lineId: string; input: UpdatePayrollLinePayload }) => {
+      linesInFlight.set(runId, (linesInFlight.get(runId) ?? 0) + 1);
+      try {
+        return await api.payroll.updateLine(runId, lineId, input);
+      } finally {
+        linesInFlight.set(runId, (linesInFlight.get(runId) ?? 1) - 1);
+      }
+    },
+    // Responses from different lines can land out of order, so the cache is only trusted
+    // once nothing is in flight: then refetch the run for the final totals.
+    onSettled: () => {
+      if ((linesInFlight.get(runId) ?? 0) === 0) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.payrollRun(runId) });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.payrollRuns() });
+      }
     },
   });
 }

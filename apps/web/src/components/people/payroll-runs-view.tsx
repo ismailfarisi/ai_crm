@@ -57,7 +57,7 @@ function NewRunModal({
           type="date"
           value={payDate}
           onChange={(e) => setPayDate(e.target.value)}
-          hint="Defaults to the end of the month."
+          hint="Defaults to the 28th of the month."
         />
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>

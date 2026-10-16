@@ -57,31 +57,49 @@ export function PayrollLineEditor({
   line: PayrollRunLineDto;
   editable: boolean;
 }) {
-  const update = useUpdatePayrollLine();
+  const update = useUpdatePayrollLine(runId);
   const [values, setValues] = useState(() => initial(line));
   const [labels, setLabels] = useState({
     bonusLabel: line.bonusLabel ?? '',
     otherDeductionLabel: line.otherDeductionLabel ?? '',
   });
-  const [error, setError] = useState<string | null>(null);
+  // Errors are kept per field, so a later successful save of another field cannot hide this one.
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const inFlight = useRef(false);
   const pending = useRef<UpdatePayrollLinePayload>({});
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Flush on unmount rather than lose a half-typed edit.
   const flushRef = useRef<() => void>(() => {});
+  // One PATCH at a time per line: edits made meanwhile merge into `pending` and go out
+  // when the current one settles, so responses (and errors) arrive in order.
   flushRef.current = () => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
-    const patch = pending.current;
-    pending.current = {};
-    if (Object.keys(patch).length === 0) return;
-    update.mutate(
-      { runId, lineId: line.id, input: patch },
-      {
-        onSuccess: () => setError(null),
-        onError: (e) => setError(describeServer(e, 'Could not save this line')),
-      },
-    );
+    if (inFlight.current) return;
+    inFlight.current = true;
+    void (async () => {
+      try {
+        while (Object.keys(pending.current).length > 0) {
+          const patch = pending.current;
+          pending.current = {};
+          const keys = Object.keys(patch);
+          try {
+            await update.mutateAsync({ runId, lineId: line.id, input: patch });
+            setErrors((prev) => {
+              const next = { ...prev };
+              for (const k of keys) delete next[k];
+              return next;
+            });
+          } catch (e) {
+            const message = describeServer(e, 'Could not save this line');
+            setErrors((prev) => ({ ...prev, ...Object.fromEntries(keys.map((k) => [k, message])) }));
+          }
+        }
+      } finally {
+        inFlight.current = false;
+      }
+    })();
   };
   useEffect(() => () => flushRef.current(), []);
 
@@ -169,10 +187,10 @@ export function PayrollLineEditor({
           </Link>
         </td>
       </tr>
-      {error && (
+      {Object.keys(errors).length > 0 && (
         <tr>
           <td colSpan={NUMERIC_FIELDS.length + 4} className="pb-2 text-xs text-danger" role="alert">
-            {line.employeeName}: {error}
+            {line.employeeName}: {[...new Set(Object.values(errors))].join(' ')}
           </td>
         </tr>
       )}

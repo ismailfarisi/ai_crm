@@ -35,6 +35,8 @@ function makeRun(over: Partial<PayrollRunDto> = {}): PayrollRunDto {
 }
 
 let run = makeRun();
+let saving = false;
+let previewState = { isPlaceholderData: false, isFetching: false };
 vi.mock('@/hooks/use-payroll', () => {
   const mutation = () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false });
   return {
@@ -44,6 +46,7 @@ vi.mock('@/hooks/use-payroll', () => {
     useVoidPayrollRun: mutation,
     usePayPayrollRun: mutation,
     useUpdatePayrollLine: mutation,
+    usePayrollLinesSaving: () => saving,
     usePayrollRuns: () => ({ data: { runs: [], openingGratuityCutover: null } }),
     useOpeningGratuityPreview: () => ({
       data: {
@@ -52,6 +55,7 @@ vi.mock('@/hooks/use-payroll', () => {
       },
       isPending: false,
       isError: false,
+      ...previewState,
     }),
     usePostOpeningGratuity: mutation,
   };
@@ -60,6 +64,8 @@ vi.mock('@/hooks/use-payroll', () => {
 beforeEach(() => {
   granted = new Set(['payroll:read']);
   run = makeRun();
+  saving = false;
+  previewState = { isPlaceholderData: false, isFetching: false };
   HTMLDialogElement.prototype.showModal ||= function (this: HTMLDialogElement) {
     this.open = true;
   };
@@ -127,6 +133,17 @@ describe('PayrollRunDetail actions', () => {
     expect(screen.queryByLabelText('Bonus for Amina Khan')).not.toBeInTheDocument();
   });
 
+  it('disables Approve and Pay while a line update is saving', () => {
+    granted = new Set(['payroll:read', 'payroll:approve', 'payroll:pay']);
+    saving = true;
+    const { unmount } = render(<PayrollRunDetail id="r1" />);
+    expect(btn(/^approve$/i)).toBeDisabled();
+    unmount();
+    run = makeRun({ status: 'APPROVED' });
+    render(<PayrollRunDetail id="r1" />);
+    expect(btn(/pay bank/i)).toBeDisabled();
+  });
+
   it('links each line to its payslip', () => {
     render(<PayrollRunDetail id="r1" />);
     expect(screen.getByRole('link', { name: /payslip for amina khan/i })).toHaveAttribute(
@@ -162,6 +179,13 @@ describe('OpeningGratuityView', () => {
     render(<OpeningGratuityView />);
     expect(screen.getByRole('button', { name: /post opening balances/i })).toBeDisabled();
     expect(screen.getByTestId('opening-total')).toHaveTextContent('1,200.00');
+  });
+
+  it('disables Post while the preview is refetching or placeholder', () => {
+    granted = new Set(['payroll:read', 'payroll:manage', 'payroll:approve']);
+    previewState = { isPlaceholderData: true, isFetching: true };
+    render(<OpeningGratuityView />);
+    expect(screen.getByRole('button', { name: /post opening balances/i })).toBeDisabled();
   });
 
   it('enables Post with payroll:approve', () => {

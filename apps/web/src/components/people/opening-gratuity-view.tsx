@@ -31,6 +31,8 @@ export function OpeningGratuityView() {
   };
   const lines = (data?.lines ?? []).map((l) => ({ ...l, amount: amountOf(l.employeeId, l.calculated) }));
   const total = lines.reduce((s, l) => s + l.amount, 0);
+  // Lines on screen may belong to the previous cut-over until the new preview lands.
+  const stale = preview.isPlaceholderData || preview.isFetching;
   const effectiveCutover = cutover || data?.cutoverDate || '';
 
   return (
@@ -126,7 +128,7 @@ export function OpeningGratuityView() {
           {lines.length > 0 && (
             <div className="flex items-center justify-end gap-3">
               {!canPost && <p className="text-xs text-ink-subtle">Posting needs payroll approval access.</p>}
-              <Button disabled={!canPost || !effectiveCutover} onClick={() => setConfirming(true)}>
+              <Button disabled={!canPost || !effectiveCutover || stale} onClick={() => setConfirming(true)}>
                 Post opening balances
               </Button>
             </div>
@@ -147,6 +149,7 @@ export function OpeningGratuityView() {
           <Button
             type="button"
             loading={post.isPending}
+            disabled={stale}
             onClick={async () => {
               try {
                 await post.mutateAsync({

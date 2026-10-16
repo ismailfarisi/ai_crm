@@ -7,6 +7,7 @@ import { PERMISSIONS, type PaymentMethod } from '@saas/shared';
 import {
   useApprovePayrollRun,
   usePayPayrollRun,
+  usePayrollLinesSaving,
   usePayrollRun,
   useRefreshPayrollRun,
   useVoidPayrollRun,
@@ -74,6 +75,7 @@ export function PayrollRunDetail({ id }: { id: string }) {
   const approve = useApprovePayrollRun();
   const voidRun = useVoidPayrollRun();
   const pay = usePayPayrollRun();
+  const saving = usePayrollLinesSaving(id);
   const [confirm, setConfirm] = useState<'approve' | 'void' | null>(null);
   const [paying, setPaying] = useState<PaymentMethod | null>(null);
 
@@ -113,19 +115,19 @@ export function PayrollRunDetail({ id }: { id: string }) {
               </Button>
             )}
             {showApprove && (
-              <Button onClick={() => setConfirm('approve')}>
+              <Button disabled={saving} onClick={() => setConfirm('approve')}>
                 <CheckCircle2 className="size-4" />
                 Approve
               </Button>
             )}
             {showPayBank && (
-              <Button onClick={() => setPaying('BANK')}>
+              <Button disabled={saving} onClick={() => setPaying('BANK')}>
                 <Banknote className="size-4" />
                 Pay bank
               </Button>
             )}
             {showPayCash && (
-              <Button variant="outline" onClick={() => setPaying('CASH')}>
+              <Button variant="outline" disabled={saving} onClick={() => setPaying('CASH')}>
                 <Banknote className="size-4" />
                 Pay cash
               </Button>
