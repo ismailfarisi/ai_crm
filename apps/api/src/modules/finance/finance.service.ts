@@ -6,16 +6,26 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, In, MoreThanOrEqual, Repository } from 'typeorm';
+import {
+  EntityManager,
+  In,
+  IsNull,
+  MoreThanOrEqual,
+  Not,
+  Repository,
+} from 'typeorm';
 import {
   addMonthsClamped,
   calculateRunwayMonths,
+  daysEmployed,
   dueOccurrences,
   isoDate,
   LEDGER_ROLES,
   monthlyEquivalent,
   occurrenceDate,
   occurrenceIndexOnOrAfter,
+  packageGross,
+  periodBounds,
   PERMISSIONS,
   utcToday,
   TreasuryOverviewDto,
@@ -38,6 +48,12 @@ import { LedgerService } from './ledger.service';
 import { baseCurrencyFor, cashAccountAmount } from './fx';
 import { Supplier } from '../purchasing/entities/supplier.entity';
 import { TaxService } from '../tax/tax.service';
+import { Employee } from '../payroll/entities/employee.entity';
+import { SalaryPackage } from '../payroll/entities/salary-package.entity';
+import {
+  PayrollRun,
+  PayrollRunLine,
+} from '../payroll/entities/payroll-run.entity';
 import {
   CreateFinanceAccountDto,
   UpdateFinanceAccountDto,
@@ -74,7 +90,45 @@ export class FinanceService {
     @InjectRepository(Supplier)
     private readonly suppliers: Repository<Supplier>,
     private readonly tax: TaxService,
+    // Read-only: payroll owns these. Registered here as entities, never via
+    // PayrollModule, which already imports this module.
+    @InjectRepository(Employee)
+    private readonly employees: Repository<Employee>,
+    @InjectRepository(SalaryPackage)
+    private readonly salaryPackages: Repository<SalaryPackage>,
+    @InjectRepository(PayrollRun)
+    private readonly payrollRuns: Repository<PayrollRun>,
+    @InjectRepository(PayrollRunLine)
+    private readonly payrollLines: Repository<PayrollRunLine>,
   ) {}
+
+  /** The package in force on `date`: greatest effectiveFrom at or before it. */
+  private packageAt(
+    packages: SalaryPackage[],
+    employeeId: string,
+    date: string,
+  ): SalaryPackage | null {
+    let best: SalaryPackage | null = null;
+    for (const p of packages) {
+      if (p.employeeId !== employeeId) continue;
+      const from = toIso(p.effectiveFrom);
+      if (from > date) continue;
+      if (!best || from > toIso(best.effectiveFrom)) best = p;
+    }
+    return best;
+  }
+
+  private gross(p: SalaryPackage): number {
+    return packageGross({
+      basic: Number(p.basic),
+      housing: Number(p.housing),
+      transport: Number(p.transport),
+      otherAllowances: (p.otherAllowances ?? []).map((a) => ({
+        label: a.label,
+        amount: Number(a.amount),
+      })),
+    });
+  }
 
   async cashForecast(
     tenantId: string,
@@ -91,7 +145,8 @@ export class FinanceService {
       return key <= last ? key : null;
     };
 
-    const [accounts, bills, invoices, recurring] = await Promise.all([
+    const [accounts, bills, invoices, recurring, employees, packages, runs] =
+      await Promise.all([
       this.accountRepository.find({ where: { tenantId } }),
       this.bills.find({
         where: {
@@ -106,10 +161,15 @@ export class FinanceService {
         },
       }),
       this.recurringRepository.find({ where: { tenantId, status: 'ACTIVE' } }),
+      this.employees.find({ where: { tenantId, status: 'ACTIVE' as any } }),
+      this.salaryPackages.find({ where: { tenantId } }),
+      this.payrollRuns.find({
+        where: { tenantId, status: Not('VOIDED') as any },
+      }),
     ]);
 
     const rows = new Map(
-      monthKeys.map((m) => [m, { inflows: 0, billsOut: 0, recurringOut: 0 }]),
+      monthKeys.map((m) => [m, { inflows: 0, billsOut: 0, recurringOut: 0, payrollOut: 0 }]),
     );
     for (const b of bills) {
       const key = bucket(toIso(b.dueDate ?? b.billDate));
@@ -172,19 +232,70 @@ export class FinanceService {
       }
     }
 
+    // Payroll. A run decides its own period: approved runs owe only their
+    // unpaid lines, drafts their current total, paid ones nothing. Periods
+    // with no run are projected from current packages.
+    const runPeriods = new Set(runs.map((r) => r.period));
+    const owing = runs.filter(
+      (r) => r.status === 'APPROVED' || r.status === 'PARTIALLY_PAID',
+    );
+    const unpaid = new Map<string, number>();
+    if (owing.length) {
+      const lines = await this.payrollLines.find({
+        where: {
+          tenantId,
+          runId: In(owing.map((r) => r.id)),
+          paidAt: IsNull(),
+        },
+      });
+      for (const l of lines) {
+        unpaid.set(l.runId, (unpaid.get(l.runId) ?? 0) + Number(l.netPay));
+      }
+    }
+    for (const r of runs) {
+      let amount = 0;
+      if (r.status === 'DRAFT') amount = Number(r.totalNet);
+      else if (r.status === 'APPROVED' || r.status === 'PARTIALLY_PAID')
+        amount = unpaid.get(r.id) ?? 0;
+      if (!amount) continue;
+      const key = bucket(toIso(r.payDate));
+      if (key) rows.get(key)!.payrollOut += amount;
+    }
+    for (const month of monthKeys) {
+      if (runPeriods.has(month)) continue;
+      const { last: monthEnd } = periodBounds(month);
+      let projected = 0;
+      for (const e of employees) {
+        if (
+          daysEmployed({
+            period: month,
+            joiningDate: toIso(e.joiningDate),
+            leavingDate: e.leavingDate ? toIso(e.leavingDate) : null,
+          }) <= 0
+        )
+          continue;
+        const pkg = this.packageAt(packages, e.id, monthEnd);
+        if (pkg) projected += this.gross(pkg);
+      }
+      const key = bucket(`${month}-28`);
+      if (key) rows.get(key)!.payrollOut += projected;
+    }
+
     let opening = round2(
       accounts.reduce((s, a) => s + Number(a.balance || 0), 0),
     );
     const out = monthKeys.map((month) => {
       const r = rows.get(month)!;
-      const closing = round2(opening + r.inflows - r.billsOut - r.recurringOut);
+      const closing = round2(
+        opening + r.inflows - r.billsOut - r.recurringOut - r.payrollOut,
+      );
       const row = {
         month,
         opening,
         inflows: round2(r.inflows),
         billsOut: round2(r.billsOut),
         recurringOut: round2(r.recurringOut),
-        payrollOut: 0,
+        payrollOut: round2(r.payrollOut),
         closing,
       };
       opening = closing;
@@ -285,9 +396,20 @@ export class FinanceService {
 
     // Recurring commitments are a forward-looking obligation, so they stay in
     // the burn rate even before they have been charged.
+    const [activeEmployees, allPackages] = await Promise.all([
+      this.employees.find({ where: { tenantId, status: 'ACTIVE' as any } }),
+      this.salaryPackages.find({ where: { tenantId } }),
+    ]);
+    const todayIso = utcToday();
+    const payrollMonthly = round2(
+      activeEmployees.reduce((sum, e) => {
+        const pkg = this.packageAt(allPackages, e.id, todayIso);
+        return sum + (pkg ? this.gross(pkg) : 0);
+      }, 0),
+    );
     const monthlyOutflow = Math.max(
       observedOutflow,
-      recurringMonthly + expenseMonthly,
+      recurringMonthly + expenseMonthly + payrollMonthly,
     );
     const netCashflow = monthlyInflow - monthlyOutflow;
     const monthlyBurnRate = monthlyOutflow;

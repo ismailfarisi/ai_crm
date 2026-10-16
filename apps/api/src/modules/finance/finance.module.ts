@@ -22,6 +22,12 @@ import {
 } from '../orders/entities/sales-order.entity';
 import { WorkOrder } from '../production/entities/work-order.entity';
 import { Supplier } from '../purchasing/entities/supplier.entity';
+import { Employee } from '../payroll/entities/employee.entity';
+import { SalaryPackage } from '../payroll/entities/salary-package.entity';
+import {
+  PayrollRun,
+  PayrollRunLine,
+} from '../payroll/entities/payroll-run.entity';
 import { FinanceService } from './finance.service';
 import { LedgerService } from './ledger.service';
 import { ExpensesService } from './expenses.service';
@@ -52,6 +58,11 @@ import { TaxModule } from '../tax/tax.module';
       SalesOrderLine,
       WorkOrder,
       Supplier,
+      // Read by the cash forecast; owned by payroll.
+      Employee,
+      SalaryPackage,
+      PayrollRun,
+      PayrollRunLine,
     ]),
     TemporalModule,
     AiModule,
