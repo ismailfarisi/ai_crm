@@ -9,10 +9,13 @@ describe('system chart of accounts', () => {
     expect(new Set(roles).size).toBe(roles.length);
   });
 
-  it('nests every overhead account under 6000 and only those', () => {
-    const children = SYSTEM_LEDGER_ACCOUNTS.filter((a) => a.parentCode === '6000');
-    expect(children.map((a) => a.role).sort()).toEqual([...OPERATING_EXPENSE_CHILD_ROLES].sort());
-    for (const child of children) expect(child.type).toBe('EXPENSE');
+  it('lists every descendant of 6000 as an overhead role, and only those', () => {
+    const byCode = new Map(SYSTEM_LEDGER_ACCOUNTS.map((a) => [a.code, a]));
+    const under6000 = (code: string | undefined): boolean =>
+      !!code && (code === '6000' || under6000(byCode.get(code)?.parentCode));
+    const descendants = SYSTEM_LEDGER_ACCOUNTS.filter((a) => a.code !== '6000' && under6000(a.parentCode));
+    expect(descendants.map((a) => a.role).sort()).toEqual([...OPERATING_EXPENSE_CHILD_ROLES].sort());
+    for (const d of descendants) expect(d.type).toBe('EXPENSE');
   });
 
   it('lists a parent before its children so provisioning can link them in one pass', () => {
@@ -45,4 +48,10 @@ it('adds the compliance accounts with the right types and parents', () => {
   expect(byCode.get('6320')).toMatchObject({ type: 'EXPENSE', role: 'LEAVE_EXPENSE', parentCode: '6000' });
   expect(byCode.get('6330')).toMatchObject({ type: 'EXPENSE', role: 'PENSION_EXPENSE', parentCode: '6000' });
   expect(OPERATING_EXPENSE_CHILD_ROLES).toEqual(expect.arrayContaining(['LEAVE_EXPENSE', 'PENSION_EXPENSE']));
+});
+
+it('adds Labour absorbed as a contra under Salaries & wages', () => {
+  const byCode = new Map(SYSTEM_LEDGER_ACCOUNTS.map((a) => [a.code, a]));
+  expect(byCode.get('6390')).toMatchObject({ type: 'EXPENSE', role: 'LABOUR_ABSORBED', parentCode: '6300' });
+  expect(OPERATING_EXPENSE_CHILD_ROLES).toContain('LABOUR_ABSORBED');
 });

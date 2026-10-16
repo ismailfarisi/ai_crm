@@ -59,6 +59,7 @@ export const LEDGER_ROLES = {
   PENSION_PAYABLE: 'PENSION_PAYABLE',
   LEAVE_EXPENSE: 'LEAVE_EXPENSE',
   PENSION_EXPENSE: 'PENSION_EXPENSE',
+  LABOUR_ABSORBED: 'LABOUR_ABSORBED',
   REPAIRS: 'REPAIRS',
   INSURANCE: 'INSURANCE',
   TRAVEL: 'TRAVEL',
@@ -195,6 +196,7 @@ export const SYSTEM_LEDGER_ACCOUNTS: SystemLedgerAccount[] = [
   { code: '6310', name: 'End-of-service gratuity', type: 'EXPENSE', role: LEDGER_ROLES.GRATUITY_EXPENSE, parentCode: '6000', description: 'Monthly change in the end-of-service provision' },
   { code: '6320', name: 'Leave salary expense', type: 'EXPENSE', role: LEDGER_ROLES.LEAVE_EXPENSE, parentCode: '6000', description: 'Monthly change in the leave salary provision' },
   { code: '6330', name: 'Employer pension contribution', type: 'EXPENSE', role: LEDGER_ROLES.PENSION_EXPENSE, parentCode: '6000', description: "The employer's share of nationals' pension contributions" },
+  { code: '6390', name: 'Labour absorbed', type: 'EXPENSE', role: LEDGER_ROLES.LABOUR_ABSORBED, parentCode: '6300', description: 'Payroll cost charged to jobs (a credit): Salaries & wages net of this is labour not spent on jobs' },
   { code: '6400', name: 'Repairs & maintenance', type: 'EXPENSE', role: LEDGER_ROLES.REPAIRS, parentCode: '6000', description: 'Upkeep of premises, plant and machinery' },
   { code: '6450', name: 'Insurance', type: 'EXPENSE', role: LEDGER_ROLES.INSURANCE, parentCode: '6000', description: 'Insurance premiums' },
   { code: '6500', name: 'Travel & entertainment', type: 'EXPENSE', role: LEDGER_ROLES.TRAVEL, parentCode: '6000', description: 'Travel, lodging, meals and entertainment' },
@@ -211,10 +213,13 @@ export const SYSTEM_LEDGER_ACCOUNTS: SystemLedgerAccount[] = [
   },
 ];
 
-/** The overhead roles that roll up into 6000 Other operating expense. */
-export const OPERATING_EXPENSE_CHILD_ROLES: LedgerRole[] = SYSTEM_LEDGER_ACCOUNTS
-  .filter((a) => a.parentCode === '6000')
-  .map((a) => a.role);
+/** The overhead roles that roll up, directly or through a parent, into 6000 Other operating expense. */
+export const OPERATING_EXPENSE_CHILD_ROLES: LedgerRole[] = (() => {
+  const byCode = new Map(SYSTEM_LEDGER_ACCOUNTS.map((a) => [a.code, a]));
+  const under6000 = (code: string | undefined): boolean =>
+    !!code && (code === '6000' || under6000(byCode.get(code)?.parentCode));
+  return SYSTEM_LEDGER_ACCOUNTS.filter((a) => a.code !== '6000' && under6000(a.parentCode)).map((a) => a.role);
+})();
 
 /** The code a cash account's own ledger account is numbered from. */
 export const CASH_ACCOUNT_CODE_PREFIX = '10';
