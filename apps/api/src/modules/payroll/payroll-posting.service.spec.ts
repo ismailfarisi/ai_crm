@@ -600,6 +600,65 @@ describe('PayrollPostingService', () => {
       expect(ctx.entries.rows).toHaveLength(0);
     });
 
+    it('refuses (409) a line whose employee has an approved or paid settlement', async () => {
+      const ctx = setup();
+      const run = await draft(ctx, '2026-10');
+      ctx.settlements.rows.push({
+        id: 's1',
+        tenantId: T,
+        settlementNumber: 'FS-0001',
+        employeeId: 'b',
+        employeeName: 'Emp EMP-002',
+        leavingDate: '2026-09-30',
+        status: 'APPROVED',
+      });
+      for (const status of ['APPROVED', 'PAID']) {
+        ctx.settlements.rows[0].status = status;
+        const err = await ctx.service
+          .approve(T, run.id, APPROVER)
+          .catch((e) => e);
+        expect(err).toBeInstanceOf(ConflictException);
+        expect(err.message).toBe('Emp EMP-002 is settled — refresh the run');
+      }
+      expect(ctx.entries.rows).toHaveLength(0);
+      expect(ctx.gratuity.rows).toHaveLength(0);
+
+      ctx.settlements.rows[0].status = 'VOIDED';
+      const out = await ctx.service.approve(T, run.id, APPROVER);
+      expect(out.status).toBe('APPROVED');
+    });
+
+    it('refuses (409) when an employee’s dates changed since the draft (a leaving date recorded, a rehire)', async () => {
+      const ctx = setup();
+      const run = await draft(ctx, '2026-10');
+      const a = ctx.employees.rows.find((e) => e.id === 'a');
+      Object.assign(a, { status: 'LEFT', leavingDate: '2026-10-10' });
+      const err = await ctx.service.approve(T, run.id, APPROVER).catch((e) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect(err.message).toBe(
+        "Emp EMP-001's employment dates changed — refresh the run",
+      );
+      expect(ctx.entries.rows).toHaveLength(0);
+
+      // A leaver drafted for their final month, then set back to ACTIVE.
+      const ctx2 = setup();
+      const b = ctx2.employees.rows.find((e) => e.id === 'b');
+      Object.assign(b, { status: 'LEFT', leavingDate: '2026-10-20' });
+      const run2 = await draft(ctx2, '2026-10');
+      Object.assign(b, { status: 'ACTIVE', leavingDate: null });
+      await expect(
+        ctx2.service.approve(T, run2.id, APPROVER),
+      ).rejects.toThrow("Emp EMP-002's employment dates changed — refresh the run");
+
+      // Refreshing picks up the new dates and approval goes through.
+      await ctx2.runsService.refresh(T, run2.id);
+      expect(
+        ctx2.lines.rows.find((l) => l.employeeId === 'b').daysEmployed,
+      ).toBe(16);
+      const out = await ctx2.service.approve(T, run2.id, APPROVER);
+      expect(out.status).toBe('APPROVED');
+    });
+
     it('refuses advance recovery across two drafts that together exceed the outstanding advance', async () => {
       const ctx = setup();
       const oct = await draft(ctx, '2026-10');

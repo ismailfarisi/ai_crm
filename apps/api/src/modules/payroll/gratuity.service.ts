@@ -28,24 +28,12 @@ import { GratuityLedgerEntry } from './entities/gratuity-ledger-entry.entity';
 import { Settlement } from './entities/settlement.entity';
 import { EmployeesService } from './employees.service';
 import { POSTED_RUN_STATUSES, postedRunLines } from './advances.service';
+import { lockGratuityOpening } from './gratuity-lock';
+
+export { lockGratuityOpening };
 
 const today = () => new Date().toISOString().slice(0, 10);
 const dayToDate = (day: string) => new Date(`${day}T00:00:00.000Z`);
-
-/**
- * The tenant's gratuity lock, held to the end of the caller's transaction.
- * Opening posts take it so two cannot both pass "no OPENING row yet";
- * approval and void take it so they never read a balance or cut-over that
- * another of them is about to change.
- */
-export async function lockGratuityOpening(
-  manager: EntityManager,
-  tenantId: string,
-): Promise<void> {
-  await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
-    `gratuity-opening:${tenantId}`,
-  ]);
-}
 
 /** 'YYYY-MM' of the month before `period`. */
 function previousPeriod(period: string): string {

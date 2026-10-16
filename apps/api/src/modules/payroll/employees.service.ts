@@ -23,6 +23,8 @@ import { User } from '../users/entities/user.entity';
 import { Employee } from './entities/employee.entity';
 import { SalaryPackage } from './entities/salary-package.entity';
 import { PensionScheme } from './entities/pension-scheme.entity';
+import { Settlement } from './entities/settlement.entity';
+import { lockGratuityOpening } from './gratuity-lock';
 import { PayrollCryptoService } from './payroll-crypto.service';
 import type { EmployeeView } from './employee-mask';
 
@@ -30,6 +32,9 @@ import type { EmployeeView } from './employee-mask';
 export interface ViewOptions {
   withIban?: boolean;
 }
+
+/** Fields a final settlement is worked out on. */
+const EMPLOYMENT_FIELDS = ['status', 'joiningDate', 'leavingDate'] as const;
 
 const today = () => new Date().toISOString().slice(0, 10);
 const IBAN_PATTERN = /^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/;
@@ -155,9 +160,27 @@ export class EmployeesService {
     opts: ViewOptions = {},
   ): Promise<EmployeeView> {
     return this.dataSource.transaction(async (manager) => {
+      const employment = EMPLOYMENT_FIELDS.filter((k) => input[k] !== undefined);
+      // Settlement approval reads these dates under the same lock.
+      if (employment.length) await lockGratuityOpening(manager, tenantId);
       const repo = manager.getRepository(Employee);
       const row = await this.load(manager, tenantId, id);
       const { iban, ...fields } = input;
+
+      // A settled leaver's dates are what the settlement and their last run
+      // were worked out on; changing them would pay or provision them again.
+      if (employment.some((k) => input[k] !== row[k])) {
+        const settlement = (
+          await manager
+            .getRepository(Settlement)
+            .find({ where: { tenantId, employeeId: row.id } })
+        ).find((s) => s.status === 'APPROVED' || s.status === 'PAID');
+        if (settlement) {
+          throw new ConflictException(
+            `${row.firstName} ${row.lastName} is settled by ${settlement.settlementNumber}; void the settlement first`,
+          );
+        }
+      }
 
       if (fields.userId && fields.userId !== row.userId) {
         await this.assertUserLinkable(manager, tenantId, fields.userId, row.id);

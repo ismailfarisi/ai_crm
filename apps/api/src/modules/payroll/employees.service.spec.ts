@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { Employee } from './entities/employee.entity';
 import { SalaryPackage } from './entities/salary-package.entity';
 import { PensionScheme } from './entities/pension-scheme.entity';
+import { Settlement } from './entities/settlement.entity';
 import { User } from '../users/entities/user.entity';
 import { EmployeesService } from './employees.service';
 import { PayrollCryptoService } from './payroll-crypto.service';
@@ -43,11 +44,13 @@ function setup() {
     { id: SCH_ON, tenantId: T, name: 'GPSSA', isActive: true },
     { id: SCH_OFF, tenantId: T, name: 'ADPF', isActive: false },
   ]);
+  const settlements = repo([]);
   const repos = new Map<any, any>([
     [Employee, employees],
     [SalaryPackage, packages],
     [User, users],
     [PensionScheme, schemes],
+    [Settlement, settlements],
   ]);
   const manager: any = {
     getRepository: (e: any) => repos.get(e),
@@ -56,7 +59,7 @@ function setup() {
   const dataSource: any = { manager, transaction: (cb: any) => cb(manager) };
   const crypto = new PayrollCryptoService({} as any);
   const service = new EmployeesService(dataSource, crypto);
-  return { service, employees, packages, manager, crypto };
+  return { service, employees, packages, settlements, manager, crypto };
 }
 
 const input: any = {
@@ -236,6 +239,71 @@ describe('EmployeesService', () => {
       await expect(service.create(T, ACTOR, { ...input, probationEndDate: '2026-01-01' })).rejects.toBeInstanceOf(BadRequestException);
       const v = await service.create(T, ACTOR, input);
       await expect(service.update(T, v.id, { probationEndDate: '2026-01-01' })).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe('a settled employee', () => {
+    const ADVISORY = 'SELECT pg_advisory_xact_lock(hashtext($1))';
+    const settle = (ctx: ReturnType<typeof setup>, employeeId: string, status: string) =>
+      ctx.settlements.rows.push({
+        id: 's1', tenantId: T, employeeId, settlementNumber: 'FS-0001', status,
+      });
+
+    it('refuses (409) a change to status, leaving date or joining date while APPROVED or PAID', async () => {
+      const ctx = setup();
+      const v = await ctx.service.create(T, ACTOR, { ...input, status: 'LEFT', leavingDate: '2026-09-30' });
+      settle(ctx, v.id, 'APPROVED');
+      for (const patch of [
+        { status: 'ACTIVE', leavingDate: null },
+        { leavingDate: '2026-10-15' },
+        { joiningDate: '2026-02-01' },
+      ] as any[]) {
+        const err = await ctx.service.update(T, v.id, patch).catch((e) => e);
+        expect(err).toBeInstanceOf(ConflictException);
+        expect(err.message).toBe('Ada Okafor is settled by FS-0001; void the settlement first');
+      }
+      ctx.settlements.rows[0].status = 'PAID';
+      await expect(ctx.service.update(T, v.id, { status: 'ACTIVE', leavingDate: null })).rejects.toBeInstanceOf(ConflictException);
+      expect(ctx.employees.rows[0]).toMatchObject({ status: 'LEFT', leavingDate: '2026-09-30', joiningDate: '2026-01-15' });
+    });
+
+    it('allows other edits, and the same dates re-sent, and any change once the settlement is voided or still a draft', async () => {
+      const ctx = setup();
+      const v = await ctx.service.create(T, ACTOR, { ...input, status: 'LEFT', leavingDate: '2026-09-30' });
+      settle(ctx, v.id, 'PAID');
+      const ok = await ctx.service.update(T, v.id, {
+        jobTitle: 'Lead', status: 'LEFT', leavingDate: '2026-09-30', joiningDate: '2026-01-15',
+      });
+      expect(ok.jobTitle).toBe('Lead');
+
+      for (const status of ['DRAFT', 'VOIDED']) {
+        ctx.settlements.rows[0].status = status;
+        const moved = await ctx.service.update(T, v.id, { leavingDate: '2026-10-15' });
+        expect(moved.leavingDate).toBe('2026-10-15');
+        await ctx.service.update(T, v.id, { leavingDate: '2026-09-30' });
+      }
+    });
+
+    it('takes the gratuity-opening lock before reading the employee when dates are sent, and not otherwise', async () => {
+      const ctx = setup();
+      const v = await ctx.service.create(T, ACTOR, input);
+      ctx.manager.query.mockClear();
+      await ctx.service.update(T, v.id, { jobTitle: 'Lead' });
+      expect(ctx.manager.query).not.toHaveBeenCalledWith(ADVISORY, expect.anything());
+
+      const order: string[] = [];
+      ctx.manager.query.mockImplementation(async (sql: string) => {
+        order.push(sql);
+        return [];
+      });
+      const findOne = ctx.employees.findOne.getMockImplementation()!;
+      ctx.employees.findOne.mockImplementation(async (a: any) => {
+        order.push('load');
+        return findOne(a);
+      });
+      await ctx.service.update(T, v.id, { status: 'LEFT', leavingDate: '2026-09-30' });
+      expect(order.slice(0, 2)).toEqual([ADVISORY, 'load']);
+      expect(ctx.manager.query).toHaveBeenCalledWith(ADVISORY, [`gratuity-opening:${T}`]);
     });
   });
 });

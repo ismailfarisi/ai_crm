@@ -8,6 +8,7 @@ import {
 import { InjectDataSource } from '@nestjs/typeorm';
 import type { DataSource, EntityManager } from 'typeorm';
 import {
+  daysEmployed,
   LEDGER_ROLES,
   periodBounds,
   PERMISSIONS,
@@ -152,15 +153,37 @@ export class PayrollPostingService {
       // Leave and pension as they stand now, not as the draft froze them: a
       // record or scheme changed since must not post stale. Lines whose leave
       // was typed by hand keep their unpaid and half-pay days.
+      // A settled leaver is paid off: a draft made before the settlement, or
+      // before their dates changed, must not pay or provision them again.
+      const settled = new Set(
+        (await manager.getRepository(Settlement).find({ where: { tenantId } }))
+          .filter((s) => s.status === 'APPROVED' || s.status === 'PAID')
+          .map((s) => s.employeeId),
+      );
       const employees = new Map<string, Employee>();
       const noScheme: string[] = [];
       for (const line of lines) {
+        if (settled.has(line.employeeId)) {
+          throw new ConflictException(
+            `${line.employeeName} is settled — refresh the run`,
+          );
+        }
         // A soft-deleted employee can still have a line.
         const employee = await manager.getRepository(Employee).findOne({
           where: { id: line.employeeId, tenantId },
           withDeleted: true,
         });
         if (!employee) throw new NotFoundException('Employee not found');
+        const days = daysEmployed({
+          period: run.period,
+          joiningDate: employee.joiningDate,
+          leavingDate: employee.leavingDate,
+        });
+        if (days !== line.daysEmployed) {
+          throw new ConflictException(
+            `${line.employeeName}'s employment dates changed — refresh the run`,
+          );
+        }
         employees.set(line.id, employee);
         line.isNational = employee.isNational;
         await this.runs.fillLeave(manager, line, employee, run.period);
