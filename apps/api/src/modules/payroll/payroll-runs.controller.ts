@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -99,6 +100,17 @@ export class PayrollRunsController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<PayrollRunDto> {
     return this.runs.refresh(user.organizationId, id);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermissions(PERMISSIONS.PAYROLL_MANAGE)
+  @ApiOperation({ summary: 'Delete a draft run and its lines' })
+  remove(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<void> {
+    return this.runs.remove(user.organizationId, id);
   }
 
   @Post(':id/approve')

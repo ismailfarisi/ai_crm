@@ -1,4 +1,8 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Organization } from '../organizations/entities/organization.entity';
 import { Employee } from './entities/employee.entity';
 import { SalaryPackage } from './entities/salary-package.entity';
@@ -70,6 +74,11 @@ function repo(rows: any[]) {
         }),
       };
       return qb;
+    }),
+    delete: jest.fn(async (where: any) => {
+      const gone = rows.filter((x) => match(x, where));
+      for (const x of gone) rows.splice(rows.indexOf(x), 1);
+      return { affected: gone.length };
     }),
     remove: jest.fn(async (e: any) => {
       const list = Array.isArray(e) ? e : [e];
@@ -496,6 +505,70 @@ describe('PayrollRunsService', () => {
       await expect(service.refresh(T, run.id)).rejects.toBeInstanceOf(
         ConflictException,
       );
+    });
+  });
+
+  describe('leavers', () => {
+    it('pays a LEFT employee for the days up to the leaving date in their final month', async () => {
+      const { service, employees } = setup();
+      Object.assign(employees.rows.find((e) => e.id === 'a'), {
+        status: 'LEFT',
+        leavingDate: '2026-10-15',
+      });
+      const run = await service.create(T, ACTOR, { period: '2026-10', payDate: null });
+      const a = lineOf(run, 'EMP-001');
+      expect(a.daysEmployed).toBe(15);
+      expect(a.proratedGross).toBe(4112.9); // 8500 × 15 / 31
+      // LEFT before the month (EMP-004) still gets no line.
+      expect(lineOf(run, 'EMP-004')).toBeUndefined();
+      const nov = await service.create(T, ACTOR, { period: '2026-11', payDate: null });
+      expect(lineOf(nov, 'EMP-001')).toBeUndefined();
+    });
+
+    it('refresh keeps the line of an employee who left during the month', async () => {
+      const { service, employees } = setup();
+      const run = await service.create(T, ACTOR, { period: '2026-10', payDate: null });
+      const a = lineOf(run, 'EMP-001');
+      await service.updateLine(T, run.id, a.id, { bonusAmount: 200 });
+      Object.assign(employees.rows.find((e) => e.id === 'a'), {
+        status: 'LEFT',
+        leavingDate: '2026-10-15',
+      });
+      const got = await service.refresh(T, run.id);
+      const ra = lineOf(got, 'EMP-001');
+      expect(ra.id).toBe(a.id);
+      expect(ra.daysEmployed).toBe(15);
+      expect(ra.bonusAmount).toBe(200);
+    });
+  });
+
+  describe('remove', () => {
+    it('deletes a draft and its lines after locking the run', async () => {
+      const { service, runs, lines } = setup();
+      const run = await service.create(T, ACTOR, { period: '2026-10', payDate: null });
+      runs.locks.length = 0;
+      await service.remove(T, run.id);
+      expect(runs.locks).toEqual(['pessimistic_write']);
+      expect(runs.rows).toHaveLength(0);
+      expect(lines.rows).toHaveLength(0);
+      expect(lines.delete).toHaveBeenCalledWith({ tenantId: T, runId: run.id });
+      expect(runs.delete).toHaveBeenCalledWith({ id: run.id, tenantId: T });
+    });
+
+    it('refuses (409) anything but a draft, and 404s another tenant', async () => {
+      const { service, runs, lines } = setup();
+      const run = await service.create(T, ACTOR, { period: '2026-10', payDate: null });
+      for (const status of ['APPROVED', 'PARTIALLY_PAID', 'PAID', 'VOIDED']) {
+        runs.rows[0].status = status;
+        await expect(service.remove(T, run.id)).rejects.toBeInstanceOf(ConflictException);
+      }
+      runs.rows[0].status = 'DRAFT';
+      await expect(
+        service.remove('99999999-9999-4999-8999-999999999999', run.id),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(runs.rows).toHaveLength(1);
+      expect(lines.rows.length).toBeGreaterThan(0);
+      expect(lines.delete).not.toHaveBeenCalled();
     });
   });
 

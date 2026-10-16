@@ -364,6 +364,27 @@ export class PayrollRunsService {
     });
   }
 
+  /**
+   * Discards a draft: its lines and the run. A draft posted nothing, so there
+   * is no journal or gratuity row to reverse.
+   */
+  async remove(tenantId: string, runId: string): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const run = await this.lockRun(manager, tenantId, runId);
+      if (run.status !== 'DRAFT') {
+        throw new ConflictException(
+          `Payroll run ${run.runNumber} is ${run.status.toLowerCase().replace(/_/g, ' ')}; only a draft can be deleted`,
+        );
+      }
+      await manager
+        .getRepository(PayrollRunLine)
+        .delete({ tenantId, runId: run.id });
+      await manager
+        .getRepository(PayrollRun)
+        .delete({ id: run.id, tenantId });
+    });
+  }
+
   async payslip(
     tenantId: string,
     runId: string,
@@ -510,8 +531,10 @@ export class PayrollRunsService {
   // ─── internals ───────────────────────────────────────────────────────────
 
   /**
-   * ACTIVE employees with days in the period, each with the package in force
-   * on the last day of the month. No package → skipped with a warning.
+   * Employees with days in the period — ACTIVE ones, and LEFT ones whose
+   * leaving date falls in it (their final month and last gratuity true-up) —
+   * each with the package in force on the last day of the month. No package
+   * → skipped with a warning.
    */
   private async eligible(
     manager: EntityManager,
@@ -520,9 +543,12 @@ export class PayrollRunsService {
   ): Promise<{ eligible: Eligible[]; warnings: string[] }> {
     const { last } = periodBounds(period);
     const label = periodLabel(period);
-    const rows = await manager
-      .getRepository(Employee)
-      .find({ where: { tenantId, status: 'ACTIVE' } });
+    const rows = (
+      await manager.getRepository(Employee).find({ where: { tenantId } })
+    ).filter(
+      (e) =>
+        e.status === 'ACTIVE' || (e.status === 'LEFT' && !!e.leavingDate),
+    );
     rows.sort((a, b) => a.employeeNumber.localeCompare(b.employeeNumber));
     const eligible: Eligible[] = [];
     const warnings: string[] = [];
