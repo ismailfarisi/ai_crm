@@ -708,26 +708,33 @@ describe('PayrollPostingService', () => {
       expect(err.message).toBe('Nothing left to pay');
     });
 
-    it('a method with no lines is marked paid with no journal and status recomputed', async () => {
+    it('an all-bank run: paying cash is 409 with no writes, the run stays voidable; paying bank goes straight to PAID', async () => {
       const ctx = setup();
+      ctx.employees.rows.find((e) => e.id === 'b').paymentMethod = 'BANK';
       const run = await approved(ctx);
-      ctx.lines.rows.splice(
-        ctx.lines.rows.findIndex((l) => l.paymentMethod === 'CASH'),
-        1,
-      );
-      const out = await ctx.service.pay(T, run.id, PAYER, {
-        method: 'CASH',
-        financeAccountId: CASH_ACCT,
-      });
-      expect(ctx.runs.rows[0].cashPaidAt).toBeInstanceOf(Date);
-      expect(out.status).toBe('PARTIALLY_PAID');
-      expect(ctx.entries.rows).toHaveLength(1);
+      ctx.runs.update.mockClear();
+      const err = await ctx.service
+        .pay(T, run.id, PAYER, { method: 'CASH', financeAccountId: CASH_ACCT })
+        .catch((e) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect(err.message).toBe(`No cash payees on ${run.runNumber}`);
+      expect(ctx.runs.update).not.toHaveBeenCalled();
+      expect(ctx.runs.rows[0].status).toBe('APPROVED');
+      expect(ctx.runs.rows[0].cashPaidAt ?? null).toBeNull();
       expect(decrements(ctx)).toHaveLength(0);
-      const done = await ctx.service.pay(T, run.id, PAYER, {
+      expect(ctx.entries.rows).toHaveLength(1);
+
+      const out = await ctx.service.void(T, run.id, PAYER);
+      expect(out.status).toBe('VOIDED');
+
+      const ctx2 = setup();
+      ctx2.employees.rows.find((e) => e.id === 'b').paymentMethod = 'BANK';
+      const run2 = await approved(ctx2);
+      const paid = await ctx2.service.pay(T, run2.id, PAYER, {
         method: 'BANK',
         financeAccountId: BANK_ACCT,
       });
-      expect(done.status).toBe('PAID');
+      expect(paid.status).toBe('PAID');
     });
 
     it('refuses a DRAFT run (409), a foreign-currency account (400), an unknown account (404) and no payroll:pay (403)', async () => {

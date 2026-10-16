@@ -404,8 +404,13 @@ export class PayrollPostingService {
         (l) => l.paymentMethod === input.method && !l.paidAt,
       );
       const total = round2(mine.reduce((s, l) => s + l.netPay, 0));
+      if (!mine.length) {
+        throw new ConflictException(
+          `No ${label.toLowerCase()} payees on ${run.runNumber}`,
+        );
+      }
 
-      if (mine.length && total > 0) {
+      if (total > 0) {
         const account = await manager
           .getRepository(FinanceAccount)
           .findOne({ where: { id: input.financeAccountId, tenantId } });
@@ -458,12 +463,10 @@ export class PayrollPostingService {
         );
       }
 
-      if (mine.length) {
-        await lineRepo.update(
-          { tenantId, runId: run.id, paymentMethod: input.method },
-          { paidAt },
-        );
-      }
+      await lineRepo.update(
+        { tenantId, runId: run.id, paymentMethod: input.method },
+        { paidAt },
+      );
       const remaining = lines.some(
         (l) => l.paymentMethod !== input.method && !l.paidAt,
       );
