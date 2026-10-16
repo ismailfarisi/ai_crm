@@ -467,6 +467,44 @@ What overheads posting and recurring bills leave out, and the choices behind it.
 
 ---
 
+## Employees and payroll
+
+What payroll leaves for compliance and job costing, and the choices behind it.
+
+- **UAE/GCC nationals have no GPSSA pension yet — open.** Their lines are
+  flagged; handle the pension outside Kerf until #3.
+- **No WPS SIF export, leave balances or final settlement — open (#3).** The
+  2400 gratuity provision is never paid out until then.
+- **Gratuity accrues from day one — by design.** Nothing is payable before one
+  year of service, but #3's settlement applies eligibility, so accruing from
+  the start avoids a catch-up entry.
+- **The package in effect on the last day of the month applies to the whole
+  month — by design.** No split-month proration of raises.
+- **Off-cycle (bonus-only) runs are not supported — open.** One run per month.
+- **Payroll is base-currency only — by design.** Paying from a foreign-currency
+  account is refused, because payroll is not FX-converted.
+- **Payslips are printable pages — open.** No emailing or server-side PDF.
+- **The forecast projects payroll as gross on the 28th for months without a
+  run — by design.** It is an estimate; a real run replaces it.
+- **`PAYROLL_DATA_KEY` must be set in production.** Losing it makes stored
+  IBANs unreadable; they have to be re-entered.
+- **The opening gratuity cut-over blocks runs for months it already covers — by
+  design.** Otherwise those months would accrue gratuity twice.
+- **Payroll runs post in month order — by design.** Approving or voiding a
+  month is refused while a later month is posted, because later runs build on
+  earlier postings. To correct an old month, void later unpaid runs first,
+  otherwise use a gratuity adjustment.
+- **Paying a method with no payees is refused — by design.** A run becomes
+  PAID once every existing line is paid.
+- **Approval re-checks every line — by design.** Net pay >= 0, unpaid leave <=
+  days employed, and advance recovery <= outstanding across drafts, because
+  refresh keeps stale extras.
+- **Gratuity for leavers is computed to the leaving date — by design.**
+- **No database index yet on `employee_advances(tenant, employee)` or
+  `payroll_runs(tenant)` — open.** Fine at SME volumes.
+
+---
+
 ## Smaller things found on the way
 
 - **A malformed quote body returns 500, not 400.** `POST /quotes` with a badly
