@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Between, In, type EntityManager } from 'typeorm';
+import { Between, In, IsNull, type EntityManager } from 'typeorm';
 import {
   allocateAbsorption,
   labourCost,
@@ -413,6 +413,41 @@ export class LabourAbsorptionService {
       workOrders.map((w) => w.id),
     );
     return voidEntryId;
+  }
+
+  /**
+   * The labour absorbed into WIP for a work order and not moved on yet: what
+   * completion takes to COGS and cancellation returns to 6390. Callers hold
+   * `lockJobCosting` and the work order row.
+   */
+  async wipLabour(
+    manager: EntityManager,
+    tenantId: string,
+    workOrderId: string,
+  ): Promise<{ ids: string[]; amount: number }> {
+    const rows = await manager.getRepository(WorkOrderLabour).find({
+      where: { tenantId, workOrderId, account: 'WIP', clearedTo: IsNull() },
+    });
+    return {
+      ids: rows.map((r) => r.id).sort(),
+      amount: round2(rows.reduce((s, r) => s + r.amount, 0)),
+    };
+  }
+
+  /** Records where the rows' WIP labour went; writes only those two columns. */
+  async clear(
+    manager: EntityManager,
+    tenantId: string,
+    ids: string[],
+    to: 'COGS' | 'EXPENSE',
+  ): Promise<void> {
+    if (!ids.length) return;
+    await manager
+      .getRepository(WorkOrderLabour)
+      .update(
+        { tenantId, id: In(ids) },
+        { clearedTo: to, clearedAt: new Date() },
+      );
   }
 
   /** The work order rows, `FOR UPDATE`, in id order. */

@@ -33,6 +33,7 @@ function makeWorld() {
   const op = (row: any, k: string, v: any) => {
     if (v && typeof v === 'object' && '_type' in v) {
       if (v._type === 'in') return (v._value as unknown[]).includes(row[k]);
+      if (v._type === 'isNull') return row[k] == null;
       if (v._type === 'between')
         return row[k] >= v._value[0] && row[k] <= v._value[1];
       throw new Error(`unsupported operator ${v._type}`);
@@ -394,6 +395,39 @@ describe('LabourAbsorptionService', () => {
       actual: 0,
       provisional: 0,
       unlinked: 0,
+    });
+  });
+
+  describe('wipLabour and clear', () => {
+    it('wipLabour sums only a job’s WIP rows not yet cleared', async () => {
+      const { w, l } = standard();
+      w.entry(4, 'wo-open');
+      await w.approve([l]);
+      const open = w.tables.WorkOrderLabour.find(
+        (r) => r.workOrderId === 'wo-open',
+      )!;
+      w.tables.WorkOrderLabour.push(
+        { ...open, id: 'cleared', amount: 70, clearedTo: 'COGS' },
+        { ...open, id: 'other-tenant', amount: 5, tenantId: 'someone-else' },
+      );
+      const got = await w.service.wipLabour(w.manager, tenantId, 'wo-open');
+      expect(got).toEqual({ ids: [open.id], amount: open.amount });
+      // COGS-booked rows are not WIP.
+      expect(await w.service.wipLabour(w.manager, tenantId, 'wo-done')).toEqual(
+        { ids: [], amount: 0 },
+      );
+    });
+
+    it('clear stamps clearedTo and clearedAt on the given rows only', async () => {
+      const { w, l } = standard();
+      await w.approve([l]);
+      const [a, b] = w.tables.WorkOrderLabour;
+      await w.service.clear(w.manager, tenantId, [a.id], 'EXPENSE');
+      expect(a.clearedTo).toBe('EXPENSE');
+      expect(a.clearedAt).toBeInstanceOf(Date);
+      expect(b.clearedTo).toBeNull();
+      await w.service.clear(w.manager, tenantId, [], 'COGS');
+      expect(b.clearedTo).toBeNull();
     });
   });
 

@@ -14,8 +14,8 @@ import {
   QueryFailedError,
   Repository,
 } from 'typeorm';
+import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import {
-  actualCost,
   canTransitionWorkOrder,
   DEFAULT_BOARD_COLUMNS,
   elapsedMinutes,
@@ -41,6 +41,7 @@ import { JournalEntry } from '../finance/entities/journal-entry.entity';
 import { InventoryService } from '../inventory/inventory.service';
 import { JobCostService } from '../job-costing/job-cost.service';
 import { lockJobCosting } from '../job-costing/job-costing.lock';
+import { LabourAbsorptionService } from '../job-costing/labour-absorption.service';
 import { TimesheetsService } from '../job-costing/timesheets.service';
 import {
   SalesOrder,
@@ -99,6 +100,7 @@ export class ProductionService {
     private readonly dataSource: DataSource,
     private readonly jobCost: JobCostService,
     private readonly timesheets: TimesheetsService,
+    private readonly absorption: LabourAbsorptionService,
   ) {}
 
   /* ------------------------------------------------------------------ *
@@ -604,6 +606,7 @@ export class ProductionService {
     }
 
     await this.dataSource.transaction(async (manager) => {
+      await lockJobCosting(manager, tenantId);
       const wo = await this.lock(manager, tenantId, id);
       this.assertTransition(wo, 'COMPLETE');
 
@@ -635,49 +638,48 @@ export class ProductionService {
       );
 
       const qtyCompleted = input.qtyCompleted ?? wo.qty;
-      wo.actualCost = actualCost({
-        operations: ops.map((op) => ({
-          workCenterId: op.workCenterId,
-          workCenterName: op.workCenterName,
-          status: op.status,
-          estimatedSetupMinutes: op.estimatedSetupMinutes,
-          estimatedRunMinutes: op.estimatedRunMinutes,
-          estimatedChargedMinutes: op.estimatedChargedMinutes,
-          actualMinutes: op.actualMinutes,
-          machineCostPerHour: op.machineCostPerHour,
-          laborCostPerHour: op.laborCostPerHour,
-        })),
-        materialValue: wip,
-        toolingCost: wo.estimatedCost?.tooling ?? 0,
-        overheadPct: wo.overheadPct,
+      const { cost, split, status } = await this.jobCost.costFor(
+        manager,
+        tenantId,
+        wo,
+        ops,
+        wip,
         qtyCompleted,
-      });
-      wo.status = 'COMPLETE';
-      wo.qtyCompleted = qtyCompleted;
-      wo.completedAt = now;
-      wo.completedById = actorId;
+      );
+      const patch: QueryDeepPartialEntity<WorkOrder> = {
+        actualCost: cost,
+        labourStatus: status,
+        labourSplit: split,
+        status: 'COMPLETE',
+        qtyCompleted,
+        completedAt: now,
+        completedById: actorId,
+      };
       if (input.columnId) {
-        wo.parameters = {
+        patch.parameters = {
           ...(wo.parameters || {}),
           columnId: input.columnId,
-        };
+        } as QueryDeepPartialEntity<WorkOrder['parameters']>;
       }
-      await manager.getRepository(WorkOrder).save(wo);
+      await manager
+        .getRepository(WorkOrder)
+        .update({ id: wo.id, tenantId }, patch);
 
-      // Only material has been capitalised into WIP, so only material leaves
-      // it. Labour and machine time are measured here, not posted: the system
-      // has no payroll to credit them against, and inventing an "absorbed
-      // labour" account would put a number in the books nobody can reconcile.
-      if (wip > 0) {
+      // Material issued and the labour payroll has absorbed so far both
+      // leave WIP now. Labour absorbed later (a run approved after this) goes
+      // straight to COGS; machine time is measured, never posted.
+      const labour = await this.absorption.wipLabour(manager, tenantId, wo.id);
+      const moved = money(wip + labour.amount);
+      if (moved > 0) {
         await this.post(manager, tenantId, {
           entryNumber: `JE-${wo.woNumber}-DONE`,
           workOrderId: wo.id,
-          amount: wip,
+          amount: moved,
           lines: [
             {
               role: LEDGER_ROLES.COGS,
               accountName: 'Cost of goods sold',
-              debit: wip,
+              debit: moved,
               credit: 0,
               description: `${wo.woNumber} completed`,
             },
@@ -685,23 +687,29 @@ export class ProductionService {
               role: LEDGER_ROLES.WIP,
               accountName: 'Work in progress',
               debit: 0,
-              credit: wip,
+              credit: moved,
               description: `${wo.woNumber} completed`,
             },
           ],
         });
       }
+      await this.absorption.clear(manager, tenantId, labour.ids, 'COGS');
     });
     return this.get(tenantId, id, canSeeCost);
   }
 
-  /** Material still on the job has to go back to the shelf, or it stays in WIP with no job to clear it. */
+  /**
+   * Material still on the job has to go back to the shelf, or it stays in WIP
+   * with no job to clear it. Labour payroll absorbed into WIP returns to
+   * overhead (Dr 6390 / Cr WIP): it was spent, but on nothing that sells.
+   */
   async cancel(
     tenantId: string,
     id: string,
     reason: string | null,
   ): Promise<WorkOrderDto> {
     await this.dataSource.transaction(async (manager) => {
+      await lockJobCosting(manager, tenantId);
       const wo = await this.lock(manager, tenantId, id);
       this.assertTransition(wo, 'CANCELLED');
       const mats = await manager.getRepository(WorkOrderMaterial).find({
@@ -715,16 +723,48 @@ export class ProductionService {
           `Return ${onJob.map((m) => m.materialName).join(', ')} to stock before cancelling ${wo.woNumber}.`,
         );
       }
+      const labour = await this.absorption.wipLabour(manager, tenantId, wo.id);
+      if (labour.amount > 0) {
+        const description = `${wo.woNumber} cancelled: labour back to overhead`;
+        await this.post(manager, tenantId, {
+          entryNumber: `JE-${wo.woNumber}-LAB-CANCEL`,
+          workOrderId: wo.id,
+          amount: labour.amount,
+          lines: [
+            {
+              role: LEDGER_ROLES.LABOUR_ABSORBED,
+              accountName: 'Labour absorbed',
+              debit: labour.amount,
+              credit: 0,
+              description,
+            },
+            {
+              role: LEDGER_ROLES.WIP,
+              accountName: 'Work in progress',
+              debit: 0,
+              credit: labour.amount,
+              description,
+            },
+          ],
+        });
+      }
+      await this.absorption.clear(manager, tenantId, labour.ids, 'EXPENSE');
       await manager
         .getRepository(WorkOrderOperation)
         .update(
           { workOrderId: wo.id, status: 'RUNNING' },
           { status: 'PAUSED', runningSince: null },
         );
-      wo.status = 'CANCELLED';
-      wo.cancelledAt = new Date();
-      wo.cancelReason = reason;
-      await manager.getRepository(WorkOrder).save(wo);
+      await manager
+        .getRepository(WorkOrder)
+        .update(
+          { id: wo.id, tenantId },
+          {
+            status: 'CANCELLED',
+            cancelledAt: new Date(),
+            cancelReason: reason,
+          },
+        );
     });
     return this.get(tenantId, id, true);
   }
