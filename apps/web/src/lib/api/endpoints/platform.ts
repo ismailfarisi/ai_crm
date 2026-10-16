@@ -8,6 +8,7 @@ import type {
   BalanceSheetDto,
   CurrencySettingsDto,
   FxRateDto,
+  LabourUtilisationDto,
   MarginReportDto,
   NotificationDto,
   OrganizationProfileDto,
@@ -21,13 +22,15 @@ import type {
 } from '@saas/shared';
 import { apiFetch, apiFetchBlob, apiUpload } from '../client';
 
-export type FinancialReport = 'trial-balance' | 'profit-and-loss' | 'balance-sheet' | 'receivables-aging' | 'margins';
+export type FinancialReport = 'trial-balance' | 'profit-and-loss' | 'balance-sheet' | 'receivables-aging' | 'margins' | 'labour-utilisation';
 
 export interface ReportParams {
   from?: string;
   to?: string;
   asOf?: string;
   by?: 'customer' | 'template';
+  /** YYYY-MM, labour utilisation only. */
+  period?: string;
 }
 
 export interface AuditFilters {
@@ -99,6 +102,8 @@ export const platformEndpoints = {
     receivablesAging: (p: ReportParams) =>
       apiFetch<ReceivablesAgingDto>('/finance/reports/receivables-aging', { query: p }),
     margins: (p: ReportParams) => apiFetch<MarginReportDto>('/finance/reports/margins', { query: p }),
+    labourUtilisation: (p: ReportParams) =>
+      apiFetch<LabourUtilisationDto>('/finance/reports/labour-utilisation', { query: p }),
     csv: (report: FinancialReport, p: ReportParams) =>
       apiFetchBlob(`/finance/reports/${report}`, { query: { ...p, format: 'csv' } }),
   },

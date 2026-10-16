@@ -143,6 +143,7 @@ export function useFinancialReport<T>(report: FinancialReport, params: ReportPar
     'balance-sheet': api.reports.balanceSheet,
     'receivables-aging': api.reports.receivablesAging,
     margins: api.reports.margins,
+    'labour-utilisation': api.reports.labourUtilisation,
   };
   return useQuery({
     queryKey: queryKeys.financialReport(report, params),
