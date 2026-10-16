@@ -22,6 +22,7 @@ import { PayrollRunsService } from './payroll-runs.service';
 import { PayrollRunsController } from './payroll-runs.controller';
 import { PayrollPostingService } from './payroll-posting.service';
 import { PayrollSettingsService } from './payroll-settings.service';
+import { PensionRemittanceService } from './pension-remittance.service';
 import { PensionService } from './pension.service';
 import { PayrollComplianceController } from './payroll-compliance.controller';
 import { LeaveService } from './leave.service';
@@ -58,6 +59,7 @@ import { LeaveController } from './leave.controller';
     PayrollPostingService,
     PayrollSettingsService,
     PensionService,
+    PensionRemittanceService,
     LeaveService,
     LeaveRecordsService,
     // Built from process.env so a missing PAYROLL_DATA_KEY fails boot in production.
