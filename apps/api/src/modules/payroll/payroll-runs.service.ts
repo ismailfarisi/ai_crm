@@ -30,6 +30,7 @@ import { PayrollRun, PayrollRunLine } from './entities/payroll-run.entity';
 import { EmployeesService } from './employees.service';
 import { AdvancesService } from './advances.service';
 import { GratuityService } from './gratuity.service';
+import { LeaveService } from './leave.service';
 import { maskIban } from './employee-mask';
 
 export const NATIONAL_PENSION_FLAG = 'NATIONAL_PENSION_NOT_HANDLED';
@@ -140,6 +141,7 @@ export class PayrollRunsService {
     private readonly employees: EmployeesService,
     private readonly advances: AdvancesService,
     private readonly gratuity: GratuityService,
+    private readonly leave: LeaveService,
   ) {}
 
   async create(
@@ -487,6 +489,88 @@ export class PayrollRunsService {
     };
   }
 
+  /**
+   * Leave days on the line from the employee's records. A line whose leave
+   * someone edited by hand keeps its unpaid and half-pay days; the
+   * informational counts always follow the records.
+   */
+  async fillLeave(
+    manager: EntityManager,
+    line: PayrollRunLine,
+    employee: Employee,
+    period: string,
+  ): Promise<void> {
+    const pl = await this.leave.periodLeave(
+      manager,
+      employee.tenantId,
+      employee,
+      period,
+    );
+    if (!line.leaveOverridden) {
+      line.unpaidLeaveDays = pl.unpaidDays;
+      line.halfPayDays = pl.halfPayDays;
+    }
+    line.annualLeaveDays = pl.annualDays;
+    line.leaveDaysInPeriod = pl.leaveDays;
+  }
+
+  /**
+   * After a leave record changes: re-fills the employee's line on each DRAFT
+   * run among `periods` and moves the run totals, so nobody approves stale
+   * leave. Posted runs are not touched (record changes in their months are
+   * refused before this is called). Writes only the line columns leave moves.
+   */
+  async refillLeaveForEmployee(
+    manager: EntityManager,
+    tenantId: string,
+    employeeId: string,
+    periods: string[],
+  ): Promise<void> {
+    const wanted = new Set(periods);
+    if (!wanted.size) return;
+    const drafts = (
+      await manager.getRepository(PayrollRun).find({ where: { tenantId } })
+    )
+      .filter((r) => r.status === 'DRAFT' && wanted.has(r.period))
+      .sort((a, b) => a.period.localeCompare(b.period));
+    if (!drafts.length) return;
+    // A soft-deleted employee can still have a draft line.
+    const employee = await manager.getRepository(Employee).findOne({
+      where: { id: employeeId, tenantId },
+      withDeleted: true,
+    });
+    if (!employee) return;
+
+    const lineRepo = manager.getRepository(PayrollRunLine);
+    for (const draft of drafts) {
+      const run = await this.lockRun(manager, tenantId, draft.id);
+      if (run.status !== 'DRAFT') continue;
+      const lines = await this.loadLines(manager, tenantId, run.id);
+      const line = lines.find((l) => l.employeeId === employeeId);
+      if (!line) continue;
+      await this.fillLeave(manager, line, employee, run.period);
+      this.recalcLine(line);
+      await lineRepo.update(
+        { id: line.id, tenantId },
+        {
+          unpaidLeaveDays: line.unpaidLeaveDays,
+          halfPayDays: line.halfPayDays,
+          annualLeaveDays: line.annualLeaveDays,
+          leaveDaysInPeriod: line.leaveDaysInPeriod,
+          proratedGross: line.proratedGross,
+          overtimeAmount: line.overtimeAmount,
+          unpaidLeaveAmount: line.unpaidLeaveAmount,
+          halfPayAmount: line.halfPayAmount,
+          salaryCost: line.salaryCost,
+          netPay: line.netPay,
+        },
+      );
+      run.lines = lines;
+      this.recalcTotals(run);
+      await this.saveTotals(manager, run);
+    }
+  }
+
   /** Amounts from the snapshot and extras. */
   recalcLine(line: PayrollRunLine): void {
     const got = computeLine({
@@ -500,10 +584,13 @@ export class PayrollRunsService {
       unpaidLeaveDays: line.unpaidLeaveDays,
       advanceRecovery: line.advanceRecovery,
       otherDeductionAmount: line.otherDeductionAmount,
+      halfPayDays: line.halfPayDays ?? 0,
+      pensionEmployee: line.pensionEmployee ?? 0,
     });
     line.proratedGross = got.proratedGross;
     line.overtimeAmount = got.overtimeAmount;
     line.unpaidLeaveAmount = got.unpaidLeaveAmount;
+    line.halfPayAmount = got.halfPayAmount;
     line.salaryCost = got.salaryCost;
     line.netPay = got.netPay;
   }

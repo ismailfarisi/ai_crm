@@ -17,6 +17,8 @@ import { EmployeesService } from './employees.service';
 import { PayrollCryptoService } from './payroll-crypto.service';
 import { AdvancesService } from './advances.service';
 import { GratuityService } from './gratuity.service';
+import { PayrollSettingsService } from './payroll-settings.service';
+import { LeaveService } from './leave.service';
 import { PayrollRunsService } from './payroll-runs.service';
 import { PayrollPostingService } from './payroll-posting.service';
 
@@ -180,11 +182,17 @@ function setup() {
     ledger,
     employeesService,
   );
+  const leaveService = new LeaveService(
+    dataSource,
+    gratuityService,
+    new PayrollSettingsService(dataSource),
+  );
   const runsService = new PayrollRunsService(
     dataSource,
     employeesService,
     advancesService,
     gratuityService,
+    leaveService,
   );
   const service = new PayrollPostingService(
     dataSource,

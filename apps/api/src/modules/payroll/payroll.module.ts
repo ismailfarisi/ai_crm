@@ -24,6 +24,9 @@ import { PayrollPostingService } from './payroll-posting.service';
 import { PayrollSettingsService } from './payroll-settings.service';
 import { PensionService } from './pension.service';
 import { PayrollComplianceController } from './payroll-compliance.controller';
+import { LeaveService } from './leave.service';
+import { LeaveRecordsService } from './leave-records.service';
+import { LeaveController } from './leave.controller';
 
 /** Employees, salary packages, payroll runs, advances and the gratuity ledger. */
 @Module({
@@ -46,7 +49,7 @@ import { PayrollComplianceController } from './payroll-compliance.controller';
     // LedgerService posts the approval, payment, advance and gratuity journals.
     FinanceModule,
   ],
-  controllers: [EmployeesController, PayrollController, PayrollRunsController, PayrollComplianceController],
+  controllers: [EmployeesController, PayrollController, PayrollRunsController, PayrollComplianceController, LeaveController],
   providers: [
     EmployeesService,
     AdvancesService,
@@ -55,6 +58,8 @@ import { PayrollComplianceController } from './payroll-compliance.controller';
     PayrollPostingService,
     PayrollSettingsService,
     PensionService,
+    LeaveService,
+    LeaveRecordsService,
     // Built from process.env so a missing PAYROLL_DATA_KEY fails boot in production.
     {
       provide: PayrollCryptoService,

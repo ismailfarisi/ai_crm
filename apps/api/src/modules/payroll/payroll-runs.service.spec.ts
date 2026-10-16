@@ -13,6 +13,8 @@ import { EmployeesService } from './employees.service';
 import { PayrollCryptoService } from './payroll-crypto.service';
 import { AdvancesService } from './advances.service';
 import { GratuityService } from './gratuity.service';
+import { PayrollSettingsService } from './payroll-settings.service';
+import { LeaveService } from './leave.service';
 import { PayrollRunsService } from './payroll-runs.service';
 
 const T = '11111111-1111-4111-8111-111111111111';
@@ -188,11 +190,17 @@ function setup() {
     dataSource,
     new PayrollCryptoService({}),
   );
+  const gratuityService = new GratuityService(dataSource, ledger, employeesService);
   const service = new PayrollRunsService(
     dataSource,
     employeesService,
     new AdvancesService(dataSource, ledger),
-    new GratuityService(dataSource, ledger, employeesService),
+    gratuityService,
+    new LeaveService(
+      dataSource,
+      gratuityService,
+      new PayrollSettingsService(dataSource),
+    ),
   );
   return { service, employees, packages, advances, runs, lines, gratuity };
 }
