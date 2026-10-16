@@ -128,7 +128,7 @@ export class ProductionController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    return this.production.release(user.organizationId, id);
+    return this.production.release(user.organizationId, id, canSeeCost(user));
   }
 
   @Post('work-orders/:id/complete')
@@ -160,7 +160,12 @@ export class ProductionController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body(zodBody(cancelWorkOrderSchema)) body: CancelWorkOrderPayload,
   ) {
-    return this.production.cancel(user.organizationId, id, body.reason);
+    return this.production.cancel(
+      user.organizationId,
+      id,
+      body.reason,
+      canSeeCost(user),
+    );
   }
 
   @Post('work-orders/:id/operations/:operationId/start')

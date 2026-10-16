@@ -200,7 +200,7 @@ export class WorkOrderManageSkill implements ChannelSkill<ResolvedWorkOrderManag
 
     switch (value.action) {
       case 'RELEASE': {
-        await this.production.release(ctx.organizationId, value.workOrderId);
+        await this.production.release(ctx.organizationId, value.workOrderId, false);
         return { reply: `✅ ${value.woNumber} has been released to the shop floor.`, resultType: 'WORK_ORDER', resultId: value.workOrderId };
       }
       case 'COMPLETE': {
@@ -208,7 +208,7 @@ export class WorkOrderManageSkill implements ChannelSkill<ResolvedWorkOrderManag
         return { reply: `✅ ${value.woNumber} marked COMPLETE (${value.quantityCompleted} units posted).`, resultType: 'WORK_ORDER', resultId: value.workOrderId };
       }
       case 'CANCEL': {
-        await this.production.cancel(ctx.organizationId, value.workOrderId, value.cancelReason ?? 'Cancelled via chat');
+        await this.production.cancel(ctx.organizationId, value.workOrderId, value.cancelReason ?? 'Cancelled via chat', false);
         return { reply: `⚠️ ${value.woNumber} cancelled.`, resultType: 'WORK_ORDER', resultId: value.workOrderId };
       }
       case 'START': {

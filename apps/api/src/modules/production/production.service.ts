@@ -570,7 +570,11 @@ export class ProductionService {
    * Lifecycle
    * ------------------------------------------------------------------ */
 
-  async release(tenantId: string, id: string): Promise<WorkOrderDto> {
+  async release(
+    tenantId: string,
+    id: string,
+    canSeeCost = false,
+  ): Promise<WorkOrderDto> {
     await this.dataSource.transaction(async (manager) => {
       const wo = await this.lock(manager, tenantId, id);
       this.assertTransition(wo, 'RELEASED');
@@ -578,7 +582,7 @@ export class ProductionService {
       wo.releasedAt = new Date();
       await manager.getRepository(WorkOrder).save(wo);
     });
-    return this.get(tenantId, id, true);
+    return this.get(tenantId, id, canSeeCost);
   }
 
   /**
@@ -628,6 +632,8 @@ export class ProductionService {
           op.completedAt = now;
         }
       }
+      // Whole-row save is safe here: lockJobCosting and the work order row
+      // lock are held, and every writer of these operations takes one of them.
       await manager.getRepository(WorkOrderOperation).save(ops);
 
       const mats = await manager.getRepository(WorkOrderMaterial).find({
@@ -666,8 +672,10 @@ export class ProductionService {
         .update({ id: wo.id, tenantId }, patch);
 
       // Material issued and the labour payroll has absorbed so far both
-      // leave WIP now. Labour absorbed later (a run approved after this) goes
-      // straight to COGS; machine time is measured, never posted.
+      // leave WIP now. Labour absorbed later (a run approved after this)
+      // reaches COGS through that run (J19): directly when today is on or
+      // before its period end, otherwise via WIP and its LAB-DONE dated
+      // today. Machine time is measured, never posted.
       const labour = await this.absorption.wipLabour(manager, tenantId, wo.id);
       const moved = money(wip + labour.amount);
       if (moved > 0) {
@@ -707,6 +715,7 @@ export class ProductionService {
     tenantId: string,
     id: string,
     reason: string | null,
+    canSeeCost = false,
   ): Promise<WorkOrderDto> {
     await this.dataSource.transaction(async (manager) => {
       await lockJobCosting(manager, tenantId);
@@ -766,7 +775,7 @@ export class ProductionService {
           },
         );
     });
-    return this.get(tenantId, id, true);
+    return this.get(tenantId, id, canSeeCost);
   }
 
   /* ------------------------------------------------------------------ *
@@ -836,8 +845,10 @@ export class ProductionService {
       op.startedAt = op.startedAt ?? now;
       await manager.getRepository(WorkOrderOperation).save(op);
       if (added > 0 && sessionStart) {
+        // J20: the hours are the operator's who started the clock, not
+        // whoever pressed stop (a supervisor closing someone's session).
         await this.recordClock(manager, tenantId, {
-          userId: actorId,
+          userId: op.operatorId ?? actorId,
           workOrderId: wo.id,
           operationId: op.id,
           minutes: added,

@@ -400,6 +400,28 @@ describe('ProductionService reading', () => {
     );
   });
 
+  it('release and cancel return labour totals only to a caller who can see cost', async () => {
+    const w = makeWorld();
+    const { wo } = await planned(w);
+    w.jobCost.breakdown.mockClear();
+    await w.service.release(tenantId, wo.id, false);
+    await w.service.cancel(tenantId, wo.id, null, false);
+    expect(w.jobCost.breakdown.mock.calls.map((c: any[]) => c[3])).toEqual([
+      { cost: false, pay: false },
+      { cost: false, pay: false },
+    ]);
+
+    const w2 = makeWorld();
+    const { wo: wo2 } = await planned(w2);
+    w2.jobCost.breakdown.mockClear();
+    await w2.service.release(tenantId, wo2.id, true);
+    await w2.service.cancel(tenantId, wo2.id, null, true);
+    expect(w2.jobCost.breakdown.mock.calls.map((c: any[]) => c[3])).toEqual([
+      { cost: true, pay: false },
+      { cost: true, pay: false },
+    ]);
+  });
+
   it('list leaves labour null and never computes it', async () => {
     const w = makeWorld();
     const { wo } = await planned(w);
@@ -501,6 +523,38 @@ describe('ProductionService shop floor', () => {
       await w.service.stopOperation(tenantId, wo.id, op.id, true, 'linked');
       expect(w.clockEntries).toHaveLength(1);
       expect(op.status).toBe('DONE');
+    });
+
+    it('a supervisor stopping or finishing another operator’s session credits the operator who started it (J20)', async () => {
+      for (const finish of [false, true]) {
+        const w = makeWorld();
+        // Operator A ('linked', has an employee) started; supervisor B stops.
+        const { wo, op } = await running(w, 'linked');
+        await w.service.stopOperation(
+          tenantId,
+          wo.id,
+          op.id,
+          finish,
+          'supervisor-b',
+        );
+        expect(w.clockEntries).toHaveLength(1);
+        expect(w.clockEntries[0]).toMatchObject({
+          userId: 'linked',
+          minutes: 30,
+        });
+        expect(op.operatorId).toBe('linked');
+      }
+    });
+
+    it('logTime stays with the actor even when another operator started the operation', async () => {
+      const w = makeWorld();
+      const { wo, op } = await running(w, 'linked');
+      await w.service.stopOperation(tenantId, wo.id, op.id, false, 'linked');
+      w.timesheets.recordClock.mockClear();
+      await w.service.logTime(tenantId, wo.id, op.id, 'supervisor-b', 15);
+      expect(
+        w.timesheets.recordClock.mock.calls.map((c: any[]) => c[2].userId),
+      ).toEqual(['supervisor-b']);
     });
 
     it('stop by an unlinked user writes no entry but adds the minutes', async () => {

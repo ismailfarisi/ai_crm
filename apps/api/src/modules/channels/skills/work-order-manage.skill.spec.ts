@@ -81,7 +81,7 @@ describe('WorkOrderManageSkill', () => {
     expect(res.kind).toBe('resolved');
     if (res.kind === 'resolved') {
       const outcome = await skill.execute(res.value, ctx);
-      expect(production.release).toHaveBeenCalledWith('org-1', 'wo-1');
+      expect(production.release).toHaveBeenCalledWith('org-1', 'wo-1', false);
       expect(outcome.reply).toContain('released');
     }
   });
@@ -281,7 +281,7 @@ describe('WorkOrderManageSkill', () => {
     expect(res.kind).toBe('resolved');
     if (res.kind === 'resolved') {
       const outcome = await skill.execute(res.value, ctx);
-      expect(production.cancel).toHaveBeenCalledWith('org-1', 'wo-1', 'Customer requested');
+      expect(production.cancel).toHaveBeenCalledWith('org-1', 'wo-1', 'Customer requested', false);
       expect(outcome.reply).toContain('cancelled');
     }
   });
