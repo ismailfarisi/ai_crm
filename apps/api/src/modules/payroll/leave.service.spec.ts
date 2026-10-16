@@ -1,4 +1,13 @@
-import { NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import { PERMISSIONS } from '@saas/shared';
+import { JournalEntry } from '../finance/entities/journal-entry.entity';
+import { Organization } from '../organizations/entities/organization.entity';
+import { Settlement } from './entities/settlement.entity';
 import { Employee } from './entities/employee.entity';
 import { SalaryPackage } from './entities/salary-package.entity';
 import { PayrollRun, PayrollRunLine } from './entities/payroll-run.entity';
@@ -22,6 +31,16 @@ function repo(rows: any[]) {
     rows,
     find: jest.fn(async ({ where }: any = {}) => rows.filter((r) => match(r, where))),
     findOne: jest.fn(async ({ where }: any = {}) => rows.find((r) => match(r, where)) ?? null),
+    create: (d: any) => ({ ...d }),
+    save: jest.fn(async (d: any) => {
+      const list = Array.isArray(d) ? d : [d];
+      list.forEach((r, i) => {
+        r.id ??= `new-${rows.length + i}`;
+        r.createdAt ??= new Date('2026-07-01T00:00:00Z');
+      });
+      rows.push(...list);
+      return d;
+    }),
   };
 }
 
@@ -66,9 +85,17 @@ function setup() {
   const records = repo([]);
   const ledgerRows = repo([]);
   const settings = repo([]);
+  const packages = repo([
+    { id: 'p1', tenantId: T, employeeId: E1, effectiveFrom: '2024-01-01', basic: 3000 },
+  ]);
+  const settlements = repo([]);
+  const entries = repo([]);
   const repos = new Map<any, any>([
     [Employee, employees],
-    [SalaryPackage, repo([])],
+    [SalaryPackage, packages],
+    [Settlement, settlements],
+    [JournalEntry, entries],
+    [Organization, repo([{ id: T, baseCurrency: 'AED' }])],
     [PayrollRun, runs],
     [PayrollRunLine, lines],
     [LeaveRecord, records],
@@ -79,8 +106,31 @@ function setup() {
   const dataSource: any = { manager, transaction: (cb: any) => cb(manager) };
   const employeesService = new EmployeesService(dataSource, new PayrollCryptoService({} as any));
   const gratuity = new GratuityService(dataSource, {} as any, employeesService);
-  const service = new LeaveService(dataSource, gratuity, new PayrollSettingsService(dataSource));
-  return { service, manager, employees, runs, lines, records, ledgerRows, settings };
+  const ledger: any = {
+    resolveLines: jest.fn(async (_t: string, input: any[]) =>
+      input.map((l) => ({ ...l, ledgerAccountId: l.role })),
+    ),
+  };
+  const service = new LeaveService(
+    dataSource,
+    gratuity,
+    new PayrollSettingsService(dataSource),
+    ledger,
+    employeesService,
+  );
+  return {
+    service,
+    manager,
+    employees,
+    runs,
+    lines,
+    records,
+    ledgerRows,
+    settings,
+    settlements,
+    entries,
+    ledger,
+  };
 }
 
 afterEach(() => jest.useRealTimers());
@@ -200,6 +250,176 @@ describe('LeaveService', () => {
     it('404s for an unknown employee', async () => {
       const { service } = seeded();
       await expect(service.summary(T, 'nope', true)).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('opening leave', () => {
+    const APPROVER = [PERMISSIONS.PAYROLL_APPROVE];
+    const CUT = '2026-06-30';
+    // 2025-01-01..2026-06-30 = 546 days at 30 per year.
+    const CALC = Math.round(((30 * 546) / 365) * 100) / 100;
+    const one = (balanceDays: number) => ({
+      cutoverDate: CUT,
+      lines: [{ employeeId: E1, balanceDays }],
+    });
+
+    it('previews eligible employees with calculated days, defaulting to the gratuity cut-over', async () => {
+      const { service } = setup();
+      jest.spyOn((service as any).gratuity, 'latestCutover').mockResolvedValue(CUT);
+      const out = await service.previewOpening(T);
+      expect(out.cutoverDate).toBe(CUT);
+      expect(out.lines).toEqual([
+        {
+          employeeId: E1,
+          employeeName: 'E e1',
+          joiningDate: '2025-01-01',
+          basic: 3000,
+          serviceDays: 546,
+          calculatedDays: CALC,
+        },
+      ]);
+    });
+
+    it('defaults to the last day of last month when there is no gratuity cut-over', async () => {
+      jest.useFakeTimers({ now: new Date('2026-07-15T10:00:00Z') });
+      const { service } = setup();
+      jest.spyOn((service as any).gratuity, 'latestCutover').mockResolvedValue(null);
+      expect((await service.previewOpening(T)).cutoverDate).toBe('2026-06-30');
+    });
+
+    it('skips employees already accrued by a still-posted run, but not a voided one', async () => {
+      const { service, ledgerRows } = setup();
+      ledgerRows.rows.push(entry('a', 'ACCRUAL', 2, 200, { runLineId: 'L1' }));
+      expect((await service.previewOpening(T, CUT)).lines).toHaveLength(0);
+      ledgerRows.rows.push(entry('r', 'REVERSAL', -2, -200, { runLineId: 'L1' }));
+      expect((await service.previewOpening(T, CUT)).lines).toHaveLength(1);
+    });
+
+    it('posts OPENING at calculated days, an ADJUSTMENT for the difference and one balanced journal', async () => {
+      const { service, ledgerRows, entries, ledger } = setup();
+      const out = await service.postOpening(T, 'actor', one(20), APPROVER);
+      expect(out.total).toBe(2000);
+      expect(entries.rows).toHaveLength(1);
+      expect(entries.rows[0]).toMatchObject({
+        referenceType: 'PAYROLL',
+        referenceId: `leave-opening:${CUT}`,
+        totalAmount: 2000,
+        currency: 'AED',
+        fxRate: 1,
+      });
+      expect(entries.rows[0].entryNumber).toMatch(/^JE-LEAVE-OPEN-2026-06-30-[0-9a-f]{8}$/);
+      const [, input] = ledger.resolveLines.mock.calls[0];
+      expect(input).toEqual([
+        expect.objectContaining({ role: 'OPENING_BALANCE_EQUITY', debit: 2000 }),
+        expect.objectContaining({ role: 'LEAVE_PROVISION', credit: 2000 }),
+      ]);
+      expect(ledgerRows.rows).toEqual([
+        expect.objectContaining({ kind: 'OPENING', days: CALC, amount: 2000, asOf: CUT }),
+        expect.objectContaining({
+          kind: 'ADJUSTMENT',
+          days: Math.round((20 - CALC) * 100) / 100,
+          amount: null,
+          note: 'Opening balance: leave taken before go-live',
+        }),
+      ]);
+      expect(out.journalEntryId).toBe(entries.rows[0].id);
+    });
+
+    it('a negative balance posts the reverse journal', async () => {
+      const { service, ledger } = setup();
+      const out = await service.postOpening(T, 'actor', one(-3), APPROVER);
+      expect(out.total).toBe(-300);
+      const [, input] = ledger.resolveLines.mock.calls[0];
+      expect(input).toEqual([
+        expect.objectContaining({ role: 'LEAVE_PROVISION', debit: 300 }),
+        expect.objectContaining({ role: 'OPENING_BALANCE_EQUITY', credit: 300 }),
+      ]);
+    });
+
+    it('posts no journal when the total is zero', async () => {
+      const { service, entries, ledgerRows } = setup();
+      const out = await service.postOpening(T, 'actor', one(0), APPROVER);
+      expect(out).toEqual({ journalEntryId: null, total: 0 });
+      expect(entries.rows).toHaveLength(0);
+      expect(ledgerRows.rows[0]).toMatchObject({ kind: 'OPENING', journalEntryId: null });
+    });
+
+    it('refuses a duplicate id with 400 and an existing opening with 409', async () => {
+      const { service, ledgerRows } = setup();
+      await expect(
+        service.postOpening(
+          T,
+          'a',
+          {
+            cutoverDate: CUT,
+            lines: [
+              { employeeId: E1, balanceDays: 1 },
+              { employeeId: E1, balanceDays: 2 },
+            ],
+          },
+          APPROVER,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      ledgerRows.rows.push(entry('o', 'OPENING', 5, 500));
+      await expect(service.postOpening(T, 'a', one(1), APPROVER)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+    });
+
+    it('refuses with 409 when a posted run already accrued leave', async () => {
+      const { service, ledgerRows } = setup();
+      ledgerRows.rows.push(entry('a', 'ACCRUAL', 2, 200, { runLineId: 'L1' }));
+      await expect(service.postOpening(T, 'a', one(1), APPROVER)).rejects.toThrow(
+        'Leave already accrued by a posted payroll run for E e1',
+      );
+    });
+
+    it('refuses employees who do not qualify and actors without payroll:approve', async () => {
+      const { service } = setup();
+      await expect(
+        service.postOpening(
+          T,
+          'a',
+          { cutoverDate: CUT, lines: [{ employeeId: E2, balanceDays: 1 }] },
+          APPROVER,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.postOpening(T, 'a', one(1), [])).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+    });
+  });
+
+  describe('adjust', () => {
+    const APPROVER = [PERMISSIONS.PAYROLL_APPROVE];
+
+    it('writes a days-only ADJUSTMENT with no journal', async () => {
+      jest.useFakeTimers({ now: new Date('2026-08-05T10:00:00Z') });
+      const { service, ledgerRows, entries } = setup();
+      const dto = await service.adjust(T, E1, 'a', { days: -1.5, note: 'Carried over' }, APPROVER);
+      expect(dto).toMatchObject({
+        kind: 'ADJUSTMENT',
+        days: -1.5,
+        amount: null,
+        asOf: '2026-08-05',
+        note: 'Carried over',
+      });
+      expect(ledgerRows.rows[0]).toMatchObject({ amount: null, journalEntryId: null });
+      expect(entries.rows).toHaveLength(0);
+    });
+
+    it('refuses a settled employee, an unknown one and a missing permission', async () => {
+      const { service, settlements } = setup();
+      settlements.rows.push({ id: 's', tenantId: T, employeeId: E1, status: 'APPROVED' });
+      await expect(
+        service.adjust(T, E1, 'a', { days: 1, note: 'x' }, APPROVER),
+      ).rejects.toThrow('E e1 is settled');
+      await expect(
+        service.adjust(T, 'nope', 'a', { days: 1, note: 'x' }, APPROVER),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.adjust(T, E1, 'a', { days: 1, note: 'x' }, [])).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
     });
   });
 });

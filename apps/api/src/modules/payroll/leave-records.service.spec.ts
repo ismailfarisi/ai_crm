@@ -159,7 +159,7 @@ function setup() {
   const ledger: any = {};
   const employeesService = new EmployeesService(dataSource, new PayrollCryptoService({}));
   const gratuity = new GratuityService(dataSource, ledger, employeesService);
-  const leave = new LeaveService(dataSource, gratuity, new PayrollSettingsService(dataSource));
+  const leave = new LeaveService(dataSource, gratuity, new PayrollSettingsService(dataSource), ledger, employeesService);
   const runsService = new PayrollRunsService(
     dataSource,
     employeesService,

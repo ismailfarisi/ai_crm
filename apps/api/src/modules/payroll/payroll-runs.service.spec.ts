@@ -9,6 +9,7 @@ import { SalaryPackage } from './entities/salary-package.entity';
 import { EmployeeAdvance } from './entities/employee-advance.entity';
 import { PayrollRun, PayrollRunLine } from './entities/payroll-run.entity';
 import { GratuityLedgerEntry } from './entities/gratuity-ledger-entry.entity';
+import { LeaveLedgerEntry } from './entities/leave-ledger-entry.entity';
 import { EmployeesService } from './employees.service';
 import { PayrollCryptoService } from './payroll-crypto.service';
 import { AdvancesService } from './advances.service';
@@ -156,6 +157,7 @@ function setup() {
   const runs = repo([]);
   const lines = repo([]);
   const gratuity = repo([]);
+  const leaveLedger = repo([]);
   const orgs = repo([
     {
       id: T,
@@ -177,6 +179,7 @@ function setup() {
     [PayrollRun, runs],
     [PayrollRunLine, lines],
     [GratuityLedgerEntry, gratuity],
+    [LeaveLedgerEntry, leaveLedger],
     [Organization, orgs],
   ]);
   let seq = 0;
@@ -200,9 +203,11 @@ function setup() {
       dataSource,
       gratuityService,
       new PayrollSettingsService(dataSource),
+      ledger,
+      employeesService,
     ),
   );
-  return { service, employees, packages, advances, runs, lines, gratuity };
+  return { service, employees, packages, advances, runs, lines, gratuity, leaveLedger };
 }
 
 const lineOf = (dto: any, num: string) =>
@@ -614,6 +619,21 @@ describe('PayrollRunsService', () => {
       const out = await service.list(T);
       expect(out.openingGratuityCutover).toBe('2026-09-30');
       expect(out.runs).toEqual([]);
+      expect(out.openingLeaveCutover).toBeNull();
+    });
+
+    it('reports the latest opening leave cut-over', async () => {
+      const { service, leaveLedger } = setup();
+      leaveLedger.rows.push({
+        id: 'l1',
+        tenantId: T,
+        employeeId: 'a',
+        kind: 'OPENING',
+        days: 5,
+        amount: 100,
+        asOf: '2026-09-30',
+      });
+      expect((await service.list(T)).openingLeaveCutover).toBe('2026-09-30');
     });
   });
 

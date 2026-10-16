@@ -253,6 +253,7 @@ export class PayrollRunsService {
     const manager = this.dataSource.manager;
     const runs = await manager.getRepository(PayrollRun).find({ where: { tenantId } });
     const openingGratuityCutover = await this.gratuity.latestCutover(manager, tenantId);
+    const openingLeaveCutover = await this.leave.latestCutover(manager, tenantId);
     const sorted = runs
       .sort(
         (a, b) =>
@@ -260,7 +261,7 @@ export class PayrollRunsService {
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       )
       .map((r) => this.toDto(r));
-    return { runs: sorted, openingGratuityCutover, openingLeaveCutover: null };
+    return { runs: sorted, openingGratuityCutover, openingLeaveCutover };
   }
 
   async get(tenantId: string, id: string): Promise<PayrollRunDto> {

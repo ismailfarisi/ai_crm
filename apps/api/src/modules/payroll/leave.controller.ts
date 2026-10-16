@@ -13,9 +13,12 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
+  leaveAdjustmentSchema,
   leaveRecordSchema,
   PERMISSIONS,
   type EmployeeLeaveDto,
+  type LeaveAdjustmentPayload,
+  type LeaveLedgerEntryDto,
   type LeaveRecordDto,
   type LeaveRecordPayload,
 } from '@saas/shared';
@@ -81,5 +84,16 @@ export class LeaveController {
     @Param('recordId', ParseUUIDPipe) recordId: string,
   ): Promise<void> {
     return this.records.remove(user.organizationId, id, recordId);
+  }
+
+  @Post(':id/leave-adjustments')
+  @RequirePermissions(PERMISSIONS.PAYROLL_APPROVE)
+  @ApiOperation({ summary: "Adjust an employee's leave balance in days" })
+  adjust(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(zodBody(leaveAdjustmentSchema)) body: LeaveAdjustmentPayload,
+  ): Promise<LeaveLedgerEntryDto> {
+    return this.leave.adjust(user.organizationId, id, user.id, body, user.permissions);
   }
 }

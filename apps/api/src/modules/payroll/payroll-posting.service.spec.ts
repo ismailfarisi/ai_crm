@@ -186,6 +186,8 @@ function setup() {
     dataSource,
     gratuityService,
     new PayrollSettingsService(dataSource),
+    ledger,
+    employeesService,
   );
   const runsService = new PayrollRunsService(
     dataSource,
