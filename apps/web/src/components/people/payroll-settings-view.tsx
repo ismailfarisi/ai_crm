@@ -68,6 +68,8 @@ function toSettingsDefaults(s?: PayrollSettingsDto): PayrollSettingsInput {
     employerId: s?.employerId ?? '',
     payerRoutingCode: s?.payerRoutingCode ?? '',
     annualLeaveDays: s?.annualLeaveDays ?? 30,
+    // No field yet: carried through so a save does not reset it to the schema default.
+    monthlyStandardHours: s?.monthlyStandardHours ?? 208,
   };
 }
 

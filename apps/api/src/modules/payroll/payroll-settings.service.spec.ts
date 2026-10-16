@@ -10,7 +10,7 @@ function setup() {
     }),
     // Stands in for INSERT ... ON CONFLICT ("tenant_id") DO UPDATE.
     query: jest.fn(async (_sql: string, p: any[]) => {
-      const row = { tenantId: p[0], wpsEnabled: p[1], employerIdType: p[2], employerId: p[3], payerRoutingCode: p[4], annualLeaveDays: p[5] };
+      const row = { tenantId: p[0], wpsEnabled: p[1], employerIdType: p[2], employerId: p[3], payerRoutingCode: p[4], annualLeaveDays: p[5], monthlyStandardHours: p[6] };
       const i = rows.findIndex((r) => r.tenantId === p[0]);
       if (i >= 0) rows[i] = row;
       else rows.push(row);
@@ -32,6 +32,14 @@ describe('PayrollSettingsService', () => {
     await service.put(T, { ...saved, annualLeaveDays: 40 });
     expect((await service.get(T)).annualLeaveDays).toBe(40);
     expect(manager.query.mock.calls[0][0]).toContain('ON CONFLICT ("tenant_id") DO UPDATE');
+  });
+
+  it('put stores the monthly standard hours and get returns them', async () => {
+    const { service, manager } = setup();
+    const saved = { wpsEnabled: false, employerIdType: null, employerId: null, payerRoutingCode: null, annualLeaveDays: 30, monthlyStandardHours: 180 };
+    expect(await service.put(T, saved)).toEqual(saved);
+    expect((await service.get(T)).monthlyStandardHours).toBe(180);
+    expect(manager.query.mock.calls[0][0]).toContain('"monthly_standard_hours" = EXCLUDED."monthly_standard_hours"');
   });
 
   it('annualDaysFor prefers the employee override, else the tenant value', async () => {

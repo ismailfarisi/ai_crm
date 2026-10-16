@@ -31,6 +31,7 @@ import { CustomObjectsModule } from '@/modules/custom-objects/custom-objects.mod
 import { AssistantModule } from '@/modules/assistant/assistant.module';
 import { OverheadsModule } from '@/modules/overheads/overheads.module';
 import { PayrollModule } from '@/modules/payroll/payroll.module';
+import { JobCostingModule } from '@/modules/job-costing/job-costing.module';
 
 /**
  * The feature module registry, kept out of `app.module.ts` and
@@ -79,6 +80,8 @@ export const FEATURE_MODULES = [
   OverheadsModule,
   // Employees, salary packages, payroll runs and end-of-service gratuity.
   PayrollModule,
+  // Timesheets and the actual labour cost of jobs.
+  JobCostingModule,
 ];
 
 /**

@@ -93,6 +93,10 @@ export class PayrollRun {
   @Column(money('total_leave_provision'))
   totalLeaveProvision: number;
 
+  /** Σ labour absorbed into jobs across the lines; written by approval. */
+  @Column(money('total_labour_absorbed'))
+  totalLabourAbsorbed: number;
+
   @Column({ name: 'bank_paid_at', type: 'timestamptz', nullable: true })
   bankPaidAt: Date | null;
 
@@ -110,6 +114,18 @@ export class PayrollRun {
 
   @Column({ name: 'void_journal_entry_id', type: 'uuid', nullable: true })
   voidJournalEntryId: string | null;
+
+  /** JE-<run>-LAB: Dr WIP / COGS, Cr Labour absorbed. Null when nothing was absorbed. */
+  @Column({ name: 'labour_journal_entry_id', type: 'uuid', nullable: true })
+  labourJournalEntryId: string | null;
+
+  /** JE-<run>-LAB-VOID: the labour reversal on void. */
+  @Column({
+    name: 'labour_void_journal_entry_id',
+    type: 'uuid',
+    nullable: true,
+  })
+  labourVoidJournalEntryId: string | null;
 
   @Column({ name: 'created_by_id', type: 'uuid', nullable: true })
   createdById: string | null;
@@ -379,6 +395,54 @@ export class PayrollRunLine {
     transformer: nullableNumericTransformer,
   })
   leaveProvisionAfter: number | null;
+
+  // ─── labour (frozen at approval) ─────────────────────────────────────────
+  /** Pro-rated monthly standard hours plus overtime. */
+  @Column({
+    name: 'standard_hours',
+    type: 'numeric',
+    precision: 7,
+    scale: 2,
+    default: 0,
+    transformer: numericTransformer,
+  })
+  standardHours: number;
+
+  /** Σ timesheet hours in the period, direct and indirect. */
+  @Column({
+    name: 'logged_hours',
+    type: 'numeric',
+    precision: 7,
+    scale: 2,
+    default: 0,
+    transformer: numericTransformer,
+  })
+  loggedHours: number;
+
+  /** Σ timesheet hours on work order operations in the period. */
+  @Column({
+    name: 'direct_hours',
+    type: 'numeric',
+    precision: 7,
+    scale: 2,
+    default: 0,
+    transformer: numericTransformer,
+  })
+  directHours: number;
+
+  /** Cost per hour: cost ÷ max(standard, logged); 0 when cost ≤ 0. */
+  @Column({
+    name: 'labour_rate',
+    type: 'numeric',
+    precision: 12,
+    scale: 4,
+    default: 0,
+    transformer: numericTransformer,
+  })
+  labourRate: number;
+
+  @Column(money('labour_absorbed'))
+  labourAbsorbed: number;
 
   /** e.g. NATIONAL_PENSION_NOT_HANDLED. */
   @Column({ type: 'text', array: true, default: '{}' })

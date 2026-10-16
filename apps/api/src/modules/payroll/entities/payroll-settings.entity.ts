@@ -6,11 +6,13 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import type { WpsEmployerIdType } from '@saas/shared';
+import { numericTransformer } from '../../finance/entities/finance-account.entity';
 
 /**
- * A tenant's payroll profile: WPS employer details and the annual leave
- * entitlement. One row per tenant, created the first time it is read.
- * CHECKs (employer ID type, leave days 30..60) live in the migration.
+ * A tenant's payroll profile: WPS employer details, the annual leave
+ * entitlement and the monthly standard hours. One row per tenant, created
+ * the first time it is read. CHECKs (employer ID type, leave days 30..60,
+ * standard hours 100..320) live in the migration.
  */
 @Entity('payroll_settings')
 @Index('uq_payroll_settings_tenant', ['tenantId'], { unique: true })
@@ -47,6 +49,17 @@ export class PayrollSettings {
   /** Calendar days per year of service; an employee may override it. */
   @Column({ name: 'annual_leave_days', type: 'int', default: 30 })
   annualLeaveDays: number;
+
+  /** Hours in a full month, for the labour rate; 100..320 (CHECK in the migration). */
+  @Column({
+    name: 'monthly_standard_hours',
+    type: 'numeric',
+    precision: 6,
+    scale: 2,
+    default: 208,
+    transformer: numericTransformer,
+  })
+  monthlyStandardHours: number;
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;

@@ -20,10 +20,10 @@ const toDto = (s: PayrollSettings): PayrollSettingsDto => ({
   employerId: s.employerId,
   payerRoutingCode: s.payerRoutingCode,
   annualLeaveDays: s.annualLeaveDays,
-  monthlyStandardHours: 208,
+  monthlyStandardHours: s.monthlyStandardHours,
 });
 
-/** A tenant's WPS employer details and annual leave entitlement (one row per tenant). */
+/** A tenant's WPS employer details, annual leave entitlement and standard hours (one row per tenant). */
 @Injectable()
 export class PayrollSettingsService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
@@ -44,14 +44,15 @@ export class PayrollSettingsService {
   ): Promise<PayrollSettingsDto> {
     await this.dataSource.manager.query(
       `INSERT INTO "payroll_settings"
-         ("tenant_id", "wps_enabled", "employer_id_type", "employer_id", "payer_routing_code", "annual_leave_days", "updated_at")
-       VALUES ($1, $2, $3, $4, $5, $6, now())
+         ("tenant_id", "wps_enabled", "employer_id_type", "employer_id", "payer_routing_code", "annual_leave_days", "monthly_standard_hours", "updated_at")
+       VALUES ($1, $2, $3, $4, $5, $6, $7, now())
        ON CONFLICT ("tenant_id") DO UPDATE SET
          "wps_enabled" = EXCLUDED."wps_enabled",
          "employer_id_type" = EXCLUDED."employer_id_type",
          "employer_id" = EXCLUDED."employer_id",
          "payer_routing_code" = EXCLUDED."payer_routing_code",
          "annual_leave_days" = EXCLUDED."annual_leave_days",
+         "monthly_standard_hours" = EXCLUDED."monthly_standard_hours",
          "updated_at" = now()`,
       [
         tenantId,
@@ -60,6 +61,7 @@ export class PayrollSettingsService {
         input.employerId,
         input.payerRoutingCode,
         input.annualLeaveDays,
+        input.monthlyStandardHours,
       ],
     );
     return this.get(tenantId);

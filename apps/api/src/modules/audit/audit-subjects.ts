@@ -26,6 +26,7 @@ import { PensionRemittance } from '../payroll/entities/pension-remittance.entity
 import { LeaveLedgerEntry } from '../payroll/entities/leave-ledger-entry.entity';
 import { Settlement } from '../payroll/entities/settlement.entity';
 import { Role } from '../rbac/entities/role.entity';
+import { TimesheetEntry } from '../job-costing/entities/timesheet-entry.entity';
 
 /**
  * The one file to touch when a sprint adds a document type worth auditing.
@@ -69,6 +70,7 @@ export const AUDIT_SUBJECTS: Record<
     entity: PensionRemittance,
   },
   settlements: { subject: 'SETTLEMENT', entity: Settlement },
+  timesheets: { subject: 'TIMESHEET', entity: TimesheetEntry },
   'finance/expenses': { subject: 'EXPENSE_CLAIM', entity: ExpenseClaim },
   'finance/accounts': { subject: 'FINANCE_ACCOUNT', entity: FinanceAccount },
   'finance/subscriptions': {
