@@ -278,4 +278,29 @@ describe('SettlementStatement', () => {
     expect(screen.getByText('Acme LLC')).toBeInTheDocument();
     expect(screen.getByText(/salary advance recovered/i)).toBeInTheDocument();
   });
+
+  it('carries no not-final banner or watermark once approved or paid', () => {
+    for (const status of ['APPROVED', 'PAID'] as const) {
+      const { unmount } = render(
+        <SettlementStatement statement={{ ...statement, settlement: makeSettlement({ status }) }} />,
+      );
+      expect(screen.queryByTestId('statement-not-final')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('statement-watermark')).not.toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it('marks a draft as not final and a voided settlement as not valid', () => {
+    const { unmount } = render(
+      <SettlementStatement statement={{ ...statement, settlement: makeSettlement({ status: 'DRAFT' }) }} />,
+    );
+    expect(screen.getByTestId('statement-not-final')).toHaveTextContent('DRAFT — not final');
+    expect(screen.getByTestId('statement-watermark')).toHaveTextContent('DRAFT');
+    unmount();
+
+    render(<SettlementStatement statement={{ ...statement, settlement: makeSettlement({ status: 'VOIDED' }) }} />);
+    expect(screen.getByTestId('statement-not-final')).toHaveTextContent('VOIDED');
+    expect(screen.getByTestId('statement-not-final')).toHaveTextContent(/not valid/);
+    expect(screen.getByTestId('statement-watermark')).toHaveTextContent('VOIDED');
+  });
 });

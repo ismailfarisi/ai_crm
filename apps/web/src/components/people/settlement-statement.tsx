@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { ArrowLeft, Printer } from 'lucide-react';
-import type { SettlementStatementDto } from '@saas/shared';
+import type { SettlementStatementDto, SettlementStatus } from '@saas/shared';
 import { useSettlementStatement } from '@/hooks/use-payroll';
 import { Button } from '@/components/ui/button';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -10,15 +10,42 @@ import { SETTLEMENT_REASON_LABELS, money, serviceLabel } from './payroll-format'
 
 const day = (iso: string) => new Date(iso).toLocaleDateString();
 
+/** Statuses whose statement must not pass for the final one, with what to print. */
+const NOT_FINAL: Partial<Record<SettlementStatus, { mark: string; note: string }>> = {
+  DRAFT: { mark: 'DRAFT', note: 'DRAFT — not final. Figures may change before approval.' },
+  VOIDED: { mark: 'VOIDED', note: 'VOIDED — this settlement was cancelled and is not valid.' },
+};
+
 export function SettlementStatement({ statement }: { statement: SettlementStatementDto }) {
   const { settlement: s, employee, organization } = statement;
   const cur = organization.baseCurrency;
+  const notFinal = NOT_FINAL[s.status];
 
   return (
     <article
       data-testid="settlement-statement"
-      className="mx-auto max-w-2xl space-y-5 rounded-2xl border border-border/40 bg-surface p-8 print:max-w-none print:rounded-none print:border-0 print:p-0 print:text-black"
+      className="relative mx-auto max-w-2xl space-y-5 overflow-hidden rounded-2xl border border-border/40 bg-surface p-8 print:max-w-none print:rounded-none print:border-0 print:p-0 print:text-black"
     >
+      {notFinal && (
+        <>
+          <div
+            aria-hidden
+            data-testid="statement-watermark"
+            className="pointer-events-none absolute inset-0 flex select-none items-center justify-center"
+          >
+            <span className="-rotate-30 text-8xl font-black tracking-widest text-danger/15 print:text-black/10">
+              {notFinal.mark}
+            </span>
+          </div>
+          <p
+            role="status"
+            data-testid="statement-not-final"
+            className="rounded-lg border-2 border-danger px-3 py-2 text-center text-sm font-bold text-danger print:border-black print:text-black"
+          >
+            {notFinal.note}
+          </p>
+        </>
+      )}
       <header className="flex items-start justify-between gap-4 border-b border-border/40 pb-4">
         <div>
           <h1 className="text-xl font-bold">{organization.legalName || organization.name}</h1>
