@@ -17,6 +17,7 @@ import {
 import { TimesheetEntry } from './entities/timesheet-entry.entity';
 import { WorkOrderLabour } from './entities/work-order-labour.entity';
 import { JobCostService } from './job-cost.service';
+import { LabourAbsorptionService } from './labour-absorption.service';
 import { TimesheetsController } from './timesheets.controller';
 import { TimesheetsService } from './timesheets.service';
 
@@ -40,8 +41,10 @@ import { TimesheetsService } from './timesheets.service';
     FinanceModule,
   ],
   controllers: [TimesheetsController],
-  providers: [TimesheetsService, JobCostService],
-  // Production writes the clock's entries (recordClock) and recomputes jobs.
-  exports: [TimesheetsService, JobCostService],
+  providers: [TimesheetsService, JobCostService, LabourAbsorptionService],
+  // Production writes the clock's entries (recordClock) and recomputes jobs;
+  // payroll's approval and void absorb and reverse labour. This module never
+  // imports PayrollModule (it reads payroll's tables directly), so no cycle.
+  exports: [TimesheetsService, JobCostService, LabourAbsorptionService],
 })
 export class JobCostingModule {}

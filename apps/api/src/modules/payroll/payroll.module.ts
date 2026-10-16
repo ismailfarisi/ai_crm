@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { FinanceModule } from '../finance/finance.module';
+import { JobCostingModule } from '../job-costing/job-costing.module';
 import { Employee } from './entities/employee.entity';
 import { SalaryPackage } from './entities/salary-package.entity';
 import { EmployeeAdvance } from './entities/employee-advance.entity';
@@ -52,6 +53,8 @@ import { WpsExportService } from './wps-export.service';
     ]),
     // LedgerService posts the approval, payment, advance and gratuity journals.
     FinanceModule,
+    // LabourAbsorptionService charges timesheet hours to jobs on approval.
+    JobCostingModule,
   ],
   controllers: [EmployeesController, PayrollController, PayrollRunsController, PayrollComplianceController, LeaveController, SettlementsController],
   providers: [

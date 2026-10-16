@@ -13,6 +13,7 @@ import { usePayrollLinesRegistry } from './payroll-lines-context';
 export const FLAG_LABELS: Record<string, string> = {
   NATIONAL_NO_PENSION_SCHEME: 'No pension scheme',
   LEAVE_IN_ADVANCE: 'Leave in advance',
+  LABOUR_NOT_ABSORBED: 'Labour not charged to jobs',
 };
 
 export const EDIT_DEBOUNCE_MS = 600;

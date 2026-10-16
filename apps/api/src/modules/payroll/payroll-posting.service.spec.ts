@@ -34,24 +34,47 @@ import { LeaveService } from './leave.service';
 import { PensionService } from './pension.service';
 import { PayrollRunsService } from './payroll-runs.service';
 import { PayrollPostingService } from './payroll-posting.service';
+import { TimesheetEntry } from '../job-costing/entities/timesheet-entry.entity';
+import { WorkOrderLabour } from '../job-costing/entities/work-order-labour.entity';
+import {
+  WorkOrder,
+  WorkOrderMaterial,
+  WorkOrderOperation,
+} from '../production/entities/work-order.entity';
+import { JobCostService } from '../job-costing/job-cost.service';
+import { LabourAbsorptionService } from '../job-costing/labour-absorption.service';
 
 const T = '11111111-1111-4111-8111-111111111111';
 const ACTOR = '33333333-3333-4333-8333-333333333333';
 const APPROVER = { userId: ACTOR, permissions: [PERMISSIONS.PAYROLL_APPROVE] };
 const ADVISORY = 'SELECT pg_advisory_xact_lock(hashtext($1))';
 
-function repo(rows: any[]) {
+/** Lock and read order across repositories and advisory locks. */
+let events: string[] = [];
+
+function repo(rows: any[], name = '') {
   let n = 0;
   const locks: string[] = [];
+  // Equality, TypeORM In(...) and Between(...).
   const match = (r: any, where: any) =>
-    Object.entries(where ?? {}).every(([k, v]) => r[k] === v);
+    Object.entries(where ?? {}).every(([k, v]: [string, any]) =>
+      v && typeof v === 'object' && v._type === 'in'
+        ? v._value.includes(r[k])
+        : v && typeof v === 'object' && v._type === 'between'
+          ? r[k] >= v._value[0] && r[k] <= v._value[1]
+          : r[k] === v,
+    );
   return {
     rows,
     locks,
     create: (d: any) => ({ ...d }),
-    find: jest.fn(async ({ where }: any = {}) =>
-      rows.filter((r) => match(r, where)),
-    ),
+    find: jest.fn(async ({ where, lock, order }: any = {}) => {
+      const out = rows.filter((r) => match(r, where));
+      if (order?.id === 'ASC') out.sort((a, b) => a.id.localeCompare(b.id));
+      if (lock) events.push(`lock:${name}`);
+      else if (name) events.push(`read:${name}`);
+      return out;
+    }),
     findOne: jest.fn(
       async ({ where }: any = {}) => rows.find((r) => match(r, where)) ?? null,
     ),
@@ -76,11 +99,18 @@ function repo(rows: any[]) {
         Object.assign(r, patch);
       return { affected: 1 };
     }),
+    delete: jest.fn(async (where: any) => {
+      const keep = rows.filter((x) => !match(x, where));
+      rows.length = 0;
+      rows.push(...keep);
+      return { affected: 1 };
+    }),
     createQueryBuilder: jest.fn(() => {
       const params: any = {};
       const qb: any = {
         setLock: jest.fn((mode: string) => {
           locks.push(mode);
+          events.push(`lock:${name || 'row'}`);
           return qb;
         }),
         where: jest.fn((_s: string, p: any) => (Object.assign(params, p), qb)),
@@ -138,6 +168,7 @@ const pkg = (
 });
 
 function setup() {
+  events = [];
   const employees = repo([
     emp('a', 'EMP-001'),
     emp('b', 'EMP-002', { joiningDate: '2026-10-16', paymentMethod: 'CASH' }),
@@ -149,7 +180,7 @@ function setup() {
   const advances = repo([
     { id: 'adv1', tenantId: T, employeeId: 'a', amount: 3000 },
   ]);
-  const runs = repo([]);
+  const runs = repo([], 'PayrollRun');
   const lines = repo([]);
   const gratuity = repo([]);
   const entries = repo([]);
@@ -159,6 +190,10 @@ function setup() {
   const schemes = repo([]);
   const remittances = repo([]);
   const settlements = repo([]);
+  const timesheets = repo([], 'TimesheetEntry');
+  const workOrders = repo([], 'WorkOrder');
+  const operations = repo([]);
+  const labourRows = repo([]);
   const repos = new Map<any, any>([
     [Employee, employees],
     [SalaryPackage, packages],
@@ -174,13 +209,19 @@ function setup() {
     [Settlement, settlements],
     [JournalEntry, entries],
     [Organization, orgs],
+    [TimesheetEntry, timesheets],
+    [WorkOrder, workOrders],
+    [WorkOrderOperation, operations],
+    [WorkOrderMaterial, repo([])],
+    [WorkOrderLabour, labourRows],
   ]);
   let seq = 0;
   const calls: string[] = [];
   const manager: any = {
     getRepository: (e: any) => repos.get(e),
-    query: jest.fn(async (sql: string) => {
+    query: jest.fn(async (sql: string, params?: any[]) => {
       calls.push(sql);
+      if (sql === ADVISORY) events.push(`advisory:${String(params?.[0]).split(':')[0]}`);
       return [{ current_value: ++seq }];
     }),
   };
@@ -228,6 +269,7 @@ function setup() {
     advancesService,
     gratuityService,
     leaveService,
+    new LabourAbsorptionService(ledger, new JobCostService()),
   );
   return {
     service,
@@ -249,6 +291,10 @@ function setup() {
     lines,
     gratuity,
     entries,
+    timesheets,
+    workOrders,
+    operations,
+    labourRows,
   };
 }
 
@@ -1329,6 +1375,232 @@ describe('PayrollPostingService', () => {
       await ctx.service.void(T, nov.id, APPROVER);
       const out = await ctx.service.approve(T, oct.id, APPROVER);
       expect(out.status).toBe('APPROVED');
+    });
+  });
+  describe('labour absorption', () => {
+    /** An open and a completed job; EMP-001 logs 40 h, 20 h and 8 h idle in October. */
+    function addJobs(ctx: Ctx) {
+      for (const [id, woNumber, status] of [
+        ['wo-open', 'WO-1', 'IN_PROGRESS'],
+        ['wo-done', 'WO-2', 'COMPLETE'],
+      ]) {
+        ctx.workOrders.rows.push({
+          id,
+          tenantId: T,
+          woNumber,
+          status,
+          qty: 1,
+          qtyCompleted: status === 'COMPLETE' ? 1 : null,
+          overheadPct: 0,
+          estimatedCost: { tooling: 0 },
+          actualCost: null,
+          labourStatus: null,
+          labourSplit: null,
+        });
+        ctx.operations.rows.push({
+          id: `op-${id}`,
+          tenantId: T,
+          workOrderId: id,
+          workCenterId: 'wc',
+          workCenterName: 'Press',
+          status: 'DONE',
+          estimatedSetupMinutes: 0,
+          estimatedRunMinutes: 60,
+          estimatedChargedMinutes: 60,
+          actualMinutes: 0,
+          machineCostPerHour: 0,
+          laborCostPerHour: 0,
+        });
+      }
+      const entry = (
+        id: string,
+        day: string,
+        hours: number,
+        wo: string | null,
+      ) =>
+        ctx.timesheets.rows.push({
+          id,
+          tenantId: T,
+          employeeId: 'a',
+          workDate: `2026-10-${day}`,
+          hours,
+          workOrderId: wo,
+          operationId: wo ? `op-${wo}` : null,
+          indirectCategory: wo ? null : 'IDLE',
+          runLineId: null,
+        });
+      entry('t1', '05', 8, 'wo-open');
+      entry('t2', '06', 8, 'wo-open');
+      entry('t3', '07', 8, 'wo-open');
+      entry('t4', '08', 8, 'wo-open');
+      entry('t5', '09', 8, 'wo-open');
+      entry('t6', '12', 10, 'wo-done');
+      entry('t7', '13', 10, 'wo-done');
+      entry('t8', '14', 8, null);
+    }
+
+    const lockEvents = () =>
+      events.filter((e) => e.startsWith('lock:') || e.startsWith('advisory:'));
+
+    it('approval posts JE-<run>-LAB at cost ÷ standard hours and persists the line labour columns', async () => {
+      const ctx = setup();
+      addJobs(ctx);
+      const run = await draft(ctx, '2026-10');
+      const out = await ctx.service.approve(T, run.id, APPROVER);
+
+      const a = ctx.lines.rows.find((l) => l.employeeId === 'a');
+      // cost = salary + pension + gratuity + leave provision, over 208 h.
+      const cost = r2(
+        a.salaryCost +
+          a.pensionEmployer +
+          a.gratuityAccrual +
+          a.leaveProvisionChange,
+      );
+      const rate = Math.round((cost / 208) * 10000) / 10000;
+      expect(a).toMatchObject({
+        standardHours: 208,
+        loggedHours: 68,
+        directHours: 60,
+        labourRate: rate,
+      });
+      // Each entry rounds on its own; the remainder goes on the largest (10 h, WO-2).
+      const total = r2(60 * rate);
+      const wip = r2(5 * r2(8 * rate));
+      const cogs = r2(total - wip);
+      expect(a.labourAbsorbed).toBe(total);
+      expect(a.labourAbsorbed).toBeLessThanOrEqual(cost);
+      expect(lineOf(out, 'EMP-001').labourAbsorbed).toBe(a.labourAbsorbed);
+      expect(out.totals.labourAbsorbed).toBe(a.labourAbsorbed);
+
+      const lab = ctx.entries.rows.find(
+        (e) => e.entryNumber === `JE-${run.runNumber}-LAB`,
+      );
+      expect(balanced(lab)).toBe(true);
+      expect(byRole(lab)).toEqual({
+        [LEDGER_ROLES.WIP]: { debit: wip, credit: 0 },
+        [LEDGER_ROLES.COGS]: { debit: cogs, credit: 0 },
+        [LEDGER_ROLES.LABOUR_ABSORBED]: { debit: 0, credit: r2(wip + cogs) },
+      });
+      expect(lab.entryDate).toEqual(new Date('2026-10-31T00:00:00.000Z'));
+      const stored = ctx.runs.rows.find((r) => r.id === run.id);
+      expect(stored.labourJournalEntryId).toBe(lab.id);
+      expect(stored.totalLabourAbsorbed).toBe(a.labourAbsorbed);
+
+      expect(
+        ctx.labourRows.rows.map((r) => [r.workOrderId, r.account, r.hours]),
+      ).toEqual(
+        expect.arrayContaining([
+          ['wo-open', 'WIP', 40],
+          ['wo-done', 'COGS', 20],
+        ]),
+      );
+      expect(ctx.timesheets.rows.every((e) => e.runLineId === a.id)).toBe(
+        true,
+      );
+      // The completed job is recomputed from the absorbed amount.
+      expect(
+        ctx.workOrders.rows.find((w) => w.id === 'wo-done').labourStatus,
+      ).toBe('ACTUAL');
+    });
+
+    it('leaves the payroll journal exactly as it is without timesheets', async () => {
+      const plain = setup();
+      const plainRun = await draft(plain, '2026-10');
+      await plain.service.approve(T, plainRun.id, APPROVER);
+      const withJobs = setup();
+      addJobs(withJobs);
+      const jobsRun = await draft(withJobs, '2026-10');
+      await withJobs.service.approve(T, jobsRun.id, APPROVER);
+      const main = (ctx: Ctx, n: string) =>
+        ctx.entries.rows.find((e) => e.entryNumber === `JE-${n}`);
+      expect(byRole(main(withJobs, jobsRun.runNumber))).toEqual(
+        byRole(main(plain, plainRun.runNumber)),
+      );
+      expect(plain.entries.rows).toHaveLength(1);
+      expect(withJobs.entries.rows).toHaveLength(2);
+    });
+
+    it('lock order: run row, gratuity opening, job costing, then work orders; entries read only after the job-costing lock', async () => {
+      const ctx = setup();
+      addJobs(ctx);
+      const run = await draft(ctx, '2026-10');
+      events.length = 0;
+      await ctx.service.approve(T, run.id, APPROVER);
+      expect(lockEvents()).toEqual([
+        'lock:PayrollRun',
+        'advisory:gratuity-opening',
+        'advisory:job-costing',
+        'lock:WorkOrder',
+      ]);
+      expect(events.indexOf('read:TimesheetEntry')).toBeGreaterThan(
+        events.indexOf('advisory:job-costing'),
+      );
+
+      events.length = 0;
+      await ctx.service.void(T, run.id, APPROVER);
+      expect(lockEvents()).toEqual([
+        'lock:PayrollRun',
+        'advisory:gratuity-opening',
+        'advisory:job-costing',
+        'lock:WorkOrder',
+      ]);
+    });
+
+    it('void after completion reverses from COGS, deletes the rows, unstamps the entries and recomputes', async () => {
+      const ctx = setup();
+      addJobs(ctx);
+      const run = await draft(ctx, '2026-10');
+      await ctx.service.approve(T, run.id, APPROVER);
+      const a = ctx.lines.rows.find((l) => l.employeeId === 'a');
+      // Completion (Task 9) moves the open job's WIP labour to COGS.
+      const open = ctx.workOrders.rows.find((w) => w.id === 'wo-open');
+      open.status = 'COMPLETE';
+      open.qtyCompleted = 1;
+      ctx.labourRows.rows.find((r) => r.workOrderId === 'wo-open').clearedTo =
+        'COGS';
+
+      await ctx.service.void(T, run.id, APPROVER);
+
+      const v = ctx.entries.rows.find(
+        (e) => e.entryNumber === `JE-${run.runNumber}-LAB-VOID`,
+      );
+      expect(byRole(v)).toEqual({
+        [LEDGER_ROLES.LABOUR_ABSORBED]: { debit: a.labourAbsorbed, credit: 0 },
+        [LEDGER_ROLES.COGS]: { debit: 0, credit: a.labourAbsorbed },
+      });
+      // The payroll's own exact reversal is untouched (J10).
+      const payrollVoid = ctx.entries.rows.find(
+        (e) => e.entryNumber === `JE-${run.runNumber}-VOID`,
+      );
+      expect(
+        payrollVoid.lines.some(
+          (l: any) =>
+            l.ledgerAccountId === `acct-${LEDGER_ROLES.COGS}` ||
+            l.ledgerAccountId === `acct-${LEDGER_ROLES.LABOUR_ABSORBED}`,
+        ),
+      ).toBe(false);
+      const stored = ctx.runs.rows.find((r) => r.id === run.id);
+      expect(stored.labourVoidJournalEntryId).toBe(v.id);
+      expect(stored.status).toBe('VOIDED');
+      expect(ctx.labourRows.rows).toHaveLength(0);
+      expect(ctx.timesheets.rows.every((e) => e.runLineId === null)).toBe(true);
+      for (const w of ctx.workOrders.rows) {
+        expect(w.labourStatus).toBe('PROVISIONAL');
+      }
+    });
+
+    it('void with nothing absorbed posts no labour journal', async () => {
+      const ctx = setup();
+      const run = await draft(ctx, '2026-10');
+      await ctx.service.approve(T, run.id, APPROVER);
+      await ctx.service.void(T, run.id, APPROVER);
+      expect(ctx.entries.rows.map((e) => e.entryNumber)).toEqual([
+        `JE-${run.runNumber}`,
+        `JE-${run.runNumber}-VOID`,
+      ]);
+      const stored = ctx.runs.rows.find((r) => r.id === run.id);
+      expect(stored.labourJournalEntryId ?? null).toBeNull();
+      expect(stored.labourVoidJournalEntryId ?? null).toBeNull();
     });
   });
 });
