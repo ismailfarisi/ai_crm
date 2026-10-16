@@ -6,8 +6,8 @@ import { CashForecastChart } from './cash-forecast-chart';
 const forecast = {
   baseCurrency: 'AED',
   months: [
-    { month: '2026-11', opening: 1000, inflows: 500, billsOut: 200, recurringOut: 100, payrollOut: 3000, closing: 1200 },
-    { month: '2026-12', opening: 1200, inflows: 0, billsOut: 0, recurringOut: 5000, payrollOut: 0, closing: -3800 },
+    { month: '2026-11', opening: 1000, inflows: 500, billsOut: 200, recurringOut: 100, payrollOut: 3000, pensionOut: 0, closing: 1200 },
+    { month: '2026-12', opening: 1200, inflows: 0, billsOut: 0, recurringOut: 5000, payrollOut: 0, pensionOut: 0, closing: -3800 },
   ],
 };
 

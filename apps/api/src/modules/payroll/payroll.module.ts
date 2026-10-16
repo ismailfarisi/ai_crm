@@ -6,6 +6,12 @@ import { SalaryPackage } from './entities/salary-package.entity';
 import { EmployeeAdvance } from './entities/employee-advance.entity';
 import { PayrollRun, PayrollRunLine } from './entities/payroll-run.entity';
 import { GratuityLedgerEntry } from './entities/gratuity-ledger-entry.entity';
+import { PayrollSettings } from './entities/payroll-settings.entity';
+import { PensionScheme } from './entities/pension-scheme.entity';
+import { LeaveRecord } from './entities/leave-record.entity';
+import { LeaveLedgerEntry } from './entities/leave-ledger-entry.entity';
+import { PensionRemittance } from './entities/pension-remittance.entity';
+import { Settlement, SettlementLine } from './entities/settlement.entity';
 import { PayrollCryptoService } from './payroll-crypto.service';
 import { EmployeesService } from './employees.service';
 import { EmployeesController } from './employees.controller';
@@ -26,6 +32,13 @@ import { PayrollPostingService } from './payroll-posting.service';
       PayrollRun,
       PayrollRunLine,
       GratuityLedgerEntry,
+      PayrollSettings,
+      PensionScheme,
+      LeaveRecord,
+      LeaveLedgerEntry,
+      PensionRemittance,
+      Settlement,
+      SettlementLine,
     ]),
     // LedgerService posts the approval, payment, advance and gratuity journals.
     FinanceModule,

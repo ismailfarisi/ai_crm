@@ -22,7 +22,8 @@ export type TenantSequenceName =
   | 'credit_note_number'
   | 'delivery_note_number'
   | 'employee_number'
-  | 'payroll_run_number';
+  | 'payroll_run_number'
+  | 'settlement_number';
 
 /**
  * Atomically allocates and returns the next integer for (tenantId, sequenceName).

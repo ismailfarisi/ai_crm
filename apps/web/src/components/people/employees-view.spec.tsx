@@ -17,12 +17,14 @@ const employees: EmployeeDto[] = [
     jobTitle: 'Designer', department: 'Studio', userId: null, joiningDate: '2024-01-01', leavingDate: null,
     status: 'ACTIVE', nationality: 'PK', isNational: false, paymentMethod: 'BANK', bankName: null,
     ibanMasked: null, email: null, phone: null, createdAt: '', updatedAt: '',
+    wpsPersonId: null, bankRoutingCode: null, pensionSchemeId: null, annualLeaveDaysOverride: null, probationEndDate: null,
   },
   {
     id: 'e2', employeeNumber: 'EMP-0002', firstName: 'Omar', lastName: 'Ali', fullName: 'Omar Ali',
     jobTitle: null, department: null, userId: null, joiningDate: '2024-02-01', leavingDate: null,
     status: 'ON_HOLD', nationality: null, isNational: false, paymentMethod: 'CASH', bankName: null,
     ibanMasked: null, email: null, phone: null, createdAt: '', updatedAt: '',
+    wpsPersonId: null, bankRoutingCode: null, pensionSchemeId: null, annualLeaveDaysOverride: null, probationEndDate: null,
   },
 ];
 

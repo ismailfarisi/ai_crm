@@ -11,6 +11,14 @@ export interface EmployeeDto {
   iban?: string | null;
   ibanMasked: string | null;
   email: string | null; phone: string | null;
+  /** WPS person ID (14 digits). */
+  wpsPersonId: string | null;
+  /** The employee's bank routing code (9 digits), for the WPS file. */
+  bankRoutingCode: string | null;
+  pensionSchemeId: string | null;
+  /** Overrides the tenant's annual leave days. */
+  annualLeaveDaysOverride: number | null;
+  probationEndDate: string | null;
   /** Present only for payroll:read holders. */
   currentPackage?: SalaryPackageDto | null;
   createdAt: string; updatedAt: string;
@@ -39,12 +47,19 @@ export interface PayrollRunLineDto {
   overtimeHours: number; overtimeHoursPremium: number; overtimeAmount: number;
   bonusAmount: number; bonusLabel: string | null;
   unpaidLeaveDays: number; unpaidLeaveAmount: number;
+  halfPayDays: number; halfPayAmount: number;
+  annualLeaveDays: number; leaveDaysInPeriod: number;
+  /** True once someone edited the leave days; refresh keeps them. */
+  leaveOverridden: boolean;
   advanceRecovery: number; otherDeductionAmount: number; otherDeductionLabel: string | null;
   salaryCost: number; netPay: number;
   gratuityBefore: number | null; gratuityAccrual: number | null; gratuityAfter: number | null;
+  pensionSchemeName: string | null; pensionBase: number; pensionEmployee: number; pensionEmployer: number;
+  /** Null until approval computes the leave provision true-up. */
+  leaveProvisionBefore: number | null; leaveProvisionChange: number | null; leaveProvisionAfter: number | null;
   flags: string[]; paidAt: string | null;
 }
-export interface PayrollRunTotalsDto { salaryCost: number; overtime: number; bonus: number; unpaidLeave: number; advanceRecovery: number; otherDeductions: number; net: number; gratuityAccrual: number; bankNet: number; cashNet: number; }
+export interface PayrollRunTotalsDto { salaryCost: number; overtime: number; bonus: number; unpaidLeave: number; advanceRecovery: number; otherDeductions: number; net: number; gratuityAccrual: number; halfPay: number; pensionEmployee: number; pensionEmployer: number; leaveProvision: number; bankNet: number; cashNet: number; }
 export interface PayrollRunDto {
   id: string; runNumber: string; period: string; payDate: string; status: PayrollRunStatus;
   totals: PayrollRunTotalsDto; bankPaidAt: string | null; cashPaidAt: string | null;

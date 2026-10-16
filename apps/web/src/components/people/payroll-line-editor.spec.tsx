@@ -14,6 +14,9 @@ const line = {
   overtimeAmount: 0, bonusAmount: 0, bonusLabel: null, unpaidLeaveDays: 0, unpaidLeaveAmount: 0,
   advanceRecovery: 0, otherDeductionAmount: 0, otherDeductionLabel: null, salaryCost: 5000, netPay: 5000,
   gratuityBefore: 0, gratuityAccrual: 0, gratuityAfter: 0, flags: [], paidAt: null,
+  halfPayDays: 0, halfPayAmount: 0, annualLeaveDays: 0, leaveDaysInPeriod: 0, leaveOverridden: false,
+  pensionSchemeName: null, pensionBase: 0, pensionEmployee: 0, pensionEmployer: 0,
+  leaveProvisionBefore: null, leaveProvisionChange: null, leaveProvisionAfter: null,
 } as PayrollRunLineDto;
 
 beforeEach(() => {

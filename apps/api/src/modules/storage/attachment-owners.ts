@@ -9,6 +9,7 @@ import { SupplierBill } from '../payables/entities/supplier-bill.entity';
 import { PurchaseOrder } from '../purchasing/entities/purchase-order.entity';
 import { Invoice } from '../quotes/entities/invoice.entity';
 import { Employee } from '../payroll/entities/employee.entity';
+import { LeaveRecord } from '../payroll/entities/leave-record.entity';
 import { Quote } from '../quotes/entities/quote.entity';
 
 /**
@@ -63,5 +64,12 @@ export const ATTACHMENT_OWNERS: Record<
     read: PERMISSIONS.EMPLOYEE_MANAGE,
     write: PERMISSIONS.EMPLOYEE_MANAGE,
     label: 'employee',
+  },
+  // Medical certificates are as private as other employee documents.
+  LEAVE_RECORD: {
+    entity: LeaveRecord,
+    read: PERMISSIONS.EMPLOYEE_MANAGE,
+    write: PERMISSIONS.EMPLOYEE_MANAGE,
+    label: 'leave record',
   },
 };

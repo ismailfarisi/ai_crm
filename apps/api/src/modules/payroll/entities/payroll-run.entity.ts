@@ -15,7 +15,7 @@ import { nullableNumericTransformer } from '../../catalog/entities/numeric.trans
 import type { OtherAllowance } from './salary-package.entity';
 
 /** A money column: numeric(14,2), default 0. */
-const money = (name: string) =>
+export const money = (name: string) =>
   ({
     name,
     type: 'numeric',
@@ -79,6 +79,19 @@ export class PayrollRun {
 
   @Column(money('total_gratuity_accrual'))
   totalGratuityAccrual: number;
+
+  @Column(money('total_half_pay'))
+  totalHalfPay: number;
+
+  @Column(money('total_pension_employee'))
+  totalPensionEmployee: number;
+
+  @Column(money('total_pension_employer'))
+  totalPensionEmployer: number;
+
+  /** Σ leave provision change across the lines. */
+  @Column(money('total_leave_provision'))
+  totalLeaveProvision: number;
 
   @Column({ name: 'bank_paid_at', type: 'timestamptz', nullable: true })
   bankPaidAt: Date | null;
@@ -223,6 +236,67 @@ export class PayrollRunLine {
   @Column(money('unpaid_leave_amount'))
   unpaidLeaveAmount: number;
 
+  /** Sick and maternity half-pay days in the period. */
+  @Column({
+    name: 'half_pay_days',
+    type: 'numeric',
+    precision: 5,
+    scale: 2,
+    default: 0,
+    transformer: numericTransformer,
+  })
+  halfPayDays: number;
+
+  @Column(money('half_pay_amount'))
+  halfPayAmount: number;
+
+  /** ANNUAL leave days taken in the period. */
+  @Column({
+    name: 'annual_leave_days',
+    type: 'numeric',
+    precision: 5,
+    scale: 2,
+    default: 0,
+    transformer: numericTransformer,
+  })
+  annualLeaveDays: number;
+
+  /** Annual + sick + unpaid + other paid leave days, for the WPS file. */
+  @Column({
+    name: 'leave_days_in_period',
+    type: 'numeric',
+    precision: 5,
+    scale: 2,
+    default: 0,
+    transformer: numericTransformer,
+  })
+  leaveDaysInPeriod: number;
+
+  /** Set when someone edits the leave days on the line; refresh keeps them. */
+  @Column({ name: 'leave_overridden', type: 'boolean', default: false })
+  leaveOverridden: boolean;
+
+  // ─── pension (nationals) ─────────────────────────────────────────────────
+  @Column({ name: 'pension_scheme_id', type: 'uuid', nullable: true })
+  pensionSchemeId: string | null;
+
+  @Column({
+    name: 'pension_scheme_name',
+    type: 'varchar',
+    length: 120,
+    nullable: true,
+  })
+  pensionSchemeName: string | null;
+
+  @Column(money('pension_base'))
+  pensionBase: number;
+
+  @Column(money('pension_employee'))
+  pensionEmployee: number;
+
+  @Column(money('pension_employer'))
+  pensionEmployer: number;
+
   @Column(money('advance_recovery'))
   advanceRecovery: number;
 
@@ -274,6 +348,37 @@ export class PayrollRunLine {
     transformer: nullableNumericTransformer,
   })
   gratuityAfter: number | null;
+
+  /** Null until approval computes the leave provision true-up. */
+  @Column({
+    name: 'leave_provision_before',
+    type: 'numeric',
+    precision: 14,
+    scale: 2,
+    nullable: true,
+    transformer: nullableNumericTransformer,
+  })
+  leaveProvisionBefore: number | null;
+
+  @Column({
+    name: 'leave_provision_change',
+    type: 'numeric',
+    precision: 14,
+    scale: 2,
+    nullable: true,
+    transformer: nullableNumericTransformer,
+  })
+  leaveProvisionChange: number | null;
+
+  @Column({
+    name: 'leave_provision_after',
+    type: 'numeric',
+    precision: 14,
+    scale: 2,
+    nullable: true,
+    transformer: nullableNumericTransformer,
+  })
+  leaveProvisionAfter: number | null;
 
   /** e.g. NATIONAL_PENSION_NOT_HANDLED. */
   @Column({ type: 'text', array: true, default: '{}' })

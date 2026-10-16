@@ -248,6 +248,10 @@ export class PayrollPostingService {
           totalOtherDeductions: run.totalOtherDeductions,
           totalNet: run.totalNet,
           totalGratuityAccrual: run.totalGratuityAccrual,
+          totalHalfPay: run.totalHalfPay,
+          totalPensionEmployee: run.totalPensionEmployee,
+          totalPensionEmployer: run.totalPensionEmployer,
+          totalLeaveProvision: run.totalLeaveProvision,
         },
       );
     });

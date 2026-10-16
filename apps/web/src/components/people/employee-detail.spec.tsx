@@ -16,6 +16,7 @@ const employee: EmployeeDto = {
   jobTitle: 'Designer', department: 'Studio', userId: null, joiningDate: '2024-01-01', leavingDate: null,
   status: 'ACTIVE', nationality: 'PK', isNational: false, paymentMethod: 'BANK', bankName: 'ENBD',
   iban: 'AE070331234567890123456', ibanMasked: 'AE07 **** 3456', email: null, phone: null,
+  wpsPersonId: null, bankRoutingCode: null, pensionSchemeId: null, annualLeaveDaysOverride: null, probationEndDate: null,
   createdAt: '', updatedAt: '',
 };
 

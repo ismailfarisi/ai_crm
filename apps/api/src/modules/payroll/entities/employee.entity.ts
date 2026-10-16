@@ -77,4 +77,34 @@ export class Employee extends SoftDeletableEntity {
 
   @Column({ type: 'varchar', length: 40, nullable: true })
   phone: string | null;
+
+  /** WPS person ID (14 digits), for the salary information file. */
+  @Column({
+    name: 'wps_person_id',
+    type: 'varchar',
+    length: 14,
+    nullable: true,
+  })
+  wpsPersonId: string | null;
+
+  /** The employee's bank routing code (9 digits), for the WPS file. */
+  @Column({
+    name: 'bank_routing_code',
+    type: 'char',
+    length: 9,
+    nullable: true,
+  })
+  bankRoutingCode: string | null;
+
+  /** Nationals only. The FK lives in the migration. */
+  @Column({ name: 'pension_scheme_id', type: 'uuid', nullable: true })
+  pensionSchemeId: string | null;
+
+  /** Overrides the tenant's annual leave days (30..60). */
+  @Column({ name: 'annual_leave_days_override', type: 'int', nullable: true })
+  annualLeaveDaysOverride: number | null;
+
+  /** Sick days on or before this date are unpaid. */
+  @Column({ name: 'probation_end_date', type: 'date', nullable: true })
+  probationEndDate: string | null;
 }

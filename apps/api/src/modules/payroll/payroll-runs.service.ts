@@ -103,6 +103,11 @@ function toLineDto(l: PayrollRunLine): PayrollRunLineDto {
     bonusLabel: l.bonusLabel,
     unpaidLeaveDays: l.unpaidLeaveDays,
     unpaidLeaveAmount: l.unpaidLeaveAmount,
+    halfPayDays: l.halfPayDays ?? 0,
+    halfPayAmount: l.halfPayAmount ?? 0,
+    annualLeaveDays: l.annualLeaveDays ?? 0,
+    leaveDaysInPeriod: l.leaveDaysInPeriod ?? 0,
+    leaveOverridden: l.leaveOverridden ?? false,
     advanceRecovery: l.advanceRecovery,
     otherDeductionAmount: l.otherDeductionAmount,
     otherDeductionLabel: l.otherDeductionLabel,
@@ -111,6 +116,13 @@ function toLineDto(l: PayrollRunLine): PayrollRunLineDto {
     gratuityBefore: l.gratuityBefore,
     gratuityAccrual: l.gratuityAccrual,
     gratuityAfter: l.gratuityAfter,
+    pensionSchemeName: l.pensionSchemeName ?? null,
+    pensionBase: l.pensionBase ?? 0,
+    pensionEmployee: l.pensionEmployee ?? 0,
+    pensionEmployer: l.pensionEmployer ?? 0,
+    leaveProvisionBefore: l.leaveProvisionBefore ?? null,
+    leaveProvisionChange: l.leaveProvisionChange ?? null,
+    leaveProvisionAfter: l.leaveProvisionAfter ?? null,
     flags: l.flags ?? [],
     paidAt: iso(l.paidAt),
   };
@@ -198,6 +210,19 @@ export class PayrollRunsService {
             gratuityBefore: null,
             gratuityAccrual: null,
             gratuityAfter: null,
+            halfPayDays: 0,
+            halfPayAmount: 0,
+            annualLeaveDays: 0,
+            leaveDaysInPeriod: 0,
+            leaveOverridden: false,
+            pensionSchemeId: null,
+            pensionSchemeName: null,
+            pensionBase: 0,
+            pensionEmployee: 0,
+            pensionEmployer: 0,
+            leaveProvisionBefore: null,
+            leaveProvisionChange: null,
+            leaveProvisionAfter: null,
             paidAt: null,
           });
           this.snapshot(line, el, period);
@@ -334,6 +359,19 @@ export class PayrollRunsService {
             gratuityBefore: null,
             gratuityAccrual: null,
             gratuityAfter: null,
+            halfPayDays: 0,
+            halfPayAmount: 0,
+            annualLeaveDays: 0,
+            leaveDaysInPeriod: 0,
+            leaveOverridden: false,
+            pensionSchemeId: null,
+            pensionSchemeName: null,
+            pensionBase: 0,
+            pensionEmployee: 0,
+            pensionEmployer: 0,
+            leaveProvisionBefore: null,
+            leaveProvisionChange: null,
+            leaveProvisionAfter: null,
             paidAt: null,
           });
         }
@@ -483,6 +521,10 @@ export class PayrollRunsService {
     run.totalOtherDeductions = sum((l) => l.otherDeductionAmount);
     run.totalNet = sum((l) => l.netPay);
     run.totalGratuityAccrual = sum((l) => l.gratuityAccrual ?? 0);
+    run.totalHalfPay = sum((l) => l.halfPayAmount ?? 0);
+    run.totalPensionEmployee = sum((l) => l.pensionEmployee ?? 0);
+    run.totalPensionEmployer = sum((l) => l.pensionEmployer ?? 0);
+    run.totalLeaveProvision = sum((l) => l.leaveProvisionChange ?? 0);
   }
 
   toDto(
@@ -512,6 +554,10 @@ export class PayrollRunsService {
         otherDeductions: run.totalOtherDeductions ?? 0,
         net: run.totalNet ?? 0,
         gratuityAccrual: run.totalGratuityAccrual ?? 0,
+        halfPay: run.totalHalfPay ?? 0,
+        pensionEmployee: run.totalPensionEmployee ?? 0,
+        pensionEmployer: run.totalPensionEmployer ?? 0,
+        leaveProvision: run.totalLeaveProvision ?? 0,
         bankNet: netBy('BANK'),
         cashNet: netBy('CASH'),
       },
@@ -656,6 +702,10 @@ export class PayrollRunsService {
         totalOtherDeductions: run.totalOtherDeductions,
         totalNet: run.totalNet,
         totalGratuityAccrual: run.totalGratuityAccrual,
+        totalHalfPay: run.totalHalfPay,
+        totalPensionEmployee: run.totalPensionEmployee,
+        totalPensionEmployer: run.totalPensionEmployer,
+        totalLeaveProvision: run.totalLeaveProvision,
       },
     );
     // update() bumps updated_at in the database; mirror it for the response.

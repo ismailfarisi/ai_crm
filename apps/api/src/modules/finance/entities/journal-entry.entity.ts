@@ -52,6 +52,8 @@ export class JournalEntry {
       'CREDIT_NOTE',
       'PREPAID',
       'PAYROLL',
+      'SETTLEMENT',
+      'PENSION_REMITTANCE',
     ],
     enumName: 'journal_entries_reference_type_enum',
     default: 'MANUAL',

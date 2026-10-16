@@ -42,6 +42,9 @@ export class GratuityLedgerEntry {
   @Column({ name: 'run_line_id', type: 'uuid', nullable: true })
   runLineId: string | null;
 
+  @Column({ name: 'settlement_id', type: 'uuid', nullable: true })
+  settlementId: string | null;
+
   @Column({ name: 'journal_entry_id', type: 'uuid', nullable: true })
   journalEntryId: string | null;
 

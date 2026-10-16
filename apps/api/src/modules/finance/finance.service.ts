@@ -296,6 +296,8 @@ export class FinanceService {
         billsOut: round2(r.billsOut),
         recurringOut: round2(r.recurringOut),
         payrollOut: round2(r.payrollOut),
+        // Pension remittances due; filled in with the compliance forecast.
+        pensionOut: 0,
         closing,
       };
       opening = closing;
