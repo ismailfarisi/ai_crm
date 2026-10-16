@@ -471,10 +471,10 @@ What overheads posting and recurring bills leave out, and the choices behind it.
 
 What payroll leaves for compliance and job costing, and the choices behind it.
 
-- **UAE/GCC nationals have no GPSSA pension yet — open.** Their lines are
-  flagged; handle the pension outside Kerf until #3.
-- **No WPS SIF export, leave balances or final settlement — open (#3).** The
-  2400 gratuity provision is never paid out until then.
+- **GPSSA pension is modelled — see [UAE payroll compliance](#uae-payroll-compliance).**
+  Its presets and remaining gaps are listed there.
+- **WPS, leave and final settlement are modelled — see [UAE payroll compliance](#uae-payroll-compliance).**
+  Their trade-offs are listed there.
 - **Gratuity accrues from day one — by design.** Nothing is payable before one
   year of service, but #3's settlement applies eligibility, so accruing from
   the start avoids a catch-up entry.
@@ -529,6 +529,60 @@ What payroll leaves for compliance and job costing, and the choices behind it.
   month's run (which ends after it) still reduces it.
 - **No database index yet on `employee_advances(tenant, employee)` or
   `payroll_runs(tenant)` — open.** Fine at SME volumes.
+
+---
+
+## UAE payroll compliance
+
+The trade-offs behind the GPSSA pension, WPS, leave and final settlement.
+
+- **Leave is in calendar days — open.** Public holidays and working-day counting
+  are not modelled, so a leave period is counted straight through weekends and
+  holidays.
+- **Leave records are entered by HR — open.** There is no employee self-service
+  or approval workflow.
+- **Annual leave carries forward without expiry or cap — open.** Balances only
+  grow until they are paid out or settled.
+- **Leave records lock once their month's run is posted — by design.** Void the
+  run to change them; otherwise a posted month's leave would no longer match its
+  pay.
+- **Once an employee's settlement is approved or paid, all their leave records
+  are locked — by design.** Void the settlement to correct one.
+- **Leave-record attachments (e.g. medical certificates) need `employee:manage`
+  to view, not `employee:read` — by design.** Medical documents are sensitive, so
+  managers who can read the employee cannot open the certificate.
+- **Sick leave beyond 90 days in a service year is refused — by design.** The
+  employee has run out of paid and half-paid sick leave; record them as having
+  left rather than extending the year.
+- **Opening leave is not blocked by runs posted before this release — by
+  design.** Those runs carry no leave rows, so nothing is double-counted. It is
+  refused per employee once a run has accrued their leave.
+- **Pension presets start inactive — by design.** They must be confirmed against
+  the fund's current rates before use.
+- **The government's 2.5% GPSSA top-up is not modelled — open.**
+- **GCC nationals need a custom pension scheme — open.** No preset covers them.
+- **Approval applies each national's current active scheme — by design.** A
+  national without one blocks approval, so no run posts with a missing
+  contribution.
+- **A run cannot be voided while its month's pension is remitted or a leaver on
+  it is settled — by design.** The remittance or settlement would otherwise
+  point at a voided run.
+- **Settlement needs the leaver's final month posted — by design.** The final
+  pay and gratuity must be in the ledger before the settlement can be built on
+  them.
+- **A settlement with negative net is refused — by design.** The employee owes
+  the company more than the settlement pays; recover that amount outside payroll.
+- **A paid settlement cannot be voided — by design.** Money has left the bank;
+  a correction is a new entry, not a reversal of the payment.
+- **WPS files follow the standard MOHRE SIF layout — by design.** Agent-specific
+  variants are not produced — open.
+- **WPS is AED base currency only, and cash-paid employees are left out with a
+  warning — by design.** WPS only covers bank transfers, and the SIF is in AED.
+- **WPS fields left on a tenant with WPS switched off are kept if valid; an
+  invalid hidden value is cleared on save — by design.** Turning WPS back on
+  then does not start from broken data.
+- **The SIF is returned to the browser and never stored; the export is audited —
+  by design.** A stored file would be a second copy of bank details to protect.
 
 ---
 
