@@ -18,17 +18,23 @@ import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 import { FinanceNav } from '../finance-nav';
+import { LabourUtilisation } from './labour-utilisation';
 import { nestStatementLines } from './nest-statement-lines';
 
 const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const iso = (d: Date) => d.toISOString().slice(0, 10);
+const lastMonth = () => {
+  const d = new Date();
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1)).toISOString().slice(0, 7);
+};
 
-const TABS: { key: FinancialReport; label: string; range: 'period' | 'asOf' }[] = [
+const TABS: { key: FinancialReport; label: string; range: 'period' | 'asOf' | 'month' }[] = [
   { key: 'profit-and-loss', label: 'Profit & loss', range: 'period' },
   { key: 'balance-sheet', label: 'Balance sheet', range: 'asOf' },
   { key: 'trial-balance', label: 'Trial balance', range: 'asOf' },
   { key: 'receivables-aging', label: 'Receivables aging', range: 'asOf' },
   { key: 'margins', label: 'Margins', range: 'period' },
+  { key: 'labour-utilisation', label: 'Labour', range: 'month' },
 ];
 
 export function ReportsView() {
@@ -36,13 +42,18 @@ export function ReportsView() {
   const [from, setFrom] = useState(`${new Date().getUTCFullYear()}-01-01`);
   const [to, setTo] = useState(iso(new Date()));
   const [asOf, setAsOf] = useState(iso(new Date()));
+  const [period, setPeriod] = useState(lastMonth);
   const [by, setBy] = useState<'customer' | 'template'>('customer');
   const canExport = useCan({ permission: PERMISSIONS.FINANCE_EXPORT });
   const canSeeMargins = useCan({ permission: PERMISSIONS.QUOTE_VIEW_COST });
+  const canSeeLabour = useCan({ permission: [PERMISSIONS.FINANCE_READ, PERMISSIONS.PAYROLL_READ] });
 
   const current = TABS.find((t) => t.key === tab)!;
-  const params: ReportParams = current.range === 'period' ? { from, to, ...(tab === 'margins' ? { by } : {}) } : { asOf };
-  const tabs = TABS.filter((t) => t.key !== 'margins' || canSeeMargins);
+  const params: ReportParams =
+    current.range === 'period' ? { from, to, ...(tab === 'margins' ? { by } : {}) } : current.range === 'month' ? { period } : { asOf };
+  const tabs = TABS.filter((t) => (t.key !== 'margins' || canSeeMargins) && (t.key !== 'labour-utilisation' || canSeeLabour));
+  // The labour route has no CSV form.
+  const csvAvailable = tab !== 'labour-utilisation';
 
   return (
     <div className="space-y-6">
@@ -70,6 +81,11 @@ export function ReportsView() {
               <span>to</span>
               <input type="date" aria-label="To" value={to} onChange={(e) => setTo(e.target.value)} className="rounded border border-line bg-surface px-2 py-1 text-ink" />
             </>
+          ) : current.range === 'month' ? (
+            <label className="flex items-center gap-2">
+              Month
+              <input type="month" aria-label="Month" value={period} onChange={(e) => setPeriod(e.target.value)} className="rounded border border-line bg-surface px-2 py-1 text-ink" />
+            </label>
           ) : (
             <label className="flex items-center gap-2">
               As at
@@ -82,7 +98,7 @@ export function ReportsView() {
               <option value="template">By template</option>
             </select>
           )}
-          {canExport && (
+          {canExport && csvAvailable && (
             <Button size="sm" variant="secondary" onClick={() => downloadReportCsv(tab, params)}>
               <Download className="size-4" />
               CSV
@@ -96,6 +112,7 @@ export function ReportsView() {
       {tab === 'trial-balance' && <TrialBalance params={params} />}
       {tab === 'receivables-aging' && <ReceivablesAging params={params} />}
       {tab === 'margins' && <Margins params={params} />}
+      {tab === 'labour-utilisation' && <LabourUtilisation params={params} />}
     </div>
   );
 }
@@ -289,6 +306,14 @@ function Margins({ params }: { params: ReportParams }) {
               <td className={`px-4 py-1.5 text-right tabular-nums ${r.margin < 0 ? 'text-danger' : ''}`}>
                 {money(r.margin)}
                 {r.marginPct != null && <span className="text-ink-subtle"> ({(r.marginPct * 100).toFixed(1)}%)</span>}
+                {r.provisionalLabourShare > 0 && (
+                  <span
+                    className="ml-2 rounded bg-warning/10 px-1.5 py-0.5 text-xs text-warning"
+                    title={`${r.provisionalLabourShare < 0.005 ? '<1' : (r.provisionalLabourShare * 100).toFixed(0)}% of cost is labour waiting on payroll`}
+                  >
+                    provisional
+                  </span>
+                )}
               </td>
               <td className="px-4 py-1.5 text-right tabular-nums text-ink-subtle" title="Share of cost from completed work orders rather than quotes">
                 {(r.measuredCostShare * 100).toFixed(0)}%

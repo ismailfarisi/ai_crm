@@ -1,6 +1,8 @@
 import { Column, Entity, Index } from 'typeorm';
 import type {
   CostSplit,
+  LabourSplit,
+  LabourStatus,
   WorkOrderOperationStatus,
   WorkOrderStatus,
 } from '@saas/shared';
@@ -116,9 +118,22 @@ export class WorkOrder extends BaseEntity {
   @Column({ name: 'estimated_cost', type: 'jsonb', nullable: true })
   estimatedCost: CostSplit | null;
 
-  /** Written once, on completion. */
+  /** Written on completion; rewritten when payroll or a late timesheet changes its labour. */
   @Column({ name: 'actual_cost', type: 'jsonb', nullable: true })
   actualCost: CostSplit | null;
+
+  /** Whether `actualCost.labor` is posted payroll, provisional or standard. CHECK in the migration. */
+  @Column({
+    name: 'labour_status',
+    type: 'varchar',
+    length: 12,
+    nullable: true,
+  })
+  labourStatus: LabourStatus | null;
+
+  /** The parts of `actualCost.labor`, written beside it. */
+  @Column({ name: 'labour_split', type: 'jsonb', nullable: true })
+  labourSplit: LabourSplit | null;
 
   @Column({ name: 'released_at', type: 'timestamptz', nullable: true })
   releasedAt: Date | null;

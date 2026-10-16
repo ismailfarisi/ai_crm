@@ -144,6 +144,7 @@ const mockWorkOrders: WorkOrderDto[] = [
         estimatedUnitCost: 0.25,
       },
     ],
+    labour: null,
     createdAt: '2026-09-01T00:00:00.000Z',
   },
   {
@@ -185,6 +186,7 @@ const mockWorkOrders: WorkOrderDto[] = [
       },
     ],
     materials: [],
+    labour: null,
     createdAt: '2026-09-02T00:00:00.000Z',
   },
   {
@@ -226,6 +228,7 @@ const mockWorkOrders: WorkOrderDto[] = [
       },
     ],
     materials: [],
+    labour: null,
     createdAt: '2026-09-03T00:00:00.000Z',
   },
   {
@@ -267,6 +270,7 @@ const mockWorkOrders: WorkOrderDto[] = [
       },
     ],
     materials: [],
+    labour: null,
     createdAt: '2026-09-04T00:00:00.000Z',
   },
 ];
@@ -623,6 +627,26 @@ describe('ProductionBoard', () => {
   });
 
   describe('Slide-Over Work Order Drawer', () => {
+    it('shows the labour panel only when the work order carries labour', () => {
+      renderBoard();
+      fireEvent.click(screen.getByText('WO-1001').closest('[role="button"]')!);
+      expect(screen.queryByTestId('labour-panel')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByLabelText('Close drawer'));
+
+      const base = mockWorkOrders.find((w) => w.id === 'wo-1')!;
+      vi.mocked(useWorkOrder).mockReturnValue({
+        data: {
+          ...base,
+          labour: { actual: 50, provisional: 0, unlinked: 0, total: 50, unlinkedHours: 0, status: 'ACTUAL',
+            byEmployee: [{ employeeId: 'e1', employeeName: 'Amina Khan', hours: 1, rate: 50, amount: 50, status: 'ACTUAL' }] },
+        },
+        isPending: false, isError: false, error: null,
+      } as never);
+      fireEvent.click(screen.getByText('WO-1001').closest('[role="button"]')!);
+      const panel = screen.getByTestId('labour-panel');
+      expect(within(panel).getByText('Amina Khan')).toBeInTheDocument();
+    });
+
     it('opens drawer on card click and displays details and operations', () => {
       renderBoard();
 

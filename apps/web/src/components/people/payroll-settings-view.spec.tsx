@@ -31,7 +31,7 @@ vi.mock('@/hooks/use-payroll', () => ({
 beforeEach(() => {
   granted = new Set(['payroll:read']);
   saveSettings.mockReset();
-  settings = { wpsEnabled: false, employerIdType: null, employerId: null, payerRoutingCode: null, annualLeaveDays: 30 };
+  settings = { wpsEnabled: false, employerIdType: null, employerId: null, payerRoutingCode: null, annualLeaveDays: 30, monthlyStandardHours: 208 };
   schemes = [scheme({}), scheme({ id: 's2', name: 'Assigned fund', assignedCount: 3, isActive: true })];
   HTMLDialogElement.prototype.showModal ||= function (this: HTMLDialogElement) {
     this.open = true;
@@ -71,6 +71,27 @@ describe('PayrollSettingsView', () => {
     const free = screen.getByTestId('scheme-s1');
     expect(free.querySelectorAll('button[disabled]')).toHaveLength(0);
     expect(screen.getByText(/Presets start inactive/)).toBeInTheDocument();
+  });
+
+  it('shows the monthly standard hours and submits an edited value', async () => {
+    granted.add('payroll:manage');
+    render(<PayrollSettingsView />);
+    const input = screen.getByLabelText('Monthly standard hours') as HTMLInputElement;
+    expect(input.value).toBe('208');
+    expect(screen.getByText(/26 days × 8 hours = 208/)).toBeInTheDocument();
+    fireEvent.change(input, { target: { value: '200' } });
+    fireEvent.submit(screen.getByTestId('payroll-settings-form'));
+    await waitFor(() => expect(saveSettings).toHaveBeenCalledTimes(1));
+    expect(saveSettings.mock.calls[0][0]).toMatchObject({ monthlyStandardHours: 200 });
+  });
+
+  it('treats a cleared standard hours field as a validation error, not a reset to 0 or 208', async () => {
+    granted.add('payroll:manage');
+    render(<PayrollSettingsView />);
+    fireEvent.change(screen.getByLabelText('Monthly standard hours'), { target: { value: '' } });
+    fireEvent.submit(screen.getByTestId('payroll-settings-form'));
+    expect(await screen.findByText(/greater than or equal to 100|Too small/i)).toBeInTheDocument();
+    expect(saveSettings).not.toHaveBeenCalled();
   });
 
   it('keeps valid stored WPS values when saving with WPS off', async () => {

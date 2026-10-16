@@ -30,12 +30,13 @@ const line: PayrollRunLineDto = {
   halfPayDays: 0, halfPayAmount: 0, annualLeaveDays: 0, leaveDaysInPeriod: 0, leaveOverridden: false,
   pensionSchemeName: null, pensionBase: 0, pensionEmployee: 0, pensionEmployer: 0,
   leaveProvisionBefore: null, leaveProvisionChange: null, leaveProvisionAfter: null,
+  standardHours: 0, loggedHours: 0, directHours: 0, labourRate: 0, labourAbsorbed: 0,
 };
 
 function makeRun(over: Partial<PayrollRunDto> = {}): PayrollRunDto {
   return {
     id: 'r1', runNumber: 'PAY-0001', period: '2026-11', payDate: '2026-11-30', status: 'DRAFT',
-    totals: { salaryCost: 7500, overtime: 0, bonus: 0, unpaidLeave: 0, advanceRecovery: 0, otherDeductions: 0, net: 7500, gratuityAccrual: 100, halfPay: 0, pensionEmployee: 0, pensionEmployer: 0, leaveProvision: 0, bankNet: 7500, cashNet: 0 },
+    totals: { salaryCost: 7500, overtime: 0, bonus: 0, unpaidLeave: 0, advanceRecovery: 0, otherDeductions: 0, net: 7500, gratuityAccrual: 100, halfPay: 0, pensionEmployee: 0, pensionEmployer: 0, leaveProvision: 0, bankNet: 7500, cashNet: 0, labourAbsorbed: 0 },
     bankPaidAt: null, cashPaidAt: null, approvedAt: null, approvedById: null, journalEntryId: null,
     lines: [line], createdAt: '', updatedAt: '', ...over,
   };
@@ -170,6 +171,32 @@ describe('PayrollRunDetail actions', () => {
     run = makeRun({ status: 'APPROVED' });
     render(<PayrollRunDetail id="r1" />);
     expect(screen.queryByLabelText('Bonus for Amina Khan')).not.toBeInTheDocument();
+  });
+
+  it('shows labour hours and absorption on an approved run, dashes on a draft, no labour total on draft or voided', () => {
+    granted = new Set(['payroll:read']);
+    const labourLine = { ...line, standardHours: 208, loggedHours: 150.5, directHours: 120, labourAbsorbed: 4321.5 };
+    const totals = { ...makeRun().totals, labourAbsorbed: 4321.5 };
+    run = makeRun({ lines: [labourLine], totals });
+    const { unmount } = render(<PayrollRunDetail id="r1" />);
+    expect(screen.getByTestId('labour-absorbed')).toHaveTextContent('—');
+    // No labour charged to jobs stat until the run is posted.
+    expect(screen.queryByTestId('total-labour-absorbed')).not.toBeInTheDocument();
+    unmount();
+
+    run = makeRun({ status: 'APPROVED', lines: [labourLine], totals });
+    const { unmount: unmount2 } = render(<PayrollRunDetail id="r1" />);
+    expect(screen.getByRole('columnheader', { name: 'Standard h' })).toBeInTheDocument();
+    expect(screen.getByTestId('labour-hours-0')).toHaveTextContent('208');
+    expect(screen.getByTestId('labour-hours-1')).toHaveTextContent('150.5');
+    expect(screen.getByTestId('labour-hours-2')).toHaveTextContent('120');
+    expect(screen.getByTestId('labour-absorbed')).toHaveTextContent('4,321.50');
+    expect(screen.getByTestId('total-labour-absorbed')).toHaveTextContent('4,321.50');
+    unmount2();
+
+    run = makeRun({ status: 'VOIDED', lines: [labourLine], totals });
+    render(<PayrollRunDetail id="r1" />);
+    expect(screen.queryByTestId('total-labour-absorbed')).not.toBeInTheDocument();
   });
 
   it('disables the Approve and Pay confirmations while a line update is saving', async () => {

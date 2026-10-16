@@ -68,6 +68,7 @@ function toSettingsDefaults(s?: PayrollSettingsDto): PayrollSettingsInput {
     employerId: s?.employerId ?? '',
     payerRoutingCode: s?.payerRoutingCode ?? '',
     annualLeaveDays: s?.annualLeaveDays ?? 30,
+    monthlyStandardHours: s?.monthlyStandardHours ?? 208,
   };
 }
 
@@ -139,7 +140,7 @@ function SettingsCard({ settings }: { settings: PayrollSettingsDto }) {
           <CardHeader>
             <CardTitle>Leave</CardTitle>
           </CardHeader>
-          <CardBody>
+          <CardBody className="space-y-4">
             <Input
               label="Annual leave days"
               type="number"
@@ -149,6 +150,17 @@ function SettingsCard({ settings }: { settings: PayrollSettingsDto }) {
               containerClassName="max-w-xs"
               {...form.register('annualLeaveDays')}
               error={errors.annualLeaveDays?.message}
+            />
+            <Input
+              label="Monthly standard hours"
+              type="number"
+              min={100}
+              max={320}
+              step="any"
+              hint="Paid hours in a normal month: 26 days × 8 hours = 208"
+              containerClassName="max-w-xs"
+              {...form.register('monthlyStandardHours')}
+              error={errors.monthlyStandardHours?.message}
             />
           </CardBody>
         </Card>

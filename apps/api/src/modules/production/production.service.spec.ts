@@ -1,5 +1,11 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
-import { DEFAULT_BOARD_COLUMNS, isBalanced } from '@saas/shared';
+import { BadRequestException, ConflictException, Logger } from '@nestjs/common';
+import {
+  actualCost,
+  DEFAULT_BOARD_COLUMNS,
+  isBalanced,
+  LEDGER_ROLES,
+} from '@saas/shared';
+import { LabourAbsorptionService } from '../job-costing/labour-absorption.service';
 import { ProductionService } from './production.service';
 
 const tenantId = '11111111-1111-1111-1111-111111111111';
@@ -19,16 +25,27 @@ function makeWorld() {
     Quote: [],
     JournalEntry: [],
     ProductionBoardSetting: [],
+    WorkOrderLabour: [],
+    TimesheetEntry: [],
+    PayrollRunLine: [],
+    PayrollSettings: [],
+    Organization: [{ id: tenantId, baseCurrency: 'AED' }],
   };
   let nextId = 1;
   let sequence = 0;
 
+  const op = (row: any, k: string, v: any) => {
+    if (v && typeof v === 'object' && '_type' in v) {
+      if (v._type === 'in') return (v._value as unknown[]).includes(row[k]);
+      if (v._type === 'isNull') return row[k] == null;
+      if (v._type === 'between')
+        return row[k] >= v._value[0] && row[k] <= v._value[1];
+      throw new Error(`unsupported operator ${v._type}`);
+    }
+    return row[k] === v;
+  };
   const matches = (row: any, where: Record<string, any> = {}) =>
-    Object.entries(where).every(([k, v]) =>
-      v && typeof v === 'object' && '_type' in v && v._type === 'in'
-        ? (v._value as unknown[]).includes(row[k])
-        : row[k] === v,
-    );
+    Object.entries(where).every(([k, v]) => op(row, k, v));
 
   const repo = (name: string) => ({
     findOne: async ({ where }: any) =>
@@ -51,9 +68,13 @@ function makeWorld() {
       return rows;
     },
     update: async (where: any, patch: any) => {
+      events.push(`update:${name}:${Object.keys(patch).sort().join(',')}`);
       tables[name]
         .filter((r) => matches(r, where))
         .forEach((r) => Object.assign(r, patch));
+    },
+    delete: async (where: any) => {
+      tables[name] = tables[name].filter((r) => !matches(r, where));
     },
     createQueryBuilder: () => {
       const params: Record<string, any> = {};
@@ -61,22 +82,29 @@ function makeWorld() {
         setLock: () => qb,
         where: (_: string, p: any = {}) => (Object.assign(params, p), qb),
         andWhere: (_: string, p: any = {}) => (Object.assign(params, p), qb),
-        getOne: async () =>
+        getOne: async () => (
+          events.push(`lock:${name}`),
           tables[name].find((r) =>
             name === 'WorkOrderMaterial'
               ? r.id === params.mid && r.workOrderId === params.wid
               : r.id === params.id && r.tenantId === params.tenantId,
-          ) ?? null,
+          ) ?? null
+        ),
       };
       return qb;
     },
   });
 
+  const events: string[] = [];
   const manager: any = {
     getRepository: (entity: { name: string }) => repo(entity.name),
-    query: async () => [{ current_value: ++sequence }],
+    query: async (sql: string) => {
+      events.push(sql);
+      return [{ current_value: ++sequence }];
+    },
+    transaction: (cb: any) => cb(manager),
   };
-  const dataSource: any = { transaction: (cb: any) => cb(manager) };
+  const dataSource: any = { manager, transaction: (cb: any) => cb(manager) };
 
   const ledger = {
     resolveLines: jest.fn(async (_t: string, lines: any[]) =>
@@ -168,6 +196,55 @@ function makeWorld() {
     })),
   };
 
+  // The labour panel and the labour in a job's cost are JobCostService's;
+  // here costFor runs the engine with `labour.value` (unset: minutes × rate).
+  const labour: { value: number | undefined } = { value: undefined };
+  const jobCost = {
+    costFor: jest.fn(
+      async (
+        _m: any,
+        _t: string,
+        wo: any,
+        ops: any[],
+        materialValue: number,
+        qtyCompleted: number,
+      ) => ({
+        cost: actualCost({
+          operations: ops,
+          materialValue,
+          toolingCost: wo.estimatedCost?.tooling ?? 0,
+          overheadPct: wo.overheadPct,
+          qtyCompleted,
+          labour: labour.value,
+        }),
+        split: { actual: labour.value ?? 0, provisional: 0, unlinked: 0 },
+        status: 'ACTUAL',
+      }),
+    ),
+    recompute: jest.fn(async () => undefined),
+    breakdown: jest.fn(async () => ({
+      actual: 20,
+      provisional: 0,
+      unlinked: 0,
+      total: 20,
+      unlinkedHours: 0,
+      status: 'ACTUAL',
+      byEmployee: [],
+    })),
+  };
+
+  // Entries the clock wrote. 'linked' is the one user with an employee.
+  const clockEntries: any[] = [];
+  const timesheets = {
+    recordClock: jest.fn(async (_m: any, _t: string, a: any) => {
+      if (a.userId !== 'linked') return null;
+      clockEntries.push(a);
+      return a;
+    }),
+  };
+
+  // The real service: completion and cancellation move its rows.
+  const absorption = new LabourAbsorptionService(ledger as any, jobCost as any);
   const service = new ProductionService(
     repo('WorkOrder') as any,
     repo('WorkOrderOperation') as any,
@@ -180,6 +257,9 @@ function makeWorld() {
     inventory as any,
     ledger as any,
     dataSource,
+    jobCost as any,
+    timesheets as any,
+    absorption,
   );
 
   tables.Quote.push({
@@ -225,7 +305,21 @@ function makeWorld() {
     },
   );
 
-  return { service, tables, stock, inventory, ledger, costing };
+  return {
+    service,
+    tables,
+    stock,
+    inventory,
+    ledger,
+    costing,
+    jobCost,
+    timesheets,
+    clockEntries,
+    events,
+    labour,
+    absorption,
+    manager,
+  };
 }
 
 async function planned(w: ReturnType<typeof makeWorld>) {
@@ -292,6 +386,65 @@ describe('ProductionService.createFromSalesOrder', () => {
   });
 });
 
+describe('ProductionService reading', () => {
+  it('get carries the labour panel, with the caller’s cost and pay visibility', async () => {
+    const w = makeWorld();
+    const { wo } = await planned(w);
+    const dto = await w.service.get(tenantId, wo.id, true, false);
+    expect(dto.labour).toEqual(expect.objectContaining({ total: 20 }));
+    expect(w.jobCost.breakdown).toHaveBeenCalledWith(
+      expect.anything(),
+      tenantId,
+      wo.id,
+      { cost: true, pay: false },
+    );
+  });
+
+  it('release and cancel return labour totals only to a caller who can see cost', async () => {
+    const w = makeWorld();
+    const { wo } = await planned(w);
+    w.jobCost.breakdown.mockClear();
+    await w.service.release(tenantId, wo.id, false);
+    await w.service.cancel(tenantId, wo.id, null, false);
+    expect(w.jobCost.breakdown.mock.calls.map((c: any[]) => c[3])).toEqual([
+      { cost: false, pay: false },
+      { cost: false, pay: false },
+    ]);
+
+    const w2 = makeWorld();
+    const { wo: wo2 } = await planned(w2);
+    w2.jobCost.breakdown.mockClear();
+    await w2.service.release(tenantId, wo2.id, true);
+    await w2.service.cancel(tenantId, wo2.id, null, true);
+    expect(w2.jobCost.breakdown.mock.calls.map((c: any[]) => c[3])).toEqual([
+      { cost: true, pay: false },
+      { cost: true, pay: false },
+    ]);
+  });
+
+  it('list leaves labour null and never computes it', async () => {
+    const w = makeWorld();
+    const { wo } = await planned(w);
+    // Planning returns each new work order through get().
+    w.jobCost.breakdown.mockClear();
+    (w.service as any).workOrders.createQueryBuilder = () => {
+      const qb: any = {
+        where: () => qb,
+        andWhere: () => qb,
+        orderBy: () => qb,
+        addOrderBy: () => qb,
+        take: () => qb,
+        getMany: async () => [wo],
+      };
+      return qb;
+    };
+    const rows = await w.service.list(tenantId, {} as any, true);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].labour).toBeNull();
+    expect(w.jobCost.breakdown).not.toHaveBeenCalled();
+  });
+});
+
 describe('ProductionService shop floor', () => {
   it('refuses floor actions before release', async () => {
     const w = makeWorld();
@@ -310,7 +463,7 @@ describe('ProductionService shop floor', () => {
     await w.service.startOperation(tenantId, wo.id, op.id, 'u1');
     expect(wo.status).toBe('IN_PROGRESS');
     op.runningSince = new Date(Date.now() - 25 * 60 * 1000);
-    await w.service.stopOperation(tenantId, wo.id, op.id, false);
+    await w.service.stopOperation(tenantId, wo.id, op.id, false, 'u1');
     expect(op.actualMinutes).toBeCloseTo(25, 0);
     expect(op.status).toBe('PAUSED');
 
@@ -321,10 +474,183 @@ describe('ProductionService shop floor', () => {
       wo.id,
       op.id,
       true,
+      'u1',
     );
     expect(capped).toBe(true);
     expect(op.actualMinutes).toBeCloseTo(25 + 720, 0);
     expect(op.status).toBe('DONE');
+  });
+
+  describe('the clock writes timesheet entries', () => {
+    // Started 30 minutes ago.
+    const running = async (w: ReturnType<typeof makeWorld>, actor: string) => {
+      const wo = await released(w);
+      const op = w.tables.WorkOrderOperation[0];
+      await w.service.startOperation(tenantId, wo.id, op.id, actor);
+      op.runningSince = new Date(Date.now() - 30 * 60 * 1000);
+      return { wo, op };
+    };
+
+    it('stop by a linked user writes one CLOCK entry dated the session start (UTC), minutes added once', async () => {
+      const w = makeWorld();
+      const { wo, op } = await running(w, 'linked');
+      // A session that began 23:30 UTC the day before it was stopped.
+      op.runningSince = new Date('2026-03-31T23:30:00.000Z');
+      jest.useFakeTimers({
+        now: new Date('2026-04-01T00:00:00.000Z'),
+        doNotFake: ['nextTick', 'setImmediate', 'setTimeout'],
+      });
+      try {
+        await w.service.stopOperation(tenantId, wo.id, op.id, false, 'linked');
+      } finally {
+        jest.useRealTimers();
+      }
+      expect(w.clockEntries).toEqual([
+        {
+          userId: 'linked',
+          workOrderId: wo.id,
+          operationId: op.id,
+          minutes: 30,
+          workDate: '2026-03-31',
+        },
+      ]);
+      expect(op.actualMinutes).toBe(30);
+    });
+
+    it('finish by a linked user writes the entry too', async () => {
+      const w = makeWorld();
+      const { wo, op } = await running(w, 'linked');
+      await w.service.stopOperation(tenantId, wo.id, op.id, true, 'linked');
+      expect(w.clockEntries).toHaveLength(1);
+      expect(op.status).toBe('DONE');
+    });
+
+    it('a supervisor stopping or finishing another operator’s session credits the operator who started it (J20)', async () => {
+      for (const finish of [false, true]) {
+        const w = makeWorld();
+        // Operator A ('linked', has an employee) started; supervisor B stops.
+        const { wo, op } = await running(w, 'linked');
+        await w.service.stopOperation(
+          tenantId,
+          wo.id,
+          op.id,
+          finish,
+          'supervisor-b',
+        );
+        expect(w.clockEntries).toHaveLength(1);
+        expect(w.clockEntries[0]).toMatchObject({
+          userId: 'linked',
+          minutes: 30,
+        });
+        expect(op.operatorId).toBe('linked');
+      }
+    });
+
+    it('logTime stays with the actor even when another operator started the operation', async () => {
+      const w = makeWorld();
+      const { wo, op } = await running(w, 'linked');
+      await w.service.stopOperation(tenantId, wo.id, op.id, false, 'linked');
+      w.timesheets.recordClock.mockClear();
+      await w.service.logTime(tenantId, wo.id, op.id, 'supervisor-b', 15);
+      expect(
+        w.timesheets.recordClock.mock.calls.map((c: any[]) => c[2].userId),
+      ).toEqual(['supervisor-b']);
+    });
+
+    it('stop by an unlinked user writes no entry but adds the minutes', async () => {
+      const w = makeWorld();
+      const { wo, op } = await running(w, 'u1');
+      await w.service.stopOperation(tenantId, wo.id, op.id, false, 'u1');
+      expect(w.clockEntries).toHaveLength(0);
+      expect(op.actualMinutes).toBeCloseTo(30, 0);
+    });
+
+    it('skips the entry but keeps the minutes when recordClock returns null (posted month)', async () => {
+      const w = makeWorld();
+      const { wo, op } = await running(w, 'linked');
+      w.timesheets.recordClock.mockResolvedValueOnce(null as never);
+      await w.service.stopOperation(tenantId, wo.id, op.id, false, 'linked');
+      expect(w.timesheets.recordClock).toHaveBeenCalledTimes(1);
+      expect(op.status).toBe('PAUSED');
+      expect(op.actualMinutes).toBeCloseTo(30, 0);
+    });
+
+    it('keeps the minutes even when recordClock throws', async () => {
+      const w = makeWorld();
+      const { wo, op } = await running(w, 'linked');
+      w.timesheets.recordClock.mockRejectedValueOnce(new Error('boom'));
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      await w.service.stopOperation(tenantId, wo.id, op.id, false, 'linked');
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(`operation ${op.id}): boom`),
+      );
+      warn.mockRestore();
+      expect(op.status).toBe('PAUSED');
+      expect(op.actualMinutes).toBeCloseTo(30, 0);
+    });
+
+    it('a stop with no running session writes no entry', async () => {
+      const w = makeWorld();
+      const wo = await released(w);
+      const op = w.tables.WorkOrderOperation[0];
+      await w.service.stopOperation(tenantId, wo.id, op.id, true, 'linked');
+      expect(w.timesheets.recordClock).not.toHaveBeenCalled();
+    });
+
+    it('a capped session records the capped minutes', async () => {
+      const w = makeWorld();
+      const { wo, op } = await running(w, 'linked');
+      op.runningSince = new Date(Date.now() - 20 * 60 * 60 * 1000);
+      await w.service.stopOperation(tenantId, wo.id, op.id, true, 'linked');
+      expect(w.clockEntries[0].minutes).toBe(720);
+    });
+
+    it('logTime by a linked user writes a CLOCK entry dated today (UTC)', async () => {
+      const w = makeWorld();
+      const wo = await released(w);
+      const op = w.tables.WorkOrderOperation[0];
+      jest.useFakeTimers({
+        now: new Date('2026-04-01T23:59:00.000Z'),
+        doNotFake: ['nextTick', 'setImmediate', 'setTimeout'],
+      });
+      try {
+        await w.service.logTime(tenantId, wo.id, op.id, 'linked', 45);
+      } finally {
+        jest.useRealTimers();
+      }
+      expect(w.clockEntries).toEqual([
+        {
+          userId: 'linked',
+          workOrderId: wo.id,
+          operationId: op.id,
+          minutes: 45,
+          workDate: '2026-04-01',
+        },
+      ]);
+      expect(op.actualMinutes).toBe(45);
+    });
+
+    it('stop, finish and logTime take the job-costing lock before the work order row', async () => {
+      const w = makeWorld();
+      const { wo, op } = await running(w, 'linked');
+      const firstTwo = () => w.events.splice(0).slice(0, 2);
+      w.events.length = 0;
+      await w.service.stopOperation(tenantId, wo.id, op.id, false, 'linked');
+      expect(firstTwo()).toEqual([
+        expect.stringContaining('pg_advisory_xact_lock'),
+        'lock:WorkOrder',
+      ]);
+      await w.service.stopOperation(tenantId, wo.id, op.id, true, 'linked');
+      expect(firstTwo()).toEqual([
+        expect.stringContaining('pg_advisory_xact_lock'),
+        'lock:WorkOrder',
+      ]);
+      await w.service.logTime(tenantId, wo.id, op.id, 'linked', 5);
+      expect(firstTwo()).toEqual([
+        expect.stringContaining('pg_advisory_xact_lock'),
+        'lock:WorkOrder',
+      ]);
+    });
   });
 
   it('issues material into WIP at the moving average: Dr WIP, Cr Inventory', async () => {
@@ -494,6 +820,338 @@ describe('ProductionService.complete', () => {
   });
 });
 
+/** Σ debit − credit per role across entries. */
+function netByRole(entries: any[]) {
+  const out: Record<string, number> = {};
+  for (const l of entries.flatMap((e) => e.lines)) {
+    out[l.role] =
+      Math.round(((out[l.role] ?? 0) + l.debit - l.credit) * 100) / 100;
+  }
+  return out;
+}
+
+/** A work_order_labour row as an approval writes it. */
+function labourRow(w: ReturnType<typeof makeWorld>, over: any) {
+  const row = {
+    id: `wol-${w.tables.WorkOrderLabour.length + 1}`,
+    tenantId,
+    employeeId: 'e1',
+    runId: 'run1',
+    runLineId: 'rl1',
+    period: '2026-10',
+    hours: 6,
+    rate: 50,
+    account: 'WIP',
+    clearedTo: null,
+    clearedAt: null,
+    journalEntryId: 'je-lab',
+    ...over,
+  };
+  w.tables.WorkOrderLabour.push(row);
+  return row;
+}
+
+describe('ProductionService: absorbed labour on completion and cancellation', () => {
+  it('complete moves material 100 and WIP labour 300 to COGS in one JE-…-DONE of 400 and clears the rows to COGS', async () => {
+    const w = makeWorld();
+    const wo = await released(w);
+    const mat = w.tables.WorkOrderMaterial[0];
+    await w.service.issueMaterial(
+      tenantId,
+      wo.id,
+      'u1',
+      { workOrderMaterialId: mat.id, qty: 200 },
+      true,
+    );
+    const a = labourRow(w, { workOrderId: wo.id, amount: 200 });
+    const b = labourRow(w, { workOrderId: wo.id, amount: 100 });
+    // Already in COGS, or another job's: not this completion's to move.
+    const booked = labourRow(w, {
+      workOrderId: wo.id,
+      account: 'COGS',
+      amount: 50,
+    });
+    const other = labourRow(w, { workOrderId: 'wo-other', amount: 70 });
+    w.labour.value = 350;
+
+    await w.service.complete(
+      tenantId,
+      wo.id,
+      'u2',
+      { qtyCompleted: 100 },
+      true,
+    );
+
+    const done = w.tables.JournalEntry.filter((e) =>
+      e.entryNumber.endsWith('-DONE'),
+    );
+    expect(done).toHaveLength(1);
+    expect(done[0]).toMatchObject({
+      entryNumber: `JE-${wo.woNumber}-DONE`,
+      referenceType: 'WORK_ORDER',
+      referenceId: wo.id,
+      totalAmount: 400,
+    });
+    expect(done[0].lines.map((l: any) => [l.role, l.debit, l.credit])).toEqual([
+      [LEDGER_ROLES.COGS, 400, 0],
+      [LEDGER_ROLES.WIP, 0, 400],
+    ]);
+    expect(isBalanced(done[0].lines)).toBe(true);
+
+    for (const r of [a, b]) {
+      expect(r.clearedTo).toBe('COGS');
+      expect(r.clearedAt).toBeInstanceOf(Date);
+    }
+    expect(booked.clearedTo).toBeNull();
+    expect(other.clearedTo).toBeNull();
+
+    // Labour in the job's cost is JobCostService's, written with its status.
+    expect(w.jobCost.costFor).toHaveBeenCalledWith(
+      expect.anything(),
+      tenantId,
+      expect.objectContaining({ id: wo.id }),
+      expect.any(Array),
+      100,
+      100,
+    );
+    expect(wo.actualCost.labor).toBe(350);
+    expect(wo.actualCost.material).toBe(100);
+    expect(wo.labourStatus).toBe('ACTUAL');
+    expect(wo.labourSplit).toEqual({
+      actual: 350,
+      provisional: 0,
+      unlinked: 0,
+    });
+    expect(wo.status).toBe('COMPLETE');
+    expect(wo.qtyCompleted).toBe(100);
+    expect(wo.completedById).toBe('u2');
+  });
+
+  it('complete with labour only (no material) still posts', async () => {
+    const w = makeWorld();
+    const wo = await released(w);
+    const row = labourRow(w, { workOrderId: wo.id, amount: 300 });
+    await w.service.complete(
+      tenantId,
+      wo.id,
+      'u2',
+      { qtyCompleted: null },
+      true,
+    );
+    const done = w.tables.JournalEntry.find((e) =>
+      e.entryNumber.endsWith('-DONE'),
+    );
+    expect(done.totalAmount).toBe(300);
+    expect(done.lines.map((l: any) => [l.role, l.debit, l.credit])).toEqual([
+      [LEDGER_ROLES.COGS, 300, 0],
+      [LEDGER_ROLES.WIP, 0, 300],
+    ]);
+    expect(row.clearedTo).toBe('COGS');
+  });
+
+  it('complete with neither material nor WIP labour posts nothing', async () => {
+    const w = makeWorld();
+    const wo = await released(w);
+    await w.service.complete(
+      tenantId,
+      wo.id,
+      'u2',
+      { qtyCompleted: null },
+      true,
+    );
+    expect(w.tables.JournalEntry).toHaveLength(0);
+  });
+
+  it('cancel returns WIP labour to overhead: Dr 6390 / Cr WIP, rows cleared to EXPENSE', async () => {
+    const w = makeWorld();
+    const wo = await released(w);
+    const a = labourRow(w, { workOrderId: wo.id, amount: 180 });
+    const b = labourRow(w, { workOrderId: wo.id, amount: 120 });
+    await w.service.cancel(tenantId, wo.id, 'Customer withdrew');
+
+    expect(w.tables.JournalEntry).toHaveLength(1);
+    const [je] = w.tables.JournalEntry;
+    expect(je).toMatchObject({
+      entryNumber: `JE-${wo.woNumber}-LAB-CANCEL`,
+      referenceType: 'WORK_ORDER',
+      referenceId: wo.id,
+      totalAmount: 300,
+    });
+    const description = `${wo.woNumber} cancelled: labour back to overhead`;
+    expect(
+      je.lines.map((l: any) => [l.role, l.debit, l.credit, l.description]),
+    ).toEqual([
+      [LEDGER_ROLES.LABOUR_ABSORBED, 300, 0, description],
+      [LEDGER_ROLES.WIP, 0, 300, description],
+    ]);
+    for (const r of [a, b]) {
+      expect(r.clearedTo).toBe('EXPENSE');
+      expect(r.clearedAt).toBeInstanceOf(Date);
+    }
+    expect(wo.status).toBe('CANCELLED');
+    expect(wo.cancelReason).toBe('Customer withdrew');
+    expect(wo.cancelledAt).toBeInstanceOf(Date);
+  });
+
+  it('cancel with no WIP labour posts nothing', async () => {
+    const w = makeWorld();
+    const wo = await released(w);
+    labourRow(w, { workOrderId: wo.id, amount: 90, clearedTo: 'COGS' });
+    await w.service.cancel(tenantId, wo.id, null);
+    expect(w.tables.JournalEntry).toHaveLength(0);
+    expect(wo.status).toBe('CANCELLED');
+  });
+
+  it('cancel still refuses while material is on the job, and moves no labour', async () => {
+    const w = makeWorld();
+    const wo = await released(w);
+    const mat = w.tables.WorkOrderMaterial[0];
+    await w.service.issueMaterial(
+      tenantId,
+      wo.id,
+      'u1',
+      { workOrderMaterialId: mat.id, qty: 5 },
+      true,
+    );
+    const row = labourRow(w, { workOrderId: wo.id, amount: 300 });
+    await expect(w.service.cancel(tenantId, wo.id, null)).rejects.toThrow(
+      /Return Greyboard/,
+    );
+    expect(row.clearedTo).toBeNull();
+    expect(
+      w.tables.JournalEntry.some((e) => e.entryNumber.endsWith('-LAB-CANCEL')),
+    ).toBe(false);
+  });
+
+  it('complete and cancel take the job-costing lock as their first query, then the work order row', async () => {
+    const w = makeWorld();
+    const wo = await released(w);
+    w.events.length = 0;
+    await w.service.complete(
+      tenantId,
+      wo.id,
+      'u2',
+      { qtyCompleted: null },
+      true,
+    );
+    expect(w.events.slice(0, 2)).toEqual([
+      expect.stringContaining('pg_advisory_xact_lock'),
+      'lock:WorkOrder',
+    ]);
+
+    const w2 = makeWorld();
+    const wo2 = await released(w2);
+    w2.events.length = 0;
+    await w2.service.cancel(tenantId, wo2.id, null);
+    expect(w2.events.slice(0, 2)).toEqual([
+      expect.stringContaining('pg_advisory_xact_lock'),
+      'lock:WorkOrder',
+    ]);
+  });
+
+  it('complete and cancel write only the work order columns they own', async () => {
+    const w = makeWorld();
+    const wo = await released(w);
+    w.events.length = 0;
+    await w.service.complete(
+      tenantId,
+      wo.id,
+      'u2',
+      { qtyCompleted: null },
+      true,
+    );
+    expect(w.events).toContain(
+      'update:WorkOrder:actualCost,completedAt,completedById,labourSplit,labourStatus,qtyCompleted,status',
+    );
+
+    const w2 = makeWorld();
+    const wo2 = await released(w2);
+    w2.events.length = 0;
+    await w2.service.cancel(tenantId, wo2.id, 'x');
+    expect(w2.events).toContain(
+      'update:WorkOrder:cancelReason,cancelledAt,status',
+    );
+  });
+
+  /** Review Focus 5, end to end through the real absorption service. */
+  it('cancel then void nets to zero: approval 300 to WIP, cancel back to 6390, void skips the rows', async () => {
+    const w = makeWorld();
+    const wo = await released(w);
+    const op = w.tables.WorkOrderOperation[0];
+    w.tables.TimesheetEntry.push({
+      id: 'te1',
+      tenantId,
+      employeeId: 'e1',
+      workDate: '2026-10-05',
+      hours: 6,
+      workOrderId: wo.id,
+      operationId: op.id,
+      indirectCategory: null,
+      runLineId: null,
+    });
+    const line = {
+      id: 'rl1',
+      tenantId,
+      runId: 'run1',
+      employeeId: 'e1',
+      daysEmployed: 31,
+      daysInMonth: 31,
+      overtimeHours: 0,
+      overtimeHoursPremium: 0,
+      salaryCost: 10400, // ÷ 208 standard hours = 50/h; 6 h → 300
+      pensionEmployer: 0,
+      gratuityAccrual: 0,
+      leaveProvisionChange: 0,
+      flags: [],
+    };
+    w.tables.PayrollRunLine.push(line);
+    const run: any = {
+      id: 'run1',
+      tenantId,
+      runNumber: 'PR-2026-10',
+      period: '2026-10',
+      labourJournalEntryId: null,
+    };
+
+    // Approval: Dr WIP 300 / Cr 6390 300.
+    const prepared = await w.absorption.prepare(w.manager, tenantId, run, [
+      line as any,
+    ]);
+    run.labourJournalEntryId = await w.absorption.post(
+      w.manager,
+      tenantId,
+      run,
+      prepared,
+      new Date('2026-10-31T00:00:00.000Z'),
+    );
+    expect(prepared.total).toBe(300);
+    expect(w.tables.WorkOrderLabour).toEqual([
+      expect.objectContaining({
+        workOrderId: wo.id,
+        account: 'WIP',
+        amount: 300,
+      }),
+    ]);
+
+    // Cancel: Dr 6390 300 / Cr WIP 300, the row cleared to EXPENSE.
+    await w.service.cancel(tenantId, wo.id, null);
+    expect(w.tables.WorkOrderLabour[0].clearedTo).toBe('EXPENSE');
+
+    // Void: the row is back in 6390 already, so no labour reversal posts.
+    const voidId = await w.absorption.reverse(w.manager, tenantId, run);
+    expect(voidId).toBeNull();
+    expect(w.tables.WorkOrderLabour).toHaveLength(0);
+
+    expect(w.tables.JournalEntry.map((e) => e.entryNumber)).toEqual([
+      'JE-PR-2026-10-LAB',
+      `JE-${wo.woNumber}-LAB-CANCEL`,
+    ]);
+    const net = netByRole(w.tables.JournalEntry);
+    expect(net[LEDGER_ROLES.WIP]).toBe(0);
+    expect(net[LEDGER_ROLES.LABOUR_ABSORBED]).toBe(0);
+  });
+});
+
 describe('Board Columns Configuration', () => {
   let service: ProductionService;
   let mockBoardSettingsRepo: any;
@@ -547,6 +1205,9 @@ describe('Board Columns Configuration', () => {
       {} as any,
       {} as any,
       dataSource,
+      { breakdown: jest.fn().mockResolvedValue(null) } as any,
+      {} as any,
+      {} as any,
     );
   });
 

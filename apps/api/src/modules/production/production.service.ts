@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -13,8 +14,8 @@ import {
   QueryFailedError,
   Repository,
 } from 'typeorm';
+import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import {
-  actualCost,
   canTransitionWorkOrder,
   DEFAULT_BOARD_COLUMNS,
   elapsedMinutes,
@@ -38,6 +39,10 @@ import { CostingService } from '../catalog/costing.service';
 import { LedgerService } from '../finance/ledger.service';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
 import { InventoryService } from '../inventory/inventory.service';
+import { JobCostService } from '../job-costing/job-cost.service';
+import { lockJobCosting } from '../job-costing/job-costing.lock';
+import { LabourAbsorptionService } from '../job-costing/labour-absorption.service';
+import { TimesheetsService } from '../job-costing/timesheets.service';
 import {
   SalesOrder,
   SalesOrderLine,
@@ -53,6 +58,8 @@ import { ProductionBoardSetting } from './entities/production-board-settings.ent
 const POSTGRES_UNIQUE_VIOLATION = '23505';
 const money = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const round4 = (n: number) => Math.round((n + Number.EPSILON) * 10000) / 10000;
+/** UTC calendar day: the platform has no tenant time zone. */
+const isoDay = (d: Date) => d.toISOString().slice(0, 10);
 
 export interface CreateWorkOrdersResult {
   created: WorkOrderDto[];
@@ -70,6 +77,8 @@ export interface CreateWorkOrdersResult {
  */
 @Injectable()
 export class ProductionService {
+  private readonly logger = new Logger(ProductionService.name);
+
   constructor(
     @InjectRepository(WorkOrder)
     private readonly workOrders: Repository<WorkOrder>,
@@ -89,6 +98,9 @@ export class ProductionService {
     private readonly inventory: InventoryService,
     private readonly ledger: LedgerService,
     private readonly dataSource: DataSource,
+    private readonly jobCost: JobCostService,
+    private readonly timesheets: TimesheetsService,
+    private readonly absorption: LabourAbsorptionService,
   ) {}
 
   /* ------------------------------------------------------------------ *
@@ -126,14 +138,26 @@ export class ProductionService {
     return this.toDtos(tenantId, rows, canSeeCost);
   }
 
+  /**
+   * One work order with its labour panel (lists leave `labour` null).
+   * Labour amounts follow `canSeeCost`; per-employee rates and amounts
+   * also need `canSeePay` (payroll:read).
+   */
   async get(
     tenantId: string,
     id: string,
     canSeeCost: boolean,
+    canSeePay = false,
   ): Promise<WorkOrderDto> {
     const wo = await this.workOrders.findOne({ where: { id, tenantId } });
     if (!wo) throw new NotFoundException('Work order not found');
     const [dto] = await this.toDtos(tenantId, [wo], canSeeCost);
+    dto.labour = await this.jobCost.breakdown(
+      this.dataSource.manager,
+      tenantId,
+      id,
+      { cost: canSeeCost, pay: canSeePay },
+    );
     return dto;
   }
 
@@ -546,7 +570,11 @@ export class ProductionService {
    * Lifecycle
    * ------------------------------------------------------------------ */
 
-  async release(tenantId: string, id: string): Promise<WorkOrderDto> {
+  async release(
+    tenantId: string,
+    id: string,
+    canSeeCost = false,
+  ): Promise<WorkOrderDto> {
     await this.dataSource.transaction(async (manager) => {
       const wo = await this.lock(manager, tenantId, id);
       this.assertTransition(wo, 'RELEASED');
@@ -554,7 +582,7 @@ export class ProductionService {
       wo.releasedAt = new Date();
       await manager.getRepository(WorkOrder).save(wo);
     });
-    return this.get(tenantId, id, true);
+    return this.get(tenantId, id, canSeeCost);
   }
 
   /**
@@ -582,6 +610,7 @@ export class ProductionService {
     }
 
     await this.dataSource.transaction(async (manager) => {
+      await lockJobCosting(manager, tenantId);
       const wo = await this.lock(manager, tenantId, id);
       this.assertTransition(wo, 'COMPLETE');
 
@@ -603,6 +632,8 @@ export class ProductionService {
           op.completedAt = now;
         }
       }
+      // Whole-row save is safe here: lockJobCosting and the work order row
+      // lock are held, and every writer of these operations takes one of them.
       await manager.getRepository(WorkOrderOperation).save(ops);
 
       const mats = await manager.getRepository(WorkOrderMaterial).find({
@@ -613,49 +644,50 @@ export class ProductionService {
       );
 
       const qtyCompleted = input.qtyCompleted ?? wo.qty;
-      wo.actualCost = actualCost({
-        operations: ops.map((op) => ({
-          workCenterId: op.workCenterId,
-          workCenterName: op.workCenterName,
-          status: op.status,
-          estimatedSetupMinutes: op.estimatedSetupMinutes,
-          estimatedRunMinutes: op.estimatedRunMinutes,
-          estimatedChargedMinutes: op.estimatedChargedMinutes,
-          actualMinutes: op.actualMinutes,
-          machineCostPerHour: op.machineCostPerHour,
-          laborCostPerHour: op.laborCostPerHour,
-        })),
-        materialValue: wip,
-        toolingCost: wo.estimatedCost?.tooling ?? 0,
-        overheadPct: wo.overheadPct,
+      const { cost, split, status } = await this.jobCost.costFor(
+        manager,
+        tenantId,
+        wo,
+        ops,
+        wip,
         qtyCompleted,
-      });
-      wo.status = 'COMPLETE';
-      wo.qtyCompleted = qtyCompleted;
-      wo.completedAt = now;
-      wo.completedById = actorId;
+      );
+      const patch: QueryDeepPartialEntity<WorkOrder> = {
+        actualCost: cost,
+        labourStatus: status,
+        labourSplit: split,
+        status: 'COMPLETE',
+        qtyCompleted,
+        completedAt: now,
+        completedById: actorId,
+      };
       if (input.columnId) {
-        wo.parameters = {
+        patch.parameters = {
           ...(wo.parameters || {}),
           columnId: input.columnId,
-        };
+        } as QueryDeepPartialEntity<WorkOrder['parameters']>;
       }
-      await manager.getRepository(WorkOrder).save(wo);
+      await manager
+        .getRepository(WorkOrder)
+        .update({ id: wo.id, tenantId }, patch);
 
-      // Only material has been capitalised into WIP, so only material leaves
-      // it. Labour and machine time are measured here, not posted: the system
-      // has no payroll to credit them against, and inventing an "absorbed
-      // labour" account would put a number in the books nobody can reconcile.
-      if (wip > 0) {
+      // Material issued and the labour payroll has absorbed so far both
+      // leave WIP now. Labour absorbed later (a run approved after this)
+      // reaches COGS through that run (J19): directly when today is on or
+      // before its period end, otherwise via WIP and its LAB-DONE dated
+      // today. Machine time is measured, never posted.
+      const labour = await this.absorption.wipLabour(manager, tenantId, wo.id);
+      const moved = money(wip + labour.amount);
+      if (moved > 0) {
         await this.post(manager, tenantId, {
           entryNumber: `JE-${wo.woNumber}-DONE`,
           workOrderId: wo.id,
-          amount: wip,
+          amount: moved,
           lines: [
             {
               role: LEDGER_ROLES.COGS,
               accountName: 'Cost of goods sold',
-              debit: wip,
+              debit: moved,
               credit: 0,
               description: `${wo.woNumber} completed`,
             },
@@ -663,23 +695,30 @@ export class ProductionService {
               role: LEDGER_ROLES.WIP,
               accountName: 'Work in progress',
               debit: 0,
-              credit: wip,
+              credit: moved,
               description: `${wo.woNumber} completed`,
             },
           ],
         });
       }
+      await this.absorption.clear(manager, tenantId, labour.ids, 'COGS');
     });
     return this.get(tenantId, id, canSeeCost);
   }
 
-  /** Material still on the job has to go back to the shelf, or it stays in WIP with no job to clear it. */
+  /**
+   * Material still on the job has to go back to the shelf, or it stays in WIP
+   * with no job to clear it. Labour payroll absorbed into WIP returns to
+   * overhead (Dr 6390 / Cr WIP): it was spent, but on nothing that sells.
+   */
   async cancel(
     tenantId: string,
     id: string,
     reason: string | null,
+    canSeeCost = false,
   ): Promise<WorkOrderDto> {
     await this.dataSource.transaction(async (manager) => {
+      await lockJobCosting(manager, tenantId);
       const wo = await this.lock(manager, tenantId, id);
       this.assertTransition(wo, 'CANCELLED');
       const mats = await manager.getRepository(WorkOrderMaterial).find({
@@ -693,18 +732,50 @@ export class ProductionService {
           `Return ${onJob.map((m) => m.materialName).join(', ')} to stock before cancelling ${wo.woNumber}.`,
         );
       }
+      const labour = await this.absorption.wipLabour(manager, tenantId, wo.id);
+      if (labour.amount > 0) {
+        const description = `${wo.woNumber} cancelled: labour back to overhead`;
+        await this.post(manager, tenantId, {
+          entryNumber: `JE-${wo.woNumber}-LAB-CANCEL`,
+          workOrderId: wo.id,
+          amount: labour.amount,
+          lines: [
+            {
+              role: LEDGER_ROLES.LABOUR_ABSORBED,
+              accountName: 'Labour absorbed',
+              debit: labour.amount,
+              credit: 0,
+              description,
+            },
+            {
+              role: LEDGER_ROLES.WIP,
+              accountName: 'Work in progress',
+              debit: 0,
+              credit: labour.amount,
+              description,
+            },
+          ],
+        });
+      }
+      await this.absorption.clear(manager, tenantId, labour.ids, 'EXPENSE');
       await manager
         .getRepository(WorkOrderOperation)
         .update(
           { workOrderId: wo.id, status: 'RUNNING' },
           { status: 'PAUSED', runningSince: null },
         );
-      wo.status = 'CANCELLED';
-      wo.cancelledAt = new Date();
-      wo.cancelReason = reason;
-      await manager.getRepository(WorkOrder).save(wo);
+      await manager
+        .getRepository(WorkOrder)
+        .update(
+          { id: wo.id, tenantId },
+          {
+            status: 'CANCELLED',
+            cancelledAt: new Date(),
+            cancelReason: reason,
+          },
+        );
     });
-    return this.get(tenantId, id, true);
+    return this.get(tenantId, id, canSeeCost);
   }
 
   /* ------------------------------------------------------------------ *
@@ -746,9 +817,11 @@ export class ProductionService {
     id: string,
     operationId: string,
     finish: boolean,
+    actorId: string,
   ): Promise<{ workOrder: WorkOrderDto; capped: boolean }> {
     let capped = false;
     await this.dataSource.transaction(async (manager) => {
+      await lockJobCosting(manager, tenantId);
       const wo = await this.lockOnFloor(manager, tenantId, id);
       const op = await this.findOperation(manager, wo, operationId);
       if (op.status === 'DONE' || op.status === 'SKIPPED') {
@@ -756,13 +829,13 @@ export class ProductionService {
         throw new BadRequestException(`"${op.label}" is already finished`);
       }
       const now = new Date();
+      let added = 0;
+      const sessionStart = op.runningSince;
       if (op.status === 'RUNNING' && op.runningSince) {
         const session = elapsedMinutes(op.runningSince, now);
         capped = session > MAX_SESSION_MINUTES;
-        op.actualMinutes =
-          Math.round(
-            (op.actualMinutes + Math.min(session, MAX_SESSION_MINUTES)) * 100,
-          ) / 100;
+        added = Math.min(session, MAX_SESSION_MINUTES);
+        op.actualMinutes = Math.round((op.actualMinutes + added) * 100) / 100;
       } else if (!finish) {
         throw new BadRequestException(`"${op.label}" is not running`);
       }
@@ -771,6 +844,17 @@ export class ProductionService {
       if (finish) op.completedAt = now;
       op.startedAt = op.startedAt ?? now;
       await manager.getRepository(WorkOrderOperation).save(op);
+      if (added > 0 && sessionStart) {
+        // J20: the hours are the operator's who started the clock, not
+        // whoever pressed stop (a supervisor closing someone's session).
+        await this.recordClock(manager, tenantId, {
+          userId: op.operatorId ?? actorId,
+          workOrderId: wo.id,
+          operationId: op.id,
+          minutes: added,
+          workDate: isoDay(sessionStart),
+        });
+      }
     });
     return { workOrder: await this.get(tenantId, id, false), capped };
   }
@@ -786,6 +870,7 @@ export class ProductionService {
     if (!(minutes > 0))
       throw new BadRequestException('Log more than zero minutes');
     await this.dataSource.transaction(async (manager) => {
+      await lockJobCosting(manager, tenantId);
       const wo = await this.lockOnFloor(manager, tenantId, id);
       const op = await this.findOperation(manager, wo, operationId);
       if (op.status === 'SKIPPED') {
@@ -797,6 +882,13 @@ export class ProductionService {
       if (op.status === 'PENDING') op.status = 'PAUSED';
       await manager.getRepository(WorkOrderOperation).save(op);
       await this.markInProgress(manager, wo);
+      await this.recordClock(manager, tenantId, {
+        userId: actorId,
+        workOrderId: wo.id,
+        operationId: op.id,
+        minutes,
+        workDate: isoDay(new Date()),
+      });
     });
     return this.get(tenantId, id, false);
   }
@@ -984,6 +1076,28 @@ export class ProductionService {
     return wo;
   }
 
+  /**
+   * The clock's timesheet entry. The floor is never blocked by accounting:
+   * recordClock returns null for every expected skip, and anything it throws
+   * is rolled back to a savepoint so the minutes still stand.
+   */
+  private async recordClock(
+    manager: EntityManager,
+    tenantId: string,
+    a: Parameters<TimesheetsService['recordClock']>[2],
+  ): Promise<void> {
+    try {
+      await manager.transaction((m) =>
+        this.timesheets.recordClock(m, tenantId, a),
+      );
+    } catch (err) {
+      // Never block the floor: the minutes stay on the operation, unlinked.
+      this.logger.warn(
+        `Clock entry skipped (tenant ${tenantId}, work order ${a.workOrderId}, operation ${a.operationId}): ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   private async lockOnFloor(
     manager: EntityManager,
     tenantId: string,
@@ -1112,6 +1226,7 @@ export class ProductionService {
         quotedUnitCost: canSeeCost ? wo.quotedUnitCost : null,
         estimatedCost: canSeeCost ? wo.estimatedCost : null,
         actualCost: canSeeCost ? wo.actualCost : null,
+        labour: null,
         operations: ops
           .filter((op) => op.workOrderId === wo.id)
           .map((op) => ({

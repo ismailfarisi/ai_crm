@@ -66,6 +66,8 @@ The following commands run on the staging host. Keep `.env.staging` and its back
      up -d --no-deps --force-recreate api worker web marketing
    ```
 
+After the first deploy that includes payroll, follow [PAYROLL_SETUP.md](PAYROLL_SETUP.md) for the remaining one-time steps.
+
 ## Verify
 
 Check service state and the API's database health:

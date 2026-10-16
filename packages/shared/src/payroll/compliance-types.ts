@@ -4,7 +4,7 @@ import type { WpsEmployerIdType } from './wps';
 import type { PaymentMethod } from './types';
 import type { SettlementReason } from '../schemas/payroll-compliance';
 
-export interface PayrollSettingsDto { wpsEnabled: boolean; employerIdType: WpsEmployerIdType | null; employerId: string | null; payerRoutingCode: string | null; annualLeaveDays: number; }
+export interface PayrollSettingsDto { wpsEnabled: boolean; employerIdType: WpsEmployerIdType | null; employerId: string | null; payerRoutingCode: string | null; annualLeaveDays: number; monthlyStandardHours: number; }
 
 export interface PensionSchemeDto { id: string; name: string; presetKey: string | null; employeePct: number; employerPct: number; base: PensionBase; minSalary: number | null; maxSalary: number | null; isActive: boolean; assignedCount: number; createdAt: string; }
 

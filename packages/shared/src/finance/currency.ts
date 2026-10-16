@@ -237,6 +237,8 @@ export interface MarginRowDto {
   marginPct: number | null;
   /** How much of `cost` is measured (completed work orders) rather than quoted. */
   measuredCostShare: number;
+  /** Fraction of `cost` that is labour still waiting on its month's payroll. */
+  provisionalLabourShare: number;
 }
 
 export interface MarginReportDto {

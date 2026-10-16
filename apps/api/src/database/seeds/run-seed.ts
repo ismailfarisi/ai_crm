@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import {
+  bulkTimesheetSchema,
   CONTACT_SOURCES,
   CONTACT_STATUSES,
   createEmployeeSchema,
@@ -9,6 +10,7 @@ import {
   createSalaryPackageSchema,
   createSettlementSchema,
   isoDate,
+  labourCost,
   leaveRecordSchema,
   LEDGER_ROLES,
   monthsTouched,
@@ -60,6 +62,14 @@ import { PensionRemittanceService } from '@/modules/payroll/pension-remittance.s
 import { LeaveService } from '@/modules/payroll/leave.service';
 import { LeaveRecordsService } from '@/modules/payroll/leave-records.service';
 import { SettlementsService } from '@/modules/payroll/settlements.service';
+import { ProductionService } from '@/modules/production/production.service';
+import {
+  WorkOrder,
+  WorkOrderOperation,
+} from '@/modules/production/entities/work-order.entity';
+import { TimesheetsService } from '@/modules/job-costing/timesheets.service';
+import { TimesheetEntry } from '@/modules/job-costing/entities/timesheet-entry.entity';
+import { WorkOrderLabour } from '@/modules/job-costing/entities/work-order-labour.entity';
 import { DataSource, In } from 'typeorm';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { TenantContextService } from '@/common/context/tenant-context.service';
@@ -427,14 +437,17 @@ function yearsAgo(years: number): string {
  * Seven employees (five bank, two cash), the WPS profile, the GPSSA scheme on
  * the national, opening gratuity and leave at the end of two months ago, one
  * advance, leave in last month, last month's run approved and paid, its
- * pension remitted, and one leaver (last month) settled and paid.
+ * pension remitted, and one leaver (last month) settled and paid. Job
+ * costing rides along: timesheets on two seeded jobs (one completed before
+ * the approval, one after) and a clock entry this month.
  * Skipped when the org already has employees.
  *
  * The order follows the services' guards: openings before anyone is marked
  * LEFT (a leaver gets no opening); both cut-overs before last month (runs on
  * or before a cut-over are refused); the scheme assigned before approval (a
  * national without one blocks it); the run posted before the remittance and
- * the settlement (both need last month's posted run).
+ * the settlement (both need last month's posted run); timesheets entered
+ * before approval (a posted month refuses them) on jobs already released.
  */
 async function seedPayroll(
   app: SeedApp,
@@ -694,6 +707,40 @@ async function seedPayroll(
       updatePayrollLineSchema.parse(patch),
     );
   }
+  // 10a. Job costing, before approval: hours in a posted month are refused,
+  // and approval only absorbs hours already entered. Two released jobs take
+  // timesheets from three employees on the payroll for the whole month (not
+  // Sami, who joined mid-month, nor Hassan, who left); WO-SEED-1 is
+  // completed now, after the period end, so approval charges its labour to
+  // WIP and JE-<run>-LAB-DONE-WO-SEED-1 moves it to COGS on the completion
+  // day (J19), while WO-SEED-2 is still open and takes its labour into WIP.
+  const jobs = await seedJobs(dataSource, tenantId, ownerId, lastPeriod);
+  await app.get(TimesheetsService).bulk(
+    tenantId,
+    ownerId,
+    bulkTimesheetSchema.parse({
+      upserts: [layla, omar, yusuf].flatMap((employeeId) =>
+        ['03', '04', '05', '06', '07'].flatMap((day) => {
+          const workDate = `${lastPeriod}-${day}`;
+          return [
+            { employeeId, workDate, hours: 6, operationId: jobs.cutting1 },
+            { employeeId, workDate, hours: 1.5, operationId: jobs.assembly2 },
+            { employeeId, workDate, hours: 0.5, indirectCategory: 'IDLE' },
+          ];
+        }),
+      ),
+      deletes: [],
+    }),
+  );
+  const production = app.get(ProductionService);
+  await production.complete(
+    tenantId,
+    jobs.wo1,
+    ownerId,
+    { qtyCompleted: 10 },
+    true,
+  );
+
   await posting.approve(tenantId, created.id, actor);
   await posting.pay(tenantId, created.id, actor, {
     method: 'BANK',
@@ -703,6 +750,23 @@ async function seedPayroll(
     method: 'CASH',
     financeAccountId: petty.id,
   });
+
+  // 10b. Job costing, after approval: completing WO-SEED-2 moves its WIP
+  // labour to COGS. Then the owner is linked to Layla (employed today) and
+  // logs 45 minutes on WO-SEED-3: a CLOCK entry in this month, provisional.
+  await production.complete(
+    tenantId,
+    jobs.wo2,
+    ownerId,
+    { qtyCompleted: 10 },
+    true,
+  );
+  await employees.update(
+    tenantId,
+    layla,
+    updateEmployeeSchema.parse({ userId: ownerId }),
+  );
+  await production.logTime(tenantId, jobs.wo3, jobs.cutting3, ownerId, 45);
 
   // 11. Last month's pension to the fund, from the run just posted.
   await remittances.remit(
@@ -734,6 +798,7 @@ async function seedPayroll(
     settlement: settled,
     logger,
   });
+  await assertJobCostingSeeded(dataSource, tenantId, paid, jobs, logger);
   logger.log(
     `Seeded ${people.length} employees, paid payroll run ${paid.runNumber} (${lastPeriod}), remitted its pension and paid settlement ${settled.settlementNumber}.`,
   );
@@ -889,6 +954,296 @@ async function assertPayrollSeeded(
 
   logger.log(
     `Seed payroll: ${entries.length} payroll journal entries, gratuity provision ${gratuityLedger}, leave provision ${leaveLedger}, ${settlement.settlementNumber} paid.`,
+  );
+}
+
+/** Operations reference a work centre by id only (no foreign key). */
+const SEED_WORK_CENTER_ID = '00000000-0000-4000-8000-00000000c0de';
+
+interface SeededJobs {
+  wo1: string;
+  wo2: string;
+  wo3: string;
+  /** WO-SEED-1 "Cutting". */
+  cutting1: string;
+  /** WO-SEED-2 "Assembly". */
+  assembly2: string;
+  /** WO-SEED-3's only operation. */
+  cutting3: string;
+}
+
+/**
+ * Three in-progress jobs with no sales order: WO-SEED-1 and -2 released on
+ * the first of `period`, WO-SEED-3 on the first of this month. Inserted
+ * directly — releasing a job through the service needs a sales order.
+ */
+async function seedJobs(
+  dataSource: DataSource,
+  tenantId: string,
+  ownerId: string,
+  period: string,
+): Promise<SeededJobs> {
+  const woRepo = dataSource.getRepository(WorkOrder);
+  const opRepo = dataSource.getRepository(WorkOrderOperation);
+  const insert = async (
+    n: number,
+    releasedOn: string,
+    labels: string[],
+  ): Promise<{ id: string; ops: string[] }> => {
+    const wo = await woRepo.save(
+      woRepo.create({
+        tenantId,
+        woNumber: `WO-SEED-${n}`,
+        status: 'IN_PROGRESS',
+        salesOrderId: null,
+        salesOrderLineId: null,
+        description: `Seed job ${n}`,
+        qty: 10,
+        overheadPct: 0.1,
+        releasedAt: new Date(`${releasedOn}T00:00:00.000Z`),
+        createdById: ownerId,
+      }),
+    );
+    const ops = await opRepo.save(
+      labels.map((label, i) => {
+        const minutes = (i + 1) * 120;
+        return opRepo.create({
+          tenantId,
+          workOrderId: wo.id,
+          sequence: i + 1,
+          label,
+          workCenterId: SEED_WORK_CENTER_ID,
+          workCenterName: 'Seed bench',
+          status: 'PAUSED',
+          estimatedSetupMinutes: 0,
+          estimatedRunMinutes: minutes,
+          estimatedChargedMinutes: minutes,
+          actualMinutes: 0,
+          machineCostPerHour: 40,
+          laborCostPerHour: 25,
+        });
+      }),
+    );
+    return { id: wo.id, ops: ops.map((o) => o.id) };
+  };
+  const first = periodBounds(period).first;
+  const one = await insert(1, first, ['Cutting', 'Assembly']);
+  const two = await insert(2, first, ['Cutting', 'Assembly']);
+  const three = await insert(3, periodBounds(periodBack(0)).first, ['Cutting']);
+  return {
+    wo1: one.id,
+    wo2: two.id,
+    wo3: three.id,
+    cutting1: one.ops[0],
+    assembly2: two.ops[1],
+    cutting3: three.ops[0],
+  };
+}
+
+/**
+ * The run's labour reached the jobs and the books agree: what payroll
+ * absorbed equals the 6390 credit and the job rows; what it did not is
+ * worked out from the ledger on its own and matches the lines; both
+ * completed jobs carry their labour in COGS, at ACTUAL, with nothing left in
+ * WIP (WO-SEED-1's moved by the run's LAB-DONE, dated its completion day);
+ * and the owner's clock time became exactly one CLOCK entry.
+ */
+async function assertJobCostingSeeded(
+  dataSource: DataSource,
+  tenantId: string,
+  run: PayrollRunDto,
+  jobs: SeededJobs,
+  logger: Logger,
+): Promise<void> {
+  const fail = (msg: string): never => {
+    throw new Error(`Seed job costing check: ${msg}`);
+  };
+  const cents = (a: number, b: number) => Math.abs(a - b) < 0.005;
+
+  const roleIds = new Map<string, LedgerRole>();
+  for (const a of await dataSource
+    .getRepository(LedgerAccount)
+    .find({ where: { tenantId } })) {
+    if (a.role) roleIds.set(a.id, a.role);
+  }
+  const entries = await dataSource
+    .getRepository(JournalEntry)
+    .find({ where: { tenantId } });
+  const entry = (n: string) => entries.find((e) => e.entryNumber === n);
+  /** Σ (debit − credit) of an entry's lines on `role`, optionally filtered. */
+  const net = (
+    e: JournalEntry | undefined,
+    role: LedgerRole,
+    side: 'debit' | 'credit' | 'net',
+    keep: (description: string) => boolean = () => true,
+  ) =>
+    round2(
+      (e?.lines ?? [])
+        .filter(
+          (l) => roleIds.get(l.ledgerAccountId) === role && keep(l.description),
+        )
+        .reduce(
+          (s, l) =>
+            s +
+            (side === 'credit' ? 0 : Number(l.debit ?? 0)) -
+            (side === 'debit' ? 0 : Number(l.credit ?? 0)),
+          0,
+        ),
+    );
+
+  // 1. Absorbed: the run total, its lines, the job rows and the 6390 credit.
+  const absorbed = run.totals.labourAbsorbed;
+  if (!(absorbed > 0)) fail(`run ${run.runNumber} absorbed ${absorbed}`);
+  const rows = await dataSource
+    .getRepository(WorkOrderLabour)
+    .find({ where: { tenantId, runId: run.id } });
+  const rowTotal = round2(rows.reduce((s, r) => s + r.amount, 0));
+  const lines = run.lines ?? [];
+  const lineTotal = round2(lines.reduce((s, l) => s + l.labourAbsorbed, 0));
+  const lab = entry(`JE-${run.runNumber}-LAB`);
+  if (!lab) return fail(`missing journal entry JE-${run.runNumber}-LAB`);
+  const labDebits = round2(
+    lab.lines.reduce((s, l) => s + Number(l.debit ?? 0), 0),
+  );
+  const labCredits = round2(
+    lab.lines.reduce((s, l) => s + Number(l.credit ?? 0), 0),
+  );
+  if (!cents(labDebits, labCredits)) {
+    fail(
+      `JE-${run.runNumber}-LAB debits ${labDebits} != credits ${labCredits}`,
+    );
+  }
+  const absorbedCredit = -net(lab, LEDGER_ROLES.LABOUR_ABSORBED, 'net');
+  for (const [what, v] of [
+    ['work_order_labour rows', rowTotal],
+    ['line labourAbsorbed', lineTotal],
+    ['6390 credit', absorbedCredit],
+  ] as const) {
+    if (!cents(v, absorbed)) {
+      fail(`${what} ${v} != run labourAbsorbed ${absorbed}`);
+    }
+  }
+
+  // 2. Never more than a line cost; unabsorbed from the ledger matches the
+  // lines: the approval's payroll expense (gross salary cost, employer
+  // pension, gratuity and leave movements) less what 6390 took to jobs.
+  let lineUnabsorbed = 0;
+  for (const l of lines) {
+    const cost = labourCost({
+      salaryCost: l.salaryCost,
+      pensionEmployer: l.pensionEmployer,
+      gratuityAccrual: l.gratuityAccrual ?? 0,
+      leaveProvisionChange: l.leaveProvisionChange ?? 0,
+    });
+    if (l.labourAbsorbed < 0 || l.labourAbsorbed > Math.max(cost, 0)) {
+      fail(`${l.employeeName} absorbed ${l.labourAbsorbed} of cost ${cost}`);
+    }
+    lineUnabsorbed += cost - l.labourAbsorbed;
+  }
+  lineUnabsorbed = round2(lineUnabsorbed);
+  const payrollEntry = entry(`JE-${run.runNumber}`);
+  const ledgerCost = round2(
+    net(payrollEntry, LEDGER_ROLES.SALARIES, 'debit') +
+      net(payrollEntry, LEDGER_ROLES.PENSION_EXPENSE, 'net') +
+      net(payrollEntry, LEDGER_ROLES.GRATUITY_EXPENSE, 'net') +
+      net(payrollEntry, LEDGER_ROLES.LEAVE_EXPENSE, 'net'),
+  );
+  const ledgerUnabsorbed = round2(ledgerCost - absorbedCredit);
+  if (!cents(ledgerUnabsorbed, lineUnabsorbed)) {
+    fail(
+      `unabsorbed per the ledger ${ledgerUnabsorbed} (cost ${ledgerCost} − absorbed ${absorbedCredit}) != Σ(cost − absorbed) over lines ${lineUnabsorbed}`,
+    );
+  }
+
+  // 3. Both completed jobs: labour in COGS, both via WIP — WO-SEED-1 was
+  // completed after the period end, so the run's own LAB-DONE moved it on
+  // the completion day (J19); WO-SEED-2 was open at approval and its
+  // completion moved it — at ACTUAL, and their WIP back to zero.
+  const workOrders = await dataSource
+    .getRepository(WorkOrder)
+    .find({ where: { tenantId, id: In([jobs.wo1, jobs.wo2]) } });
+  const labDone = (woNumber: string) =>
+    entry(`JE-${run.runNumber}-LAB-DONE-${woNumber}`);
+  for (const [id, expect] of [
+    [jobs.wo1, { account: 'WIP', clearedTo: 'COGS', labDone: true }],
+    [jobs.wo2, { account: 'WIP', clearedTo: 'COGS', labDone: false }],
+  ] as const) {
+    const wo = workOrders.find((w) => w.id === id);
+    if (!wo) return fail(`work order ${id} not found`);
+    if (wo.status !== 'COMPLETE' || wo.labourStatus !== 'ACTUAL') {
+      fail(
+        `${wo.woNumber} is ${wo.status} with labour ${wo.labourStatus}, expected COMPLETE at ACTUAL`,
+      );
+    }
+    const mine = rows.filter((r) => r.workOrderId === id);
+    if (!mine.length) fail(`${wo.woNumber} absorbed no labour`);
+    const wrong = mine.filter(
+      (r) => r.account !== expect.account || r.clearedTo !== expect.clearedTo,
+    );
+    if (wrong.length) {
+      fail(
+        `${wo.woNumber} labour sits at [${wrong.map((r) => `${r.account}/${r.clearedTo}`).join(', ')}], expected ${expect.account}/${expect.clearedTo}`,
+      );
+    }
+    const done = labDone(wo.woNumber);
+    if (!!done !== expect.labDone) {
+      fail(
+        `${wo.woNumber}: JE-${run.runNumber}-LAB-DONE-${wo.woNumber} ${done ? 'posted' : 'missing'}, expected ${expect.labDone ? 'posted' : 'none'}`,
+      );
+    }
+    if (done) {
+      // Dated max(period end, completion day): never in the payroll's month.
+      const day = (d: Date | string) => new Date(d).toISOString().slice(0, 10);
+      const want = [
+        periodBounds(run.period).last,
+        day(wo.completedAt!),
+      ].sort()[1];
+      if (day(done.entryDate) !== want) {
+        fail(
+          `${done.entryNumber} dated ${day(done.entryDate)}, expected ${want}`,
+        );
+      }
+      if (
+        !cents(net(done, LEDGER_ROLES.COGS, 'net'), Number(done.totalAmount))
+      ) {
+        fail(`${done.entryNumber} does not debit COGS by its total`);
+      }
+    }
+    const wipIn = net(lab, LEDGER_ROLES.WIP, 'debit', (d) =>
+      d.startsWith(`${wo.woNumber} `),
+    );
+    const wipOut = round2(
+      -net(entry(`JE-${wo.woNumber}-DONE`), LEDGER_ROLES.WIP, 'credit') -
+        net(done, LEDGER_ROLES.WIP, 'credit'),
+    );
+    if (!cents(wipIn, wipOut)) {
+      fail(`${wo.woNumber} WIP balance ${round2(wipIn - wipOut)}, expected 0`);
+    }
+  }
+  // No material is issued in the seed, so the tenant's WIP is empty too.
+  const wip = round2(
+    entries.reduce((s, e) => s + net(e, LEDGER_ROLES.WIP, 'net'), 0),
+  );
+  if (wip !== 0) fail(`WIP ledger balance ${wip}, expected 0`);
+
+  // 4. The owner's 45 clock minutes, as Layla, this month.
+  const clock = await dataSource
+    .getRepository(TimesheetEntry)
+    .find({ where: { tenantId, workOrderId: jobs.wo3 } });
+  const thisMonth = periodBack(0);
+  if (
+    clock.length !== 1 ||
+    clock[0].source !== 'CLOCK' ||
+    clock[0].hours !== 0.75 ||
+    clock[0].workDate.slice(0, 7) !== thisMonth
+  ) {
+    fail(
+      `expected one CLOCK entry of 0.75 h in ${thisMonth} on WO-SEED-3, got [${clock.map((e) => `${e.source} ${e.hours} h ${e.workDate}`).join('; ')}]`,
+    );
+  }
+
+  logger.log(
+    `Seed job costing: ${run.runNumber} absorbed ${absorbed} (${rows.length} job rows), unabsorbed ${ledgerUnabsorbed}, WO-SEED-1/2 complete at ACTUAL with WIP 0, one clock entry on WO-SEED-3.`,
   );
 }
 

@@ -57,9 +57,11 @@ export interface PayrollRunLineDto {
   pensionSchemeName: string | null; pensionBase: number; pensionEmployee: number; pensionEmployer: number;
   /** Null until approval computes the leave provision true-up. */
   leaveProvisionBefore: number | null; leaveProvisionChange: number | null; leaveProvisionAfter: number | null;
+  /** Hours the labour rate divides by: pro-rated standard hours plus overtime. */
+  standardHours: number; loggedHours: number; directHours: number; labourRate: number; labourAbsorbed: number;
   flags: string[]; paidAt: string | null;
 }
-export interface PayrollRunTotalsDto { salaryCost: number; overtime: number; bonus: number; unpaidLeave: number; advanceRecovery: number; otherDeductions: number; net: number; gratuityAccrual: number; halfPay: number; pensionEmployee: number; pensionEmployer: number; leaveProvision: number; bankNet: number; cashNet: number; }
+export interface PayrollRunTotalsDto { salaryCost: number; overtime: number; bonus: number; unpaidLeave: number; advanceRecovery: number; otherDeductions: number; net: number; gratuityAccrual: number; halfPay: number; pensionEmployee: number; pensionEmployer: number; leaveProvision: number; bankNet: number; cashNet: number; labourAbsorbed: number; }
 export interface PayrollRunDto {
   id: string; runNumber: string; period: string; payDate: string; status: PayrollRunStatus;
   totals: PayrollRunTotalsDto; bankPaidAt: string | null; cashPaidAt: string | null;

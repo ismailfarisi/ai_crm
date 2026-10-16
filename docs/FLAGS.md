@@ -595,6 +595,76 @@ The trade-offs behind the GPSSA pension, WPS, leave and final settlement.
 
 ---
 
+## Job costing
+
+What job costing leaves out or defers, and the choices behind it. Labour is
+costed from payroll and timesheets; machine time and overhead are not posted.
+
+- **Labour reaches jobs monthly, when payroll is approved — by design.** Until
+  then a job's labour is provisional, at an estimated rate: package plus
+  statutory on-costs divided by standard hours. Posting waits for the run
+  because the real cost is not known before it.
+- **Cost per hour divides by the larger of standard and logged hours — by
+  design.** Absorbed labour therefore never exceeds payroll cost. Unrecorded
+  overtime lowers the rate instead of over-absorbing.
+- **Labour absorption posts as its own journal, `JE-<run>-LAB`, in the approval
+  transaction — by design.** A void posts a separate `-LAB-VOID` journal that
+  reverses each amount against where it sits now: WIP, COGS, or nothing if a
+  cancellation already returned it to overhead. Two entries instead of one on
+  void keeps the original reversal untouched.
+- **Labour reaches cost of sales no earlier than the job completes — by
+  design.** `JE-<run>-LAB` is dated the period end. Labour on a job completed
+  on or before that day is debited to COGS directly. Labour on a job completed
+  after it goes to WIP, and a `JE-<run>-LAB-DONE-<job>` journal, dated
+  max(period end, completion day), moves it to COGS. That keeps next month's
+  job cost out of this month's P&L, at the price of one extra journal per
+  late-completing job. A void reverses that labour from COGS, dated no
+  earlier than the latest of those journals.
+- **Hours on cancelled jobs are not charged — by design.** Labour already
+  absorbed into a job that is later cancelled returns to 6390 (overhead).
+- **Machine time and the template overhead % stay management figures in
+  `actualCost`; they are not posted — by design.** Neither has a cost the
+  ledger can name, so posting them would invent expense.
+- **Clock entries are dated in UTC — open.** There is no tenant time zone yet,
+  so a session that starts between 00:00 and 04:00 in the UAE (UTC+4) is dated
+  the previous day. Closing it needs a tenant time zone.
+- **The clock never fails because of timesheets — by design.** When an entry
+  cannot be written (posted month, outside employment, over 24 hours) the
+  minutes still count, as unlinked, at the work centre's standard rate.
+- **Entries lock with the employee's posted run line — by design.** An employee
+  left off a run (on hold) keeps editable, provisional hours for that month.
+- **Jobs completed before job costing keep their standard-rate labour — by
+  design.** They are status STANDARD and are not re-costed.
+- **Work order lists return `labour: null` — open.** The labour breakdown is
+  computed on the detail view only, because it is a per-employee, per-month
+  calculation too heavy for a list.
+- **Timesheet approval workflow, employee self-entry and non-work-order jobs are
+  not supported — open.** Hours are entered by a manager or a clock, and only
+  work orders take labour.
+- **Every labour writer takes the per-tenant `job-costing` advisory lock — by
+  design.** It serialises posting against the floor. Fine at SME volumes; a
+  contention point for very busy floors.
+- **Per-employee rates and amounts on a job's labour panel need both
+  `quote:view_cost` and `payroll:read` — by design.** Amounts per person reveal
+  pay. Job totals need `quote:view_cost` alone, so a payroll-only user would
+  otherwise see per-person amounts that do not add up to a total they cannot
+  see.
+- **A payroll line whose direct hours could not be charged is flagged
+  `LABOUR_NOT_ABSORBED` — by design.** That is a line with direct hours whose
+  cost is ≤ 0 or whose hours sit on a cancelled job. The flag tells finance
+  the cost did not reach a job, rather than leaving the gap silent.
+- **Changing a package or the monthly standard hours does not re-cost
+  completed jobs still carrying provisional hours until something touches
+  them — open.** Their provisional labour is recomputed when an entry on them
+  is edited or the month's payroll is approved; until then it shows the rate
+  in force when last computed.
+- **Deleting or editing a clock-created entry can leave up to 0.3 minutes of
+  rounding — by design.** Entries store hours to two decimal places, so the
+  minutes a clock session recorded do not always convert back exactly. The
+  residue is below the precision of anything that reads it.
+
+---
+
 ## Smaller things found on the way
 
 - **A malformed quote body returns 500, not 400.** `POST /quotes` with a badly

@@ -177,6 +177,11 @@ function toLineDto(l: PayrollRunLine): PayrollRunLineDto {
     leaveProvisionBefore: l.leaveProvisionBefore ?? null,
     leaveProvisionChange: l.leaveProvisionChange ?? null,
     leaveProvisionAfter: l.leaveProvisionAfter ?? null,
+    standardHours: l.standardHours ?? 0,
+    loggedHours: l.loggedHours ?? 0,
+    directHours: l.directHours ?? 0,
+    labourRate: l.labourRate ?? 0,
+    labourAbsorbed: l.labourAbsorbed ?? 0,
     flags: l.flags ?? [],
     paidAt: iso(l.paidAt),
   };
@@ -708,6 +713,7 @@ export class PayrollRunsService {
     run.totalPensionEmployee = sum((l) => l.pensionEmployee ?? 0);
     run.totalPensionEmployer = sum((l) => l.pensionEmployer ?? 0);
     run.totalLeaveProvision = sum((l) => l.leaveProvisionChange ?? 0);
+    run.totalLabourAbsorbed = sum((l) => l.labourAbsorbed ?? 0);
   }
 
   toDto(
@@ -743,6 +749,7 @@ export class PayrollRunsService {
         leaveProvision: run.totalLeaveProvision ?? 0,
         bankNet: netBy('BANK'),
         cashNet: netBy('CASH'),
+        labourAbsorbed: run.totalLabourAbsorbed ?? 0,
       },
       bankPaidAt: iso(run.bankPaidAt),
       cashPaidAt: iso(run.cashPaidAt),
@@ -967,6 +974,7 @@ export class PayrollRunsService {
         totalPensionEmployee: run.totalPensionEmployee,
         totalPensionEmployer: run.totalPensionEmployer,
         totalLeaveProvision: run.totalLeaveProvision,
+        totalLabourAbsorbed: run.totalLabourAbsorbed,
       },
     );
     // update() bumps updated_at in the database; mirror it for the response.

@@ -303,6 +303,7 @@ export class ReportsController {
         'Margin',
         'Margin %',
         'Measured cost share',
+        'Provisional labour %',
       ],
       report.rows.map((r) => [
         r.label,
@@ -312,6 +313,7 @@ export class ReportsController {
         r.margin,
         r.marginPct,
         r.measuredCostShare,
+        r.provisionalLabourShare,
       ]),
     );
   }

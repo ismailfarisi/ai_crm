@@ -230,6 +230,9 @@ export function PayrollRunDetail({ id }: { id: string }) {
             <Stat label="Pension (employee)" value={run.totals.pensionEmployee} testId="total-pension-employee" />
             <Stat label="Pension (employer)" value={run.totals.pensionEmployer} testId="total-pension-employer" />
             <Stat label="Leave provision" value={run.totals.leaveProvision} testId="total-leave-provision" />
+            {posted && (
+              <Stat label="Labour charged to jobs" value={run.totals.labourAbsorbed} testId="total-labour-absorbed" />
+            )}
           </dl>
           {showSif && wpsOff && (
             <p className="mt-3 text-sm text-ink-muted" data-testid="sif-disabled-reason">
@@ -267,6 +270,10 @@ export function PayrollRunDetail({ id }: { id: string }) {
                 <th className="py-2 pr-2 text-right font-medium">Annual days</th>
                 <th className="py-2 pr-2 text-right font-medium">Pension (emp.)</th>
                 <th className="py-2 pr-2 text-right font-medium">Leave prov. change</th>
+                <th className="py-2 pr-2 text-right font-medium">Standard h</th>
+                <th className="py-2 pr-2 text-right font-medium">Logged h</th>
+                <th className="py-2 pr-2 text-right font-medium">Direct h</th>
+                <th className="py-2 pr-2 text-right font-medium">Absorbed</th>
                 <th className="py-2 pr-3 text-right font-medium">Net</th>
                 <th className="py-2 text-right font-medium">
                   <span className="sr-only">Payslip</span>
@@ -276,7 +283,13 @@ export function PayrollRunDetail({ id }: { id: string }) {
             <tbody>
               <PayrollLinesProvider value={lineEdits.registry}>
                 {lines.map((line) => (
-                  <PayrollLineEditor key={line.id} runId={run.id} line={line} editable={isDraft && canManage} />
+                  <PayrollLineEditor
+                    key={line.id}
+                    runId={run.id}
+                    line={line}
+                    editable={isDraft && canManage}
+                    showLabour={!isDraft && run.status !== 'VOIDED'}
+                  />
                 ))}
               </PayrollLinesProvider>
             </tbody>

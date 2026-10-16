@@ -136,10 +136,10 @@ export const CORE_ACTION_ITEMS: NavItem[] = [
     rule: { permission: PERMISSIONS.FINANCE_READ },
   },
   {
-    href: '/people/employees',
+    href: '/people',
     label: 'People',
     icon: Users,
-    rule: { permission: PERMISSIONS.EMPLOYEE_READ },
+    rule: { anyOf: [PERMISSIONS.EMPLOYEE_READ, PERMISSIONS.TIMESHEET_READ] },
   },
   {
     href: '/automations',

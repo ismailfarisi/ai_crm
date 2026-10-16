@@ -157,11 +157,12 @@ export function usePayslip(runId: string | null, lineId: string | null) {
   });
 }
 
-/** Run state feeds the books (journals, advances, gratuity), so all three go stale together. */
+/** Run state feeds the books (journals, advances, gratuity) and the jobs its labour reached, so all go stale together. */
 async function invalidatePayroll(queryClient: ReturnType<typeof useQueryClient>) {
   await queryClient.invalidateQueries({ queryKey: ['payroll'] });
   await queryClient.invalidateQueries({ queryKey: ['employees'] });
   await queryClient.invalidateQueries({ queryKey: ['finance'] });
+  await queryClient.invalidateQueries({ queryKey: ['work-orders'] });
 }
 
 export function useCreatePayrollRun() {
@@ -507,6 +508,7 @@ async function invalidateSettlements(queryClient: ReturnType<typeof useQueryClie
   await queryClient.invalidateQueries({ queryKey: ['employees'] });
   await queryClient.invalidateQueries({ queryKey: ['payroll'] });
   await queryClient.invalidateQueries({ queryKey: ['finance'] });
+  await queryClient.invalidateQueries({ queryKey: ['work-orders'] });
 }
 
 /** No toast on failure: the modal shows the server's reason (e.g. final month not posted) inline. */

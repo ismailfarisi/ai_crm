@@ -86,13 +86,19 @@ export class ProductionController {
   @Get('work-orders/:id')
   @RequirePermissions(PERMISSIONS.WORK_ORDER_READ)
   @ApiOperation({
-    summary: 'Get a work order with its operations and materials',
+    summary:
+      'Get a work order with its operations, materials and labour (per-employee rates need payroll:read)',
   })
   get(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<WorkOrderDto> {
-    return this.production.get(user.organizationId, id, canSeeCost(user));
+    return this.production.get(
+      user.organizationId,
+      id,
+      canSeeCost(user),
+      user.permissions.includes(PERMISSIONS.PAYROLL_READ),
+    );
   }
 
   @Post('sales-orders/:id/work-orders')
@@ -122,7 +128,7 @@ export class ProductionController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    return this.production.release(user.organizationId, id);
+    return this.production.release(user.organizationId, id, canSeeCost(user));
   }
 
   @Post('work-orders/:id/complete')
@@ -154,7 +160,12 @@ export class ProductionController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body(zodBody(cancelWorkOrderSchema)) body: CancelWorkOrderPayload,
   ) {
-    return this.production.cancel(user.organizationId, id, body.reason);
+    return this.production.cancel(
+      user.organizationId,
+      id,
+      body.reason,
+      canSeeCost(user),
+    );
   }
 
   @Post('work-orders/:id/operations/:operationId/start')
@@ -186,6 +197,7 @@ export class ProductionController {
       id,
       operationId,
       false,
+      user.id,
     );
   }
 
@@ -202,6 +214,7 @@ export class ProductionController {
       id,
       operationId,
       true,
+      user.id,
     );
   }
 

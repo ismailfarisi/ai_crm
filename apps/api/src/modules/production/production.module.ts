@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CatalogModule } from '../catalog/catalog.module';
 import { FinanceModule } from '../finance/finance.module';
 import { InventoryModule } from '../inventory/inventory.module';
+import { JobCostingModule } from '../job-costing/job-costing.module';
 import {
   SalesOrder,
   SalesOrderLine,
@@ -33,6 +34,8 @@ import { ProductionService } from './production.service';
     CatalogModule,
     InventoryModule,
     FinanceModule,
+    // The labour panel and actual labour cost of a job.
+    JobCostingModule,
   ],
   controllers: [ProductionController],
   providers: [ProductionService],

@@ -23,6 +23,8 @@ import { FinanceAccount } from '../finance/entities/finance-account.entity';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
 import { LedgerService } from '../finance/ledger.service';
 import { baseCurrencyFor } from '../finance/fx';
+import { lockJobCosting } from '../job-costing/job-costing.lock';
+import { LabourAbsorptionService } from '../job-costing/labour-absorption.service';
 import { Employee } from './entities/employee.entity';
 import { PayrollRun, PayrollRunLine } from './entities/payroll-run.entity';
 import { GratuityLedgerEntry } from './entities/gratuity-ledger-entry.entity';
@@ -48,7 +50,7 @@ const money = (n: number) => n.toFixed(2);
 const dayToDate = (day: string) => new Date(`${day}T00:00:00.000Z`);
 const todayUtc = () => dayToDate(new Date().toISOString().slice(0, 10));
 
-/** Line columns approval writes: leave and pension re-applied, flags, amounts, true-ups. */
+/** Line columns approval writes: leave and pension re-applied, flags, amounts, true-ups, labour. */
 const APPROVAL_LINE_COLUMNS = [
   'isNational',
   'unpaidLeaveDays',
@@ -73,6 +75,11 @@ const APPROVAL_LINE_COLUMNS = [
   'leaveProvisionBefore',
   'leaveProvisionChange',
   'leaveProvisionAfter',
+  'standardHours',
+  'loggedHours',
+  'directHours',
+  'labourRate',
+  'labourAbsorbed',
 ] as const satisfies readonly (keyof PayrollRunLine)[];
 
 /** The days a line's leave ledger rows carry, worked out before the journal exists. */
@@ -86,7 +93,9 @@ interface LeaveTrueUp {
 /**
  * Approval posts a run to the ledger: salaries, pension contributions, and
  * each employee's gratuity and leave salary provisions trued up to month end.
- * Void reverses all of it exactly.
+ * Void reverses all of it exactly. Timesheet hours are charged to jobs in a
+ * journal of their own (LabourAbsorptionService), which void takes back from
+ * wherever each amount sits now.
  */
 @Injectable()
 export class PayrollPostingService {
@@ -97,6 +106,7 @@ export class PayrollPostingService {
     private readonly advances: AdvancesService,
     private readonly gratuity: GratuityService,
     private readonly leave: LeaveService,
+    private readonly labour: LabourAbsorptionService,
   ) {}
 
   async approve(
@@ -117,6 +127,9 @@ export class PayrollPostingService {
       // tenant, so the cut-over, gratuity balances and outstanding advances
       // read below cannot move before this commits.
       await lockGratuityOpening(manager, tenantId);
+      // Then timesheets and jobs: no entry can be written or moved, nor a job
+      // completed or cancelled, between reading the hours and absorbing them.
+      await lockJobCosting(manager, tenantId);
 
       // The true-up targets the entitlement at this month end; a later month
       // already posted would make it reverse that month's accrual.
@@ -266,6 +279,14 @@ export class PayrollPostingService {
               : asOf,
         });
       }
+      // Hours read only now, under lockJobCosting; sets each line's labour columns.
+      const absorption = await this.labour.prepare(
+        manager,
+        tenantId,
+        run,
+        lines,
+      );
+
       // Only the columns approval owns; the run lock keeps other writers out.
       for (const line of lines) {
         const patch: Record<string, unknown> = {};
@@ -399,6 +420,14 @@ export class PayrollPostingService {
         journalEntryId = entry.id;
       }
 
+      const labourJournalEntryId = await this.labour.post(
+        manager,
+        tenantId,
+        run,
+        absorption,
+        dayToDate(asOf),
+      );
+
       const gratRepo = manager.getRepository(GratuityLedgerEntry);
       const accruals = lines
         .filter((l) => l.gratuityAccrual)
@@ -471,6 +500,8 @@ export class PayrollPostingService {
           totalPensionEmployee: run.totalPensionEmployee,
           totalPensionEmployer: run.totalPensionEmployer,
           totalLeaveProvision: run.totalLeaveProvision,
+          totalLabourAbsorbed: run.totalLabourAbsorbed,
+          labourJournalEntryId,
         },
       );
     });
@@ -501,6 +532,7 @@ export class PayrollPostingService {
         );
       }
       await lockGratuityOpening(manager, tenantId);
+      await lockJobCosting(manager, tenantId);
 
       const later = await this.laterPostedRun(manager, run);
       if (later) {
@@ -633,12 +665,21 @@ export class PayrollPostingService {
       }
       if (leaveReversals.length) await leaveRepo.save(leaveReversals);
 
-      await manager
-        .getRepository(PayrollRun)
-        .update(
-          { id: run.id, tenantId },
-          { status: 'VOIDED', voidJournalEntryId: voidEntryId },
-        );
+      const labourVoidJournalEntryId = await this.labour.reverse(
+        manager,
+        tenantId,
+        run,
+      );
+
+      // Totals stay as approved, as the payroll totals do.
+      await manager.getRepository(PayrollRun).update(
+        { id: run.id, tenantId },
+        {
+          status: 'VOIDED',
+          voidJournalEntryId: voidEntryId,
+          labourVoidJournalEntryId,
+        },
+      );
     });
 
     return this.runs.get(tenantId, runId);

@@ -81,7 +81,7 @@ describe('WorkOrderManageSkill', () => {
     expect(res.kind).toBe('resolved');
     if (res.kind === 'resolved') {
       const outcome = await skill.execute(res.value, ctx);
-      expect(production.release).toHaveBeenCalledWith('org-1', 'wo-1');
+      expect(production.release).toHaveBeenCalledWith('org-1', 'wo-1', false);
       expect(outcome.reply).toContain('released');
     }
   });
@@ -183,7 +183,7 @@ describe('WorkOrderManageSkill', () => {
     expect(res.kind).toBe('resolved');
     if (res.kind === 'resolved') {
       const outcome = await skill.execute(res.value, ctx);
-      expect(production.stopOperation).toHaveBeenCalledWith('org-1', 'wo-1', 'op-1', false);
+      expect(production.stopOperation).toHaveBeenCalledWith('org-1', 'wo-1', 'op-1', false, 'user-1');
       expect(outcome.reply).toContain('Paused "Die cutting"');
     }
   });
@@ -205,7 +205,7 @@ describe('WorkOrderManageSkill', () => {
     expect(res.kind).toBe('resolved');
     if (res.kind === 'resolved') {
       const outcome = await skill.execute(res.value, ctx);
-      expect(production.stopOperation).toHaveBeenCalledWith('org-1', 'wo-1', 'op-1', true);
+      expect(production.stopOperation).toHaveBeenCalledWith('org-1', 'wo-1', 'op-1', true, 'user-1');
       expect(outcome.reply).toContain('Finished "Printing" on WO-2026-0003. Step marked DONE.');
     }
   });
@@ -234,7 +234,7 @@ describe('WorkOrderManageSkill', () => {
       expect(res.value.nextOperationLabel).toBe('Die cutting');
 
       const outcome = await skill.execute(res.value, ctx);
-      expect(production.stopOperation).toHaveBeenCalledWith('org-1', 'wo-1', 'op-1', true);
+      expect(production.stopOperation).toHaveBeenCalledWith('org-1', 'wo-1', 'op-1', true, 'user-1');
       expect(production.startOperation).toHaveBeenCalledWith('org-1', 'wo-1', 'op-2', 'user-1');
       expect(outcome.reply).toBe('✅ Finished "Printing". Started next operation: "Die cutting".');
     }
@@ -260,7 +260,7 @@ describe('WorkOrderManageSkill', () => {
       expect(res.value.nextOperationId).toBeUndefined();
 
       const outcome = await skill.execute(res.value, ctx);
-      expect(production.stopOperation).toHaveBeenCalledWith('org-1', 'wo-1', 'op-1', true);
+      expect(production.stopOperation).toHaveBeenCalledWith('org-1', 'wo-1', 'op-1', true, 'user-1');
       expect(production.startOperation).not.toHaveBeenCalled();
       expect(outcome.reply).toBe('✅ Finished final operation "Printing" on WO-2026-0003. All operations complete!');
     }
@@ -281,7 +281,7 @@ describe('WorkOrderManageSkill', () => {
     expect(res.kind).toBe('resolved');
     if (res.kind === 'resolved') {
       const outcome = await skill.execute(res.value, ctx);
-      expect(production.cancel).toHaveBeenCalledWith('org-1', 'wo-1', 'Customer requested');
+      expect(production.cancel).toHaveBeenCalledWith('org-1', 'wo-1', 'Customer requested', false);
       expect(outcome.reply).toContain('cancelled');
     }
   });
