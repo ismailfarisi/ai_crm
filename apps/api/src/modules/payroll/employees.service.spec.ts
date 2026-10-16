@@ -48,7 +48,7 @@ function setup() {
   const dataSource: any = { manager, transaction: (cb: any) => cb(manager) };
   const crypto = new PayrollCryptoService({} as any);
   const service = new EmployeesService(dataSource, crypto);
-  return { service, employees, packages, manager };
+  return { service, employees, packages, manager, crypto };
 }
 
 const input: any = {
@@ -60,7 +60,7 @@ const input: any = {
 describe('EmployeesService', () => {
   it('create numbers the employee and encrypts the IBAN', async () => {
     const { service, employees } = setup();
-    const view = await service.create(T, ACTOR, input);
+    const view = await service.create(T, ACTOR, input, { withIban: true });
     expect(view.employeeNumber).toMatch(/^EMP-\d{4}-0001$/);
     expect(view.fullName).toBe('Ada Okafor');
     const row = employees.rows[0];
@@ -99,7 +99,7 @@ describe('EmployeesService', () => {
     const { service } = setup();
     const v = await service.create(T, ACTOR, { ...input, paymentMethod: 'CASH', iban: null, bankName: null });
     await expect(service.update(T, v.id, { paymentMethod: 'BANK' })).rejects.toThrow('Bank payees need an IBAN');
-    const ok = await service.update(T, v.id, { paymentMethod: 'BANK', iban: IBAN });
+    const ok = await service.update(T, v.id, { paymentMethod: 'BANK', iban: IBAN }, { withIban: true });
     expect(ok.iban).toBe(IBAN);
   });
 
@@ -141,5 +141,33 @@ describe('EmployeesService', () => {
     expect((await service.list(T, { search: 'welder' })).length).toBe(1);
     expect((await service.list(T, { search: 'emp-' })).length).toBe(2);
     expect((await service.list(T, {})).length).toBe(2);
+  });
+
+  it('never decrypts an IBAN for a caller without employee:manage', async () => {
+    const { service, crypto } = setup();
+    const v = await service.create(T, ACTOR, input);
+    const spy = jest.spyOn(crypto, 'decrypt');
+    expect(v.iban).toBeNull();
+    expect((await service.get(T, v.id)).iban).toBeNull();
+    expect((await service.list(T, {}))[0].iban).toBeNull();
+    expect(spy).not.toHaveBeenCalled();
+    expect((await service.get(T, v.id, { withIban: true })).iban).toBe(IBAN);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('lists the directory when one IBAN will not decrypt, logging the id but not the ciphertext', async () => {
+    const { service, employees } = setup();
+    await service.create(T, ACTOR, input);
+    await service.create(T, ACTOR, { ...input, firstName: 'Bola' });
+    employees.rows[1].ibanEncrypted = 'v1:corrupt';
+    const log = jest
+      .spyOn((service as any).logger, 'error')
+      .mockImplementation(() => undefined);
+    const rows = await service.list(T, {}, { withIban: true });
+    expect(rows.map((r) => r.iban)).toEqual([IBAN, null]);
+    expect(rows[1].ibanLast4).toBe('3456');
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(String(log.mock.calls[0][0])).toContain(employees.rows[1].id);
+    expect(String(log.mock.calls[0][0])).not.toContain('corrupt');
   });
 });

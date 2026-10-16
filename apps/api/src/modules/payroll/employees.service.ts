@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -24,6 +25,11 @@ import { SalaryPackage } from './entities/salary-package.entity';
 import { PayrollCryptoService } from './payroll-crypto.service';
 import type { EmployeeView } from './employee-mask';
 
+/** withIban: decrypt the full IBAN (employee:manage holders only). */
+export interface ViewOptions {
+  withIban?: boolean;
+}
+
 const today = () => new Date().toISOString().slice(0, 10);
 const IBAN_PATTERN = /^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/;
 
@@ -43,6 +49,8 @@ export function toPackageDto(p: SalaryPackage): SalaryPackageDto {
 
 @Injectable()
 export class EmployeesService {
+  private readonly logger = new Logger(EmployeesService.name);
+
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly crypto: PayrollCryptoService,
@@ -51,6 +59,7 @@ export class EmployeesService {
   async list(
     tenantId: string,
     q: { status?: EmployeeStatus; search?: string },
+    opts: ViewOptions = {},
   ): Promise<EmployeeView[]> {
     const manager = this.dataSource.manager;
     const where: Record<string, unknown> = { tenantId };
@@ -72,19 +81,28 @@ export class EmployeesService {
       .find({ where: { tenantId } });
     const day = today();
     return rows.map((e) =>
-      this.toView(e, this.pick(all.filter((p) => p.employeeId === e.id), day)),
+      this.toView(
+        e,
+        this.pick(all.filter((p) => p.employeeId === e.id), day),
+        opts,
+      ),
     );
   }
 
-  async get(tenantId: string, id: string): Promise<EmployeeView> {
+  async get(
+    tenantId: string,
+    id: string,
+    opts: ViewOptions = {},
+  ): Promise<EmployeeView> {
     const manager = this.dataSource.manager;
-    return this.view(manager, await this.load(manager, tenantId, id));
+    return this.view(manager, await this.load(manager, tenantId, id), opts);
   }
 
   async create(
     tenantId: string,
     actorId: string,
     input: CreateEmployeePayload,
+    opts: ViewOptions = {},
   ): Promise<EmployeeView> {
     void actorId; // the audit trail records who; the row does not
     return this.dataSource.transaction(async (manager) => {
@@ -119,7 +137,7 @@ export class EmployeesService {
         email: input.email ?? null,
         phone: input.phone ?? null,
       });
-      return this.view(manager, await repo.save(row));
+      return this.view(manager, await repo.save(row), opts);
     });
   }
 
@@ -127,6 +145,7 @@ export class EmployeesService {
     tenantId: string,
     id: string,
     input: UpdateEmployeePayload,
+    opts: ViewOptions = {},
   ): Promise<EmployeeView> {
     return this.dataSource.transaction(async (manager) => {
       const repo = manager.getRepository(Employee);
@@ -160,7 +179,7 @@ export class EmployeesService {
       } else if (input.paymentMethod === 'BANK' && !row.ibanEncrypted) {
         throw new BadRequestException('Bank payees need an IBAN');
       }
-      return this.view(manager, await repo.save(row));
+      return this.view(manager, await repo.save(row), opts);
     });
   }
 
@@ -273,12 +292,35 @@ export class EmployeesService {
     }
   }
 
-  private async view(manager: EntityManager, e: Employee): Promise<EmployeeView> {
+  private async view(
+    manager: EntityManager,
+    e: Employee,
+    opts: ViewOptions,
+  ): Promise<EmployeeView> {
     const pkg = await this.packageAt(manager, e.tenantId, e.id, today());
-    return this.toView(e, pkg);
+    return this.toView(e, pkg, opts);
   }
 
-  private toView(e: Employee, pkg: SalaryPackage | null): EmployeeView {
+  /**
+   * The full IBAN only for callers who may see it, and a ciphertext that will
+   * not decrypt (rotated key, corrupt row) costs that one IBAN, not the page.
+   */
+  private ibanOf(e: Employee, opts: ViewOptions): string | null {
+    if (!opts.withIban || !e.ibanEncrypted) return null;
+    try {
+      return this.crypto.decrypt(e.ibanEncrypted);
+    } catch {
+      // The id only: never the ciphertext.
+      this.logger.error(`IBAN for employee ${e.id} could not be decrypted`);
+      return null;
+    }
+  }
+
+  private toView(
+    e: Employee,
+    pkg: SalaryPackage | null,
+    opts: ViewOptions,
+  ): EmployeeView {
     return {
       id: e.id,
       employeeNumber: e.employeeNumber,
@@ -295,7 +337,7 @@ export class EmployeesService {
       isNational: e.isNational,
       paymentMethod: e.paymentMethod,
       bankName: e.bankName,
-      iban: e.ibanEncrypted ? this.crypto.decrypt(e.ibanEncrypted) : null,
+      iban: this.ibanOf(e, opts),
       ibanLast4: e.ibanLast4,
       email: e.email,
       phone: e.phone,

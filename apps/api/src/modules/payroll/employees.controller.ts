@@ -40,6 +40,11 @@ import { AdvancesService } from './advances.service';
 import { GratuityService } from './gratuity.service';
 import { maskEmployee } from './employee-mask';
 
+/** Only employee managers ever see a full IBAN, so only they pay to decrypt one. */
+const ibanOpts = (user: AuthenticatedUser) => ({
+  withIban: user.permissions.includes(PERMISSIONS.EMPLOYEE_MANAGE),
+});
+
 @ApiTags('employees')
 @Controller('employees')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -58,10 +63,11 @@ export class EmployeesController {
     @Query('status') status?: EmployeeStatus,
     @Query('search') search?: string,
   ): Promise<EmployeeDto[]> {
-    const rows = await this.employees.list(user.organizationId, {
-      status,
-      search,
-    });
+    const rows = await this.employees.list(
+      user.organizationId,
+      { status, search },
+      ibanOpts(user),
+    );
     return rows.map((r) => maskEmployee(r, user.permissions));
   }
 
@@ -72,7 +78,7 @@ export class EmployeesController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<EmployeeDto> {
-    const view = await this.employees.get(user.organizationId, id);
+    const view = await this.employees.get(user.organizationId, id, ibanOpts(user));
     return maskEmployee(view, user.permissions);
   }
 
@@ -83,7 +89,12 @@ export class EmployeesController {
     @CurrentUser() user: AuthenticatedUser,
     @Body(zodBody(createEmployeeSchema)) body: CreateEmployeePayload,
   ): Promise<EmployeeDto> {
-    const view = await this.employees.create(user.organizationId, user.id, body);
+    const view = await this.employees.create(
+      user.organizationId,
+      user.id,
+      body,
+      ibanOpts(user),
+    );
     return maskEmployee(view, user.permissions);
   }
 
@@ -95,7 +106,12 @@ export class EmployeesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body(zodBody(updateEmployeeSchema)) body: UpdateEmployeePayload,
   ): Promise<EmployeeDto> {
-    const view = await this.employees.update(user.organizationId, id, body);
+    const view = await this.employees.update(
+      user.organizationId,
+      id,
+      body,
+      ibanOpts(user),
+    );
     return maskEmployee(view, user.permissions);
   }
 
