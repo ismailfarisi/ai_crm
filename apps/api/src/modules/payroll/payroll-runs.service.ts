@@ -636,7 +636,7 @@ export class PayrollRunsService {
    * have by month end (balance plus this month's accrual, less the month's
    * annual leave, below zero).
    */
-  private async flagsFor(
+  async flagsFor(
     manager: EntityManager,
     line: PayrollRunLine,
     employee: Employee,
