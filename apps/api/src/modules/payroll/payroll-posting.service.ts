@@ -23,7 +23,7 @@ import { baseCurrencyFor } from '../finance/fx';
 import { Employee } from './entities/employee.entity';
 import { PayrollRun, PayrollRunLine } from './entities/payroll-run.entity';
 import { GratuityLedgerEntry } from './entities/gratuity-ledger-entry.entity';
-import { AdvancesService } from './advances.service';
+import { AdvancesService, POSTED_RUN_STATUSES } from './advances.service';
 import { GratuityService, lockGratuityOpening } from './gratuity.service';
 import {
   lockPayrollRun,
@@ -73,6 +73,15 @@ export class PayrollPostingService {
       // tenant, so the cut-over, gratuity balances and outstanding advances
       // read below cannot move before this commits.
       await lockGratuityOpening(manager, tenantId);
+
+      // The true-up targets the entitlement at this month end; a later month
+      // already posted would make it reverse that month's accrual.
+      const later = await this.laterPostedRun(manager, run);
+      if (later) {
+        throw new ConflictException(
+          `Payroll for ${periodLabel(later.period)} is already posted; approve runs in month order`,
+        );
+      }
 
       const label = periodLabel(run.period);
       const asOf = periodBounds(run.period).last;
@@ -267,6 +276,11 @@ export class PayrollPostingService {
       }
       await lockGratuityOpening(manager, tenantId);
 
+      const later = await this.laterPostedRun(manager, run);
+      if (later) {
+        throw new ConflictException(`Void ${periodLabel(later.period)} first`);
+      }
+
       const entries = manager.getRepository(JournalEntry);
       let voidEntryId: string | null = null;
       if (run.journalEntryId) {
@@ -297,7 +311,14 @@ export class PayrollPostingService {
             entryNumber: `JE-${run.runNumber}-VOID`,
             referenceType: 'PAYROLL',
             referenceId: run.id,
-            entryDate: todayUtc(),
+            // Never before the entry it reverses: a run approved ahead of its
+            // month end is dated that month end.
+            entryDate: new Date(
+              Math.max(
+                todayUtc().getTime(),
+                new Date(approval.entryDate).getTime(),
+              ),
+            ),
             totalAmount: approval.totalAmount,
             currency: approval.currency,
             fxRate: 1,
@@ -342,6 +363,25 @@ export class PayrollPostingService {
     });
 
     return this.runs.get(tenantId, runId);
+  }
+
+  /** The latest posted run for a period after `run`'s, if any. */
+  private async laterPostedRun(
+    manager: EntityManager,
+    run: PayrollRun,
+  ): Promise<PayrollRun | null> {
+    const runs = await manager
+      .getRepository(PayrollRun)
+      .find({ where: { tenantId: run.tenantId } });
+    const later = runs
+      .filter(
+        (r) =>
+          r.id !== run.id &&
+          r.period > run.period &&
+          POSTED_RUN_STATUSES.includes(r.status),
+      )
+      .sort((a, b) => b.period.localeCompare(a.period));
+    return later[0] ?? null;
   }
 
   private assertCanApprove(actor: PayrollActor): void {

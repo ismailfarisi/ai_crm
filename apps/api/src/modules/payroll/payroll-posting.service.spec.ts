@@ -545,5 +545,88 @@ describe('PayrollPostingService', () => {
         ctx.service.void(T, run.id, { userId: ACTOR, permissions: [] }),
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
+
+    it('refuses (409) to void a month while a later month is posted', async () => {
+      const ctx = setup();
+      const oct = await draft(ctx, '2026-10');
+      await ctx.service.approve(T, oct.id, APPROVER);
+      const nov = await draft(ctx, '2026-11');
+      await ctx.service.approve(T, nov.id, APPROVER);
+      const err = await ctx.service.void(T, oct.id, APPROVER).catch((e) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect(err.message).toBe('Void November 2026 first');
+      expect(ctx.entries.rows).toHaveLength(2);
+      // Newest first is allowed.
+      await ctx.service.void(T, nov.id, APPROVER);
+      const out = await ctx.service.void(T, oct.id, APPROVER);
+      expect(out.status).toBe('VOIDED');
+    });
+
+    it('dates the reversal no earlier than the approval entry', async () => {
+      jest.useFakeTimers({
+        now: new Date('2026-10-20T10:00:00Z'),
+        doNotFake: ['nextTick', 'setImmediate'],
+      });
+      try {
+        const ctx = setup();
+        const run = await draft(ctx, '2026-10');
+        await ctx.service.approve(T, run.id, APPROVER);
+        await ctx.service.void(T, run.id, APPROVER);
+        const [approval, reversal] = ctx.entries.rows;
+        expect(approval.entryDate).toEqual(
+          new Date('2026-10-31T00:00:00.000Z'),
+        );
+        expect(reversal.entryDate).toEqual(approval.entryDate);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('dates the reversal today when today is after the approval date', async () => {
+      jest.useFakeTimers({
+        now: new Date('2026-11-05T10:00:00Z'),
+        doNotFake: ['nextTick', 'setImmediate'],
+      });
+      try {
+        const ctx = setup();
+        const run = await draft(ctx, '2026-10');
+        await ctx.service.approve(T, run.id, APPROVER);
+        await ctx.service.void(T, run.id, APPROVER);
+        expect(ctx.entries.rows[1].entryDate).toEqual(
+          new Date('2026-11-05T00:00:00.000Z'),
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+  });
+
+  describe('month order', () => {
+    it('refuses (409) to approve a month while a later month is posted', async () => {
+      const ctx = setup();
+      const oct = await draft(ctx, '2026-10');
+      const nov = await draft(ctx, '2026-11');
+      // Nov while Oct is still a draft: drafts do not block.
+      await ctx.service.approve(T, nov.id, APPROVER);
+      const err = await ctx.service
+        .approve(T, oct.id, APPROVER)
+        .catch((e) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect(err.message).toBe(
+        'Payroll for November 2026 is already posted; approve runs in month order',
+      );
+      expect(ctx.entries.rows).toHaveLength(1);
+      expect(ctx.runs.rows.find((r) => r.id === oct.id).status).toBe('DRAFT');
+    });
+
+    it('a voided later month does not block', async () => {
+      const ctx = setup();
+      const oct = await draft(ctx, '2026-10');
+      const nov = await draft(ctx, '2026-11');
+      await ctx.service.approve(T, nov.id, APPROVER);
+      await ctx.service.void(T, nov.id, APPROVER);
+      const out = await ctx.service.approve(T, oct.id, APPROVER);
+      expect(out.status).toBe('APPROVED');
+    });
   });
 });
