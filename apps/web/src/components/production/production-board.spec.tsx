@@ -627,6 +627,26 @@ describe('ProductionBoard', () => {
   });
 
   describe('Slide-Over Work Order Drawer', () => {
+    it('shows the labour panel only when the work order carries labour', () => {
+      renderBoard();
+      fireEvent.click(screen.getByText('WO-1001').closest('[role="button"]')!);
+      expect(screen.queryByTestId('labour-panel')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByLabelText('Close drawer'));
+
+      const base = mockWorkOrders.find((w) => w.id === 'wo-1')!;
+      vi.mocked(useWorkOrder).mockReturnValue({
+        data: {
+          ...base,
+          labour: { actual: 50, provisional: 0, unlinked: 0, total: 50, unlinkedHours: 0, status: 'ACTUAL',
+            byEmployee: [{ employeeId: 'e1', employeeName: 'Amina Khan', hours: 1, rate: 50, amount: 50, status: 'ACTUAL' }] },
+        },
+        isPending: false, isError: false, error: null,
+      } as never);
+      fireEvent.click(screen.getByText('WO-1001').closest('[role="button"]')!);
+      const panel = screen.getByTestId('labour-panel');
+      expect(within(panel).getByText('Amina Khan')).toBeInTheDocument();
+    });
+
     it('opens drawer on card click and displays details and operations', () => {
       renderBoard();
 

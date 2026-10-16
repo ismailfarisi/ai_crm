@@ -173,6 +173,25 @@ describe('PayrollRunDetail actions', () => {
     expect(screen.queryByLabelText('Bonus for Amina Khan')).not.toBeInTheDocument();
   });
 
+  it('shows labour hours and absorption on an approved run, dashes on a draft', () => {
+    granted = new Set(['payroll:read']);
+    const labourLine = { ...line, standardHours: 208, loggedHours: 150.5, directHours: 120, labourAbsorbed: 4321.5 };
+    const totals = { ...makeRun().totals, labourAbsorbed: 4321.5 };
+    run = makeRun({ lines: [labourLine], totals });
+    const { unmount } = render(<PayrollRunDetail id="r1" />);
+    expect(screen.getByTestId('labour-absorbed')).toHaveTextContent('—');
+    unmount();
+
+    run = makeRun({ status: 'APPROVED', lines: [labourLine], totals });
+    render(<PayrollRunDetail id="r1" />);
+    expect(screen.getByRole('columnheader', { name: 'Standard h' })).toBeInTheDocument();
+    expect(screen.getByTestId('labour-hours-0')).toHaveTextContent('208');
+    expect(screen.getByTestId('labour-hours-1')).toHaveTextContent('150.5');
+    expect(screen.getByTestId('labour-hours-2')).toHaveTextContent('120');
+    expect(screen.getByTestId('labour-absorbed')).toHaveTextContent('4,321.50');
+    expect(screen.getByTestId('total-labour-absorbed')).toHaveTextContent('4,321.50');
+  });
+
   it('disables the Approve and Pay confirmations while a line update is saving', async () => {
     granted = new Set(['payroll:read', 'payroll:approve', 'payroll:pay']);
     saving = true;

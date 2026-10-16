@@ -8,6 +8,7 @@ import { useUpdatePayrollLine } from '@/hooks/use-payroll';
 import { describeServer } from '@/lib/api/describe';
 import { Badge } from '@/components/ui/primitives';
 import { money } from './payroll-format';
+import { formatHours } from './timesheet-format';
 import { usePayrollLinesRegistry } from './payroll-lines-context';
 
 export const FLAG_LABELS: Record<string, string> = {
@@ -60,10 +61,13 @@ export function PayrollLineEditor({
   runId,
   line,
   editable,
+  showLabour = false,
 }: {
   runId: string;
   line: PayrollRunLineDto;
   editable: boolean;
+  /** Labour hours and absorption are frozen at approval; a draft has none yet. */
+  showLabour?: boolean;
 }) {
   const update = useUpdatePayrollLine(runId);
   const [values, setValues] = useState(() => initial(line));
@@ -263,6 +267,14 @@ export function PayrollLineEditor({
         <td className="py-2 pr-2 text-right tabular-nums text-ink-muted">
           {line.leaveProvisionChange === null ? '—' : money(line.leaveProvisionChange)}
         </td>
+        {[line.standardHours, line.loggedHours, line.directHours].map((h, i) => (
+          <td key={i} className="py-2 pr-2 text-right tabular-nums text-ink-muted" data-testid={`labour-hours-${i}`}>
+            {showLabour ? formatHours(h) : '—'}
+          </td>
+        ))}
+        <td className="py-2 pr-2 text-right tabular-nums text-ink-muted" data-testid="labour-absorbed">
+          {showLabour ? money(line.labourAbsorbed) : '—'}
+        </td>
         <td className="py-2 pr-3 text-right font-medium tabular-nums">{money(line.netPay)}</td>
         <td className="py-2 text-right">
           <Link
@@ -276,7 +288,7 @@ export function PayrollLineEditor({
       </tr>
       {Object.keys(errors).length > 0 && (
         <tr>
-          <td colSpan={NUMERIC_FIELDS.length + 7} className="pb-2 text-xs text-danger" role="alert">
+          <td colSpan={NUMERIC_FIELDS.length + 11} className="pb-2 text-xs text-danger" role="alert">
             {line.employeeName}: {[...new Set(Object.values(errors))].join(' ')}
           </td>
         </tr>
