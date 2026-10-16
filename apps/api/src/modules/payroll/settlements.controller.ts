@@ -22,6 +22,7 @@ import {
   type SettlementDto,
   type SettlementStatementDto,
   type UpdateSettlementPayload,
+  type WpsSifDto,
 } from '@saas/shared';
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
 import { zodBody } from '@/common/pipes/zod-validation.pipe';
@@ -30,6 +31,7 @@ import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '@/modules/rbac/guards/permissions.guard';
 import type { PayrollActor } from './payroll-posting.service';
 import { SettlementsService } from './settlements.service';
+import { WpsExportService } from './wps-export.service';
 
 const actorOf = (user: AuthenticatedUser): PayrollActor => ({
   userId: user.id,
@@ -40,7 +42,10 @@ const actorOf = (user: AuthenticatedUser): PayrollActor => ({
 @Controller('settlements')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SettlementsController {
-  constructor(private readonly settlements: SettlementsService) {}
+  constructor(
+    private readonly settlements: SettlementsService,
+    private readonly wps: WpsExportService,
+  ) {}
 
   @Get()
   @RequirePermissions(PERMISSIONS.PAYROLL_READ)
@@ -144,5 +149,16 @@ export class SettlementsController {
     @Body(zodBody(paySettlementSchema)) body: PaySettlementPayload,
   ): Promise<SettlementDto> {
     return this.settlements.pay(user.organizationId, id, actorOf(user), body);
+  }
+
+  @Post(':id/wps-sif')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PERMISSIONS.PAYROLL_PAY)
+  @ApiOperation({ summary: 'WPS salary information file for a settlement' })
+  wpsSif(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<WpsSifDto> {
+    return this.wps.forSettlement(user.organizationId, id, actorOf(user));
   }
 }

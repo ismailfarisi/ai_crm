@@ -30,6 +30,7 @@ import { LeaveRecordsService } from './leave-records.service';
 import { LeaveController } from './leave.controller';
 import { SettlementsService } from './settlements.service';
 import { SettlementsController } from './settlements.controller';
+import { WpsExportService } from './wps-export.service';
 
 /** Employees, salary packages, payroll runs, advances and the gratuity ledger. */
 @Module({
@@ -65,6 +66,7 @@ import { SettlementsController } from './settlements.controller';
     LeaveService,
     LeaveRecordsService,
     SettlementsService,
+    WpsExportService,
     // Built from process.env so a missing PAYROLL_DATA_KEY fails boot in production.
     {
       provide: PayrollCryptoService,
