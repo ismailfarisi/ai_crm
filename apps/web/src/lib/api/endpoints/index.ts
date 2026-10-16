@@ -25,6 +25,7 @@ import { documentTemplatesEndpoints, documentTemplatesKeys } from './document-te
 import { savedViewsEndpoints, savedViewsKeys } from './saved-views';
 import { customObjectsEndpoints, customObjectsKeys } from './custom-objects';
 import { assistantEndpoints, assistantKeys } from './assistant';
+import { payrollEndpoints, payrollKeys } from './payroll';
 
 export * from './auth';
 export * from './contacts';
@@ -46,6 +47,7 @@ export * from './document-templates';
 export * from './saved-views';
 export * from './custom-objects';
 export * from './assistant';
+export * from './payroll';
 
 export const api = {
   ...authEndpoints,
@@ -68,6 +70,7 @@ export const api = {
   ...savedViewsEndpoints,
   ...customObjectsEndpoints,
   ...assistantEndpoints,
+  ...payrollEndpoints,
 };
 
 export const queryKeys = {
@@ -91,4 +94,5 @@ export const queryKeys = {
   ...savedViewsKeys,
   ...customObjectsKeys,
   ...assistantKeys,
+  ...payrollKeys,
 };

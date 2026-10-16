@@ -21,7 +21,7 @@ import type {
 } from '@saas/shared';
 import { calculateRunwayMonths } from '@saas/shared';
 import { api, queryKeys } from '@/lib/api/endpoints';
-import { ApiError } from '@/lib/api/client';
+import { describe, describeServer } from '@/lib/api/describe';
 
 export type {
   FinanceAccountDto,
@@ -40,16 +40,6 @@ export type {
   BudgetPeriod,
 };
 export { calculateRunwayMonths };
-
-function describe(error: unknown, fallback: string): string {
-  if (error instanceof ApiError) {
-    return error.isForbidden ? "You don't have permission to do that" : error.message;
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return fallback;
-}
 
 export function useInvalidateFinance() {
   const queryClient = useQueryClient();
@@ -178,12 +168,6 @@ export function useCreateRecurringExpense() {
     },
     onError: (error) => toast.error(describe(error, 'Could not register recurring expense')),
   });
-}
-
-/** The server's own words (e.g. "needs bill:approve") beat a generic 403 line here. */
-function describeServer(error: unknown, fallback: string): string {
-  if (error instanceof ApiError && error.message) return error.message;
-  return describe(error, fallback);
 }
 
 export function useUpdateRecurringExpense() {

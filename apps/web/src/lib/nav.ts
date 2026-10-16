@@ -136,6 +136,12 @@ export const CORE_ACTION_ITEMS: NavItem[] = [
     rule: { permission: PERMISSIONS.FINANCE_READ },
   },
   {
+    href: '/people/employees',
+    label: 'People',
+    icon: Users,
+    rule: { permission: PERMISSIONS.EMPLOYEE_READ },
+  },
+  {
     href: '/automations',
     label: 'Automations',
     icon: Zap,
