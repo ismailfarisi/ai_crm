@@ -35,6 +35,11 @@ import type {
   RecordAdvancePayload,
   SalaryPackageDto,
   UpdateEmployeePayload,
+  CreateSettlementPayload,
+  PaySettlementPayload,
+  SettlementDto,
+  SettlementStatementDto,
+  UpdateSettlementPayload,
 } from '@saas/shared';
 import { apiFetch } from '../client';
 
@@ -89,6 +94,22 @@ export const payrollEndpoints = {
     postOpeningGratuity: (input: PostOpeningGratuityPayload) =>
       apiFetch<unknown>('/payroll/opening-gratuity', { method: 'POST', body: input }),
   },
+  settlements: {
+    list: () => apiFetch<SettlementDto[]>('/settlements'),
+    get: (id: string) => apiFetch<SettlementDto>(`/settlements/${id}`),
+    statement: (id: string) => apiFetch<SettlementStatementDto>(`/settlements/${id}/statement`),
+    create: (input: CreateSettlementPayload) =>
+      apiFetch<SettlementDto>('/settlements', { method: 'POST', body: input }),
+    update: (id: string, input: UpdateSettlementPayload) =>
+      apiFetch<SettlementDto>(`/settlements/${id}`, { method: 'PATCH', body: input }),
+    refresh: (id: string) => apiFetch<SettlementDto>(`/settlements/${id}/refresh`, { method: 'POST' }),
+    remove: (id: string) => apiFetch<void>(`/settlements/${id}`, { method: 'DELETE' }),
+    approve: (id: string) => apiFetch<SettlementDto>(`/settlements/${id}/approve`, { method: 'POST' }),
+    void: (id: string) => apiFetch<SettlementDto>(`/settlements/${id}/void`, { method: 'POST' }),
+    pay: (id: string, input: PaySettlementPayload) =>
+      apiFetch<SettlementDto>(`/settlements/${id}/pay`, { method: 'POST', body: input }),
+    sif: (id: string) => apiFetch<WpsSifDto>(`/settlements/${id}/wps-sif`, { method: 'POST' }),
+  },
   employees: {
     list: (params: EmployeeListParams = {}) => apiFetch<EmployeeDto[]>('/employees', { query: params }),
     get: (id: string) => apiFetch<EmployeeDto>(`/employees/${id}`),
@@ -127,6 +148,9 @@ export const payrollKeys = {
   employeeAdvances: (id: string) => ['employees', id, 'advances'] as const,
   employeeGratuity: (id: string) => ['employees', id, 'gratuity'] as const,
   employeeLeave: (id: string) => ['employees', id, 'leave'] as const,
+  settlements: () => ['settlements', 'list'] as const,
+  settlement: (id: string) => ['settlements', id] as const,
+  settlementStatement: (id: string) => ['settlements', id, 'statement'] as const,
   payrollSettings: () => ['payroll', 'settings'] as const,
   pensionSchemes: () => ['payroll', 'pension-schemes'] as const,
   payrollRuns: () => ['payroll', 'runs'] as const,

@@ -40,7 +40,7 @@ function Stat({ label, value, testId }: { label: string; value: number; testId: 
   );
 }
 
-function ConfirmDialog({
+export function ConfirmDialog({
   open,
   title,
   description,

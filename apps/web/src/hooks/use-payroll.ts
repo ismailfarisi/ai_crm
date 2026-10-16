@@ -19,6 +19,9 @@ import type {
   UpdatePensionSchemePayload,
   RecordAdvancePayload,
   UpdateEmployeePayload,
+  CreateSettlementPayload,
+  PaySettlementPayload,
+  UpdateSettlementPayload,
 } from '@saas/shared';
 import { api, queryKeys, type EmployeeListParams } from '@/lib/api/endpoints';
 import { describeServer } from '@/lib/api/describe';
@@ -473,5 +476,128 @@ export function usePostOpeningLeave() {
       toast.success('Opening leave balances posted');
     },
     onError: (error) => toast.error(describeServer(error, 'Could not post the opening leave balances')),
+  });
+}
+
+// ── Final settlements ─────────────────────────────────────────────────────
+
+export function useSettlements() {
+  return useQuery({ queryKey: queryKeys.settlements(), queryFn: () => api.settlements.list() });
+}
+
+export function useSettlement(id: string | null) {
+  return useQuery({
+    queryKey: queryKeys.settlement(id ?? ''),
+    queryFn: () => api.settlements.get(id as string),
+    enabled: Boolean(id),
+  });
+}
+
+export function useSettlementStatement(id: string | null) {
+  return useQuery({
+    queryKey: queryKeys.settlementStatement(id ?? ''),
+    queryFn: () => api.settlements.statement(id as string),
+    enabled: Boolean(id),
+  });
+}
+
+/** A settlement posts to the books and clears the leaver's balances, so everything goes stale. */
+async function invalidateSettlements(queryClient: ReturnType<typeof useQueryClient>) {
+  await queryClient.invalidateQueries({ queryKey: ['settlements'] });
+  await queryClient.invalidateQueries({ queryKey: ['employees'] });
+  await queryClient.invalidateQueries({ queryKey: ['payroll'] });
+  await queryClient.invalidateQueries({ queryKey: ['finance'] });
+}
+
+/** No toast on failure: the modal shows the server's reason (e.g. final month not posted) inline. */
+export function useCreateSettlement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateSettlementPayload) => api.settlements.create(input),
+    onSuccess: async (s) => {
+      await invalidateSettlements(queryClient);
+      toast.success(`${s.settlementNumber} drafted`);
+    },
+  });
+}
+
+/** No toast on failure: the editor shows the server's reason beside the form. */
+export function useUpdateSettlement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: UpdateSettlementPayload }) => api.settlements.update(id, input),
+    onSuccess: async () => {
+      await invalidateSettlements(queryClient);
+      toast.success('Settlement saved');
+    },
+  });
+}
+
+export function useRefreshSettlement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.settlements.refresh(id),
+    onSuccess: async () => {
+      await invalidateSettlements(queryClient);
+      toast.success('Settlement refreshed from current balances');
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not refresh the settlement')),
+  });
+}
+
+export function useDeleteSettlement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.settlements.remove(id),
+    onSuccess: async (_void, id) => {
+      queryClient.removeQueries({ queryKey: queryKeys.settlement(id) });
+      await invalidateSettlements(queryClient);
+      toast.success('Draft settlement deleted');
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not delete the draft')),
+  });
+}
+
+/** No toast on failure: a stale draft is refused with "refresh it", which the page turns into an action. */
+export function useApproveSettlement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.settlements.approve(id),
+    onSuccess: async (s) => {
+      await invalidateSettlements(queryClient);
+      toast.success(`${s.settlementNumber} approved`);
+    },
+  });
+}
+
+export function useVoidSettlement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.settlements.void(id),
+    onSuccess: async (s) => {
+      await invalidateSettlements(queryClient);
+      toast.success(`${s.settlementNumber} voided`);
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not void the settlement')),
+  });
+}
+
+export function usePaySettlement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: PaySettlementPayload }) => api.settlements.pay(id, input),
+    onSuccess: async () => {
+      await invalidateSettlements(queryClient);
+      toast.success('Settlement payment recorded');
+    },
+    onError: (error) => toast.error(describeServer(error, 'Could not record the payment')),
+  });
+}
+
+/** The caller downloads the file; the hook only turns a refusal into a toast. */
+export function useSettlementSif() {
+  return useMutation({
+    mutationFn: (id: string) => api.settlements.sif(id),
+    onError: (error) => toast.error(describeServer(error, 'Could not build the SIF file')),
   });
 }
