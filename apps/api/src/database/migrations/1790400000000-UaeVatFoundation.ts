@@ -132,36 +132,41 @@ export class UaeVatFoundation1790400000000 implements MigrationInterface {
     await queryRunner.query(`SELECT set_config('app.bypass_rls', 'on', true)`);
 
     // One head office per organization, at the organization's address.
-    const place = `regexp_replace(lower(coalesce(nullif(trim(o."region"), ''), o."city")), '[^a-z0-9]', '', 'g')`;
-    const emirateCase =
-      `CASE ${place} ` +
+    // The region wins; when it names a district rather than an emirate
+    // ('Business Bay'), the city is tried next.
+    const emirateCase = (column: string) =>
+      `CASE regexp_replace(lower(${column}), '[^a-z0-9]', '', 'g') ` +
       EMIRATE_KEYS.map(
         ([code, name]) =>
           `WHEN '${name}' THEN '${code}' WHEN '${code.toLowerCase()}' THEN '${code}'`,
       ).join(' ') +
       ` ELSE NULL END`;
+    const headOfficeEmirate = `COALESCE(${emirateCase('o."region"')}, ${emirateCase('o."city"')})`;
     await queryRunner.query(
       `INSERT INTO "branches" ("tenant_id", "name", "address_line1", "address_line2", "city", "emirate", "is_head_office")
-       SELECT o."id", 'Head office', o."address_line1", o."address_line2", o."city", ${emirateCase}, true
+       SELECT o."id", 'Head office', o."address_line1", o."address_line2", o."city", ${headOfficeEmirate}, true
        FROM "organizations" o`,
     );
 
-    // VAT status, as defaultVatStatus decides it: a country other than AE is
-    // outside the UAE; AE with a 15-digit TRN is registered (and the TRN is
-    // stored as digits); anything else keeps the NOT_REGISTERED default.
+    // VAT status, as defaultVatStatus decides it: a country other than the UAE
+    // is outside it; the UAE with a 15-digit TRN is registered (and the TRN is
+    // stored as digits); anything else keeps the NOT_REGISTERED default. The
+    // UAE is 'AE' or, on records typed as free text, one of its legacy names;
+    // the country text itself is left as it is.
+    const uaeNames = `('ae', 'united arab emirates', 'uae', 'u.a.e.')`;
     for (const [table, status, country, taxId] of [
       ['customers', '"vatStatus"', '"country"', '"taxId"'],
       ['suppliers', '"vat_status"', '"country"', '"tax_id"'],
     ] as const) {
-      const code = `upper(nullif(trim(${country}), ''))`;
+      const code = `lower(nullif(trim(${country}), ''))`;
       const trn = `regexp_replace(${taxId}, '[\\s-]', '', 'g')`;
       await queryRunner.query(
         `UPDATE "${table}" SET ${status} = 'OUTSIDE_UAE'
-          WHERE ${code} IS NOT NULL AND ${code} NOT IN ('AE')`,
+          WHERE ${code} IS NOT NULL AND ${code} NOT IN ${uaeNames}`,
       );
       await queryRunner.query(
         `UPDATE "${table}" SET ${status} = 'REGISTERED', ${taxId} = ${trn}
-          WHERE ${code} = 'AE' AND ${trn} ~ '^[0-9]{15}$'`,
+          WHERE ${code} IN ${uaeNames} AND ${trn} ~ '^[0-9]{15}$'`,
       );
     }
 

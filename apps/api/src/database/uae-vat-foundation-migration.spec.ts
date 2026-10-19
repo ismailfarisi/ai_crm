@@ -87,6 +87,26 @@ describe('UaeVatFoundation1790400000000', () => {
     ).toBe(true);
   });
 
+  it('reads legacy UAE country text in the status backfill, leaving the country unchanged', async () => {
+    const sqls = await record('up');
+    for (const table of ['customers', 'suppliers']) {
+      const updates = sqls.filter((sql) => sql.includes(`UPDATE "${table}"`));
+      expect(updates).toHaveLength(2);
+      for (const sql of updates) {
+        expect(sql).toContain(`('ae', 'united arab emirates', 'uae', 'u.a.e.')`);
+        expect(sql).toContain("lower(nullif(trim(\"country\"), ''))");
+        expect(sql).not.toMatch(/SET[^W]*"country"/);
+      }
+    }
+  });
+
+  it('falls back from the region to the city for the head-office emirate', async () => {
+    const sqls = await record('up');
+    const insert = sqls.find((sql) => sql.includes('INSERT INTO "branches"'))!;
+    expect(insert).toContain(`COALESCE(CASE regexp_replace(lower(o."region")`);
+    expect(insert).toContain(`ELSE NULL END, CASE regexp_replace(lower(o."city")`);
+  });
+
   // A UAE purchase reverse charge (or import) is self-assessed at 5%.
   it('lets only a UAE purchase reverse charge or import carry a rate', async () => {
     const up = (await record('up')).join('\n');

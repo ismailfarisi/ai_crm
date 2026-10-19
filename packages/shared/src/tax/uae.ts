@@ -74,12 +74,48 @@ export const VAT_STATUSES = ['REGISTERED', 'NOT_REGISTERED', 'OUTSIDE_UAE'] as c
 export type VatStatus = (typeof VAT_STATUSES)[number];
 
 /**
+ * Country values that mean the UAE. Records typed before the picker existed
+ * hold free text, so the legacy names count too; the migration's backfill
+ * uses the same list.
+ */
+const UAE_COUNTRY_VALUES: ReadonlySet<string> = new Set([
+  'ae',
+  'united arab emirates',
+  'uae',
+  'u.a.e.',
+]);
+
+export function isUaeCountry(country: string | null | undefined): boolean {
+  return country != null && UAE_COUNTRY_VALUES.has(country.trim().toLowerCase());
+}
+
+/**
  * The starting point for a party's status; the user can override it (for
  * instance, mark someone registered before their TRN arrives).
  */
 export function defaultVatStatus(country: string | null, taxId: string | null): VatStatus {
-  if (country && country.toUpperCase() !== 'AE') return 'OUTSIDE_UAE';
-  return country && isValidTrn(taxId) ? 'REGISTERED' : 'NOT_REGISTERED';
+  const trimmed = country?.trim() || null;
+  if (trimmed && !isUaeCountry(trimmed)) return 'OUTSIDE_UAE';
+  return trimmed && isValidTrn(taxId) ? 'REGISTERED' : 'NOT_REGISTERED';
+}
+
+/**
+ * The status to store for a party. An explicit `patch.vatStatus` wins (null
+ * means "not explicitly set", so a form that sends null does not wipe it).
+ * Otherwise the status is re-derived on create, or when the patch touches the
+ * country or tax ID; failing that the current status stands.
+ */
+export function resolveVatStatus(
+  current: { country: string | null; taxId: string | null; vatStatus: VatStatus | null } | null,
+  patch: { country?: string | null; taxId?: string | null; vatStatus?: VatStatus | null },
+): VatStatus {
+  if (patch.vatStatus != null) return patch.vatStatus;
+  const touched = patch.country !== undefined || patch.taxId !== undefined;
+  if (current && !touched && current.vatStatus != null) return current.vatStatus;
+  return defaultVatStatus(
+    patch.country !== undefined ? patch.country : (current?.country ?? null),
+    patch.taxId !== undefined ? patch.taxId : (current?.taxId ?? null),
+  );
 }
 
 /* ------------------------------------------------------------------ *

@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository, type SelectQueryBuilder } from 'typeorm';
 import {
@@ -7,7 +11,10 @@ import {
   type CustomerOverviewDto,
   type PaginatedResult,
   type UpdateCustomerInput,
-  defaultVatStatus,
+  isUaeCountry,
+  isValidTrn,
+  normaliseTrn,
+  resolveVatStatus,
 } from '@saas/shared';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { Customer } from './entities/customer.entity';
@@ -163,9 +170,7 @@ export class CustomersService {
     const customer = this.customers.create({
       ...(input as object),
       tenantId: actor.organizationId,
-      vatStatus:
-        input.vatStatus ??
-        defaultVatStatus(input.country ?? null, input.taxId ?? null),
+      vatStatus: resolveVatStatus(null, input),
     } as Partial<Customer>);
 
     const saved = await this.customers.save(customer);
@@ -178,7 +183,18 @@ export class CustomersService {
     input: UpdateCustomerInput,
   ): Promise<CustomerDto> {
     const customer = await this.findEntity(actor, id);
-    Object.assign(customer, input);
+    const country =
+      input.country !== undefined ? input.country : customer.country;
+    let taxId = input.taxId !== undefined ? input.taxId : customer.taxId;
+    // The schema only sees the patch; here we see the record it lands on.
+    if (isUaeCountry(country) && taxId != null) {
+      if (!isValidTrn(taxId)) {
+        throw new BadRequestException('A UAE TRN is 15 digits');
+      }
+      taxId = normaliseTrn(taxId);
+    }
+    const vatStatus = resolveVatStatus(customer, input);
+    Object.assign(customer, input, { taxId, vatStatus });
     await this.customers.save(customer);
     return this.findOne(actor, customer.id);
   }

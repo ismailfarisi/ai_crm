@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { Customer } from './entities/customer.entity';
 import { CustomersService } from './customers.service';
@@ -132,6 +132,63 @@ describe('CustomersService', () => {
         expect.objectContaining({ tenantId: actor.organizationId }),
       );
       expect(repo.save).toHaveBeenCalled();
+    });
+  });
+
+  describe('VAT status', () => {
+    it('stores REGISTERED for a UAE customer with a TRN when none is given', async () => {
+      const { service, repo } = makeService();
+      await service.create(actor, {
+        companyName: 'Souq LLC',
+        country: 'AE',
+        taxId: '100123456789012',
+        currency: 'AED',
+        paymentTermsDays: 30,
+      } as never);
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ vatStatus: 'REGISTERED' }),
+      );
+    });
+
+    it('keeps the status when only the phone changes, and ignores a null status', async () => {
+      const { service, repo } = makeService();
+      Object.assign(customer, {
+        country: 'AE',
+        taxId: '100123456789012',
+        vatStatus: 'REGISTERED',
+      });
+      try {
+        await service.update(actor, customer.id, {
+          phone: '04 555 0100',
+          vatStatus: null,
+        } as never);
+        expect(repo.save).toHaveBeenCalledWith(
+          expect.objectContaining({ vatStatus: 'REGISTERED' }),
+        );
+      } finally {
+        Object.assign(customer, { country: null, taxId: null, vatStatus: undefined });
+      }
+    });
+
+    it('rejects a malformed TRN against the stored UAE country, and normalises a valid one', async () => {
+      const { service, repo } = makeService();
+      Object.assign(customer, { country: 'United Arab Emirates', taxId: null });
+      try {
+        await expect(
+          service.update(actor, customer.id, { taxId: '12345' } as never),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        await service.update(actor, customer.id, {
+          taxId: '100-1234-5678-9012',
+        } as never);
+        expect(repo.save).toHaveBeenCalledWith(
+          expect.objectContaining({
+            taxId: '100123456789012',
+            vatStatus: 'REGISTERED',
+          }),
+        );
+      } finally {
+        Object.assign(customer, { country: null, taxId: null, vatStatus: undefined });
+      }
     });
   });
 

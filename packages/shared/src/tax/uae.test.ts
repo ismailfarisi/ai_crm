@@ -12,6 +12,8 @@ import {
   nextPeriodStart,
   normaliseTrn,
   periodContaining,
+  resolveVatStatus,
+  isUaeCountry,
   treatmentAllowed,
   treatmentIsReverseCharge,
 } from './uae';
@@ -48,6 +50,45 @@ describe('VAT status and mode', () => {
     expect(isUaeVatMode({ country: 'AE', taxId: '100123456789012', baseCurrency: 'USD' })).toBe(false);
     expect(isUaeVatMode({ country: 'AE', taxId: null, baseCurrency: 'AED' })).toBe(false);
     expect(isUaeVatMode({ country: 'GB', taxId: '100123456789012', baseCurrency: 'AED' })).toBe(false);
+  });
+});
+
+describe('legacy country values', () => {
+  it('trims and recognises UAE free text', () => {
+    for (const c of [' ae ', 'United Arab Emirates', 'UAE', 'u.a.e.']) {
+      expect(isUaeCountry(c)).toBe(true);
+      expect(defaultVatStatus(c, '100123456789012')).toBe('REGISTERED');
+    }
+    expect(isUaeCountry('GB')).toBe(false);
+    expect(defaultVatStatus(' GB ', null)).toBe('OUTSIDE_UAE');
+  });
+
+  it('treats a blank country as none', () => {
+    expect(defaultVatStatus('   ', '100123456789012')).toBe('NOT_REGISTERED');
+    expect(defaultVatStatus('', null)).toBe('NOT_REGISTERED');
+  });
+});
+
+describe('resolveVatStatus', () => {
+  const registered = { country: 'AE', taxId: '100123456789012', vatStatus: 'REGISTERED' as const };
+
+  it('derives on create', () => {
+    expect(resolveVatStatus(null, { country: 'AE', taxId: '100123456789012' })).toBe('REGISTERED');
+    expect(resolveVatStatus(null, {})).toBe('NOT_REGISTERED');
+  });
+
+  it('keeps the current status when country and TRN are untouched', () => {
+    expect(resolveVatStatus(registered, {})).toBe('REGISTERED');
+    expect(resolveVatStatus(registered, { vatStatus: null })).toBe('REGISTERED');
+  });
+
+  it('keeps an explicit override, even without a TRN', () => {
+    expect(resolveVatStatus(null, { country: 'AE', vatStatus: 'REGISTERED' })).toBe('REGISTERED');
+  });
+
+  it('re-derives when the country or TRN changes', () => {
+    expect(resolveVatStatus(registered, { country: 'GB' })).toBe('OUTSIDE_UAE');
+    expect(resolveVatStatus(registered, { taxId: null })).toBe('NOT_REGISTERED');
   });
 });
 

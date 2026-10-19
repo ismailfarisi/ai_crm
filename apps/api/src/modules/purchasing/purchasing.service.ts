@@ -17,7 +17,12 @@ import type {
   SupplierQueryPayload,
   UpdateSupplierPayload,
 } from '@saas/shared';
-import { defaultVatStatus } from '@saas/shared';
+import {
+  isUaeCountry,
+  isValidTrn,
+  normaliseTrn,
+  resolveVatStatus,
+} from '@saas/shared';
 import {
   allocateNextSequenceValue,
   formatSequenceNumber,
@@ -290,8 +295,7 @@ export class PurchasingService {
       this.suppliers.create({
         ...input,
         tenantId,
-        vatStatus:
-          input.vatStatus ?? defaultVatStatus(input.country, input.taxId),
+        vatStatus: resolveVatStatus(null, input),
       }),
     );
   }
@@ -316,7 +320,18 @@ export class PurchasingService {
         );
       }
     }
-    Object.assign(supplier, input);
+    const country =
+      input.country !== undefined ? input.country : supplier.country;
+    let taxId = input.taxId !== undefined ? input.taxId : supplier.taxId;
+    // The schema only sees the patch; here we see the record it lands on.
+    if (isUaeCountry(country) && taxId != null) {
+      if (!isValidTrn(taxId)) {
+        throw new BadRequestException('A UAE TRN is 15 digits');
+      }
+      taxId = normaliseTrn(taxId);
+    }
+    const vatStatus = resolveVatStatus(supplier, input);
+    Object.assign(supplier, input, { taxId, vatStatus });
     return this.suppliers.save(supplier);
   }
 

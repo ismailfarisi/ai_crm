@@ -144,6 +144,45 @@ describe('PurchasingService — suppliers', () => {
     });
   });
 
+  describe('VAT status', () => {
+    it('stores REGISTERED on create for a UAE supplier with a TRN', async () => {
+      const { service } = makeService({ suppliers: [] });
+      const saved = await service.createSupplier(tenantId, {
+        companyName: 'Gulf Paper',
+        country: 'AE',
+        taxId: '100123456789012',
+      } as any);
+      expect(saved.vatStatus).toBe('REGISTERED');
+    });
+
+    it('keeps the status on an unrelated update, even with a null status in the patch', async () => {
+      const { service } = makeService({
+        suppliers: [
+          { ...acme, country: 'AE', taxId: '100123456789012', vatStatus: 'REGISTERED' },
+        ],
+      });
+      const saved = await service.updateSupplier(tenantId, 'sup-1', {
+        leadTimeDays: 3,
+        vatStatus: null,
+      } as any);
+      expect(saved.vatStatus).toBe('REGISTERED');
+    });
+
+    it('validates the TRN against the stored UAE country and normalises it', async () => {
+      const { service } = makeService({
+        suppliers: [{ ...acme, country: 'AE', taxId: null, vatStatus: 'NOT_REGISTERED' }],
+      });
+      await expect(
+        service.updateSupplier(tenantId, 'sup-1', { taxId: '12345' } as any),
+      ).rejects.toThrow('A UAE TRN is 15 digits');
+      const saved = await service.updateSupplier(tenantId, 'sup-1', {
+        taxId: '100 1234 5678 9012',
+      } as any);
+      expect(saved.taxId).toBe('100123456789012');
+      expect(saved.vatStatus).toBe('REGISTERED');
+    });
+  });
+
   describe('deleteSupplier', () => {
     it('refuses while the supplier has an open order', async () => {
       const { service } = makeService({
