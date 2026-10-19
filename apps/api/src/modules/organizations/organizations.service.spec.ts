@@ -124,6 +124,55 @@ describe('OrganizationsService', () => {
     expect(result.name).toBe('Meridian Packaging Co');
   });
 
+  it('leaves every field a patch omits, and the head office, alone', async () => {
+    repo.findOne.mockResolvedValue(
+      organizationFixture({
+        addressLine1: '1400 Cannery Row',
+        city: 'Oakland',
+        country: 'US',
+        taxId: 'US-884120993',
+      }),
+    );
+    branchRepo.findOne.mockResolvedValue({
+      id: 'b1',
+      tenantId,
+      isHeadOffice: true,
+      addressLine1: '1400 Cannery Row',
+      addressLine2: null,
+      city: 'Oakland',
+      emirate: 'DXB',
+    });
+
+    const result = await service.update(
+      tenantId,
+      updateOrganizationSchema.parse({ name: 'Meridian' }),
+    );
+
+    expect(result).toMatchObject({
+      name: 'Meridian',
+      addressLine1: '1400 Cannery Row',
+      city: 'Oakland',
+      country: 'US',
+      taxId: 'US-884120993',
+    });
+    expect(branchRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('checks a TRN sent without the country against the stored country', async () => {
+    repo.findOne.mockResolvedValue(
+      organizationFixture({ country: 'AE', baseCurrency: 'AED' }),
+    );
+    await expect(
+      service.update(tenantId, updateOrganizationSchema.parse({ taxId: '12345' })),
+    ).rejects.toThrow(BadRequestException);
+
+    const result = await service.update(
+      tenantId,
+      updateOrganizationSchema.parse({ taxId: '100-1234-5670-0003' }),
+    );
+    expect(result.taxId).toBe('100123456700003');
+  });
+
   it('rejects a country that is not a two-letter code', () => {
     expect(() =>
       updateOrganizationSchema.parse({ country: 'United States' }),

@@ -8,6 +8,7 @@ import { Repository } from 'typeorm';
 import {
   LOGO_CONTENT_TYPES,
   LOGO_MAX_BYTES,
+  assertUaeTrn,
   isUaeVatMode,
   isValidTrn,
 } from '@saas/shared';
@@ -63,12 +64,26 @@ export class OrganizationsService {
     };
 
     // The schema has already normalised blanks to null and upper-cased the
-    // country, so an explicit key here is a deliberate clear. `name` is the
-    // one field that cannot be cleared, and the schema keeps it optional
-    // rather than nullable so a patch that omits it leaves it alone.
+    // country, so an explicit null here is a deliberate clear, and a key the
+    // patch left out (undefined) leaves the field alone. `name` is the one
+    // field that cannot be cleared.
     for (const [key, value] of Object.entries(dto)) {
+      if (value === undefined) continue;
       if (key === 'name' && (value == null || value === '')) continue;
       (organization as unknown as Record<string, unknown>)[key] = value;
+    }
+
+    // The schema checks a TRN only when the patch carries the country too; a
+    // patch of the TRN alone is checked here against the stored country.
+    if (organization.taxId !== before.taxId) {
+      try {
+        organization.taxId = assertUaeTrn(
+          organization.country,
+          organization.taxId,
+        );
+      } catch (e) {
+        throw new BadRequestException((e as Error).message);
+      }
     }
 
     // A UAE business with a TRN must report in dirhams. Refused here rather

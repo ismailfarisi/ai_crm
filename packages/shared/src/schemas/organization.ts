@@ -33,26 +33,31 @@ const countryCode = z
     message: 'Country must be a two-letter code, such as US or GB',
   });
 
+/**
+ * A PATCH: a key that is left out stays out (`undefined`), so the service
+ * leaves that field alone. Only an explicit `null` or `''` clears it.
+ */
 export const updateOrganizationSchema = z
   .object({
-  name: z.string().trim().min(1, 'Name is required').max(120).optional(),
-  legalName: optionalText(200),
-  taxId: optionalText(60),
-  registrationNumber: optionalText(60),
-  email: z
-    .union([z.literal(''), z.string().trim().email('Enter a valid email address')])
-    .nullish()
-    .transform((v) => (v == null || v === '' ? null : v)),
-  phone: optionalText(40),
-  website: optionalText(200),
-  addressLine1: optionalText(200),
-  addressLine2: optionalText(200),
-  city: optionalText(120),
-  region: optionalText(120),
-  postalCode: optionalText(30),
-  country: countryCode,
-  documentFooter: optionalText(2000),
-})
+    name: z.string().trim().min(1, 'Name is required').max(120).optional(),
+    legalName: optionalText(200).optional(),
+    taxId: optionalText(60).optional(),
+    registrationNumber: optionalText(60).optional(),
+    email: z
+      .union([z.literal(''), z.string().trim().email('Enter a valid email address')])
+      .nullish()
+      .transform((v) => (v == null || v === '' ? null : v))
+      .optional(),
+    phone: optionalText(40).optional(),
+    website: optionalText(200).optional(),
+    addressLine1: optionalText(200).optional(),
+    addressLine2: optionalText(200).optional(),
+    city: optionalText(120).optional(),
+    region: optionalText(120).optional(),
+    postalCode: optionalText(30).optional(),
+    country: countryCode.optional(),
+    documentFooter: optionalText(2000).optional(),
+  })
   .transform(applyUaeTrn);
 
 export type UpdateOrganizationPayload = z.output<typeof updateOrganizationSchema>;

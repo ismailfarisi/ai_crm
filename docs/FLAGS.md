@@ -291,13 +291,6 @@ UAE tax law requires documents to be kept for 5 years (15 years for real
 estate). Nothing deletes tax documents today, but any future deletion or
 archival job, including tenant offboarding, must respect that period.
 
-### Organization PATCH clears omitted fields — open
-
-`updateOrganizationSchema` turns omitted keys into null, so a PATCH carrying
-only `taxId` also clears `country`. The web form sends every field, so it is
-unaffected; API callers must send every field too. This predates the UAE VAT
-work and was found during it.
-
 ---
 
 ## Chat command layer
