@@ -176,6 +176,44 @@ describe('OrganizationsService', () => {
       expect(repo.save).toHaveBeenCalledTimes(1);
       expect(seedUaeStarterCodes).not.toHaveBeenCalled();
     });
+
+    // A tenant already stuck on AE + TRN + USD must still be able to edit the
+    // rest of its profile; only setting the country or TRN is refused.
+    it('saves an address change on a UAE dollar organization with a stored TRN, without seeding', async () => {
+      repo.findOne.mockResolvedValue(
+        organizationFixture({ country: 'AE', baseCurrency: 'USD', taxId: TRN }),
+      );
+      // The profile form sends every field; country and TRN are unchanged.
+      const dto = updateOrganizationSchema.parse({
+        country: 'AE',
+        taxId: TRN,
+        addressLine1: 'Office 12, Bay Square',
+      });
+
+      const result = await service.update(tenantId, dto);
+
+      expect(result.addressLine1).toBe('Office 12, Bay Square');
+      expect(repo.save).toHaveBeenCalledTimes(1);
+      expect(repo.manager.transaction).not.toHaveBeenCalled();
+      expect(seedUaeStarterCodes).not.toHaveBeenCalled();
+    });
+
+    it('refuses a changed TRN on that same organization', async () => {
+      repo.findOne.mockResolvedValue(
+        organizationFixture({ country: 'AE', baseCurrency: 'USD', taxId: TRN }),
+      );
+      const dto = updateOrganizationSchema.parse({
+        country: 'AE',
+        taxId: '100999888777666',
+      });
+
+      await expect(service.update(tenantId, dto)).rejects.toThrow(
+        new BadRequestException(
+          'Your base currency is USD. UAE VAT returns are in AED, and the base currency cannot change once anything is posted.',
+        ),
+      );
+      expect(repo.save).not.toHaveBeenCalled();
+    });
   });
 
   /**

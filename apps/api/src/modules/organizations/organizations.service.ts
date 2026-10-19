@@ -54,6 +54,7 @@ export class OrganizationsService {
   ): Promise<OrganizationProfileDto> {
     const organization = await this.findById(tenantId);
     const wasUaeVatMode = isUaeVatMode(organization);
+    const before = { country: organization.country, taxId: organization.taxId };
 
     // The schema has already normalised blanks to null and upper-cased the
     // country, so an explicit key here is a deliberate clear. `name` is the
@@ -66,8 +67,14 @@ export class OrganizationsService {
 
     // A UAE business with a TRN must report in dirhams. Refused here rather
     // than left as a quiet "not in UAE VAT mode", because the base currency
-    // cannot be changed later once anything is posted.
+    // cannot be changed later once anything is posted. Only when this patch
+    // sets the country or TRN: a tenant already in that state can still edit
+    // the rest of its profile.
+    const touchesRegistration =
+      organization.country !== before.country ||
+      organization.taxId !== before.taxId;
     if (
+      touchesRegistration &&
       organization.country === 'AE' &&
       isValidTrn(organization.taxId) &&
       organization.baseCurrency !== 'AED'
