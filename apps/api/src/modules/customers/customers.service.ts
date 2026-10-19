@@ -7,6 +7,7 @@ import {
   type CustomerOverviewDto,
   type PaginatedResult,
   type UpdateCustomerInput,
+  defaultVatStatus,
 } from '@saas/shared';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { Customer } from './entities/customer.entity';
@@ -162,6 +163,9 @@ export class CustomersService {
     const customer = this.customers.create({
       ...(input as object),
       tenantId: actor.organizationId,
+      vatStatus:
+        input.vatStatus ??
+        defaultVatStatus(input.country ?? null, input.taxId ?? null),
     } as Partial<Customer>);
 
     const saved = await this.customers.save(customer);
@@ -221,6 +225,8 @@ export class CustomersService {
       postalCode: customer.postalCode,
       country: customer.country,
       taxId: customer.taxId,
+      emirate: customer.emirate,
+      vatStatus: customer.vatStatus,
       currency: customer.currency,
       paymentTermsDays: customer.paymentTermsDays,
       notes: customer.notes,

@@ -1,5 +1,6 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
 import { TenantSoftDeletableEntity } from '@/common/entities/base.entity';
+import type { Emirate, VatStatus } from '@saas/shared';
 import { Organization } from '@/modules/organizations/entities/organization.entity';
 
 /**
@@ -48,6 +49,14 @@ export class Customer extends TenantSoftDeletableEntity {
 
   @Column({ type: 'varchar', length: 40, nullable: true })
   taxId: string | null;
+
+  /** UAE customers only; the VAT201 splits sales by emirate. CHECK in the migration. */
+  @Column({ type: 'varchar', length: 3, nullable: true })
+  emirate: Emirate | null;
+
+  /** CHECK in the migration. */
+  @Column({ type: 'varchar', length: 16, default: 'NOT_REGISTERED' })
+  vatStatus: VatStatus;
 
   /** ISO 4217 code; null until the first invoice is raised against this customer. */
   @Column({ type: 'char', length: 3, nullable: true })

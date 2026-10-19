@@ -27,6 +27,8 @@ import { LeaveLedgerEntry } from '../payroll/entities/leave-ledger-entry.entity'
 import { Settlement } from '../payroll/entities/settlement.entity';
 import { Role } from '../rbac/entities/role.entity';
 import { TimesheetEntry } from '../job-costing/entities/timesheet-entry.entity';
+import { Branch } from '../organizations/entities/branch.entity';
+import { VatSettings } from '../tax/entities/vat-settings.entity';
 
 /**
  * The one file to touch when a sprint adds a document type worth auditing.
@@ -71,6 +73,7 @@ export const AUDIT_SUBJECTS: Record<
   },
   settlements: { subject: 'SETTLEMENT', entity: Settlement },
   timesheets: { subject: 'TIMESHEET', entity: TimesheetEntry },
+  branches: { subject: 'BRANCH', entity: Branch },
   'finance/expenses': { subject: 'EXPENSE_CLAIM', entity: ExpenseClaim },
   'finance/accounts': { subject: 'FINANCE_ACCOUNT', entity: FinanceAccount },
   'finance/subscriptions': {
@@ -81,6 +84,7 @@ export const AUDIT_SUBJECTS: Record<
     subject: 'PREPAID_SCHEDULE',
     entity: PrepaidSchedule,
   },
+  'finance/vat-settings': { subject: 'VAT_SETTINGS', entity: VatSettings },
 };
 
 /**

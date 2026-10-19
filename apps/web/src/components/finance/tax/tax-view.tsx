@@ -115,6 +115,7 @@ export function TaxView() {
                       isReverseCharge: code.isReverseCharge,
                       ledgerAccountId: null,
                       isActive: true,
+                      treatment: null,
                     },
                   },
                   { onSuccess: () => setCode({ code: '', name: '', rate: '', kind: code.kind, isReverseCharge: false }) },

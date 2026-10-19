@@ -39,6 +39,7 @@ export const toTaxCodeDto = (row: TaxCode): TaxCodeDto => ({
   rate: row.rate,
   kind: row.kind,
   isReverseCharge: row.isReverseCharge,
+  treatment: row.treatment,
   ledgerAccountId: row.ledgerAccountId,
   isActive: row.isActive,
 });

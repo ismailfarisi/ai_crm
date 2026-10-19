@@ -17,6 +17,7 @@ import type {
   SupplierQueryPayload,
   UpdateSupplierPayload,
 } from '@saas/shared';
+import { defaultVatStatus } from '@saas/shared';
 import {
   allocateNextSequenceValue,
   formatSequenceNumber,
@@ -285,7 +286,14 @@ export class PurchasingService {
         `A supplier named "${input.companyName}" already exists`,
       );
     }
-    return this.suppliers.save(this.suppliers.create({ ...input, tenantId }));
+    return this.suppliers.save(
+      this.suppliers.create({
+        ...input,
+        tenantId,
+        vatStatus:
+          input.vatStatus ?? defaultVatStatus(input.country, input.taxId),
+      }),
+    );
   }
 
   async updateSupplier(

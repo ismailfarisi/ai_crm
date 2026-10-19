@@ -1,5 +1,5 @@
 import { Column, Entity, Index } from 'typeorm';
-import type { TaxKind } from '@saas/shared';
+import type { TaxKind, VatTreatment } from '@saas/shared';
 import { BaseEntity } from '@/common/entities/base.entity';
 import { numericTransformer } from '../../finance/entities/finance-account.entity';
 
@@ -30,6 +30,13 @@ export class TaxCode extends BaseEntity {
 
   @Column({ name: 'is_reverse_charge', type: 'boolean', default: false })
   isReverseCharge: boolean;
+
+  /**
+   * What the VAT201 needs and a rate cannot say: zero-rated, exempt and out
+   * of scope are all 0%. Null outside UAE VAT mode. CHECK in the migration.
+   */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  treatment: VatTreatment | null;
 
   @Column({ name: 'ledger_account_id', type: 'uuid', nullable: true })
   ledgerAccountId: string | null;

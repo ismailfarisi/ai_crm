@@ -7,6 +7,7 @@ import { SupplierBill } from '../payables/entities/supplier-bill.entity';
 import { Supplier } from '../purchasing/entities/supplier.entity';
 import { Invoice } from '../quotes/entities/invoice.entity';
 import { TaxCode, TaxRule } from './entities/tax.entity';
+import { VatSettings } from './entities/vat-settings.entity';
 import { TaxController } from './tax.controller';
 import { TaxService } from './tax.service';
 
@@ -20,6 +21,7 @@ import { TaxService } from './tax.service';
     TypeOrmModule.forFeature([
       TaxCode,
       TaxRule,
+      VatSettings,
       Customer,
       Supplier,
       CatalogItem,
