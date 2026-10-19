@@ -35,7 +35,10 @@ const FREQUENCIES = [
  */
 function suggestedStart(firstPeriodStart: string | undefined, frequency: VatFrequency | undefined): string {
   if (!firstPeriodStart || !frequency || !isIsoDate(firstPeriodStart) || !firstPeriodStart.endsWith('-01')) return '';
-  return nextPeriodStart(firstPeriodStart, frequency, todayInDubai());
+  const next = nextPeriodStart(firstPeriodStart, frequency, todayInDubai());
+  // A first period still in the future tiles backwards from it; VAT cannot
+  // start before the first period, so offer the first period itself.
+  return next < firstPeriodStart ? firstPeriodStart : next;
 }
 
 /** What still stands in the way, with where to fix it. */

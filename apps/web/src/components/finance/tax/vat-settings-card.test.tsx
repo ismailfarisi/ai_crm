@@ -78,6 +78,16 @@ describe('VatSettingsCard', () => {
     expect(valueOf('VAT start date')).toBe('2026-10-01');
   });
 
+  it('suggests the first period itself when it is still in the future', () => {
+    withStatus({ enabled: true, problems: [], settings: null, suggestedVatStartDate: null });
+    render(<VatSettingsCard />);
+
+    fireEvent.change(screen.getByLabelText('Return frequency'), { target: { value: 'MONTHLY' } });
+    // Two months ahead of 19 Oct 2026.
+    fireEvent.change(screen.getByLabelText('First tax period starts'), { target: { value: '2026-12-01' } });
+    expect(valueOf('VAT start date')).toBe('2026-12-01');
+  });
+
   it('shows the saved settings as they are', () => {
     withStatus({ enabled: true, problems: [], settings: saved, suggestedVatStartDate: '2026-11-01' });
     render(<VatSettingsCard />);
