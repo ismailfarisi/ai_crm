@@ -3,6 +3,7 @@ import { Repository } from 'typeorm';
 import { updateOrganizationSchema } from '@saas/shared';
 import { OrganizationsService } from './organizations.service';
 import { Organization } from './entities/organization.entity';
+import { Branch } from './entities/branch.entity';
 import { seedUaeStarterCodes } from '../tax/uae-starter-codes';
 
 jest.mock('../tax/uae-starter-codes', () => ({
@@ -18,6 +19,7 @@ describe('OrganizationsService', () => {
     manager: { transaction: jest.Mock };
   };
   let txManager: { getRepository: jest.Mock };
+  let branchRepo: { findOne: jest.Mock; save: jest.Mock };
   let service: OrganizationsService;
 
   function organizationFixture(
@@ -55,7 +57,13 @@ describe('OrganizationsService', () => {
       save: jest.fn().mockImplementation(async (o) => o),
       manager: { transaction: jest.fn() },
     };
-    txManager = { getRepository: jest.fn(() => repo) };
+    branchRepo = {
+      findOne: jest.fn().mockResolvedValue(null),
+      save: jest.fn().mockImplementation(async (b) => b),
+    };
+    txManager = {
+      getRepository: jest.fn((e: unknown) => (e === Branch ? branchRepo : repo)),
+    };
     repo.manager.transaction.mockImplementation(
       async (fn: (m: unknown) => unknown) => fn(txManager),
     );
@@ -194,7 +202,6 @@ describe('OrganizationsService', () => {
 
       expect(result.addressLine1).toBe('Office 12, Bay Square');
       expect(repo.save).toHaveBeenCalledTimes(1);
-      expect(repo.manager.transaction).not.toHaveBeenCalled();
       expect(seedUaeStarterCodes).not.toHaveBeenCalled();
     });
 
@@ -213,6 +220,90 @@ describe('OrganizationsService', () => {
         ),
       );
       expect(repo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('head office', () => {
+    const headOffice = (over: Partial<Branch> = {}): Branch =>
+      ({
+        id: 'b1',
+        tenantId,
+        name: 'Head office',
+        addressLine1: null,
+        addressLine2: null,
+        city: null,
+        emirate: null,
+        isHeadOffice: true,
+        invoicePrefix: null,
+        isActive: true,
+        ...over,
+      }) as Branch;
+
+    it('follows the company address it was made from, and takes the emirate from it, in the same transaction', async () => {
+      branchRepo.findOne.mockResolvedValue(headOffice());
+      const dto = updateOrganizationSchema.parse({
+        addressLine1: 'Office 12, Bay Square',
+        city: 'Business Bay',
+        region: 'Dubai',
+      });
+
+      await service.update(tenantId, dto);
+
+      expect(repo.manager.transaction).toHaveBeenCalledTimes(1);
+      expect(branchRepo.findOne).toHaveBeenCalledWith({
+        where: { tenantId, isHeadOffice: true },
+      });
+      expect(branchRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'b1',
+          addressLine1: 'Office 12, Bay Square',
+          addressLine2: null,
+          city: 'Business Bay',
+          emirate: 'DXB',
+        }),
+      );
+    });
+
+    it('reads the emirate from the city when the region names none', async () => {
+      branchRepo.findOne.mockResolvedValue(headOffice());
+      await service.update(
+        tenantId,
+        updateOrganizationSchema.parse({ city: 'Sharjah' }),
+      );
+      expect(branchRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ city: 'Sharjah', emirate: 'SHJ' }),
+      );
+    });
+
+    it('leaves a head office with an address of its own, and an emirate already set, alone', async () => {
+      repo.findOne.mockResolvedValue(
+        organizationFixture({ addressLine1: 'Old street', city: 'Dubai' }),
+      );
+      branchRepo.findOne.mockResolvedValue(
+        headOffice({ addressLine1: 'Warehouse 4', city: 'Dubai', emirate: 'AUH' }),
+      );
+
+      await service.update(
+        tenantId,
+        updateOrganizationSchema.parse({ addressLine1: 'New street', region: 'Sharjah' }),
+      );
+
+      expect(branchRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('keeps the address its own but still fills a missing emirate', async () => {
+      branchRepo.findOne.mockResolvedValue(
+        headOffice({ addressLine1: 'Warehouse 4' }),
+      );
+
+      await service.update(
+        tenantId,
+        updateOrganizationSchema.parse({ addressLine1: 'New street', region: 'Ajman' }),
+      );
+
+      expect(branchRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ addressLine1: 'Warehouse 4', emirate: 'AJM' }),
+      );
     });
   });
 

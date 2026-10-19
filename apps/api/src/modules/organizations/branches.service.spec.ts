@@ -169,10 +169,24 @@ describe('BranchesService', () => {
     expect(branchRepo.save).toHaveBeenCalledTimes(1);
     expect(second).toBe(first);
     expect(first).toMatchObject({
-      name: 'Acme',
+      name: 'Head office',
       addressLine1: 'Street 1',
       city: 'Dubai',
+      // Read from the address, as the migration's backfill does.
+      emirate: 'DXB',
     });
+  });
+
+  it('ensureHeadOffice prefers the region for the emirate, and leaves it empty when nothing names one', async () => {
+    const fromRegion = makeService({ org: { region: 'Abu Dhabi', city: 'Dubai' } });
+    await expect(
+      fromRegion.service.ensureHeadOffice(tenantId, fromRegion.manager as never),
+    ).resolves.toMatchObject({ emirate: 'AUH' });
+
+    const unknown = makeService({ org: { region: null, city: 'Business Bay' } });
+    await expect(
+      unknown.service.ensureHeadOffice(tenantId, unknown.manager as never),
+    ).resolves.toMatchObject({ emirate: null });
   });
 
   it('missingEmirates returns active branches without one', async () => {

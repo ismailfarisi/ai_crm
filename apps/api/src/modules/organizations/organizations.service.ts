@@ -19,6 +19,7 @@ import {
   seedUaeStarterCodes,
   uaeBaseCurrencyProblem,
 } from '../tax/uae-starter-codes';
+import { syncHeadOffice } from './branches.service';
 import { Organization } from './entities/organization.entity';
 
 /**
@@ -55,6 +56,11 @@ export class OrganizationsService {
     const organization = await this.findById(tenantId);
     const wasUaeVatMode = isUaeVatMode(organization);
     const before = { country: organization.country, taxId: organization.taxId };
+    const previousAddress = {
+      addressLine1: organization.addressLine1,
+      addressLine2: organization.addressLine2,
+      city: organization.city,
+    };
 
     // The schema has already normalised blanks to null and upper-cased the
     // country, so an explicit key here is a deliberate clear. `name` is the
@@ -84,20 +90,16 @@ export class OrganizationsService {
       );
     }
 
-    if (wasUaeVatMode || !isUaeVatMode(organization)) {
-      return OrganizationsService.toDto(
-        await this.organizations.save(organization),
-      );
-    }
-
-    // Just moved into UAE VAT mode: the starter codes arrive with the change,
-    // or neither does.
+    // The head office follows the profile in the same transaction. On the
+    // move into UAE VAT mode, so do the starter codes: all of it, or none.
+    const enteringUaeVatMode = !wasUaeVatMode && isUaeVatMode(organization);
     const saved = await this.organizations.manager.transaction(
       async (manager) => {
         const row = await manager
           .getRepository(Organization)
           .save(organization);
-        await seedUaeStarterCodes(manager, tenantId);
+        await syncHeadOffice(manager, row, previousAddress);
+        if (enteringUaeVatMode) await seedUaeStarterCodes(manager, tenantId);
         return row;
       },
     );

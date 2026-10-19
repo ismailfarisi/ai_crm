@@ -13,8 +13,10 @@ import {
   Repository,
 } from 'typeorm';
 import {
+  emirateFromText,
   isUaeVatMode,
   type BranchDto,
+  type Emirate,
   type BranchPayload,
 } from '@saas/shared';
 import { Branch } from './entities/branch.entity';
@@ -22,6 +24,62 @@ import { Organization } from './entities/organization.entity';
 
 const POSTGRES_UNIQUE_VIOLATION = '23505';
 const HEAD_OFFICE_INDEX = 'uq_branches_tenant_head_office';
+
+type HeadOfficeAddress = Pick<
+  Organization,
+  'addressLine1' | 'addressLine2' | 'city'
+>;
+
+/**
+ * The emirate an organization's own address names, if any: the region first
+ * (where an emirate is usually typed), then the city ("Dubai").
+ */
+export const emirateOfOrganization = (
+  org: Pick<Organization, 'region' | 'city'>,
+): Emirate | null => emirateFromText(org.region) ?? emirateFromText(org.city);
+
+/**
+ * Keeps the head office in step with the company profile it was made from.
+ *
+ * The address follows the organization only while the branch still holds the
+ * organization's previous address — once someone has given the head office
+ * an address of its own, it is left alone. A missing emirate is filled from
+ * the new address. Runs in the caller's transaction.
+ */
+export async function syncHeadOffice(
+  manager: EntityManager,
+  org: Organization,
+  previous: HeadOfficeAddress,
+): Promise<void> {
+  const repo = manager.getRepository(Branch);
+  const head = await repo.findOne({
+    where: { tenantId: org.id, isHeadOffice: true },
+  });
+  if (!head) return;
+
+  const blank = (v: string | null | undefined) => v || null;
+  const fields = ['addressLine1', 'addressLine2', 'city'] as const;
+  const followsOrganization = fields.every(
+    (f) => blank(head[f]) === blank(previous[f]),
+  );
+  let changed = false;
+  if (followsOrganization) {
+    for (const f of fields) {
+      if (blank(head[f]) !== blank(org[f])) {
+        head[f] = blank(org[f]);
+        changed = true;
+      }
+    }
+  }
+  if (head.emirate === null) {
+    const emirate = emirateOfOrganization(org);
+    if (emirate) {
+      head.emirate = emirate;
+      changed = true;
+    }
+  }
+  if (changed) await repo.save(head);
+}
 
 const toDto = (b: Branch): BranchDto => ({
   id: b.id,
@@ -109,11 +167,11 @@ export class BranchesService {
     return repo.save(
       repo.create({
         tenantId,
-        name: org.name,
+        name: 'Head office',
         addressLine1: org.addressLine1,
         addressLine2: org.addressLine2,
         city: org.city,
-        emirate: null,
+        emirate: emirateOfOrganization(org),
         isHeadOffice: true,
         invoicePrefix: null,
         isActive: true,
