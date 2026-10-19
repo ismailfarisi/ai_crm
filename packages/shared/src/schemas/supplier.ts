@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { countryCodeField } from './country';
+import { applyUaeParty, emirateField, vatStatusField } from './vat';
 
 /**
  * Deliberately the same shape as `customer.ts`, field for field where the two
@@ -46,7 +47,8 @@ const email = z
   .transform((v) => (v == null || v === '' ? null : v))
   .refine((v) => v === null || z.email().safeParse(v).success, 'Enter a valid email address');
 
-export const createSupplierSchema = z.object({
+export const createSupplierSchema = z
+  .object({
   companyName: z.string().trim().min(1, 'Company name is required').max(120),
   contactName: optionalText(120),
   email,
@@ -57,20 +59,24 @@ export const createSupplierSchema = z.object({
   postalCode: optionalText(20),
   country: countryCodeField,
   taxId: optionalText(40),
+  emirate: emirateField,
+  vatStatus: vatStatusField,
   currency: currency.default('USD'),
   paymentTermsDays: days(365).default(30),
   /** Order-to-delivery, used to propose an expected date on a purchase order. */
   leadTimeDays: days(365).default(7),
   isActive: z.boolean().default(true),
   notes: optionalText(5000),
-});
+})
+  .transform(applyUaeParty);
 
 /**
  * No defaults, for the same reason `updateCustomerSchema` has none: on a PATCH
  * they would fire for omitted fields and quietly reset values the caller never
  * mentioned.
  */
-export const updateSupplierSchema = z.object({
+export const updateSupplierSchema = z
+  .object({
   companyName: z.string().trim().min(1, 'Company name is required').max(120).optional(),
   contactName: optionalText(120).optional(),
   email: email.optional(),
@@ -81,12 +87,15 @@ export const updateSupplierSchema = z.object({
   postalCode: optionalText(20).optional(),
   country: countryCodeField.optional(),
   taxId: optionalText(40).optional(),
+  emirate: emirateField.optional(),
+  vatStatus: vatStatusField.optional(),
   currency: currency.optional(),
   paymentTermsDays: days(365).optional(),
   leadTimeDays: days(365).optional(),
   isActive: z.boolean().optional(),
   notes: optionalText(5000).optional(),
-});
+})
+  .transform(applyUaeParty);
 
 export const supplierQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),

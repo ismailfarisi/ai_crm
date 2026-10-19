@@ -8,6 +8,7 @@
  * tax". A code carries both, and a rule picks the code from the customer's
  * address so nobody has to remember which treatment applies.
  */
+import type { VatTreatment } from './uae';
 
 export type TaxKind = 'SALES' | 'PURCHASE';
 
@@ -23,6 +24,8 @@ export interface TaxCodeDto {
   /** Null posts to the chart's tax payable account. */
   ledgerAccountId: string | null;
   isActive: boolean;
+  /** UAE VAT treatment; null for a code outside UAE VAT. */
+  treatment: VatTreatment | null;
 }
 
 export interface TaxRuleDto {

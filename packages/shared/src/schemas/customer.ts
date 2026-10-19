@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { countryCodeField } from './country';
+import { applyUaeParty, emirateField, vatStatusField } from './vat';
 
 /**
  * Optional text fields normalise blank input to `null` so the database holds one
@@ -34,7 +35,8 @@ const paymentTermsDays = z
   .nullish()
   .transform((v) => (v == null || Number.isNaN(v) ? null : v));
 
-export const createCustomerSchema = z.object({
+export const createCustomerSchema = z
+  .object({
   companyName: z.string().trim().min(1, 'Company name is required').max(120),
   contactName: optionalText(120),
   email: z
@@ -52,10 +54,13 @@ export const createCustomerSchema = z.object({
   postalCode: optionalText(20),
   country: countryCodeField,
   taxId: optionalText(40),
+  emirate: emirateField,
+  vatStatus: vatStatusField,
   currency: currency.default('USD'),
   paymentTermsDays: paymentTermsDays.default(30),
   notes: optionalText(5000),
-});
+})
+  .transform(applyUaeParty);
 
 /**
  * The create schema applies `currency`/`paymentTermsDays` defaults; on a PATCH
@@ -63,7 +68,8 @@ export const createCustomerSchema = z.object({
  * values. So the update schema is defined from the same field shapes without
  * the defaults.
  */
-export const updateCustomerSchema = z.object({
+export const updateCustomerSchema = z
+  .object({
   companyName: z.string().trim().min(1, 'Company name is required').max(120).optional(),
   contactName: optionalText(120).optional(),
   email: z
@@ -82,10 +88,13 @@ export const updateCustomerSchema = z.object({
   postalCode: optionalText(20).optional(),
   country: countryCodeField.optional(),
   taxId: optionalText(40).optional(),
+  emirate: emirateField.optional(),
+  vatStatus: vatStatusField.optional(),
   currency: currency.optional(),
   paymentTermsDays: paymentTermsDays.optional(),
   notes: optionalText(5000).optional(),
-});
+})
+  .transform(applyUaeParty);
 
 export const customerQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),

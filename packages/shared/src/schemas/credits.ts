@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { VAT_TREATMENTS, treatmentAllowed } from '../tax/uae';
 
 const optionalText = (max: number) =>
   z
@@ -55,7 +56,8 @@ export const createDeliveryNoteSchema = z.object({
   notes: optionalText(2000),
 });
 
-export const taxCodeSchema = z.object({
+export const taxCodeSchema = z
+  .object({
   code: z.string().trim().min(1).max(20),
   name: z.string().trim().min(1).max(120),
   rate: z.coerce.number().min(0).max(100),
@@ -63,7 +65,15 @@ export const taxCodeSchema = z.object({
   isReverseCharge: z.boolean().default(false),
   ledgerAccountId: z.string().uuid().nullish().transform((v) => v ?? null),
   isActive: z.boolean().default(true),
-});
+  treatment: z
+    .enum(VAT_TREATMENTS)
+    .nullish()
+    .transform((v) => v ?? null),
+})
+  .refine((v) => v.treatment === null || treatmentAllowed(v.kind, v.treatment), {
+    path: ['treatment'],
+    message: 'That VAT treatment is not available for this kind of tax code',
+  });
 
 export const taxRuleSchema = z.object({
   kind: z.enum(['SALES', 'PURCHASE']),

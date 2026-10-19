@@ -44,6 +44,7 @@ export * from './tax/tax';
 export * from './tax/uae';
 export * from './credits/credit-notes';
 export * from './schemas/credits';
+export * from './schemas/vat';
 export * from './finance/currency';
 export * from './billing/subscriptions';
 export * from './schemas/billing';

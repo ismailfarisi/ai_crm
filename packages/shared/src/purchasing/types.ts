@@ -1,3 +1,4 @@
+import type { Emirate, VatStatus } from '../tax/uae';
 import type { MaterialUom } from '../costing/types';
 
 /**
@@ -61,6 +62,8 @@ export interface SupplierDto {
   postalCode: string | null;
   country: string | null;
   taxId: string | null;
+  emirate: Emirate | null;
+  vatStatus: VatStatus;
   currency: string | null;
   paymentTermsDays: number | null;
   leadTimeDays: number | null;

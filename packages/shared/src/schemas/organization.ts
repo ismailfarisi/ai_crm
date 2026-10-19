@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { applyUaeTrn } from './vat';
 
 /**
  * The company behind the documents.
@@ -32,7 +33,8 @@ const countryCode = z
     message: 'Country must be a two-letter code, such as US or GB',
   });
 
-export const updateOrganizationSchema = z.object({
+export const updateOrganizationSchema = z
+  .object({
   name: z.string().trim().min(1, 'Name is required').max(120).optional(),
   legalName: optionalText(200),
   taxId: optionalText(60),
@@ -50,7 +52,8 @@ export const updateOrganizationSchema = z.object({
   postalCode: optionalText(30),
   country: countryCode,
   documentFooter: optionalText(2000),
-});
+})
+  .transform(applyUaeTrn);
 
 export type UpdateOrganizationPayload = z.output<typeof updateOrganizationSchema>;
 export type UpdateOrganizationInputRaw = z.input<typeof updateOrganizationSchema>;

@@ -17,6 +17,7 @@ const code = (id: string, rate: number, over: Partial<TaxCodeDto> = {}): TaxCode
   isReverseCharge: false,
   ledgerAccountId: null,
   isActive: true,
+  treatment: null,
   ...over,
 });
 
