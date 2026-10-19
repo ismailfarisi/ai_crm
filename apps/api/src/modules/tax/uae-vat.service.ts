@@ -9,6 +9,7 @@ import {
   isUaeVatMode,
   isValidTrn,
   nextPeriodStart,
+  todayInDubai,
   type UaeVatStatusDto,
   type VatSettingsDto,
   type VatSettingsPayload,
@@ -21,17 +22,9 @@ import {
   uaeBaseCurrencyProblem,
 } from './uae-starter-codes';
 
-const DUBAI_DATE = new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'Asia/Dubai',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-});
-
-/** Today's date in the UAE as 'YYYY-MM-DD' — the calendar the FTA files by. */
-export function todayInDubai(now: Date = new Date()): string {
-  return DUBAI_DATE.format(now);
-}
+// Lives in shared so the VAT settings card suggests the same date; re-exported
+// for the callers and tests that import it from here.
+export { todayInDubai };
 
 /**
  * A `date` column as 'YYYY-MM-DD'. TypeORM already hands these back as

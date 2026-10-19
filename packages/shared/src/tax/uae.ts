@@ -311,6 +311,21 @@ export function isPeriodStart(anchor: string, freq: VatFrequency, date: string):
   return periodContaining(anchor, freq, date).start === date;
 }
 
+const DUBAI_DATE = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Dubai',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+/**
+ * Today's date in the UAE as 'YYYY-MM-DD' — the calendar the FTA files by.
+ * The one place here that reads a clock, and only through `now`.
+ */
+export function todayInDubai(now: Date = new Date()): string {
+  return DUBAI_DATE.format(now);
+}
+
 /** Start of the period after the one containing `date`, even when `date` is itself a start. */
 export function nextPeriodStart(anchor: string, freq: VatFrequency, date: string): string {
   return firstOfMonth(periodStartIndex(anchor, freq, date) + MONTHS_PER_PERIOD[freq]);
