@@ -142,7 +142,9 @@ export class TaxService {
     id: string,
     payload: TaxCodePayload,
   ): Promise<TaxCodeDto> {
-    const input = await this.assertCodeShape(tenantId, payload);
+    const input = await this.assertCodeShape(tenantId, payload, {
+      update: true,
+    });
     const row = await this.codes.findOne({ where: { id, tenantId } });
     if (!row) throw new NotFoundException('Tax code not found');
     Object.assign(row, input);
@@ -463,10 +465,15 @@ export class TaxService {
    * says whether the code is reverse charge. A purchase reverse charge or
    * import is 5% (the self-assessed tax); a sales reverse charge is a 0%
    * notice. Elsewhere the EU rule stands: reverse charge is 0%.
+   *
+   * An update that deactivates a code skips the UAE checks: a legacy code
+   * whose rate matches no treatment must still be retirable, and an inactive
+   * code is never offered on a document.
    */
   private async assertCodeShape(
     tenantId: string,
     input: TaxCodePayload,
+    { update = false }: { update?: boolean } = {},
   ): Promise<TaxCodePayload> {
     const organization = await this.organizations.findOne({
       where: { id: tenantId },
@@ -479,6 +486,7 @@ export class TaxService {
       }
       return input;
     }
+    if (update && input.isActive === false) return input;
 
     const { kind, treatment } = input;
     if (!treatment) {

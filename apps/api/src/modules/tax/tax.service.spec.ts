@@ -238,6 +238,17 @@ describe('TaxService codes in UAE VAT mode', () => {
     ).resolves.toMatchObject({ isReverseCharge: false });
   });
 
+  it('lets a legacy code that matches no treatment be deactivated, but not kept active', async () => {
+    const { s, codes } = service(uae);
+    codes.findOne.mockResolvedValue({ id: 'old', tenantId, ...input({ kind: 'SALES', rate: 20 }) } as any);
+    await expect(
+      s.updateCode(tenantId, 'old', input({ kind: 'SALES', rate: 20, isActive: false }) as any),
+    ).resolves.toMatchObject({ isActive: false, rate: 20 });
+    await expect(
+      s.updateCode(tenantId, 'old', input({ kind: 'SALES', rate: 20, isActive: true }) as any),
+    ).rejects.toThrow('Choose a VAT treatment for this code');
+  });
+
   it('keeps the EU rule outside UAE VAT mode', async () => {
     const { s } = service({ ...uae, baseCurrency: 'USD' });
     await expect(
