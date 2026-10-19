@@ -3,9 +3,11 @@
 import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import {
+  expectedUaeRate,
   PERMISSIONS,
   treatmentAllowed,
   VAT_TREATMENTS,
+  type TaxCodeDto,
   type TaxKind,
   type TaxReportRow,
   type VatTreatment,
@@ -27,6 +29,24 @@ const TREATMENT_LABELS: Record<VatTreatment, string> = {
   BLOCKED: 'Blocked input tax',
   IMPORT_GOODS: 'Import of goods',
 };
+
+/**
+ * What a code's rate reads as. A UAE purchase reverse charge or import is
+ * self-assessed at its rate, so both facts are shown; an EU (or UAE sales)
+ * reverse charge is a 0% notice and reads as reverse charge alone.
+ */
+function rateLabel(c: TaxCodeDto): string {
+  const selfAssessed = c.kind === 'PURCHASE' && (c.treatment === 'REVERSE_CHARGE' || c.treatment === 'IMPORT_GOODS');
+  if (selfAssessed) return `${c.rate}% reverse charge`;
+  return c.isReverseCharge ? 'reverse charge' : `${c.rate}%`;
+}
+
+/**
+ * Treatments a code can switch to without changing its rate. In UAE mode the
+ * rate follows the treatment, so offering any other would only be refused.
+ */
+const treatmentsFor = (c: TaxCodeDto) =>
+  VAT_TREATMENTS.filter((t) => treatmentAllowed(c.kind, t) && expectedUaeRate(c.kind, t) === Number(c.rate));
 
 const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -116,13 +136,47 @@ export function TaxView() {
                   <span className="font-mono text-ink">{c.code}</span>{' '}
                   <span className="text-ink-muted">{c.name}</span>
                 </span>
-                {uaeMode && (
+                {uaeMode && canManage && (
+                  <select
+                    aria-label={`Treatment for ${c.code} (${c.kind.toLowerCase()})`}
+                    data-column="treatment"
+                    value={c.treatment ?? ''}
+                    disabled={act.isPending}
+                    onChange={(e) => {
+                      const treatment = e.target.value as VatTreatment | '';
+                      if (!treatment) return;
+                      act.mutate({
+                        kind: 'updateCode',
+                        id: c.id,
+                        input: {
+                          code: c.code,
+                          name: c.name,
+                          rate: Number(c.rate),
+                          kind: c.kind,
+                          isReverseCharge: c.isReverseCharge,
+                          ledgerAccountId: c.ledgerAccountId,
+                          isActive: c.isActive,
+                          treatment,
+                        },
+                      });
+                    }}
+                    className="w-36 shrink-0 rounded border border-line bg-surface px-1 py-0.5 text-xs"
+                  >
+                    <option value="">Treatment…</option>
+                    {treatmentsFor(c).map((t) => (
+                      <option key={t} value={t}>
+                        {TREATMENT_LABELS[t]}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {uaeMode && !canManage && (
                   <span className="w-32 shrink-0 text-xs text-ink-muted" data-column="treatment">
                     {c.treatment ? TREATMENT_LABELS[c.treatment] : '—'}
                   </span>
                 )}
                 <span className="shrink-0 text-xs text-ink-subtle">
-                  {c.kind.toLowerCase()} · {c.isReverseCharge ? 'reverse charge' : `${c.rate}%`}
+                  {c.kind.toLowerCase()} · {rateLabel(c)}
                   {!c.isActive && ' · inactive'}
                 </span>
               </li>
@@ -161,22 +215,26 @@ export function TaxView() {
                 <option value="SALES">Sales</option>
                 <option value="PURCHASE">Purchase</option>
               </select>
-              <select aria-label="Treatment" required={uaeMode} value={code.treatment} onChange={(e) => setCode({ ...code, treatment: e.target.value as VatTreatment | '' })} className="rounded border border-line bg-surface px-2 py-1 text-sm sm:col-span-5">
-                <option value="">{uaeMode ? 'Treatment…' : 'Treatment (optional)'}</option>
-                {VAT_TREATMENTS.filter((t) => treatmentAllowed(code.kind, t)).map((t) => (
-                  <option key={t} value={t}>
-                    {TREATMENT_LABELS[t]}
-                  </option>
-                ))}
-              </select>
+              {uaeMode && (
+                <select aria-label="Treatment" required value={code.treatment} onChange={(e) => setCode({ ...code, treatment: e.target.value as VatTreatment | '' })} className="rounded border border-line bg-surface px-2 py-1 text-sm sm:col-span-5">
+                  <option value="">Treatment…</option>
+                  {VAT_TREATMENTS.filter((t) => treatmentAllowed(code.kind, t)).map((t) => (
+                    <option key={t} value={t}>
+                      {TREATMENT_LABELS[t]}
+                    </option>
+                  ))}
+                </select>
+              )}
               <Button type="submit" size="sm" disabled={!code.code.trim() || !code.name.trim() || (!code.isReverseCharge && code.rate === '') || (uaeMode && !code.treatment)} loading={act.isPending}>
                 <Plus className="size-4" />
                 Add
               </Button>
-              <label className="flex items-center gap-2 text-xs text-ink-muted sm:col-span-6">
-                <input type="checkbox" checked={code.isReverseCharge} onChange={(e) => setCode({ ...code, isReverseCharge: e.target.checked })} />
-                Reverse charge — charged at 0%, and the invoice says the customer accounts for the tax
-              </label>
+              {!uaeMode && (
+                <label className="flex items-center gap-2 text-xs text-ink-muted sm:col-span-6">
+                  <input type="checkbox" checked={code.isReverseCharge} onChange={(e) => setCode({ ...code, isReverseCharge: e.target.checked })} />
+                  Reverse charge — charged at 0%, and the invoice says the customer accounts for the tax
+                </label>
+              )}
             </form>
           )}
         </section>
