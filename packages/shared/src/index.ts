@@ -41,6 +41,7 @@ export * from './production/work-orders';
 export * from './production/board-columns';
 export * from './schemas/work-order';
 export * from './tax/tax';
+export * from './tax/uae';
 export * from './credits/credit-notes';
 export * from './schemas/credits';
 export * from './finance/currency';
