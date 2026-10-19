@@ -153,16 +153,17 @@ export class AuthService {
    * in front of a customer that nobody chose and that changes without us; a
    * code of 0% is true everywhere and gives the report something to group by.
    * The real rates are added on Finance → Tax, which the setup checklist
-   * points at.
+   * points at. Marked ZERO_RATED so a UAE tenant can keep using them once
+   * it turns VAT on — UAE VAT mode refuses a code without a treatment.
    */
   private async provisionStarterTaxCodes(
     tenantId: string,
     manager: EntityManager,
   ): Promise<void> {
     await manager.query(
-      `INSERT INTO "tax_codes" ("tenant_id", "code", "name", "rate", "kind", "is_reverse_charge", "is_active")
-       VALUES ($1, 'ZERO', 'No tax (0%)', 0, 'SALES', false, true),
-              ($1, 'ZERO', 'No tax (0%)', 0, 'PURCHASE', false, true)
+      `INSERT INTO "tax_codes" ("tenant_id", "code", "name", "rate", "kind", "is_reverse_charge", "is_active", "treatment")
+       VALUES ($1, 'ZERO', 'No tax (0%)', 0, 'SALES', false, true, 'ZERO_RATED'),
+              ($1, 'ZERO', 'No tax (0%)', 0, 'PURCHASE', false, true, 'ZERO_RATED')
        ON CONFLICT DO NOTHING`,
       [tenantId],
     );

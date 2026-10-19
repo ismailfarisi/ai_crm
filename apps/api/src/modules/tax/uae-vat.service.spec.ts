@@ -183,9 +183,10 @@ describe('UaeVatService.seedStarterCodes', () => {
     await expect(service.seedStarterCodes(tenantId)).resolves.toBeUndefined();
 
     const calls = query.mock.calls as unknown as Array<[string, unknown[]]>;
-    expect(calls).toHaveLength(4);
-    expect(calls[2]).toEqual(calls[0]);
-    expect(calls[3]).toEqual(calls[1]);
+    expect(calls).toHaveLength(6);
+    expect(calls[3]).toEqual(calls[0]);
+    expect(calls[4]).toEqual(calls[1]);
+    expect(calls[5]).toEqual(calls[2]);
 
     const [codesSql, codesParams] = calls[0];
     expect(codesSql).toContain('INSERT INTO "tax_codes"');
@@ -236,13 +237,20 @@ describe('UaeVatService.seedStarterCodes', () => {
       '*',
       'RC',
     ]);
+
+    // The signup ZERO codes, untreated, become zero-rated — and nothing else.
+    const [treatSql, treatParams] = calls[2];
+    expect(treatSql).toContain(`UPDATE "tax_codes" SET "treatment" = 'ZERO_RATED'`);
+    expect(treatSql).toContain(`"code" = 'ZERO' AND "rate" = 0`);
+    expect(treatSql).toContain('"treatment" IS NULL');
+    expect(treatParams).toEqual([tenantId]);
   });
 
   it('uses the manager it is given', async () => {
     const { service, query } = makeService({});
     const other = { query: jest.fn(async () => []) };
     await service.seedStarterCodes(tenantId, other as any);
-    expect(other.query).toHaveBeenCalledTimes(2);
+    expect(other.query).toHaveBeenCalledTimes(3);
     expect(query).not.toHaveBeenCalled();
   });
 });

@@ -23,6 +23,10 @@ export const uaeBaseCurrencyProblem = (baseCurrency: string): string =>
  * code) is left exactly as it is, and so is a rule for the same match. Rules
  * resolve their code by `(kind, code)`, so they point at whichever row holds
  * that code, seeded now or before.
+ *
+ * The one thing it does change: the 0% `ZERO` codes every tenant is given at
+ * signup carry no treatment, and UAE VAT mode refuses to save a code without
+ * one. They are what they say — zero-rated — so they are marked so here.
  */
 export async function seedUaeStarterCodes(
   manager: EntityManager,
@@ -63,5 +67,12 @@ export async function seedUaeStarterCodes(
        ON c."tenant_id" = $1::uuid AND c."kind" = r.kind AND c."code" = r.code
      ON CONFLICT ("tenant_id", "kind", "country", "requires_tax_id") DO NOTHING`,
     ruleParams,
+  );
+
+  await manager.query(
+    `UPDATE "tax_codes" SET "treatment" = 'ZERO_RATED'
+     WHERE "tenant_id" = $1 AND "code" = 'ZERO' AND "rate" = 0
+       AND "is_reverse_charge" = false AND "treatment" IS NULL`,
+    [tenantId],
   );
 }
