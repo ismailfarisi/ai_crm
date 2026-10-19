@@ -1,9 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { CustomerFormDialog } from './customer-form-dialog';
 
+const createCustomer = vi.fn();
 vi.mock('@/hooks/use-customers', () => ({
-  useCreateCustomer: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useCreateCustomer: () => ({ mutateAsync: createCustomer, isPending: false }),
   useUpdateCustomer: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
@@ -50,5 +51,18 @@ describe('CustomerFormDialog VAT fields', () => {
     expect(
       screen.getByText('Invoices to this customer cannot be issued until a TRN is added.'),
     ).toBeDefined();
+  });
+
+  it('sends no emirate after switching from the UAE to another country', async () => {
+    open();
+
+    fireEvent.change(screen.getByLabelText('Country'), { target: { value: 'AE' } });
+    fireEvent.change(screen.getByLabelText('Emirate'), { target: { value: 'DXB' } });
+    fireEvent.change(screen.getByLabelText('Country'), { target: { value: 'GB' } });
+    fireEvent.change(screen.getByLabelText(/Company name/), { target: { value: 'Acme' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create customer' }));
+
+    await waitFor(() => expect(createCustomer).toHaveBeenCalled());
+    expect(createCustomer.mock.calls[0][0]).toMatchObject({ country: 'GB', emirate: null });
   });
 });

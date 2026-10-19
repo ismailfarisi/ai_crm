@@ -111,8 +111,13 @@ export function TaxView() {
                   <span className="font-mono text-ink">{c.code}</span>{' '}
                   <span className="text-ink-muted">{c.name}</span>
                 </span>
+                {uaeMode && (
+                  <span className="w-32 shrink-0 text-xs text-ink-muted" data-column="treatment">
+                    {c.treatment ? TREATMENT_LABELS[c.treatment] : '—'}
+                  </span>
+                )}
                 <span className="shrink-0 text-xs text-ink-subtle">
-                  {c.kind.toLowerCase()} · {c.treatment ? TREATMENT_LABELS[c.treatment] : 'no treatment'} · {c.isReverseCharge ? 'reverse charge' : `${c.rate}%`}
+                  {c.kind.toLowerCase()} · {c.isReverseCharge ? 'reverse charge' : `${c.rate}%`}
                   {!c.isActive && ' · inactive'}
                 </span>
               </li>
@@ -151,11 +156,7 @@ export function TaxView() {
                 <option value="SALES">Sales</option>
                 <option value="PURCHASE">Purchase</option>
               </select>
-              <Button type="submit" size="sm" disabled={!code.code.trim() || !code.name.trim() || (!code.isReverseCharge && code.rate === '') || (uaeMode && !code.treatment)} loading={act.isPending}>
-                <Plus className="size-4" />
-                Add
-              </Button>
-              <select aria-label="Treatment" required={uaeMode} value={code.treatment} onChange={(e) => setCode({ ...code, treatment: e.target.value as VatTreatment | '' })} className="rounded border border-line bg-surface px-2 py-1 text-sm sm:col-span-6">
+              <select aria-label="Treatment" required={uaeMode} value={code.treatment} onChange={(e) => setCode({ ...code, treatment: e.target.value as VatTreatment | '' })} className="rounded border border-line bg-surface px-2 py-1 text-sm sm:col-span-5">
                 <option value="">{uaeMode ? 'Treatment…' : 'Treatment (optional)'}</option>
                 {VAT_TREATMENTS.filter((t) => treatmentAllowed(code.kind, t)).map((t) => (
                   <option key={t} value={t}>
@@ -163,6 +164,10 @@ export function TaxView() {
                   </option>
                 ))}
               </select>
+              <Button type="submit" size="sm" disabled={!code.code.trim() || !code.name.trim() || (!code.isReverseCharge && code.rate === '') || (uaeMode && !code.treatment)} loading={act.isPending}>
+                <Plus className="size-4" />
+                Add
+              </Button>
               <label className="flex items-center gap-2 text-xs text-ink-muted sm:col-span-6">
                 <input type="checkbox" checked={code.isReverseCharge} onChange={(e) => setCode({ ...code, isReverseCharge: e.target.checked })} />
                 Reverse charge — charged at 0%, and the invoice says the customer accounts for the tax
