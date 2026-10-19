@@ -1,15 +1,22 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { z } from 'zod';
-import { createCustomerSchema, type CustomerDto } from '@saas/shared';
+import {
+  createCustomerSchema,
+  defaultVatStatus,
+  EMIRATE_NAMES,
+  EMIRATES,
+  isUaeCountry,
+  type CustomerDto,
+} from '@saas/shared';
 import { useCreateCustomer, useUpdateCustomer } from '@/hooks/use-customers';
 import { ApiError } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
-import { Input, Textarea } from '@/components/ui/field';
+import { Input, Select, Textarea } from '@/components/ui/field';
 import { CountrySelect } from '@/components/ui/country-select';
 
 interface CustomerFormDialogProps {
@@ -38,10 +45,20 @@ const EMPTY: FormValues = {
   postalCode: '',
   country: '',
   taxId: '',
+  emirate: null,
+  vatStatus: 'NOT_REGISTERED',
   currency: 'USD',
   paymentTermsDays: 30,
   notes: '',
 };
+
+const VAT_STATUS_OPTIONS = [
+  { value: 'REGISTERED', label: 'Registered in the UAE' },
+  { value: 'NOT_REGISTERED', label: 'Not registered' },
+  { value: 'OUTSIDE_UAE', label: 'Outside the UAE' },
+];
+
+const EMIRATE_OPTIONS = EMIRATES.map((code) => ({ value: code, label: EMIRATE_NAMES[code] }));
 
 export function CustomerFormDialog({ open, onClose, customer }: CustomerFormDialogProps) {
   const isEditing = Boolean(customer);
@@ -55,15 +72,26 @@ export function CustomerFormDialog({ open, onClose, customer }: CustomerFormDial
     reset,
     setError,
     watch,
+    getValues,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues, unknown, SubmitValues>({
     resolver: zodResolver(createCustomerSchema),
     defaultValues: EMPTY,
   });
 
+  // Once the user picks a status themselves, country and TRN stop steering it.
+  const statusTouched = useRef(false);
+  const followDefaultStatus = () => {
+    if (statusTouched.current) return;
+    const { country, taxId } = getValues();
+    setValue('vatStatus', defaultVatStatus(country ?? null, taxId ?? null));
+  };
+
   // Repopulate whenever the dialog opens for a different customer.
   useEffect(() => {
     if (!open) return;
+    statusTouched.current = false;
 
     reset(
       customer
@@ -78,6 +106,9 @@ export function CustomerFormDialog({ open, onClose, customer }: CustomerFormDial
             postalCode: customer.postalCode ?? '',
             country: customer.country ?? '',
             taxId: customer.taxId ?? '',
+            emirate: customer.emirate,
+            // The stored status, not a recomputed one: opening a record must not change it.
+            vatStatus: customer.vatStatus ?? defaultVatStatus(customer.country, customer.taxId),
             currency: customer.currency ?? 'USD',
             paymentTermsDays: customer.paymentTermsDays ?? 30,
             notes: customer.notes ?? '',
@@ -102,6 +133,10 @@ export function CustomerFormDialog({ open, onClose, customer }: CustomerFormDial
       }
     }
   });
+
+  const isUae = isUaeCountry(watch('country'));
+  const vatStatus = watch('vatStatus');
+  const taxId = watch('taxId');
 
   return (
     <Dialog
@@ -143,9 +178,10 @@ export function CustomerFormDialog({ open, onClose, customer }: CustomerFormDial
         <div className="grid gap-4 sm:grid-cols-2">
           <Input label="Phone" type="tel" error={errors.phone?.message} {...register('phone')} />
           <Input
-            label="Tax ID / VAT"
+            label={isUae ? 'TRN' : 'Tax ID'}
+            hint={isUae ? '15 digits, as on the FTA certificate' : undefined}
             error={errors.taxId?.message}
-            {...register('taxId')}
+            {...register('taxId', { onChange: followDefaultStatus })}
           />
         </div>
 
@@ -177,9 +213,36 @@ export function CustomerFormDialog({ open, onClose, customer }: CustomerFormDial
             value={watch('country') ?? ''}
             hint="Tax rules match on the country code, so this is a list rather than a box."
             error={errors.country?.message}
-            {...register('country')}
+            {...register('country', { onChange: followDefaultStatus })}
           />
         </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Select
+            label="VAT status"
+            options={VAT_STATUS_OPTIONS}
+            error={errors.vatStatus?.message}
+            {...register('vatStatus', {
+              onChange: () => {
+                statusTouched.current = true;
+              },
+            })}
+          />
+          {isUae && (
+            <Select
+              label="Emirate"
+              placeholder="Select an emirate"
+              options={EMIRATE_OPTIONS}
+              error={errors.emirate?.message}
+              {...register('emirate', { setValueAs: (v) => v || null })}
+            />
+          )}
+        </div>
+        {vatStatus === 'REGISTERED' && !(taxId ?? '').trim() && (
+          <p role="alert" className="text-sm text-amber-600 dark:text-amber-400">
+            Invoices to this customer cannot be issued until a TRN is added.
+          </p>
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Input

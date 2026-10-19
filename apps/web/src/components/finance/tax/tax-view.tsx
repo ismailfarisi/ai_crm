@@ -2,12 +2,29 @@
 
 import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import { PERMISSIONS, type TaxKind, type TaxReportRow } from '@saas/shared';
-import { useTaxCodes, useTaxReport, useTaxRules, useTaxSettingsAction } from '@/hooks/use-credits';
+import {
+  PERMISSIONS,
+  treatmentAllowed,
+  VAT_TREATMENTS,
+  type TaxKind,
+  type TaxReportRow,
+  type VatTreatment,
+} from '@saas/shared';
+import { useTaxCodes, useTaxReport, useTaxRules, useTaxSettingsAction, useUaeVatStatus } from '@/hooks/use-credits';
 import { useCan } from '@/lib/session-context';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/primitives';
 import { FinanceNav } from '../finance-nav';
+
+const TREATMENT_LABELS: Record<VatTreatment, string> = {
+  STANDARD: 'Standard rated',
+  ZERO_RATED: 'Zero rated',
+  EXEMPT: 'Exempt',
+  OUT_OF_SCOPE: 'Out of scope',
+  REVERSE_CHARGE: 'Reverse charge',
+  BLOCKED: 'Blocked input tax',
+  IMPORT_GOODS: 'Import of goods',
+};
 
 const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -28,8 +45,10 @@ export function TaxView() {
   const { data: codes = [] } = useTaxCodes();
   const { data: rules = [] } = useTaxRules();
   const act = useTaxSettingsAction();
+  // No tax:read means this fails; that simply reads as "not UAE mode".
+  const uaeMode = useUaeVatStatus().data?.enabled === true;
 
-  const [code, setCode] = useState({ code: '', name: '', rate: '', kind: 'SALES' as TaxKind, isReverseCharge: false });
+  const [code, setCode] = useState({ code: '', name: '', rate: '', kind: 'SALES' as TaxKind, isReverseCharge: false, treatment: '' as VatTreatment | '' });
   const [rule, setRule] = useState({ kind: 'SALES' as TaxKind, country: '', requiresTaxId: false, taxCodeId: '' });
   const start = quarterStart();
   const [from, setFrom] = useState(iso(start));
@@ -93,7 +112,7 @@ export function TaxView() {
                   <span className="text-ink-muted">{c.name}</span>
                 </span>
                 <span className="shrink-0 text-xs text-ink-subtle">
-                  {c.kind.toLowerCase()} · {c.isReverseCharge ? 'reverse charge' : `${c.rate}%`}
+                  {c.kind.toLowerCase()} · {c.treatment ? TREATMENT_LABELS[c.treatment] : 'no treatment'} · {c.isReverseCharge ? 'reverse charge' : `${c.rate}%`}
                   {!c.isActive && ' · inactive'}
                 </span>
               </li>
@@ -115,24 +134,35 @@ export function TaxView() {
                       isReverseCharge: code.isReverseCharge,
                       ledgerAccountId: null,
                       isActive: true,
-                      treatment: null,
+                      treatment: code.treatment || null,
                     },
                   },
-                  { onSuccess: () => setCode({ code: '', name: '', rate: '', kind: code.kind, isReverseCharge: false }) },
+                  { onSuccess: () => setCode({ code: '', name: '', rate: '', kind: code.kind, isReverseCharge: false, treatment: '' }) },
                 );
               }}
             >
               <input aria-label="Code" placeholder="STD" value={code.code} onChange={(e) => setCode({ ...code, code: e.target.value })} className="rounded border border-line bg-surface px-2 py-1 text-sm sm:col-span-1" />
               <input aria-label="Name" placeholder="Standard rate" value={code.name} onChange={(e) => setCode({ ...code, name: e.target.value })} className="rounded border border-line bg-surface px-2 py-1 text-sm sm:col-span-2" />
               <input aria-label="Rate %" placeholder="20" type="number" min={0} max={100} step="any" disabled={code.isReverseCharge} value={code.isReverseCharge ? '0' : code.rate} onChange={(e) => setCode({ ...code, rate: e.target.value })} className="rounded border border-line bg-surface px-2 py-1 text-sm" />
-              <select aria-label="Kind" value={code.kind} onChange={(e) => setCode({ ...code, kind: e.target.value as TaxKind })} className="rounded border border-line bg-surface px-2 py-1 text-sm">
+              <select aria-label="Kind" value={code.kind} onChange={(e) => {
+                const kind = e.target.value as TaxKind;
+                setCode({ ...code, kind, treatment: code.treatment && treatmentAllowed(kind, code.treatment) ? code.treatment : '' });
+              }} className="rounded border border-line bg-surface px-2 py-1 text-sm">
                 <option value="SALES">Sales</option>
                 <option value="PURCHASE">Purchase</option>
               </select>
-              <Button type="submit" size="sm" disabled={!code.code.trim() || !code.name.trim() || (!code.isReverseCharge && code.rate === '')} loading={act.isPending}>
+              <Button type="submit" size="sm" disabled={!code.code.trim() || !code.name.trim() || (!code.isReverseCharge && code.rate === '') || (uaeMode && !code.treatment)} loading={act.isPending}>
                 <Plus className="size-4" />
                 Add
               </Button>
+              <select aria-label="Treatment" required={uaeMode} value={code.treatment} onChange={(e) => setCode({ ...code, treatment: e.target.value as VatTreatment | '' })} className="rounded border border-line bg-surface px-2 py-1 text-sm sm:col-span-6">
+                <option value="">{uaeMode ? 'Treatment…' : 'Treatment (optional)'}</option>
+                {VAT_TREATMENTS.filter((t) => treatmentAllowed(code.kind, t)).map((t) => (
+                  <option key={t} value={t}>
+                    {TREATMENT_LABELS[t]}
+                  </option>
+                ))}
+              </select>
               <label className="flex items-center gap-2 text-xs text-ink-muted sm:col-span-6">
                 <input type="checkbox" checked={code.isReverseCharge} onChange={(e) => setCode({ ...code, isReverseCharge: e.target.checked })} />
                 Reverse charge — charged at 0%, and the invoice says the customer accounts for the tax

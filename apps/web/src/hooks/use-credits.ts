@@ -176,3 +176,8 @@ export function useTaxSettingsAction() {
     onError: (error) => toast.error(describe(error, 'Could not save tax settings')),
   });
 }
+
+/** UAE VAT mode for the organisation. A 403 (no `tax:read`) just reads as "not UAE mode". */
+export function useUaeVatStatus() {
+  return useQuery({ queryKey: queryKeys.uaeVatStatus, queryFn: () => api.tax.vatStatus(), retry: false });
+}

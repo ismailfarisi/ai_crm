@@ -88,7 +88,7 @@ const QUERY_KEYS = [
   'bills', 'bill', 'billMatch', 'billPayments', 'billAging', 'billableLines',
   'salesOrders', 'salesOrder', 'quoteSalesOrder',
   'workOrders', 'workOrder', 'workOrderVariance', 'boardColumns',
-  'creditNotes', 'creditNoteRefunds', 'deliveryNotes', 'taxCodes', 'taxRules', 'taxReport',
+  'creditNotes', 'creditNoteRefunds', 'deliveryNotes', 'taxCodes', 'uaeVatStatus', 'taxRules', 'taxReport',
   'notifications', 'billingPlans', 'subscription', 'currencySettings', 'fxRates', 'financialReport',
   'organization', 'audit', 'auditForSubject', 'attachments',
   'documentTemplates', 'documentTemplate', 'resolveTemplate',
