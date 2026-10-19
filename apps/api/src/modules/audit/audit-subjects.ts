@@ -40,10 +40,18 @@ import { VatSettings } from '../tax/entities/vat-settings.entity';
  * to return. A route whose segment is absent here is still audited — it just
  * records the action without the two snapshots.
  */
-export const AUDIT_SUBJECTS: Record<
-  string,
-  { subject: string; entity: EntityTarget<ObjectLiteral> }
-> = {
+export interface AuditSubject {
+  subject: string;
+  entity: EntityTarget<ObjectLiteral>;
+  /**
+   * One row per tenant, written by a route with no id in it (`PUT
+   * /finance/vat-settings`). The interceptor finds the tenant's row itself so
+   * the change still gets its `before`.
+   */
+  singleton?: boolean;
+}
+
+export const AUDIT_SUBJECTS: Record<string, AuditSubject> = {
   quotes: { subject: 'QUOTE', entity: Quote },
   invoices: { subject: 'INVOICE', entity: Invoice },
   'purchase-orders': { subject: 'PURCHASE_ORDER', entity: PurchaseOrder },
@@ -84,7 +92,11 @@ export const AUDIT_SUBJECTS: Record<
     subject: 'PREPAID_SCHEDULE',
     entity: PrepaidSchedule,
   },
-  'finance/vat-settings': { subject: 'VAT_SETTINGS', entity: VatSettings },
+  'finance/vat-settings': {
+    subject: 'VAT_SETTINGS',
+    entity: VatSettings,
+    singleton: true,
+  },
 };
 
 /**
@@ -132,7 +144,7 @@ export const AUDIT_SKIPPED_PREFIXES = ['audit', 'health', 'notifications'];
 /** Resolves the audit key, mapping and record-id segment for a route. */
 export function auditSubjectFor(segments: string[]): {
   key: string;
-  mapped?: { subject: string; entity: EntityTarget<ObjectLiteral> };
+  mapped?: AuditSubject;
   idSegment: string | undefined;
 } {
   const two = segments.length > 1 ? `${segments[0]}/${segments[1]}` : null;

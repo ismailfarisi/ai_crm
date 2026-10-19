@@ -137,6 +137,7 @@ export const vatSettingsSchema = z
 export type VatSettingsPayload = z.output<typeof vatSettingsSchema>;
 
 export interface VatSettingsDto {
+  id: string;
   periodFrequency: VatFrequency;
   firstPeriodStart: string;
   registrationDate: string;

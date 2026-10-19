@@ -86,7 +86,14 @@ export class AuditInterceptor implements NestInterceptor {
     const subject = auditSubjectFor(segments);
     const mapped = subject.mapped;
     const bodyless = AUDIT_BODYLESS_PREFIXES.includes(head);
-    const paramId = idFrom(req.params?.id) ?? idFrom(subject.idSegment);
+    const paramId =
+      idFrom(req.params?.id) ??
+      idFrom(subject.idSegment) ??
+      (mapped?.singleton && !bodyless
+        ? idFrom(
+            await this.audit.singletonId(mapped.entity, user.organizationId),
+          )
+        : null);
     const before =
       mapped && paramId && !bodyless
         ? await this.audit.snapshot(mapped.entity, user.organizationId, paramId)

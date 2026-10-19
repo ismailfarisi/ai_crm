@@ -100,6 +100,7 @@ describe('UaeVatService.status', () => {
     const status = await service.status(tenantId);
     expect(status.problems).toEqual([]);
     expect(status.settings).toEqual({
+      id: 's1',
       periodFrequency: 'QUARTERLY',
       firstPeriodStart: '2026-01-01',
       registrationDate: '2025-12-15',
@@ -164,10 +165,12 @@ describe('UaeVatService settings', () => {
 
   it('updates the existing row rather than adding a second', async () => {
     const { service, settings } = makeService({ settings: { ...settingsRow } });
-    await service.saveSettings(tenantId, {
+    const dto = await service.saveSettings(tenantId, {
       ...input,
       periodFrequency: 'MONTHLY',
     });
+    // The audit trail files the change under this id.
+    expect(dto.id).toBe('s1');
     expect(settings.create).not.toHaveBeenCalled();
     expect(settings.save).toHaveBeenCalledWith(
       expect.objectContaining({ id: 's1', periodFrequency: 'MONTHLY' }),

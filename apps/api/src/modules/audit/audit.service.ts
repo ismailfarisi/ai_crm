@@ -168,6 +168,25 @@ export class AuditService {
   }
 
   /**
+   * The id of a tenant's only row of a one-per-tenant entity, or null when it
+   * has none yet. Never throws: like `snapshot`, a miss just means no `before`.
+   */
+  async singletonId(
+    entity: EntityTarget<ObjectLiteral>,
+    tenantId: string,
+    manager: EntityManager = this.dataSource.manager,
+  ): Promise<string | null> {
+    try {
+      const row: ObjectLiteral | null = await manager
+        .getRepository(entity)
+        .findOne({ where: { tenantId } });
+      return typeof row?.id === 'string' ? row.id : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Photographs a record by id, flattened for storage.
    *
    * Relations are not loaded. A quote's line items would multiply the size of

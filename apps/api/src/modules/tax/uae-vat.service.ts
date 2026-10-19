@@ -45,6 +45,7 @@ function isoDate(value: string | Date): string {
 }
 
 const toVatSettingsDto = (row: VatSettings): VatSettingsDto => ({
+  id: row.id,
   periodFrequency: row.periodFrequency,
   firstPeriodStart: isoDate(row.firstPeriodStart),
   registrationDate: isoDate(row.registrationDate),

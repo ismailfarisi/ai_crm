@@ -2,6 +2,7 @@ import { of, throwError, lastValueFrom } from 'rxjs';
 import type { CallHandler, ExecutionContext } from '@nestjs/common';
 import { AuditInterceptor } from './audit.interceptor';
 import type { AuditService } from './audit.service';
+import { VatSettings } from '../tax/entities/vat-settings.entity';
 
 const user = {
   id: 'u1',
@@ -225,5 +226,52 @@ describe('AuditInterceptor', () => {
     audit.snapshot.mockResolvedValue(null);
     await run(contextFor('POST', '/api/v1/quotes', { body: { title: 'Boxes', qty: 3 } }));
     expect(audit.record.mock.calls[0][0].after).toEqual({ title: 'Boxes', qty: 3 });
+  });
+
+  describe('one-per-tenant settings (PUT /finance/vat-settings)', () => {
+    const SETTINGS_ID = '0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d';
+
+    it("photographs the tenant's existing row either side of the save", async () => {
+      const singletonId = jest.fn().mockResolvedValue(SETTINGS_ID);
+      (audit as unknown as { singletonId: jest.Mock }).singletonId = singletonId;
+      audit.snapshot
+        .mockResolvedValueOnce({ periodFrequency: 'QUARTERLY' })
+        .mockResolvedValueOnce({ periodFrequency: 'MONTHLY' });
+
+      await run(
+        contextFor('PUT', '/api/v1/finance/vat-settings', { body: { periodFrequency: 'MONTHLY' } }),
+        handlerReturning({ id: SETTINGS_ID }),
+      );
+
+      expect(singletonId).toHaveBeenCalledWith(VatSettings, 'org1');
+      expect(audit.snapshot).toHaveBeenNthCalledWith(1, VatSettings, 'org1', SETTINGS_ID);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subjectType: 'VAT_SETTINGS',
+          subjectId: SETTINGS_ID,
+          before: { periodFrequency: 'QUARTERLY' },
+          after: { periodFrequency: 'MONTHLY' },
+        }),
+      );
+    });
+
+    it('records the first save with no before, and the new row as after', async () => {
+      (audit as unknown as { singletonId: jest.Mock }).singletonId = jest.fn().mockResolvedValue(null);
+      audit.snapshot.mockResolvedValueOnce({ periodFrequency: 'QUARTERLY' });
+
+      await run(
+        contextFor('PUT', '/api/v1/finance/vat-settings'),
+        handlerReturning({ id: SETTINGS_ID }),
+      );
+
+      expect(audit.snapshot).toHaveBeenCalledTimes(1);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subjectId: SETTINGS_ID,
+          before: null,
+          after: { periodFrequency: 'QUARTERLY' },
+        }),
+      );
+    });
   });
 });
