@@ -34,6 +34,8 @@ export interface AiUsageLogDto {
   model: string;
   inputTokens: number;
   outputTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
   estimatedCostUsd: number;
   success: boolean;
   errorMessage: string | null;

@@ -4,6 +4,7 @@ import type {
   AssistantTurnStatus,
   AuditChannel,
 } from '@saas/shared';
+import type { AiRawAssistantContent } from '../../../ai/interfaces/ai-provider.interface';
 
 export interface ToolAuditProvenance {
   channel: AuditChannel;
@@ -77,19 +78,42 @@ export interface ToolExecutionResult {
   errorMessage?: string;
 }
 
+/** An assistant turn exactly as the provider returned it. */
+export type RawAssistantTurn = AiRawAssistantContent;
+
+/**
+ * The agent's working history, in the order the model saw it. Every tool
+ * call on an assistant entry is answered by a `tool` entry with its id —
+ * providers reject a call left without a result.
+ */
+export type AgentHistoryEntry =
+  | { role: 'user'; content: string }
+  | {
+      role: 'assistant';
+      content: string;
+      toolCalls?: Array<{ id: string; name: string; args: Record<string, unknown> }>;
+      /** Replayed verbatim to the same provider, so its thinking blocks survive. */
+      raw?: RawAssistantTurn;
+    }
+  | { role: 'tool'; toolCallId: string; toolName: string; content: string; isError?: boolean };
+
 export interface ReActTurnInput {
   organizationId: string;
   userId: string;
   prompt: string;
-  conversationHistory: Array<{ role: 'user' | 'assistant' | 'tool'; content: string }>;
+  conversationHistory: AgentHistoryEntry[];
   availableTools: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>;
 }
 
 export interface ReActTurnOutput {
   thought: string;
   toolCalls?: ToolCallSpec[];
+  /** Calls naming a tool that is not on offer; answered with an error, never run. */
+  invalidToolCalls?: Array<{ id: string; name: string }>;
   finalAnswer?: string;
   model?: string;
+  /** The planner's turn as the provider returned it, to record in history. */
+  raw?: RawAssistantTurn;
 }
 
 export interface AgentReactActivities {

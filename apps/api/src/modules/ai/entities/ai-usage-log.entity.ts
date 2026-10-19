@@ -33,6 +33,14 @@ export class AiUsageLog {
   @Column({ type: 'int', default: 0 })
   outputTokens: number;
 
+  /** Prompt tokens served from the provider's cache, billed at a fraction of `inputTokens`. */
+  @Column({ type: 'int', default: 0 })
+  cacheReadInputTokens: number;
+
+  /** Prompt tokens written to the provider's cache (Anthropic bills these above the input rate). */
+  @Column({ type: 'int', default: 0 })
+  cacheCreationInputTokens: number;
+
   @Column({
     type: 'numeric',
     precision: 12,

@@ -2,6 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { ApplicationFailure, Context } from '@temporalio/activity';
 import { PERMISSIONS, type Permission } from '@saas/shared';
 import { AiService } from '@/modules/ai/ai.service';
+import {
+  AiProviderError,
+  type AiMessage,
+  type AiToolResultContent,
+} from '@/modules/ai/interfaces/ai-provider.interface';
+import { AiBudgetExceededException } from '@/modules/ai/exceptions/ai-budget-exceeded.exception';
 import { AuditService } from '@/modules/audit/audit.service';
 import { TenantContextService } from '@/common/context/tenant-context.service';
 import { CustomObjectToolFactoryService } from '@/modules/custom-objects/services/custom-object-tool-factory.service';
@@ -17,6 +23,7 @@ import type { ChannelSkill, SkillContext } from '../../skills/skill.types';
 import {
   APPROVED_ACTION_CHANGED,
   type AgentActivityCtx,
+  type AgentHistoryEntry,
   type AgentReactActivities,
   type ToolCallSpec,
   type ToolExecutionResult,
@@ -30,6 +37,79 @@ const currentWorkflowId = (): string | null => {
     return null;
   }
 };
+
+/** Stable across rounds and turns, so it sits in the cached prefix. */
+const AGENT_SYSTEM_PROMPT = [
+  "You are the assistant inside Kerf, a business management app. Work toward the user's goal using only the tools provided.",
+  'Tools that change data may wait for the user to approve them. A tool result is the only confirmation that an action happened: never say an action succeeded until a tool result confirms it.',
+  'If a tool returns an error or a question, explain it to the user or try another way.',
+  'When you have what you need, or no tool fits, reply to the user in plain text without calling a tool.',
+].join('\n');
+
+const REFUSAL_ANSWER = "I can't help with that request.";
+const NO_ANSWER = "I couldn't come up with an answer to that.";
+
+/**
+ * A rejected request (bad schema, refusal, cut-off output) or an exhausted
+ * budget fails the same way on every attempt, so Temporal must not retry it:
+ * each retry is another paid request.
+ */
+export function toPlannerFailure(err: unknown): unknown {
+  if (err instanceof AiProviderError && !err.retryable) {
+    return ApplicationFailure.nonRetryable(err.message, 'AiProviderError');
+  }
+  if (err instanceof AiBudgetExceededException) {
+    return ApplicationFailure.nonRetryable(err.message, 'AiBudgetExceeded');
+  }
+  return err;
+}
+
+/**
+ * The agent's history as provider messages: each assistant tool call is
+ * followed by one user message holding all of that round's results.
+ */
+export function toAiMessages(history: AgentHistoryEntry[]): AiMessage[] {
+  const messages: AiMessage[] = [];
+  for (const entry of history) {
+    if (entry.role === 'tool') {
+      const block: AiToolResultContent = {
+        type: 'tool_result',
+        toolUseId: entry.toolCallId,
+        content: entry.content,
+        ...(entry.isError ? { isError: true } : {}),
+      };
+      const last = messages[messages.length - 1];
+      if (
+        last?.role === 'user' &&
+        Array.isArray(last.content) &&
+        last.content.every((b) => b.type === 'tool_result')
+      ) {
+        last.content.push(block);
+      } else {
+        messages.push({ role: 'user', content: [block] });
+      }
+    } else if (entry.role === 'assistant' && entry.toolCalls?.length) {
+      messages.push({
+        role: 'assistant',
+        content: [
+          ...(entry.content ? [{ type: 'text' as const, text: entry.content }] : []),
+          ...entry.toolCalls.map((call) => ({
+            type: 'tool_use' as const,
+            id: call.id,
+            name: call.name,
+            input: call.args,
+          })),
+        ],
+        ...(entry.raw ? { raw: entry.raw } : {}),
+      });
+    } else {
+      messages.push({ role: entry.role, content: entry.content });
+    }
+  }
+  // A conversation must open with the user; a trimmed history may not.
+  while (messages[0]?.role === 'assistant') messages.shift();
+  return messages;
+}
 
 const skillDomain = (name: string): string => {
   if (name.startsWith('work_order.')) return 'PRODUCTION';
@@ -184,85 +264,65 @@ export function createAgentReactActivities(deps: {
 
     async planReActTurn(input) {
       return deps.tenantContext.runWithTenant(input.organizationId, async () => {
-        const toolNames = input.availableTools.map((tool) => tool.name);
-        const schema = {
-          type: 'object',
-          properties: {
-            thought: { type: 'string' },
-            finalAnswer: { type: 'string' },
-            toolCalls: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  id: { type: 'string' },
-                  name: {
-                    type: 'string',
-                    ...(toolNames.length ? { enum: toolNames } : {}),
-                  },
-                  args: { type: 'object', additionalProperties: true },
-                },
-                required: ['name', 'args'],
-                additionalProperties: false,
-              },
+        const result = await deps.aiService
+          .generateWithTools(
+            'automations.ai_agent',
+            {
+              system: AGENT_SYSTEM_PROMPT,
+              tools: input.availableTools,
+              messages: toAiMessages(input.conversationHistory),
+              // Every round resends the same tools, instructions and history.
+              cache: true,
             },
-          },
-          required: ['thought'],
-          additionalProperties: false,
-        };
-        const tools = input.availableTools
-          .map(
-            (tool) =>
-              `${tool.name}: ${tool.description}\n${JSON.stringify(tool.inputSchema)}`,
+            {
+              organizationId: input.organizationId,
+              ...(input.userId ? { userId: input.userId } : {}),
+            },
           )
-          .join('\n\n');
-        const result = await deps.aiService.generateStructured<{
-          thought?: string;
-          finalAnswer?: string;
-          toolCalls?: Array<{
-            id?: string;
-            name: string;
-            args: Record<string, unknown>;
-          }>;
-        }>(
-          'automations.ai_agent',
-          {
-            messages: [
-              {
-                role: 'user',
-                content:
-                  `Goal: ${input.prompt}\n\nConversation:\n${JSON.stringify(input.conversationHistory)}\n\n` +
-                  `Authorized tools:\n${tools || '(none)'}\n\n` +
-                  'Use only the listed tools. If none are needed or available, provide a final answer. Do not claim an action succeeded until a tool result confirms it.',
-              },
-            ],
-            jsonSchema: schema,
-            schemaName: 'agent_react_turn',
-          },
-          {
-            organizationId: input.organizationId,
-            ...(input.userId ? { userId: input.userId } : {}),
-          },
-        );
-        const knownNames = new Set(toolNames);
-        // Tool-call ids key approvals and event rows, so they must be unique
-        // within a turn. Assigned here, inside the activity, so the workflow
-        // sees them as recorded results.
-        const seenIds = new Set<string>();
-        const toolCalls = (result.data.toolCalls ?? [])
-          .filter((call) => knownNames.has(call.name))
-          .map((call) => {
-            const id = call.id && !seenIds.has(call.id) ? call.id : randomUUID();
-            seenIds.add(id);
-            return { id, name: call.name, args: call.args ?? {} };
+          .catch((err: unknown) => {
+            throw toPlannerFailure(err);
           });
+        if (result.stopReason === 'refusal') {
+          return { thought: '', model: result.model, finalAnswer: REFUSAL_ANSWER };
+        }
+
+        const knownNames = new Set(input.availableTools.map((tool) => tool.name));
+        // Tool-call ids key approvals, event rows and tool results, so they
+        // must be unique within a turn. Assigned here, inside the activity,
+        // so the workflow sees them as recorded results.
+        const seenIds = new Set<string>();
+        let idsRewritten = false;
+        const toolCalls: ToolCallSpec[] = [];
+        const invalidToolCalls: Array<{ id: string; name: string }> = [];
+        for (const call of result.toolCalls) {
+          let id = call.id;
+          if (!id || seenIds.has(id)) {
+            id = randomUUID();
+            idsRewritten = true;
+          }
+          seenIds.add(id);
+          if (knownNames.has(call.name)) {
+            toolCalls.push({ id, name: call.name, args: call.input ?? {} });
+          } else {
+            invalidToolCalls.push({ id, name: call.name });
+          }
+        }
+
+        if (!toolCalls.length && !invalidToolCalls.length) {
+          return {
+            thought: '',
+            model: result.model,
+            finalAnswer: result.text || NO_ANSWER,
+          };
+        }
         return {
-          thought: result.data.thought ?? '',
+          thought: result.text,
           model: result.model,
-          ...(typeof result.data.finalAnswer === 'string'
-            ? { finalAnswer: result.data.finalAnswer }
-            : {}),
           ...(toolCalls.length ? { toolCalls } : {}),
+          ...(invalidToolCalls.length ? { invalidToolCalls } : {}),
+          // A rewritten id no longer matches the provider's own record of
+          // the turn, so the turn is rebuilt from the calls instead.
+          ...(idsRewritten ? {} : { raw: result.raw }),
         };
       });
     },

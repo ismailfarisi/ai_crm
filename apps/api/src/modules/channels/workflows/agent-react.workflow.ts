@@ -8,15 +8,28 @@ import {
 } from '@temporalio/workflow';
 import { APPROVED_ACTION_CHANGED } from './activities/agent-react.activities';
 import type {
+  AgentHistoryEntry,
   AgentReactActivities,
   AssistantEventInput,
   ToolAuditProvenance,
   ToolCallSpec,
-  ToolExecutionResult,
 } from './activities/agent-react.activities';
 
 const activities = proxyActivities<AgentReactActivities>({
   startToCloseTimeout: '45 seconds',
+  retry: {
+    maximumAttempts: 3,
+  },
+});
+/**
+ * The planner runs a thinking model with a 16k output cap, so one round can
+ * take well over 45 seconds. A timed-out attempt is still billed, and the
+ * activity marks deterministic provider failures non-retryable itself.
+ */
+const plannerActivities = proxyActivities<
+  Pick<AgentReactActivities, 'planReActTurn'>
+>({
+  startToCloseTimeout: '3 minutes',
   retry: {
     maximumAttempts: 3,
   },
@@ -213,7 +226,7 @@ async function runAgentLoop(
     }
   });
 
-  const history: Array<{ role: 'user' | 'assistant' | 'tool'; content: string }> = [
+  const history: AgentHistoryEntry[] = [
     ...(input.history ?? []),
     { role: 'user', content: goal },
   ];
@@ -227,7 +240,7 @@ async function runAgentLoop(
       ...surface,
     });
 
-    const turn = await activities.planReActTurn({
+    const turn = await plannerActivities.planReActTurn({
       organizationId: input.organizationId,
       userId: input.userId,
       prompt: goal,
@@ -247,6 +260,28 @@ async function runAgentLoop(
       finalResponse = turn.finalAnswer;
       isDone = true;
       break;
+    }
+
+    const invalidCalls = turn.invalidToolCalls ?? [];
+    if (turn.toolCalls?.length || invalidCalls.length) {
+      history.push({
+        role: 'assistant',
+        content: turn.thought,
+        toolCalls: [
+          ...(turn.toolCalls ?? []).map(({ id, name, args }) => ({ id, name, args })),
+          ...invalidCalls.map(({ id, name }) => ({ id, name, args: {} })),
+        ],
+        ...(turn.raw ? { raw: turn.raw } : {}),
+      });
+      for (const call of invalidCalls) {
+        history.push({
+          role: 'tool',
+          toolCallId: call.id,
+          toolName: call.name,
+          content: JSON.stringify({ error: `Tool '${call.name}' is not available` }),
+          isError: true,
+        });
+      }
     }
 
     if (turn.toolCalls && turn.toolCalls.length > 0) {
@@ -343,7 +378,12 @@ async function runAgentLoop(
             toolName: tool.name,
             payload: commit,
           });
-          history.push({ role: 'tool', content: JSON.stringify(commit) });
+          history.push({
+            role: 'tool',
+            toolCallId: tool.id,
+            toolName: tool.name,
+            content: JSON.stringify(commit),
+          });
         } else {
           const output = execution.output ?? { error: execution.errorMessage };
           const reply =
@@ -359,7 +399,13 @@ async function runAgentLoop(
             toolName: tool.name,
             payload: output,
           });
-          history.push({ role: 'tool', content: JSON.stringify(output) });
+          history.push({
+            role: 'tool',
+            toolCallId: tool.id,
+            toolName: tool.name,
+            content: JSON.stringify(output),
+            ...(typeof output.error === 'string' ? { isError: true } : {}),
+          });
         }
       }
     }
