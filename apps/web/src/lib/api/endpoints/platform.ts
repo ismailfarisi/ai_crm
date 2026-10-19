@@ -6,6 +6,8 @@ import type {
   AuditLogDto,
   AuditPageDto,
   BalanceSheetDto,
+  BranchDto,
+  BranchPayload,
   CurrencySettingsDto,
   FxRateDto,
   LabourUtilisationDto,
@@ -55,6 +57,12 @@ export const platformEndpoints = {
       apiUpload<OrganizationProfileDto>('/organization/logo', file),
     clearLogo: () =>
       apiFetch<OrganizationProfileDto>('/organization/logo', { method: 'DELETE' }),
+  },
+  branches: {
+    list: () => apiFetch<BranchDto[]>('/branches'),
+    create: (payload: BranchPayload) => apiFetch<BranchDto>('/branches', { method: 'POST', body: payload }),
+    update: (id: string, payload: BranchPayload) =>
+      apiFetch<BranchDto>(`/branches/${id}`, { method: 'PUT', body: payload }),
   },
   audit: {
     list: (filters: AuditFilters) => apiFetch<AuditPageDto>('/audit', { query: filters }),
@@ -111,6 +119,7 @@ export const platformEndpoints = {
 
 export const platformKeys = {
   organization: ['organization'] as const,
+  branches: ['branches'] as const,
   audit: (filters: AuditFilters) => ['audit', filters] as const,
   auditForSubject: (subjectType: string, subjectId: string) =>
     ['audit', subjectType, subjectId] as const,

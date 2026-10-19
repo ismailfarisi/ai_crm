@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import type { TaxCodePayload, TaxRulePayload } from '@saas/shared';
+import type { TaxCodePayload, TaxRulePayload, VatSettingsPayload } from '@saas/shared';
 import { api, queryKeys } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/client';
 
@@ -174,5 +174,22 @@ export function useTaxSettingsAction() {
       toast.success('Tax settings saved');
     },
     onError: (error) => toast.error(describe(error, 'Could not save tax settings')),
+  });
+}
+
+/** UAE VAT mode for the organisation. A 403 (no `tax:read`) just reads as "not UAE mode". */
+export function useUaeVatStatus() {
+  return useQuery({ queryKey: queryKeys.uaeVatStatus, queryFn: () => api.tax.vatStatus(), retry: false });
+}
+
+/** Errors are left to the caller, which shows the server's message inline. */
+export function useSaveVatSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: VatSettingsPayload) => api.tax.saveVatSettings(input),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.uaeVatStatus });
+      toast.success('VAT settings saved');
+    },
   });
 }

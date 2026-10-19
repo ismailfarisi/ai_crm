@@ -15,6 +15,7 @@ import {
   TRIAL_DAYS,
 } from '@saas/shared';
 import { Organization } from '@/modules/organizations/entities/organization.entity';
+import { BranchesService } from '@/modules/organizations/branches.service';
 import { AuditService } from '../audit/audit.service';
 import { LedgerService } from '@/modules/finance/ledger.service';
 import { InvitationsService } from '@/modules/invitations/invitations.service';
@@ -41,6 +42,7 @@ export class AuthService {
     private readonly dataSource: DataSource,
     private readonly invitations: InvitationsService,
     private readonly ledger: LedgerService,
+    private readonly branches: BranchesService,
     private readonly audit: AuditService,
     private readonly tenantContext: TenantContextService,
   ) {}
@@ -76,7 +78,8 @@ export class AuthService {
             // Both asked for at sign-up. The base currency can never be changed
             // once anything has been posted, and a country is what tax rules
             // match on, so neither is a decision to make on someone's behalf.
-            baseCurrency: input.baseCurrency ?? 'USD',
+            baseCurrency:
+              input.baseCurrency ?? (input.country === 'AE' ? 'AED' : 'USD'),
             country: input.country ?? null,
           }),
         );
@@ -90,6 +93,7 @@ export class AuthService {
         // of accounts has nowhere to post, and every later journal write would
         // fail on a lookup instead of at signup.
         await this.ledger.provisionChartOfAccounts(organization.id, manager);
+        await this.branches.ensureHeadOffice(organization.id, manager);
         // A new organization starts on a trial. Inserted here rather than
         // lazily so the trial clock starts at signup, not at first billing visit.
         await manager.query(
@@ -149,16 +153,17 @@ export class AuthService {
    * in front of a customer that nobody chose and that changes without us; a
    * code of 0% is true everywhere and gives the report something to group by.
    * The real rates are added on Finance → Tax, which the setup checklist
-   * points at.
+   * points at. Marked ZERO_RATED so a UAE tenant can keep using them once
+   * it turns VAT on — UAE VAT mode refuses a code without a treatment.
    */
   private async provisionStarterTaxCodes(
     tenantId: string,
     manager: EntityManager,
   ): Promise<void> {
     await manager.query(
-      `INSERT INTO "tax_codes" ("tenant_id", "code", "name", "rate", "kind", "is_reverse_charge", "is_active")
-       VALUES ($1, 'ZERO', 'No tax (0%)', 0, 'SALES', false, true),
-              ($1, 'ZERO', 'No tax (0%)', 0, 'PURCHASE', false, true)
+      `INSERT INTO "tax_codes" ("tenant_id", "code", "name", "rate", "kind", "is_reverse_charge", "is_active", "treatment")
+       VALUES ($1, 'ZERO', 'No tax (0%)', 0, 'SALES', false, true, 'ZERO_RATED'),
+              ($1, 'ZERO', 'No tax (0%)', 0, 'PURCHASE', false, true, 'ZERO_RATED')
        ON CONFLICT DO NOTHING`,
       [tenantId],
     );

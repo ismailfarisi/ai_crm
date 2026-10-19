@@ -1,15 +1,23 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { z } from 'zod';
-import { createSupplierSchema, type SupplierDto } from '@saas/shared';
+import {
+  createSupplierSchema,
+  defaultVatStatus,
+  EMIRATE_NAMES,
+  EMIRATES,
+  isUaeCountry,
+  type SupplierDto,
+} from '@saas/shared';
 import { useCreateSupplier, useUpdateSupplier } from '@/hooks/use-suppliers';
+import { useOrganization } from '@/hooks/use-organization';
 import { ApiError } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
-import { Input, Textarea } from '@/components/ui/field';
+import { Input, Select, Textarea } from '@/components/ui/field';
 import { CountrySelect } from '@/components/ui/country-select';
 
 interface SupplierFormDialogProps {
@@ -38,6 +46,8 @@ const EMPTY: FormValues = {
   postalCode: '',
   country: '',
   taxId: '',
+  emirate: null,
+  vatStatus: 'NOT_REGISTERED',
   currency: 'USD',
   paymentTermsDays: 30,
   leadTimeDays: 7,
@@ -45,11 +55,22 @@ const EMPTY: FormValues = {
   notes: '',
 };
 
+const VAT_STATUS_OPTIONS = [
+  { value: 'REGISTERED', label: 'Registered in the UAE' },
+  { value: 'NOT_REGISTERED', label: 'Not registered' },
+  { value: 'OUTSIDE_UAE', label: 'Outside the UAE' },
+];
+
+const EMIRATE_OPTIONS = EMIRATES.map((code) => ({ value: code, label: EMIRATE_NAMES[code] }));
+
 export function SupplierFormDialog({ open, onClose, supplier }: SupplierFormDialogProps) {
   const isEditing = Boolean(supplier);
 
   const create = useCreateSupplier();
   const update = useUpdateSupplier();
+  // VAT status, emirate and TRN are UAE VAT ideas; elsewhere the form is the
+  // plain one, and the API picks the status.
+  const orgIsUae = useOrganization().data?.country === 'AE';
 
   const {
     register,
@@ -57,15 +78,26 @@ export function SupplierFormDialog({ open, onClose, supplier }: SupplierFormDial
     reset,
     setError,
     watch,
+    getValues,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues, unknown, SubmitValues>({
     resolver: zodResolver(createSupplierSchema),
     defaultValues: EMPTY,
   });
 
+  // Once the user picks a status themselves, country and TRN stop steering it.
+  const statusTouched = useRef(false);
+  const followDefaultStatus = () => {
+    if (statusTouched.current) return;
+    const { country, taxId } = getValues();
+    setValue('vatStatus', defaultVatStatus(country ?? null, taxId ?? null));
+  };
+
   // Repopulate whenever the dialog opens for a different supplier.
   useEffect(() => {
     if (!open) return;
+    statusTouched.current = false;
 
     reset(
       supplier
@@ -80,6 +112,9 @@ export function SupplierFormDialog({ open, onClose, supplier }: SupplierFormDial
             postalCode: supplier.postalCode ?? '',
             country: supplier.country ?? '',
             taxId: supplier.taxId ?? '',
+            emirate: supplier.emirate,
+            // The stored status, not a recomputed one: opening a record must not change it.
+            vatStatus: supplier.vatStatus ?? defaultVatStatus(supplier.country, supplier.taxId),
             currency: supplier.currency ?? 'USD',
             paymentTermsDays: supplier.paymentTermsDays ?? 30,
             leadTimeDays: supplier.leadTimeDays ?? 7,
@@ -92,10 +127,18 @@ export function SupplierFormDialog({ open, onClose, supplier }: SupplierFormDial
 
   const onSubmit = handleSubmit(async (values) => {
     try {
-      if (supplier) {
-        await update.mutateAsync({ id: supplier.id, input: values });
+      if (orgIsUae) {
+        if (supplier) await update.mutateAsync({ id: supplier.id, input: values });
+        else await create.mutateAsync(values);
       } else {
-        await create.mutateAsync(values);
+        // Outside the UAE, or while the organisation is loading or cannot be
+        // read (the fields stay hidden then): an update never sends the VAT
+        // status or emirate, so the API keeps what is stored, re-deriving the
+        // status only when the country or tax ID changes. A new supplier
+        // sends null and the API picks the status.
+        const { vatStatus: _vatStatus, emirate: _emirate, ...rest } = values;
+        if (supplier) await update.mutateAsync({ id: supplier.id, input: rest });
+        else await create.mutateAsync({ ...rest, vatStatus: null, emirate: null });
       }
       onClose();
     } catch (error) {
@@ -106,6 +149,10 @@ export function SupplierFormDialog({ open, onClose, supplier }: SupplierFormDial
       }
     }
   });
+
+  const isUae = orgIsUae && isUaeCountry(watch('country'));
+  const vatStatus = watch('vatStatus');
+  const taxId = watch('taxId');
 
   return (
     <Dialog
@@ -146,7 +193,12 @@ export function SupplierFormDialog({ open, onClose, supplier }: SupplierFormDial
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Input label="Phone" type="tel" error={errors.phone?.message} {...register('phone')} />
-          <Input label="Tax ID / VAT" error={errors.taxId?.message} {...register('taxId')} />
+          <Input
+            label={isUae ? 'TRN' : orgIsUae ? 'Tax ID' : 'Tax ID / VAT'}
+            hint={isUae ? '15 digits, as on the FTA certificate' : undefined}
+            error={errors.taxId?.message}
+            {...register('taxId', { onChange: followDefaultStatus })}
+          />
         </div>
 
         <Input
@@ -177,9 +229,38 @@ export function SupplierFormDialog({ open, onClose, supplier }: SupplierFormDial
             value={watch('country') ?? ''}
             hint="Tax rules match on the country code, so this is a list rather than a box."
             error={errors.country?.message}
-            {...register('country')}
+            {...register('country', { onChange: followDefaultStatus })}
           />
         </div>
+
+        {orgIsUae && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Select
+              label="VAT status"
+              options={VAT_STATUS_OPTIONS}
+              error={errors.vatStatus?.message}
+              {...register('vatStatus', {
+                onChange: () => {
+                  statusTouched.current = true;
+                },
+              })}
+            />
+            {isUae && (
+              <Select
+                label="Emirate"
+                placeholder="Select an emirate"
+                options={EMIRATE_OPTIONS}
+                error={errors.emirate?.message}
+                {...register('emirate', { setValueAs: (v) => v || null })}
+              />
+            )}
+          </div>
+        )}
+        {orgIsUae && vatStatus === 'REGISTERED' && !(taxId ?? '').trim() && (
+          <p role="alert" className="text-sm text-amber-600 dark:text-amber-400">
+            VAT on this supplier&apos;s bills cannot be recovered until a TRN is added.
+          </p>
+        )}
 
         <div className="grid gap-4 sm:grid-cols-3">
           <Input

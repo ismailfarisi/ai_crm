@@ -18,6 +18,10 @@ import type {
   UpdateSupplierPayload,
 } from '@saas/shared';
 import {
+  assertUaeTrn,
+  resolveVatStatus,
+} from '@saas/shared';
+import {
   allocateNextSequenceValue,
   formatSequenceNumber,
 } from '@/database/tenant-sequence.util';
@@ -285,7 +289,13 @@ export class PurchasingService {
         `A supplier named "${input.companyName}" already exists`,
       );
     }
-    return this.suppliers.save(this.suppliers.create({ ...input, tenantId }));
+    return this.suppliers.save(
+      this.suppliers.create({
+        ...input,
+        tenantId,
+        vatStatus: resolveVatStatus(null, input),
+      }),
+    );
   }
 
   async updateSupplier(
@@ -308,7 +318,22 @@ export class PurchasingService {
         );
       }
     }
-    Object.assign(supplier, input);
+    let taxId = supplier.taxId;
+    // The schema only sees the patch; here we see the record it lands on.
+    // A legacy record with a free-text tax ID stays saveable until its
+    // country or tax ID is edited.
+    if (input.country !== undefined || input.taxId !== undefined) {
+      const country =
+        input.country !== undefined ? input.country : supplier.country;
+      taxId = input.taxId !== undefined ? input.taxId : supplier.taxId;
+      try {
+        taxId = assertUaeTrn(country, taxId);
+      } catch (e) {
+        throw new BadRequestException((e as Error).message);
+      }
+    }
+    const vatStatus = resolveVatStatus(supplier, input);
+    Object.assign(supplier, input, { taxId, vatStatus });
     return this.suppliers.save(supplier);
   }
 

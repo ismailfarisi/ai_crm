@@ -5,11 +5,22 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { LOGO_CONTENT_TYPES, LOGO_MAX_BYTES } from '@saas/shared';
+import {
+  LOGO_CONTENT_TYPES,
+  LOGO_MAX_BYTES,
+  assertUaeTrn,
+  isUaeVatMode,
+  isValidTrn,
+} from '@saas/shared';
 import type {
   OrganizationProfileDto,
   UpdateOrganizationPayload,
 } from '@saas/shared';
+import {
+  seedUaeStarterCodes,
+  uaeBaseCurrencyProblem,
+} from '../tax/uae-starter-codes';
+import { syncHeadOffice } from './branches.service';
 import { Organization } from './entities/organization.entity';
 
 /**
@@ -44,19 +55,70 @@ export class OrganizationsService {
     dto: UpdateOrganizationPayload,
   ): Promise<OrganizationProfileDto> {
     const organization = await this.findById(tenantId);
+    const wasUaeVatMode = isUaeVatMode(organization);
+    const before = { country: organization.country, taxId: organization.taxId };
+    const previousAddress = {
+      addressLine1: organization.addressLine1,
+      addressLine2: organization.addressLine2,
+      city: organization.city,
+    };
 
     // The schema has already normalised blanks to null and upper-cased the
-    // country, so an explicit key here is a deliberate clear. `name` is the
-    // one field that cannot be cleared, and the schema keeps it optional
-    // rather than nullable so a patch that omits it leaves it alone.
+    // country, so an explicit null here is a deliberate clear, and a key the
+    // patch left out (undefined) leaves the field alone. `name` is the one
+    // field that cannot be cleared.
     for (const [key, value] of Object.entries(dto)) {
+      if (value === undefined) continue;
       if (key === 'name' && (value == null || value === '')) continue;
       (organization as unknown as Record<string, unknown>)[key] = value;
     }
 
-    return OrganizationsService.toDto(
-      await this.organizations.save(organization),
+    // The schema checks a TRN only when the patch carries the country too; a
+    // patch of the TRN alone is checked here against the stored country.
+    if (organization.taxId !== before.taxId) {
+      try {
+        organization.taxId = assertUaeTrn(
+          organization.country,
+          organization.taxId,
+        );
+      } catch (e) {
+        throw new BadRequestException((e as Error).message);
+      }
+    }
+
+    // A UAE business with a TRN must report in dirhams. Refused here rather
+    // than left as a quiet "not in UAE VAT mode", because the base currency
+    // cannot be changed later once anything is posted. Only when this patch
+    // sets the country or TRN: a tenant already in that state can still edit
+    // the rest of its profile.
+    const touchesRegistration =
+      organization.country !== before.country ||
+      organization.taxId !== before.taxId;
+    if (
+      touchesRegistration &&
+      organization.country === 'AE' &&
+      isValidTrn(organization.taxId) &&
+      organization.baseCurrency !== 'AED'
+    ) {
+      throw new BadRequestException(
+        uaeBaseCurrencyProblem(organization.baseCurrency),
+      );
+    }
+
+    // The head office follows the profile in the same transaction. On the
+    // move into UAE VAT mode, so do the starter codes: all of it, or none.
+    const enteringUaeVatMode = !wasUaeVatMode && isUaeVatMode(organization);
+    const saved = await this.organizations.manager.transaction(
+      async (manager) => {
+        const row = await manager
+          .getRepository(Organization)
+          .save(organization);
+        await syncHeadOffice(manager, row, previousAddress);
+        if (enteringUaeVatMode) await seedUaeStarterCodes(manager, tenantId);
+        return row;
+      },
     );
+    return OrganizationsService.toDto(saved);
   }
 
   /** Relations are never wanted here; the tenant record is what is asked for. */

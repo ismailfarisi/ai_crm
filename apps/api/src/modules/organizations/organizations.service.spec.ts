@@ -1,15 +1,25 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { updateOrganizationSchema } from '@saas/shared';
 import { OrganizationsService } from './organizations.service';
 import { Organization } from './entities/organization.entity';
+import { Branch } from './entities/branch.entity';
+import { seedUaeStarterCodes } from '../tax/uae-starter-codes';
+
+jest.mock('../tax/uae-starter-codes', () => ({
+  ...jest.requireActual('../tax/uae-starter-codes'),
+  seedUaeStarterCodes: jest.fn(async () => undefined),
+}));
 
 describe('OrganizationsService', () => {
   const tenantId = 'org-1';
   let repo: {
     findOne: jest.Mock;
     save: jest.Mock;
+    manager: { transaction: jest.Mock };
   };
+  let txManager: { getRepository: jest.Mock };
+  let branchRepo: { findOne: jest.Mock; save: jest.Mock };
   let service: OrganizationsService;
 
   function organizationFixture(
@@ -41,10 +51,22 @@ describe('OrganizationsService', () => {
   }
 
   beforeEach(() => {
+    (seedUaeStarterCodes as jest.Mock).mockClear();
     repo = {
       findOne: jest.fn().mockResolvedValue(organizationFixture()),
       save: jest.fn().mockImplementation(async (o) => o),
+      manager: { transaction: jest.fn() },
     };
+    branchRepo = {
+      findOne: jest.fn().mockResolvedValue(null),
+      save: jest.fn().mockImplementation(async (b) => b),
+    };
+    txManager = {
+      getRepository: jest.fn((e: unknown) => (e === Branch ? branchRepo : repo)),
+    };
+    repo.manager.transaction.mockImplementation(
+      async (fn: (m: unknown) => unknown) => fn(txManager),
+    );
     service = new OrganizationsService(
       repo as unknown as Repository<Organization>,
     );
@@ -102,10 +124,236 @@ describe('OrganizationsService', () => {
     expect(result.name).toBe('Meridian Packaging Co');
   });
 
+  it('leaves every field a patch omits, and the head office, alone', async () => {
+    repo.findOne.mockResolvedValue(
+      organizationFixture({
+        addressLine1: '1400 Cannery Row',
+        city: 'Oakland',
+        country: 'US',
+        taxId: 'US-884120993',
+      }),
+    );
+    branchRepo.findOne.mockResolvedValue({
+      id: 'b1',
+      tenantId,
+      isHeadOffice: true,
+      addressLine1: '1400 Cannery Row',
+      addressLine2: null,
+      city: 'Oakland',
+      emirate: 'DXB',
+    });
+
+    const result = await service.update(
+      tenantId,
+      updateOrganizationSchema.parse({ name: 'Meridian' }),
+    );
+
+    expect(result).toMatchObject({
+      name: 'Meridian',
+      addressLine1: '1400 Cannery Row',
+      city: 'Oakland',
+      country: 'US',
+      taxId: 'US-884120993',
+    });
+    expect(branchRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('checks a TRN sent without the country against the stored country', async () => {
+    repo.findOne.mockResolvedValue(
+      organizationFixture({ country: 'AE', baseCurrency: 'AED' }),
+    );
+    await expect(
+      service.update(tenantId, updateOrganizationSchema.parse({ taxId: '12345' })),
+    ).rejects.toThrow(BadRequestException);
+
+    const result = await service.update(
+      tenantId,
+      updateOrganizationSchema.parse({ taxId: '100-1234-5670-0003' }),
+    );
+    expect(result.taxId).toBe('100123456700003');
+  });
+
   it('rejects a country that is not a two-letter code', () => {
     expect(() =>
       updateOrganizationSchema.parse({ country: 'United States' }),
     ).toThrow(/two-letter code/i);
+  });
+
+  describe('UAE VAT mode', () => {
+    const TRN = '100123456700003';
+
+    it('refuses a TRN on a UAE organization whose base currency is not AED, saving nothing', async () => {
+      repo.findOne.mockResolvedValue(
+        organizationFixture({ country: 'AE', baseCurrency: 'USD' }),
+      );
+      const dto = updateOrganizationSchema.parse({
+        country: 'AE',
+        taxId: TRN,
+      });
+
+      await expect(service.update(tenantId, dto)).rejects.toThrow(
+        new BadRequestException(
+          'Your base currency is USD. UAE VAT returns are in AED, and the base currency cannot change once anything is posted.',
+        ),
+      );
+      expect(repo.save).not.toHaveBeenCalled();
+      expect(seedUaeStarterCodes).not.toHaveBeenCalled();
+    });
+
+    it('saves a TRN on a UAE dirham organization and seeds the starter codes in the same transaction', async () => {
+      repo.findOne.mockResolvedValue(
+        organizationFixture({ country: 'AE', baseCurrency: 'AED' }),
+      );
+      const dto = updateOrganizationSchema.parse({
+        country: 'AE',
+        taxId: TRN,
+      });
+
+      const result = await service.update(tenantId, dto);
+
+      expect(result.taxId).toBe(TRN);
+      expect(repo.manager.transaction).toHaveBeenCalledTimes(1);
+      expect(txManager.getRepository).toHaveBeenCalledWith(Organization);
+      expect(repo.save).toHaveBeenCalledTimes(1);
+      expect(seedUaeStarterCodes).toHaveBeenCalledWith(txManager, tenantId);
+    });
+
+    it('does not seed again for an organization already in UAE VAT mode', async () => {
+      repo.findOne.mockResolvedValue(
+        organizationFixture({ country: 'AE', baseCurrency: 'AED', taxId: TRN }),
+      );
+      const dto = updateOrganizationSchema.parse({
+        country: 'AE',
+        taxId: TRN,
+        city: 'Dubai',
+      });
+
+      await service.update(tenantId, dto);
+
+      expect(repo.save).toHaveBeenCalledTimes(1);
+      expect(seedUaeStarterCodes).not.toHaveBeenCalled();
+    });
+
+    // A tenant already stuck on AE + TRN + USD must still be able to edit the
+    // rest of its profile; only setting the country or TRN is refused.
+    it('saves an address change on a UAE dollar organization with a stored TRN, without seeding', async () => {
+      repo.findOne.mockResolvedValue(
+        organizationFixture({ country: 'AE', baseCurrency: 'USD', taxId: TRN }),
+      );
+      // The profile form sends every field; country and TRN are unchanged.
+      const dto = updateOrganizationSchema.parse({
+        country: 'AE',
+        taxId: TRN,
+        addressLine1: 'Office 12, Bay Square',
+      });
+
+      const result = await service.update(tenantId, dto);
+
+      expect(result.addressLine1).toBe('Office 12, Bay Square');
+      expect(repo.save).toHaveBeenCalledTimes(1);
+      expect(seedUaeStarterCodes).not.toHaveBeenCalled();
+    });
+
+    it('refuses a changed TRN on that same organization', async () => {
+      repo.findOne.mockResolvedValue(
+        organizationFixture({ country: 'AE', baseCurrency: 'USD', taxId: TRN }),
+      );
+      const dto = updateOrganizationSchema.parse({
+        country: 'AE',
+        taxId: '100999888777666',
+      });
+
+      await expect(service.update(tenantId, dto)).rejects.toThrow(
+        new BadRequestException(
+          'Your base currency is USD. UAE VAT returns are in AED, and the base currency cannot change once anything is posted.',
+        ),
+      );
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('head office', () => {
+    const headOffice = (over: Partial<Branch> = {}): Branch =>
+      ({
+        id: 'b1',
+        tenantId,
+        name: 'Head office',
+        addressLine1: null,
+        addressLine2: null,
+        city: null,
+        emirate: null,
+        isHeadOffice: true,
+        invoicePrefix: null,
+        isActive: true,
+        ...over,
+      }) as Branch;
+
+    it('follows the company address it was made from, and takes the emirate from it, in the same transaction', async () => {
+      branchRepo.findOne.mockResolvedValue(headOffice());
+      const dto = updateOrganizationSchema.parse({
+        addressLine1: 'Office 12, Bay Square',
+        city: 'Business Bay',
+        region: 'Dubai',
+      });
+
+      await service.update(tenantId, dto);
+
+      expect(repo.manager.transaction).toHaveBeenCalledTimes(1);
+      expect(branchRepo.findOne).toHaveBeenCalledWith({
+        where: { tenantId, isHeadOffice: true },
+      });
+      expect(branchRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'b1',
+          addressLine1: 'Office 12, Bay Square',
+          addressLine2: null,
+          city: 'Business Bay',
+          emirate: 'DXB',
+        }),
+      );
+    });
+
+    it('reads the emirate from the city when the region names none', async () => {
+      branchRepo.findOne.mockResolvedValue(headOffice());
+      await service.update(
+        tenantId,
+        updateOrganizationSchema.parse({ city: 'Sharjah' }),
+      );
+      expect(branchRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ city: 'Sharjah', emirate: 'SHJ' }),
+      );
+    });
+
+    it('leaves a head office with an address of its own, and an emirate already set, alone', async () => {
+      repo.findOne.mockResolvedValue(
+        organizationFixture({ addressLine1: 'Old street', city: 'Dubai' }),
+      );
+      branchRepo.findOne.mockResolvedValue(
+        headOffice({ addressLine1: 'Warehouse 4', city: 'Dubai', emirate: 'AUH' }),
+      );
+
+      await service.update(
+        tenantId,
+        updateOrganizationSchema.parse({ addressLine1: 'New street', region: 'Sharjah' }),
+      );
+
+      expect(branchRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('keeps the address its own but still fills a missing emirate', async () => {
+      branchRepo.findOne.mockResolvedValue(
+        headOffice({ addressLine1: 'Warehouse 4' }),
+      );
+
+      await service.update(
+        tenantId,
+        updateOrganizationSchema.parse({ addressLine1: 'New street', region: 'Ajman' }),
+      );
+
+      expect(branchRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ addressLine1: 'Warehouse 4', emirate: 'AJM' }),
+      );
+    });
   });
 
   /**

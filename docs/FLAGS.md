@@ -252,6 +252,14 @@ invoice says the customer accounts for the tax. The purchase side — where a bi
 from an EU supplier should post both an input and an output tax line — is not
 implemented.
 
+### Purchase reverse-charge codes carry 5% but post nothing yet — open
+
+The seeded UAE purchase codes RC and IM carry the self-assessed 5% rate with
+`isReverseCharge`, as the FTA treatment requires. `purchaseTaxFor` and
+`taxBreakdown` still treat any reverse charge as 0%, so a bill on these codes
+posts no tax at all. The self-assessed output and input pair is stage 3 of the
+UAE VAT design.
+
 ### Purchase orders carry no tax code — open
 
 `tax_code_id` is on sales documents and on supplier bills, but not on purchase
@@ -262,6 +270,34 @@ order lines, so an order's tax is only resolved when the bill arrives.
 `taxRuleFor` matches an exact country code, then `EU`, then `*`. There is no
 region or state matching, so anywhere with sub-national tax (US states, Canadian
 provinces) cannot be modelled.
+
+### UAE tenants on a non-AED base currency cannot enter UAE VAT mode — open
+
+UAE VAT mode assumes the organization's base currency is AED, because returns
+and tax invoices are stated in dirhams. An organization whose country is AE but
+whose base currency is something else is not switched into UAE mode. Supporting
+it would need a conversion of every taxable amount into AED at a rate the FTA
+accepts, which is not built.
+
+### Domestic reverse charge is not modelled — open
+
+The UAE domestic reverse charge (gold, diamonds, hydrocarbons, and phones,
+computers and tablets sold to resellers) makes the buyer account for the tax.
+Only the import and cross-border reverse charge on purchases has a tax code;
+these domestic supplies have none, so they must be handled by hand.
+
+### Advance payments before an invoice create no tax point — open
+
+In the UAE, tax becomes due when payment is received, even before an invoice is
+issued. A customer payment or deposit recorded ahead of an invoice does not
+create a tax point or any output tax. The tax is recognised only when the
+invoice is issued.
+
+### Records retention: five years, fifteen for real estate — open
+
+UAE tax law requires documents to be kept for 5 years (15 years for real
+estate). Nothing deletes tax documents today, but any future deletion or
+archival job, including tenant offboarding, must respect that period.
 
 ---
 

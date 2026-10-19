@@ -1,4 +1,5 @@
 import { Column, Entity, Index } from 'typeorm';
+import type { Emirate, VatStatus } from '@saas/shared';
 import { SoftDeletableEntity } from '@/common/entities/base.entity';
 
 /**
@@ -64,6 +65,19 @@ export class Supplier extends SoftDeletableEntity {
 
   @Column({ name: 'tax_id', type: 'varchar', length: 40, nullable: true })
   taxId: string | null;
+
+  /** UAE suppliers only. CHECK in the migration. */
+  @Column({ type: 'varchar', length: 3, nullable: true })
+  emirate: Emirate | null;
+
+  /** CHECK in the migration. */
+  @Column({
+    name: 'vat_status',
+    type: 'varchar',
+    length: 16,
+    default: 'NOT_REGISTERED',
+  })
+  vatStatus: VatStatus;
 
   /** ISO 4217. Null until the first order is raised against this supplier. */
   @Column({ type: 'char', length: 3, nullable: true })

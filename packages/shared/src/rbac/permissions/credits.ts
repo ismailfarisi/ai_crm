@@ -16,6 +16,7 @@ export const DELIVERY_NOTE_PERMISSIONS = {
 export const TAX_PERMISSIONS = {
   TAX_READ: 'tax:read',
   TAX_MANAGE: 'tax:manage',
+  TAX_FILE: 'tax:file',
 } as const;
 
 type CreditNotePermission = PermissionValues<typeof CREDIT_NOTE_PERMISSIONS>;
@@ -74,6 +75,8 @@ export const taxDomain: PermissionDomain<TaxPermission> = {
     [TAX_PERMISSIONS.TAX_READ]: 'View tax codes and the tax report',
     [TAX_PERMISSIONS.TAX_MANAGE]:
       'Change tax codes and the rules that choose them. Affects every quote priced after the change.',
+    [TAX_PERMISSIONS.TAX_FILE]:
+      'Mark a VAT return as filed, which locks its period, and reopen one filed by mistake',
   },
   groupPermissions: Object.values(TAX_PERMISSIONS),
   grants: {

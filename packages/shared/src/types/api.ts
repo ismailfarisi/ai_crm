@@ -1,4 +1,5 @@
 import type { Permission } from '../rbac/permissions';
+import type { Emirate, VatStatus } from '../tax/uae';
 import type { ContactSource, ContactStatus } from '../schemas/contact';
 
 export interface PaginatedResult<T> {
@@ -121,6 +122,8 @@ export interface CustomerDto {
   postalCode: string | null;
   country: string | null;
   taxId: string | null;
+  emirate: Emirate | null;
+  vatStatus: VatStatus;
   currency: string | null;
   paymentTermsDays: number | null;
   notes: string | null;

@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository, type SelectQueryBuilder } from 'typeorm';
 import {
@@ -7,6 +11,8 @@ import {
   type CustomerOverviewDto,
   type PaginatedResult,
   type UpdateCustomerInput,
+  assertUaeTrn,
+  resolveVatStatus,
 } from '@saas/shared';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { Customer } from './entities/customer.entity';
@@ -162,6 +168,7 @@ export class CustomersService {
     const customer = this.customers.create({
       ...(input as object),
       tenantId: actor.organizationId,
+      vatStatus: resolveVatStatus(null, input),
     } as Partial<Customer>);
 
     const saved = await this.customers.save(customer);
@@ -174,7 +181,22 @@ export class CustomersService {
     input: UpdateCustomerInput,
   ): Promise<CustomerDto> {
     const customer = await this.findEntity(actor, id);
-    Object.assign(customer, input);
+    let taxId = customer.taxId;
+    // The schema only sees the patch; here we see the record it lands on.
+    // A legacy record with a free-text tax ID stays saveable until its
+    // country or tax ID is edited.
+    if (input.country !== undefined || input.taxId !== undefined) {
+      const country =
+        input.country !== undefined ? input.country : customer.country;
+      taxId = input.taxId !== undefined ? input.taxId : customer.taxId;
+      try {
+        taxId = assertUaeTrn(country, taxId);
+      } catch (e) {
+        throw new BadRequestException((e as Error).message);
+      }
+    }
+    const vatStatus = resolveVatStatus(customer, input);
+    Object.assign(customer, input, { taxId, vatStatus });
     await this.customers.save(customer);
     return this.findOne(actor, customer.id);
   }
@@ -221,6 +243,8 @@ export class CustomersService {
       postalCode: customer.postalCode,
       country: customer.country,
       taxId: customer.taxId,
+      emirate: customer.emirate,
+      vatStatus: customer.vatStatus,
       currency: customer.currency,
       paymentTermsDays: customer.paymentTermsDays,
       notes: customer.notes,
