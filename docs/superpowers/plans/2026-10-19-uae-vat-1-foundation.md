@@ -16,7 +16,7 @@
 - TRN: exactly 15 digits after stripping spaces and dashes; stored digits-only. No leading-`100` check. No live lookup.
 - Emirate codes in box order 1a–1g: `AUH, DXB, SHJ, AJM, UAQ, RAK, FUJ`.
 - VAT status values: `REGISTERED`, `NOT_REGISTERED`, `OUTSIDE_UAE`.
-- Treatments: `STANDARD, ZERO_RATED, EXEMPT, OUT_OF_SCOPE, REVERSE_CHARGE, BLOCKED, IMPORT_GOODS`. Sales may use STANDARD, ZERO_RATED, EXEMPT, OUT_OF_SCOPE, REVERSE_CHARGE; purchases may use all except none (all seven are valid for PURCHASE; `BLOCKED` and `IMPORT_GOODS` are PURCHASE-only).
+- Treatments: `STANDARD, ZERO_RATED, EXEMPT, OUT_OF_SCOPE, REVERSE_CHARGE, BLOCKED, IMPORT_GOODS`. SALES may use STANDARD, ZERO_RATED, EXEMPT, OUT_OF_SCOPE, REVERSE_CHARGE. PURCHASE may use all seven (`BLOCKED` and `IMPORT_GOODS` are PURCHASE-only).
 - Non-UAE tenants: existing behaviour must be byte-for-byte unchanged (existing tax tests stay green untouched).
 - Permissions are added only in `packages/shared/src/rbac/permissions/credits.ts` (the directory that replaced `permissions.ts`).
 - Schema changes go through one migration; FKs and CHECKs in the migration, not entities; new tables get the RLS `tenant_isolation_policy` exactly as in `1790200000000-JobCosting.ts`. `pnpm check:drift` must pass.
@@ -26,7 +26,7 @@
 ## Review Focus
 
 1. **TRN typed with spaces or dashes** (`100-1234-5678-9012-3`, `100 123 456 789 012`) — accepted and stored as 15 digits; displayed back digits-only. Test in Task 1 and Task 2.
-2. **An existing customer with a non-TRN tax id and country AE** (legacy free text) must stay editable: the schema only rejects the TRN when the field is *changed*… zod cannot see "changed", so the rule is: AE + non-empty taxId that is not a valid TRN → error. Existing bad rows are surfaced, not silently broken: the migration backfills them `NOT_REGISTERED` and the form shows the error so the user fixes it. Test in Task 2 that a loaded AE customer with a valid TRN round-trips.
+2. **An existing AE customer whose tax ID is legacy free text** (not a valid TRN) — the migration backfills it `NOT_REGISTERED` so nothing blocks; opening and saving it shows the TRN error inline so the user fixes or clears it. A loaded AE customer with a valid TRN must round-trip through the schema. Test in Task 2.
 3. **Head-office emirate cannot be inferred** (region "Business Bay", city null) — emirate stays null, tenant still works, `UaeVatService.status()` lists "Head office has no emirate". Test in Task 5.
 4. **Switching an AE tenant on with base currency USD** — refused with the explanatory message, nothing seeded. Test in Task 5.
 5. **Seeding twice** (TRN saved, cleared, saved again; or a tenant who already created `SR`) — idempotent, no duplicate-key error, user-created codes untouched. Test in Task 5.
@@ -176,7 +176,7 @@ expect(UAE_STARTER_CODES.filter((c) => c.kind === 'PURCHASE').map((c) => c.code)
 - Produces `UaeVatService`:
   - `isEnabled(tenantId: string): Promise<boolean>`
   - `status(tenantId: string): Promise<UaeVatStatusDto>` — `problems` lists, in order: `'Set the country to United Arab Emirates'`, `'Add your 15-digit TRN'`, `'Your base currency is <X>. UAE VAT returns are in AED, and the base currency cannot change once anything is posted.'`, `'<Branch name> has no emirate'` (one per branch), `'Set your VAT periods and start date'` (no settings row). `enabled` = `isUaeVatMode(org)`; `suggestedVatStartDate` = `nextPeriodStart(...)` of today when settings exist, else null.
-  - `getSettings(tenantId: string): Promise<VatSettingsDto | null>`, `saveSettings(tenantId: string, input: VatSettingsPayload): Promise<VatSettingsDto>` — refuses (`BadRequestException`) unless `isUaeVatMode(org)`, with the first `problems` entry as the message. **(spec call)** `vatStartDate` cannot change once a return exists — leave a `// Plan 4:` TODO-free hook: the method takes no return into account yet; plan 4 adds the guard.
+  - `getSettings(tenantId: string): Promise<VatSettingsDto | null>`, `saveSettings(tenantId: string, input: VatSettingsPayload): Promise<VatSettingsDto>` — refuses (`BadRequestException`) unless `isUaeVatMode(org)`, with the first `problems` entry as the message. (`vatStartDate` becoming immutable once a return exists is added in plan 4, which introduces returns.)
   - `seedStarterCodes(tenantId: string, manager?: EntityManager): Promise<void>` — inserts `UAE_STARTER_CODES` with `ON CONFLICT DO NOTHING` on `uq_tax_codes_tenant_kind_code`, then `UAE_STARTER_RULES` resolving codes by `(kind, code)` with `ON CONFLICT DO NOTHING` on `uq_tax_rules_tenant_match`; sets `is_reverse_charge = treatmentIsReverseCharge(treatment)`.
 - `OrganizationsService.update`: after applying the patch, if the result is `country AE` + valid TRN and `baseCurrency !== 'AED'`, throw `BadRequestException` with the currency message above (nothing saved). If the save moved the tenant into UAE VAT mode, call `seedStarterCodes` in the same transaction.
 - Signup: `baseCurrency: input.baseCurrency ?? (input.country === 'AE' ? 'AED' : 'USD')`.
@@ -193,7 +193,7 @@ expect(UAE_STARTER_CODES.filter((c) => c.kind === 'PURCHASE').map((c) => c.code)
 
 **Files:**
 - Modify: `apps/api/src/modules/customers/customers.service.ts`, `apps/api/src/modules/purchasing/purchasing.service.ts` (`createSupplier`, `updateSupplier`, DTO mapper)
-- Create: `packages/shared/src/tax/uae.ts` addition `resolveVatStatus(...)` (+ test in `uae.test.ts`)
+- Modify: `packages/shared/src/tax/uae.ts` (add `resolveVatStatus`), `packages/shared/src/tax/uae.test.ts`
 - Test: `customers.service.spec.ts`, `purchasing.service.spec.ts`
 
 **Interfaces:**
