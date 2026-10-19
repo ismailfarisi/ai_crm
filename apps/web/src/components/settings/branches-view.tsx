@@ -165,7 +165,7 @@ function BranchDialog({ target, onClose }: { target: BranchDto | 'new' | null; o
             placeholder="Select…"
             options={EMIRATE_OPTIONS}
             error={errors.emirate?.message}
-            {...register('emirate')}
+            {...register('emirate', { setValueAs: (v) => v || null })}
           />
         </div>
         <Input
