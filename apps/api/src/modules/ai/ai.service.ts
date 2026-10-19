@@ -11,8 +11,12 @@ import { getAiProvider } from './ai-provider.factory';
 import {
   AiGenerateOptions,
   AiGenerateResult,
+  AiProvider,
   AiStructuredOptions,
   AiStructuredResult,
+  AiToolOptions,
+  AiToolResult,
+  AiUsage,
   AiNotConfiguredException,
 } from './interfaces/ai-provider.interface';
 import { AiUsageLog } from './entities/ai-usage-log.entity';
@@ -31,16 +35,30 @@ export interface AiActor {
  * $ per million tokens, by model id. Hand-maintained — update when Anthropic's
  * pricing changes. Unknown models fall back to a conservative estimate rather
  * than throwing, since cost tracking shouldn't block a successful AI call.
+ * `cacheRead` is listed where it differs from the usual tenth of the input rate.
  */
 const PRICING_PER_MILLION_TOKENS: Record<
   string,
-  { input: number; output: number }
+  { input: number; output: number; cacheRead?: number }
 > = {
-  'claude-sonnet-5': { input: 3, output: 15 },
-  'claude-opus-5': { input: 15, output: 75 },
+  'claude-fable-5-1': { input: 10, output: 50, cacheRead: 0.25 },
+  'claude-opus-5-5': { input: 4, output: 20, cacheRead: 0.2 },
+  'claude-opus-5': { input: 5, output: 25 },
+  'claude-sonnet-5-5': { input: 2, output: 10, cacheRead: 0.2 },
+  'claude-sonnet-5': { input: 2, output: 10 },
+  'claude-haiku-5-5': { input: 0.1, output: 0.5 },
   'claude-haiku-4-5': { input: 1, output: 5 },
 };
 const DEFAULT_PRICING = { input: 3, output: 15 };
+/** Cache reads and writes, relative to the model's input rate. */
+const CACHE_READ_MULTIPLIER = 0.1;
+const CACHE_WRITE_MULTIPLIER = 1.25;
+
+/** What budget reservation needs to know about any kind of call. */
+type BudgetedOptions = AiGenerateOptions & {
+  jsonSchema?: Record<string, unknown>;
+  tools?: AiToolOptions['tools'];
+};
 
 @Injectable()
 export class AiService {
@@ -71,53 +89,9 @@ export class AiService {
     options: AiGenerateOptions,
     actor: AiActor,
   ): Promise<AiGenerateResult> {
-    const started = Date.now();
-    const providerConfig = await this.aiConfigService.resolveProviderConfig(
-      actor.organizationId,
-      options.provider,
+    return this.run(feature, options, actor, (provider) =>
+      provider.generateText(options),
     );
-    const provider = getAiProvider(providerConfig);
-    let reservation:
-      | { reservedAmount: number; periodKey: string }
-      | undefined;
-    let providerCallStarted = false;
-    let actualUsage: { inputTokens: number; outputTokens: number } | undefined;
-    let actualModel: string | undefined;
-
-    try {
-      reservation = await this.reserveBudget(actor.organizationId, options);
-      providerCallStarted = true;
-      const result = await provider.generateText(options);
-      actualUsage = result.usage;
-      actualModel = result.model;
-      await this.reconcileBudget(reservation, actor.organizationId, result.model, result.usage);
-      reservation = undefined;
-      await this.logUsage({
-        feature,
-        actor,
-        providerName: provider.name,
-        model: result.model,
-        usage: result.usage,
-        durationMs: Date.now() - started,
-        success: true,
-      });
-      return result;
-    } catch (err) {
-      if (!providerCallStarted) {
-        await this.releaseBudget(reservation, actor.organizationId);
-      }
-      await this.logUsage({
-        feature,
-        actor,
-        providerName: provider.name,
-        model: actualModel || options.model || 'unknown',
-        usage: actualUsage ?? { inputTokens: 0, outputTokens: 0 },
-        durationMs: Date.now() - started,
-        success: false,
-        errorMessage: err instanceof Error ? err.message : String(err),
-      });
-      throw err;
-    }
   }
 
   async generateStructured<T>(
@@ -125,6 +99,29 @@ export class AiService {
     options: AiStructuredOptions,
     actor: AiActor,
   ): Promise<AiStructuredResult<T>> {
+    return this.run(feature, options, actor, (provider) =>
+      provider.generateStructured<T>(options),
+    );
+  }
+
+  /** One turn of native tool calling; the caller runs the tools and loops. */
+  async generateWithTools(
+    feature: string,
+    options: AiToolOptions,
+    actor: AiActor,
+  ): Promise<AiToolResult> {
+    return this.run(feature, options, actor, (provider) =>
+      provider.generateWithTools(options),
+    );
+  }
+
+  /** Resolves the provider, reserves budget, calls it, then reconciles and logs usage either way. */
+  private async run<R extends { usage: AiUsage; model: string }>(
+    feature: string,
+    options: BudgetedOptions,
+    actor: AiActor,
+    call: (provider: AiProvider) => Promise<R>,
+  ): Promise<R> {
     const started = Date.now();
     const providerConfig = await this.aiConfigService.resolveProviderConfig(
       actor.organizationId,
@@ -135,13 +132,17 @@ export class AiService {
       | { reservedAmount: number; periodKey: string }
       | undefined;
     let providerCallStarted = false;
-    let actualUsage: { inputTokens: number; outputTokens: number } | undefined;
+    let actualUsage: AiUsage | undefined;
     let actualModel: string | undefined;
 
     try {
-      reservation = await this.reserveBudget(actor.organizationId, options);
+      reservation = await this.reserveBudget(
+        actor.organizationId,
+        options,
+        provider.defaultMaxTokens,
+      );
       providerCallStarted = true;
-      const result = await provider.generateStructured<T>(options);
+      const result = await call(provider);
       actualUsage = result.usage;
       actualModel = result.model;
       await this.reconcileBudget(reservation, actor.organizationId, result.model, result.usage);
@@ -176,7 +177,8 @@ export class AiService {
 
   private async reserveBudget(
     organizationId: string,
-    options: AiGenerateOptions & { jsonSchema?: Record<string, unknown> },
+    options: BudgetedOptions,
+    providerDefaultMaxTokens: number,
   ): Promise<{ reservedAmount: number; periodKey: string } | undefined> {
     const budget = await this.budgetRepo.findOne({ where: { organizationId } });
     if (!budget?.isEnabled) return undefined;
@@ -189,7 +191,8 @@ export class AiService {
     const currentSpendUsd = await this.sumCurrentPeriodSpend(organizationId);
     let inputCharacters =
       (options.system?.length ?? 0) +
-      (options.jsonSchema ? JSON.stringify(options.jsonSchema).length : 0);
+      (options.jsonSchema ? JSON.stringify(options.jsonSchema).length : 0) +
+      (options.tools ? JSON.stringify(options.tools).length : 0);
     let imageCount = 0;
     for (const message of options.messages) {
       if (typeof message.content === 'string') {
@@ -199,8 +202,12 @@ export class AiService {
       for (const block of message.content) {
         if (block.type === 'text') {
           inputCharacters += block.text.length;
-        } else {
+        } else if (block.type === 'image') {
           imageCount++;
+        } else if (block.type === 'tool_result') {
+          inputCharacters += block.content.length;
+        } else {
+          inputCharacters += JSON.stringify(block.input).length;
         }
       }
     }
@@ -208,12 +215,12 @@ export class AiService {
       1,
       Math.ceil(inputCharacters / 4) + imageCount * 4096,
     );
-    const outputTokens = Math.max(1, options.maxTokens ?? 4096);
-    const estimatedCostUsd = this.estimateCostUsd(
-      options.model ?? '',
+    const outputTokens = Math.max(1, options.maxTokens ?? providerDefaultMaxTokens);
+    // Reserved as if nothing were cached; reconciliation charges the real mix.
+    const estimatedCostUsd = this.estimateCostUsd(options.model ?? '', {
       inputTokens,
       outputTokens,
-    );
+    });
     const reservation = await this.redisBudgetGuard.checkAndReserve(
       organizationId,
       estimatedCostUsd,
@@ -236,12 +243,12 @@ export class AiService {
       | undefined,
     organizationId: string,
     model: string,
-    usage: { inputTokens: number; outputTokens: number },
+    usage: AiUsage,
   ): Promise<void> {
     if (!reservation || !this.redisBudgetGuard) return;
     await this.redisBudgetGuard.reconcile(
       organizationId,
-      this.estimateCostUsd(model, usage.inputTokens, usage.outputTokens),
+      this.estimateCostUsd(model, usage),
       reservation.reservedAmount,
       reservation.periodKey,
     );
@@ -362,15 +369,15 @@ export class AiService {
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   }
 
-  private estimateCostUsd(
-    model: string,
-    inputTokens: number,
-    outputTokens: number,
-  ): number {
+  private estimateCostUsd(model: string, usage: AiUsage): number {
     const pricing = PRICING_PER_MILLION_TOKENS[model] || DEFAULT_PRICING;
+    const cacheRead = pricing.cacheRead ?? pricing.input * CACHE_READ_MULTIPLIER;
     return (
-      (inputTokens / 1_000_000) * pricing.input +
-      (outputTokens / 1_000_000) * pricing.output
+      (usage.inputTokens * pricing.input +
+        (usage.cacheReadInputTokens ?? 0) * cacheRead +
+        (usage.cacheCreationInputTokens ?? 0) * pricing.input * CACHE_WRITE_MULTIPLIER +
+        usage.outputTokens * pricing.output) /
+      1_000_000
     );
   }
 
@@ -379,7 +386,7 @@ export class AiService {
     actor: AiActor;
     providerName: string;
     model: string;
-    usage: { inputTokens: number; outputTokens: number };
+    usage: AiUsage;
     durationMs: number;
     success: boolean;
     errorMessage?: string;
@@ -392,11 +399,9 @@ export class AiService {
         model: entry.model,
         inputTokens: entry.usage.inputTokens,
         outputTokens: entry.usage.outputTokens,
-        estimatedCostUsd: this.estimateCostUsd(
-          entry.model,
-          entry.usage.inputTokens,
-          entry.usage.outputTokens,
-        ),
+        cacheReadInputTokens: entry.usage.cacheReadInputTokens ?? 0,
+        cacheCreationInputTokens: entry.usage.cacheCreationInputTokens ?? 0,
+        estimatedCostUsd: this.estimateCostUsd(entry.model, entry.usage),
         success: entry.success,
         errorMessage: entry.errorMessage ?? null,
         actorUserId: entry.actor.userId ?? null,

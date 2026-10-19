@@ -162,6 +162,8 @@ describe('AiService', () => {
 
     it('forwards an explicit options.provider to resolveProviderConfig, overriding the org default', async () => {
       jest.spyOn(factory, 'getAiProvider').mockReturnValue({
+        defaultMaxTokens: 4096,
+        generateWithTools: jest.fn(),
         name: 'openai',
         generateText: jest.fn().mockResolvedValue({
           text: 'hi',
@@ -190,6 +192,8 @@ describe('AiService', () => {
 
     it('writes a usage log on success', async () => {
       jest.spyOn(factory, 'getAiProvider').mockReturnValue({
+        defaultMaxTokens: 4096,
+        generateWithTools: jest.fn(),
         name: 'anthropic',
         generateText: jest.fn().mockResolvedValue({
           text: 'hello',
@@ -226,6 +230,8 @@ describe('AiService', () => {
 
     it('writes a failed usage log and rethrows when the provider call fails', async () => {
       jest.spyOn(factory, 'getAiProvider').mockReturnValue({
+        defaultMaxTokens: 4096,
+        generateWithTools: jest.fn(),
         name: 'anthropic',
         generateText: jest.fn().mockRejectedValue(new AiProviderError('boom')),
         generateStructured: jest.fn(),
@@ -253,6 +259,8 @@ describe('AiService', () => {
   describe('generateStructured', () => {
     it('writes a usage log on success', async () => {
       jest.spyOn(factory, 'getAiProvider').mockReturnValue({
+        defaultMaxTokens: 4096,
+        generateWithTools: jest.fn(),
         name: 'anthropic',
         generateText: jest.fn(),
         generateStructured: jest.fn().mockResolvedValue({
@@ -279,9 +287,60 @@ describe('AiService', () => {
     });
   });
 
+  describe('generateWithTools', () => {
+    it('logs cache tokens and costs cache reads below the input rate', async () => {
+      const generateWithTools = jest.fn().mockResolvedValue({
+        text: '',
+        toolCalls: [{ id: 'toolu_1', name: 'quote.create', input: {} }],
+        raw: { provider: 'anthropic', content: [] },
+        usage: {
+          inputTokens: 1_000,
+          outputTokens: 1_000,
+          cacheReadInputTokens: 1_000_000,
+          cacheCreationInputTokens: 1_000_000,
+        },
+        model: 'claude-opus-5-5',
+        stopReason: 'tool_use',
+      });
+      jest.spyOn(factory, 'getAiProvider').mockReturnValue({
+        name: 'anthropic',
+        defaultMaxTokens: 16_000,
+        generateText: jest.fn(),
+        generateStructured: jest.fn(),
+        generateWithTools,
+      });
+
+      const { service, savedLogs } = makeService();
+      const options = {
+        tools: [{ name: 'quote.create', description: 'd', inputSchema: {} }],
+        messages: [{ role: 'user' as const, content: 'hi' }],
+        cache: true,
+      };
+      const result = await service.generateWithTools('test.tools', options, {
+        organizationId: orgId,
+        userId,
+      });
+
+      expect(generateWithTools).toHaveBeenCalledWith(options);
+      expect(result.toolCalls).toHaveLength(1);
+      expect(savedLogs[0]).toEqual(
+        expect.objectContaining({
+          feature: 'test.tools',
+          cacheReadInputTokens: 1_000_000,
+          cacheCreationInputTokens: 1_000_000,
+        }),
+      );
+      // 1k input at $4 + 1M cache reads at $0.20 + 1M cache writes at
+      // 1.25 x $4 + 1k output at $20, per million tokens.
+      expect(savedLogs[0].estimatedCostUsd).toBeCloseTo(0.004 + 0.2 + 5 + 0.02, 6);
+    });
+  });
+
   describe('budget enforcement (via generateText)', () => {
     function stubProvider() {
       jest.spyOn(factory, 'getAiProvider').mockReturnValue({
+        defaultMaxTokens: 4096,
+        generateWithTools: jest.fn(),
         name: 'anthropic',
         generateText: jest.fn().mockResolvedValue({
           text: 'ok',

@@ -375,6 +375,46 @@ The worker loads the assistant module, so the stale-turn sweep cron
 (`AssistantSweepService`, every minute) is registered there as well and is
 inert in that process by design.
 
+### The planner uses native tool calling and replays raw turns — by design
+
+`planReActTurn` calls `AiService.generateWithTools`: the skills are sent as the
+provider's own tools, and the history is real tool calls followed by tool
+results matched by id. Each assistant turn is stored in workflow history twice,
+as tool calls and as the provider's raw content (`AgentHistoryEntry.raw`). The
+raw copy is replayed unchanged to the same provider, because Anthropic rejects
+a conversation whose thinking blocks were dropped or edited. Another provider,
+or a turn whose ids the planner had to rewrite, is rebuilt from the calls.
+Planner requests set `cache: true` (Anthropic `cache_control`). Cache reads and
+writes are logged on `ai_usage_logs` and costed at 0.1× and 1.25× the input
+rate.
+
+Turns still waiting for approval when this ships replay into the new code
+safely: their recorded planner results have no `raw`, so they are rebuilt.
+
+### Structured output differs by provider — by design
+
+Anthropic uses `output_config.format` (JSON schema). The current models
+(Opus 5.5, Sonnet 5.5, Fable 5.1) reject a forced `tool_choice`, which is what
+this used to rely on. OpenAI-compatible providers still force a function call,
+because OpenRouter models support function calling more widely than
+`response_format: json_schema`. Both now refuse a cut-off (`max_tokens` /
+`length`) or declined (`refusal` / `content_filter`) response rather than
+return partial JSON.
+
+The Anthropic output cap without an explicit `maxTokens` rose from 4096 to
+16,000. Budget reservation reserves against the provider's own default, so an
+Anthropic call now reserves about four times the output it used to. Actual
+usage still reconciles it.
+
+### Native tool calling not verified against a live provider — open
+
+The provider changes are covered by mocked tests only. No API key was available
+when they were written. Before relying on them, run one assistant turn that
+calls a tool, and one structured-output feature (for example receipt scan), on
+Anthropic and on OpenAI. Then confirm that `cacheReadInputTokens` is non-zero
+from the second planner round onwards. If it stays at zero, the cached prefix
+is probably below the model's minimum length.
+
 ### Not yet verified against a live stack — open
 
 The first version was checked with the automated suites only. No database,

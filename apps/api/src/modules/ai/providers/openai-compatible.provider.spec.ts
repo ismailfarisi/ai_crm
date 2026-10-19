@@ -57,7 +57,12 @@ describe('OpenAiCompatibleProvider', () => {
 
       expect(result).toEqual({
         text: 'Hello there',
-        usage: { inputTokens: 12, outputTokens: 8 },
+        usage: {
+          inputTokens: 12,
+          outputTokens: 8,
+          cacheReadInputTokens: 0,
+          cacheCreationInputTokens: 0,
+        },
         model: 'gpt-4o',
         stopReason: 'stop',
       });
@@ -159,7 +164,12 @@ describe('OpenAiCompatibleProvider', () => {
       });
 
       expect(result.data).toEqual({ foo: 'bar' });
-      expect(result.usage).toEqual({ inputTokens: 5, outputTokens: 3 });
+      expect(result.usage).toEqual({
+        inputTokens: 5,
+        outputTokens: 3,
+        cacheReadInputTokens: 0,
+        cacheCreationInputTokens: 0,
+      });
 
       const body = JSON.parse(fetchMock.mock.calls[0][1].body);
       expect(body.tool_choice).toEqual({
@@ -212,6 +222,191 @@ describe('OpenAiCompatibleProvider', () => {
           schemaName: 'extract',
         }),
       ).rejects.toBeInstanceOf(AiProviderError);
+    });
+
+    it('throws AiProviderError when the output was cut off', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({
+          choices: [
+            {
+              finish_reason: 'length',
+              message: {
+                tool_calls: [{ function: { name: 'extract', arguments: '{"foo":' } }],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1 },
+          model: 'gpt-4o',
+        }),
+      );
+
+      await expect(
+        makeProvider('openai').generateStructured({
+          messages: [{ role: 'user', content: 'hi' }],
+          jsonSchema: { type: 'object' },
+          schemaName: 'extract',
+        }),
+      ).rejects.toThrow('cut off');
+    });
+  });
+
+  describe('generateWithTools', () => {
+    const tools = [
+      {
+        name: 'quote.create',
+        description: 'Create a quote',
+        inputSchema: { type: 'object', properties: { customer: { type: 'string' } } },
+      },
+    ];
+
+    it('sends function tools without forcing one and splits cached tokens out of usage', async () => {
+      const message = {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          {
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'quote.create', arguments: '{"customer":"Acme"}' },
+          },
+        ],
+      };
+      fetchMock.mockResolvedValue(
+        jsonResponse({
+          choices: [{ finish_reason: 'tool_calls', message }],
+          usage: {
+            prompt_tokens: 1200,
+            completion_tokens: 20,
+            prompt_tokens_details: { cached_tokens: 1024 },
+          },
+          model: 'gpt-4o',
+        }),
+      );
+
+      const result = await makeProvider('openai').generateWithTools({
+        tools,
+        messages: [{ role: 'user', content: 'quote Acme' }],
+        cache: true,
+      });
+
+      expect(result.toolCalls).toEqual([
+        { id: 'call_1', name: 'quote.create', input: { customer: 'Acme' } },
+      ]);
+      expect(result.raw).toEqual({ provider: 'openai', content: message });
+      expect(result.usage).toEqual({
+        inputTokens: 176,
+        outputTokens: 20,
+        cacheReadInputTokens: 1024,
+        cacheCreationInputTokens: 0,
+      });
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body.tool_choice).toBeUndefined();
+      expect(body.tools).toEqual([
+        {
+          type: 'function',
+          function: {
+            name: 'quote.create',
+            description: 'Create a quote',
+            parameters: tools[0].inputSchema,
+          },
+        },
+      ]);
+    });
+
+    it('maps tool calls and results to assistant tool_calls and tool messages', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({
+          choices: [{ finish_reason: 'stop', message: { content: 'Done.' } }],
+          usage: { prompt_tokens: 1, completion_tokens: 1 },
+          model: 'gpt-4o',
+        }),
+      );
+
+      const result = await makeProvider('openrouter').generateWithTools({
+        system: 'Be useful.',
+        tools,
+        messages: [
+          { role: 'user', content: 'quote Acme and Beta' },
+          {
+            role: 'assistant',
+            content: [
+              { type: 'text', text: 'On it.' },
+              { type: 'tool_use', id: 'toolu_1', name: 'quote.create', input: { customer: 'Acme' } },
+              { type: 'tool_use', id: 'toolu_2', name: 'quote.create', input: { customer: 'Beta' } },
+            ],
+            // Recorded by another provider, so it is rebuilt rather than replayed.
+            raw: { provider: 'anthropic', content: [] },
+          },
+          {
+            role: 'user',
+            content: [
+              { type: 'tool_result', toolUseId: 'toolu_1', content: '{"ok":true}' },
+              { type: 'tool_result', toolUseId: 'toolu_2', content: '{"error":"x"}', isError: true },
+            ],
+          },
+        ],
+      });
+
+      expect(result.text).toBe('Done.');
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body.messages).toEqual([
+        { role: 'system', content: 'Be useful.' },
+        { role: 'user', content: 'quote Acme and Beta' },
+        {
+          role: 'assistant',
+          content: 'On it.',
+          tool_calls: [
+            {
+              id: 'toolu_1',
+              type: 'function',
+              function: { name: 'quote.create', arguments: '{"customer":"Acme"}' },
+            },
+            {
+              id: 'toolu_2',
+              type: 'function',
+              function: { name: 'quote.create', arguments: '{"customer":"Beta"}' },
+            },
+          ],
+        },
+        { role: 'tool', tool_call_id: 'toolu_1', content: '{"ok":true}' },
+        { role: 'tool', tool_call_id: 'toolu_2', content: '{"error":"x"}' },
+      ]);
+    });
+
+    it('replays its own raw turn verbatim', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({
+          choices: [{ finish_reason: 'stop', message: { content: 'Done.' } }],
+          usage: { prompt_tokens: 1, completion_tokens: 1 },
+        }),
+      );
+      const raw = { role: 'assistant', content: null, tool_calls: [{ id: 'call_1' }] };
+
+      await makeProvider('openai').generateWithTools({
+        tools,
+        messages: [
+          { role: 'user', content: 'x' },
+          { role: 'assistant', content: [], raw: { provider: 'openai', content: raw } },
+        ],
+      });
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body.messages[1]).toEqual(raw);
+    });
+
+    it('reports a content filter stop as a refusal', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({
+          choices: [{ finish_reason: 'content_filter', message: { content: '' } }],
+          usage: { prompt_tokens: 1, completion_tokens: 0 },
+        }),
+      );
+
+      const result = await makeProvider('openai').generateWithTools({
+        tools,
+        messages: [{ role: 'user', content: 'x' }],
+      });
+      expect(result.stopReason).toBe('refusal');
     });
   });
 });

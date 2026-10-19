@@ -366,12 +366,77 @@ describe('agentReActWorkflow logic', () => {
       expect.objectContaining({
         conversationHistory: expect.arrayContaining([
           {
+            role: 'assistant',
+            content: 'Calling flaky tool.',
+            toolCalls: [{ id: 'err-1', name: 'flakyTool', args: {} }],
+          },
+          {
             role: 'tool',
+            toolCallId: 'err-1',
+            toolName: 'flakyTool',
             content: JSON.stringify({ error: 'Network timeout' }),
+            isError: true,
           },
         ]),
       }),
     );
+  });
+
+  it('records the raw turn and answers a call to an unknown tool with an error, without running it', async () => {
+    const raw = { provider: 'anthropic', content: [{ type: 'thinking', signature: 's' }] };
+    mockActivities.planReActTurn
+      .mockResolvedValueOnce({
+        thought: '',
+        toolCalls: [{ id: 'ok-1', name: 'lookup', args: { q: 1 } }],
+        invalidToolCalls: [{ id: 'bad-1', name: 'record_delete' }],
+        raw,
+      })
+      .mockResolvedValueOnce({ thought: '', finalAnswer: 'Looked it up; I cannot delete records.' });
+    mockActivities.executeToolActivity.mockResolvedValueOnce({
+      toolCallId: 'ok-1',
+      toolName: 'lookup',
+      isMutating: false,
+      requiresApproval: false,
+      output: { reply: 'found' },
+    });
+
+    await agentReActWorkflow({
+      organizationId: 'org-123',
+      userId: 'user-456',
+      conversationId: 'conv-789',
+      prompt: 'Look up and delete.',
+    });
+
+    expect(mockActivities.executeToolActivity).toHaveBeenCalledTimes(1);
+    expect(mockActivities.executeToolActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'ok-1' }),
+      expect.anything(),
+    );
+    const history = mockActivities.planReActTurn.mock.calls[1][0].conversationHistory;
+    expect(history.slice(1)).toEqual([
+      {
+        role: 'assistant',
+        content: '',
+        toolCalls: [
+          { id: 'ok-1', name: 'lookup', args: { q: 1 } },
+          { id: 'bad-1', name: 'record_delete', args: {} },
+        ],
+        raw,
+      },
+      {
+        role: 'tool',
+        toolCallId: 'bad-1',
+        toolName: 'record_delete',
+        content: JSON.stringify({ error: "Tool 'record_delete' is not available" }),
+        isError: true,
+      },
+      {
+        role: 'tool',
+        toolCallId: 'ok-1',
+        toolName: 'lookup',
+        content: JSON.stringify({ reply: 'found' }),
+      },
+    ]);
   });
 
   it('stops after maxTurns when loop does not reach final answer', async () => {

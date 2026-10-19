@@ -14,11 +14,43 @@ export interface AiImageContent {
   url?: string;
 }
 
-export type AiContentBlock = AiTextContent | AiImageContent;
+/** A tool call the model made, on an assistant message. */
+export interface AiToolUseContent {
+  type: 'tool_use';
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+}
+
+/** The result of one tool call, on the user message that follows it. */
+export interface AiToolResultContent {
+  type: 'tool_result';
+  toolUseId: string;
+  content: string;
+  isError?: boolean;
+}
+
+export type AiContentBlock =
+  | AiTextContent
+  | AiImageContent
+  | AiToolUseContent
+  | AiToolResultContent;
+
+/**
+ * An assistant turn exactly as one provider returned it. Replayed verbatim
+ * when the conversation goes back to that same provider — thinking blocks
+ * must come back unchanged — and ignored by any other provider, which
+ * rebuilds the turn from `content` instead.
+ */
+export interface AiRawAssistantContent {
+  provider: string;
+  content: unknown;
+}
 
 export interface AiMessage {
   role: 'user' | 'assistant';
   content: string | AiContentBlock[];
+  raw?: AiRawAssistantContent;
 }
 
 export interface AiGenerateOptions {
@@ -29,11 +61,21 @@ export interface AiGenerateOptions {
   system?: string;
   messages: AiMessage[];
   maxTokens?: number;
+  /**
+   * The system prompt, tools and earlier messages will be sent again soon
+   * (an agent loop). Providers that need opting in mark the prompt for
+   * caching; a one-off call should leave this off, since writing a cache
+   * entry costs more than an uncached prompt.
+   */
+  cache?: boolean;
 }
 
 export interface AiUsage {
+  /** Input tokens billed at the full rate — cache reads and writes are counted separately. */
   inputTokens: number;
   outputTokens: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
 }
 
 export interface AiGenerateResult {
@@ -58,12 +100,45 @@ export interface AiStructuredResult<T> {
   model: string;
 }
 
+export interface AiToolDefinition {
+  name: string;
+  description: string;
+  /** JSON-Schema of the tool's arguments. */
+  inputSchema: Record<string, unknown>;
+}
+
+/** One turn of native tool calling: the model answers in text, calls tools, or both. */
+export interface AiToolOptions extends AiGenerateOptions {
+  tools: AiToolDefinition[];
+}
+
+export interface AiToolCall {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+}
+
+export interface AiToolResult {
+  /** Text the model wrote this turn — its answer when it called no tools. */
+  text: string;
+  toolCalls: AiToolCall[];
+  /** This turn as the provider returned it, to send back on the next request. */
+  raw: AiRawAssistantContent;
+  usage: AiUsage;
+  model: string;
+  /** 'refusal' when the provider declined; the caller decides what to tell the user. */
+  stopReason: string | null;
+}
+
 export interface AiProvider {
   readonly name: string;
+  /** Output cap used when a call sets no `maxTokens`; budget reservation reserves against it. */
+  readonly defaultMaxTokens: number;
   generateText(options: AiGenerateOptions): Promise<AiGenerateResult>;
   generateStructured<T>(
     options: AiStructuredOptions,
   ): Promise<AiStructuredResult<T>>;
+  generateWithTools(options: AiToolOptions): Promise<AiToolResult>;
 }
 
 /** Normalizes provider-SDK-specific errors so callers don't need to know about them. */

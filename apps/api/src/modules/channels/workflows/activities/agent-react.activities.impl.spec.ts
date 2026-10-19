@@ -8,7 +8,7 @@ jest.mock('@temporalio/activity', () => ({
   Context: { current: () => ({ info: mockActivityInfo }) },
 }));
 
-import { createAgentReactActivities } from './agent-react.activities.impl';
+import { createAgentReactActivities, toAiMessages } from './agent-react.activities.impl';
 
 /** Same contract as ChannelIdempotencyService.runOnce, in memory. */
 function makeIdempotency() {
@@ -50,7 +50,7 @@ function makeActivities() {
   const idempotency = makeIdempotency();
   const auditService = { record: jest.fn() };
   const skillRegistry = { permittedFor: jest.fn(() => [skill]) };
-  const aiService = { generateStructured: jest.fn() };
+  const aiService = { generateWithTools: jest.fn() };
   const activities = createAgentReactActivities({
     aiService: aiService as any,
     rbacService: {
@@ -152,31 +152,136 @@ describe('surfaces', () => {
   });
 });
 
-describe('planReActTurn tool-call ids', () => {
-  it('replaces a repeated id within a turn with a fresh one', async () => {
-    const { activities, aiService } = makeActivities();
-    aiService.generateStructured.mockResolvedValueOnce({
-      model: 'm',
-      data: {
-        thought: '',
-        toolCalls: [
-          { id: 'call_1', name: 'draft_quote', args: { a: 1 } },
-          { id: 'call_1', name: 'draft_quote', args: { a: 2 } },
-          { name: 'draft_quote', args: { a: 3 } },
-        ],
-      },
-    });
-    const turn = await activities.planReActTurn({
+describe('planReActTurn', () => {
+  const tools = [{ name: 'draft_quote', description: 'Draft a quote', inputSchema: {} }];
+  const plan = (activities: any, conversationHistory: any[] = [{ role: 'user', content: 'p' }]) =>
+    activities.planReActTurn({
       organizationId: 'org-1',
       userId: 'user-1',
       prompt: 'p',
-      conversationHistory: [],
-      availableTools: [{ name: 'draft_quote', description: '', inputSchema: {} }],
+      conversationHistory,
+      availableTools: tools,
     });
-    const ids = turn.toolCalls!.map((c) => c.id);
+  const toolTurn = (toolCalls: any[], text = '') => ({
+    text,
+    toolCalls,
+    raw: { provider: 'anthropic', content: [{ type: 'thinking', signature: 's' }] },
+    usage: { inputTokens: 1, outputTokens: 1 },
+    model: 'm',
+    stopReason: 'tool_use',
+  });
+
+  it('calls the model with native tools, a fixed system prompt and caching', async () => {
+    const { activities, aiService } = makeActivities();
+    aiService.generateWithTools.mockResolvedValueOnce(
+      toolTurn([{ id: 'toolu_1', name: 'draft_quote', input: { a: 1 } }], 'Drafting.'),
+    );
+
+    const turn = await plan(activities);
+
+    const [feature, options] = aiService.generateWithTools.mock.calls[0];
+    expect(feature).toBe('automations.ai_agent');
+    expect(options).toEqual(
+      expect.objectContaining({
+        tools,
+        cache: true,
+        messages: [{ role: 'user', content: 'p' }],
+        system: expect.stringContaining('never say an action succeeded'),
+      }),
+    );
+    expect(turn).toEqual({
+      thought: 'Drafting.',
+      model: 'm',
+      toolCalls: [{ id: 'toolu_1', name: 'draft_quote', args: { a: 1 } }],
+      raw: { provider: 'anthropic', content: [{ type: 'thinking', signature: 's' }] },
+    });
+  });
+
+  it('returns the text as the final answer when no tool is called', async () => {
+    const { activities, aiService } = makeActivities();
+    aiService.generateWithTools.mockResolvedValueOnce({
+      ...toolTurn([], 'All done.'),
+      stopReason: 'end_turn',
+    });
+    expect(await plan(activities)).toEqual({ thought: '', model: 'm', finalAnswer: 'All done.' });
+  });
+
+  it('answers a refusal instead of failing the turn', async () => {
+    const { activities, aiService } = makeActivities();
+    aiService.generateWithTools.mockResolvedValueOnce({ ...toolTurn([]), stopReason: 'refusal' });
+    expect((await plan(activities)).finalAnswer).toBe("I can't help with that request.");
+  });
+
+  it('separates calls to tools that are not on offer', async () => {
+    const { activities, aiService } = makeActivities();
+    aiService.generateWithTools.mockResolvedValueOnce(
+      toolTurn([
+        { id: 'toolu_1', name: 'draft_quote', input: {} },
+        { id: 'toolu_2', name: 'record_delete', input: {} },
+      ]),
+    );
+    const turn = await plan(activities);
+    expect(turn.toolCalls).toEqual([{ id: 'toolu_1', name: 'draft_quote', args: {} }]);
+    expect(turn.invalidToolCalls).toEqual([{ id: 'toolu_2', name: 'record_delete' }]);
+    expect(turn.raw).toBeDefined();
+  });
+
+  it('replaces a repeated or missing id, and then drops the raw turn it no longer matches', async () => {
+    const { activities, aiService } = makeActivities();
+    aiService.generateWithTools.mockResolvedValueOnce(
+      toolTurn([
+        { id: 'call_1', name: 'draft_quote', input: { a: 1 } },
+        { id: 'call_1', name: 'draft_quote', input: { a: 2 } },
+        { id: '', name: 'draft_quote', input: { a: 3 } },
+      ]),
+    );
+    const turn = await plan(activities);
+    const ids = turn.toolCalls!.map((c: any) => c.id);
     expect(ids[0]).toBe('call_1');
     expect(new Set(ids).size).toBe(3);
-    expect(turn.toolCalls!.map((c) => c.args)).toEqual([{ a: 1 }, { a: 2 }, { a: 3 }]);
+    expect(turn.toolCalls!.map((c: any) => c.args)).toEqual([{ a: 1 }, { a: 2 }, { a: 3 }]);
+    expect(turn.raw).toBeUndefined();
+  });
+});
+
+describe('toAiMessages', () => {
+  it('turns tool calls and their results into paired assistant and user messages', () => {
+    const raw = { provider: 'anthropic', content: [] };
+    expect(
+      toAiMessages([
+        { role: 'assistant', content: 'stale reply from a trimmed history' },
+        { role: 'user', content: 'quote Acme and Beta' },
+        {
+          role: 'assistant',
+          content: 'On it.',
+          toolCalls: [
+            { id: 't1', name: 'draft_quote', args: { c: 'Acme' } },
+            { id: 't2', name: 'draft_quote', args: { c: 'Beta' } },
+          ],
+          raw,
+        },
+        { role: 'tool', toolCallId: 't1', toolName: 'draft_quote', content: '{"ok":1}' },
+        { role: 'tool', toolCallId: 't2', toolName: 'draft_quote', content: '{"error":"x"}', isError: true },
+      ]),
+    ).toEqual([
+      { role: 'user', content: 'quote Acme and Beta' },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'On it.' },
+          { type: 'tool_use', id: 't1', name: 'draft_quote', input: { c: 'Acme' } },
+          { type: 'tool_use', id: 't2', name: 'draft_quote', input: { c: 'Beta' } },
+        ],
+        raw,
+      },
+      {
+        role: 'user',
+        content: [
+          { type: 'tool_result', toolUseId: 't1', content: '{"ok":1}' },
+          { type: 'tool_result', toolUseId: 't2', content: '{"error":"x"}', isError: true },
+        ],
+      },
+    ]);
   });
 });
 
