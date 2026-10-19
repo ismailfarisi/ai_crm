@@ -6,6 +6,7 @@ import {
   defaultVatStatus,
   emirateFromText,
   expectedUaeRate,
+  isIsoDate,
   isPeriodStart,
   isUaeVatMode,
   isValidTrn,
@@ -204,5 +205,24 @@ describe('periods', () => {
     expect(() => periodContaining('2026-02-15', 'MONTHLY', '2026-03-01')).toThrow(msg);
     expect(() => isPeriodStart('2026-02-15', 'MONTHLY', '2026-03-01')).toThrow(msg);
     expect(() => nextPeriodStart('2026-02-15', 'MONTHLY', '2026-03-01')).toThrow(msg);
+  });
+
+  it('refuses dates that do not exist', () => {
+    expect(() => periodContaining('2026-01-01', 'MONTHLY', '2026-02-30')).toThrow('Expected a YYYY-MM-DD date');
+    expect(() => periodContaining('2026-01-01', 'MONTHLY', '2026-13-01')).toThrow('Expected a YYYY-MM-DD date');
+    expect(() => nextPeriodStart('2026-00-01', 'MONTHLY', '2026-03-01')).toThrow('Expected a YYYY-MM-DD date');
+  });
+});
+
+describe('isIsoDate', () => {
+  it('accepts real calendar dates only', () => {
+    expect(isIsoDate('2028-02-29')).toBe(true);
+    expect(isIsoDate('2026-12-31')).toBe(true);
+    expect(isIsoDate('2026-02-29')).toBe(false);
+    expect(isIsoDate('2026-02-30')).toBe(false);
+    expect(isIsoDate('2026-13-01')).toBe(false);
+    expect(isIsoDate('2026-04-31')).toBe(false);
+    expect(isIsoDate('2026-01-00')).toBe(false);
+    expect(isIsoDate('2026-1-01')).toBe(false);
   });
 });

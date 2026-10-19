@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   EMIRATES,
   VAT_STATUSES,
+  isIsoDate,
   isPeriodStart,
   isValidTrn,
   normaliseTrn,
@@ -100,7 +101,10 @@ export interface BranchDto {
  * VAT settings
  * ------------------------------------------------------------------ */
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use the format YYYY-MM-DD');
+const isoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use the format YYYY-MM-DD')
+  .refine((v) => !/^\d{4}-\d{2}-\d{2}$/.test(v) || isIsoDate(v), 'That date does not exist');
 
 export const vatSettingsSchema = z
   .object({
@@ -121,6 +125,8 @@ export const vatSettingsSchema = z
     (v) =>
       v.vatStartDate < v.firstPeriodStart ||
       !/^\d{4}-\d{2}-01$/.test(v.firstPeriodStart) ||
+      !isIsoDate(v.firstPeriodStart) ||
+      !isIsoDate(v.vatStartDate) ||
       isPeriodStart(v.firstPeriodStart, v.periodFrequency, v.vatStartDate),
     {
       path: ['vatStartDate'],
@@ -141,7 +147,7 @@ export interface VatSettingsDto {
   taan: string | null;
 }
 
-/** What `GET /tax/uae` returns: whether UAE mode is on, and what is missing if not. */
+/** What `GET /finance/vat/status` returns: whether UAE mode is on, and what is missing if not. */
 export interface UaeVatStatusDto {
   enabled: boolean;
   problems: string[];

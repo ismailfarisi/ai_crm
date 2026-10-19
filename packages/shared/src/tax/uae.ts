@@ -253,11 +253,25 @@ export interface TaxPeriod {
 
 const MONTHS_PER_PERIOD: Record<VatFrequency, number> = { MONTHLY: 1, QUARTERLY: 3 };
 
+function daysInMonth(year: number, month: number): number {
+  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  return [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+}
+
+/** A real calendar date as `YYYY-MM-DD`: 2026-02-30 and 2026-13-01 are not. */
+export function isIsoDate(value: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return false;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  return month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth(year, month);
+}
+
 /** Months since year 0, so periods can be counted across year boundaries. */
 function monthIndex(iso: string): number {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  if (!m) throw new Error(`Expected a YYYY-MM-DD date, got "${iso}"`);
-  return Number(m[1]) * 12 + Number(m[2]) - 1;
+  if (!isIsoDate(iso)) throw new Error(`Expected a YYYY-MM-DD date, got "${iso}"`);
+  return Number(iso.slice(0, 4)) * 12 + Number(iso.slice(5, 7)) - 1;
 }
 
 function assertAnchor(anchor: string): void {
@@ -286,8 +300,7 @@ export function periodContaining(anchor: string, freq: VatFrequency, date: strin
   const endIdx = startIdx + MONTHS_PER_PERIOD[freq] - 1;
   const year = Math.floor(endIdx / 12);
   const month = (endIdx % 12) + 1;
-  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
-  const lastDay = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  const lastDay = daysInMonth(year, month);
   return {
     start: firstOfMonth(startIdx),
     end: `${pad(year, 4)}-${pad(month, 2)}-${pad(lastDay, 2)}`,

@@ -41,6 +41,20 @@ describe('vatSettingsSchema', () => {
   });
 });
 
+describe('vatSettingsSchema dates', () => {
+  it.each([
+    ['vatStartDate', '2026-02-30'],
+    ['registrationDate', '2026-13-01'],
+    ['firstPeriodStart', '2026-13-01'],
+  ])('rejects %s %s, a date that does not exist', (field, value) => {
+    const result = vatSettingsSchema.safeParse({ ...settings, [field]: value });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((i) => i.path[0] === field && i.message === 'That date does not exist')).toBe(true);
+    }
+  });
+});
+
 describe('branchSchema', () => {
   it('upper-cases the invoice prefix', () => {
     expect(branchSchema.parse({ name: 'Dubai', invoicePrefix: 'dxb' }).invoicePrefix).toBe('DXB');
