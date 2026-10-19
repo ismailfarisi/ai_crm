@@ -4,6 +4,7 @@ import type {
   AssistantTurnStatus,
   AuditChannel,
 } from '@saas/shared';
+import type { AiRawAssistantContent } from '../../../ai/interfaces/ai-provider.interface';
 
 export interface ToolAuditProvenance {
   channel: AuditChannel;
@@ -77,11 +78,8 @@ export interface ToolExecutionResult {
   errorMessage?: string;
 }
 
-/** An assistant turn exactly as the provider returned it (`AiRawAssistantContent`). */
-export interface RawAssistantTurn {
-  provider: string;
-  content: unknown;
-}
+/** An assistant turn exactly as the provider returned it. */
+export type RawAssistantTurn = AiRawAssistantContent;
 
 /**
  * The agent's working history, in the order the model saw it. Every tool

@@ -415,6 +415,17 @@ Anthropic and on OpenAI. Then confirm that `cacheReadInputTokens` is non-zero
 from the second planner round onwards. If it stays at zero, the cached prefix
 is probably below the model's minimum length.
 
+### Raw assistant turns are stored twice per planner round — open
+
+`planReActTurn` receives the whole conversation history as activity input,
+including every earlier turn's `raw` provider content (thinking signatures and
+tool-use blocks), and returns the new turn's `raw` in its output. Temporal
+therefore records each raw turn once in the output that produced it and again
+in the input of every later round, so event-history size grows with the square
+of the round count. Fine at the current round cap; if long turns start hitting
+Temporal's payload limits, persist raw turns once (keyed by tool-call id, or on
+the `assistant_messages` row) and send only the last one to the planner.
+
 ### Not yet verified against a live stack — open
 
 The first version was checked with the automated suites only. No database,

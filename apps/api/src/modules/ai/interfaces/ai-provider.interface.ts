@@ -141,8 +141,20 @@ export interface AiProvider {
   generateWithTools(options: AiToolOptions): Promise<AiToolResult>;
 }
 
-/** Normalizes provider-SDK-specific errors so callers don't need to know about them. */
-export class AiProviderError extends Error {}
+/**
+ * Normalizes provider-SDK-specific errors so callers don't need to know about
+ * them. `retryable` is false when the same request would fail the same way
+ * again (a rejected schema or tool name, a refusal, malformed output), so a
+ * workflow can stop retrying — and paying for — a deterministic failure.
+ */
+export class AiProviderError extends Error {
+  constructor(
+    message: string,
+    readonly retryable = true,
+  ) {
+    super(message);
+  }
+}
 
 /** Thrown when the configured provider has no API key set — callers should degrade gracefully. */
 export class AiNotConfiguredException extends ServiceUnavailableException {

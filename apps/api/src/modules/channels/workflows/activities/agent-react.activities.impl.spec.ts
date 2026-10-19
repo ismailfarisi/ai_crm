@@ -8,6 +8,8 @@ jest.mock('@temporalio/activity', () => ({
   Context: { current: () => ({ info: mockActivityInfo }) },
 }));
 
+import { ApplicationFailure } from '@temporalio/activity';
+import { AiProviderError } from '@/modules/ai/interfaces/ai-provider.interface';
 import { createAgentReactActivities, toAiMessages } from './agent-react.activities.impl';
 
 /** Same contract as ChannelIdempotencyService.runOnce, in memory. */
@@ -210,6 +212,23 @@ describe('planReActTurn', () => {
     const { activities, aiService } = makeActivities();
     aiService.generateWithTools.mockResolvedValueOnce({ ...toolTurn([]), stopReason: 'refusal' });
     expect((await plan(activities)).finalAnswer).toBe("I can't help with that request.");
+  });
+
+  it('stops Temporal retrying a deterministic provider failure', async () => {
+    const { activities, aiService } = makeActivities();
+    aiService.generateWithTools.mockRejectedValueOnce(
+      new AiProviderError('Anthropic API error: tools.0.name does not match pattern', false),
+    );
+    const err = await plan(activities).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApplicationFailure);
+    expect((err as ApplicationFailure).nonRetryable).toBe(true);
+    expect((err as ApplicationFailure).message).toContain('does not match pattern');
+
+    aiService.generateWithTools.mockRejectedValueOnce(
+      new AiProviderError('Anthropic API error: overloaded'),
+    );
+    const transient = await plan(activities).catch((e: unknown) => e);
+    expect(transient).toBeInstanceOf(AiProviderError);
   });
 
   it('separates calls to tools that are not on offer', async () => {

@@ -267,7 +267,7 @@ describe('OpenAiCompatibleProvider', () => {
           {
             id: 'call_1',
             type: 'function',
-            function: { name: 'quote.create', arguments: '{"customer":"Acme"}' },
+            function: { name: 'quote__create', arguments: '{"customer":"Acme"}' },
           },
         ],
       };
@@ -305,12 +305,60 @@ describe('OpenAiCompatibleProvider', () => {
         {
           type: 'function',
           function: {
-            name: 'quote.create',
+            name: 'quote__create',
             description: 'Create a quote',
             parameters: tools[0].inputSchema,
           },
         },
       ]);
+    });
+
+    it('keeps only the request-side fields of the turn it will replay', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({
+          choices: [
+            {
+              finish_reason: 'stop',
+              message: {
+                role: 'assistant',
+                content: 'Done.',
+                refusal: null,
+                annotations: [],
+                reasoning_details: [{ type: 'reasoning.text', text: 'hm' }],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1 },
+        }),
+      );
+
+      const result = await makeProvider('openrouter').generateWithTools({
+        tools,
+        messages: [{ role: 'user', content: 'x' }],
+      });
+
+      expect(result.raw.content).toEqual({
+        role: 'assistant',
+        content: 'Done.',
+        reasoning_details: [{ type: 'reasoning.text', text: 'hm' }],
+      });
+    });
+
+    it('marks a rejected request non-retryable but rate limiting retryable', async () => {
+      const call = () =>
+        makeProvider('openai').generateWithTools({
+          tools,
+          messages: [{ role: 'user', content: 'x' }],
+        });
+
+      fetchMock.mockResolvedValueOnce(jsonResponse({ error: 'bad schema' }, false, 400));
+      await expect(call()).rejects.toMatchObject({
+        constructor: AiProviderError,
+        retryable: false,
+      });
+
+      fetchMock.mockResolvedValueOnce(jsonResponse({ error: 'slow down' }, false, 429));
+      await expect(call()).rejects.toMatchObject({ retryable: true });
     });
 
     it('maps tool calls and results to assistant tool_calls and tool messages', async () => {
@@ -359,12 +407,12 @@ describe('OpenAiCompatibleProvider', () => {
             {
               id: 'toolu_1',
               type: 'function',
-              function: { name: 'quote.create', arguments: '{"customer":"Acme"}' },
+              function: { name: 'quote__create', arguments: '{"customer":"Acme"}' },
             },
             {
               id: 'toolu_2',
               type: 'function',
-              function: { name: 'quote.create', arguments: '{"customer":"Beta"}' },
+              function: { name: 'quote__create', arguments: '{"customer":"Beta"}' },
             },
           ],
         },

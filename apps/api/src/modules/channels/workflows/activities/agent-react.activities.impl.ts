@@ -2,10 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { ApplicationFailure, Context } from '@temporalio/activity';
 import { PERMISSIONS, type Permission } from '@saas/shared';
 import { AiService } from '@/modules/ai/ai.service';
-import type {
-  AiMessage,
-  AiToolResultContent,
+import {
+  AiProviderError,
+  type AiMessage,
+  type AiToolResultContent,
 } from '@/modules/ai/interfaces/ai-provider.interface';
+import { AiBudgetExceededException } from '@/modules/ai/exceptions/ai-budget-exceeded.exception';
 import { AuditService } from '@/modules/audit/audit.service';
 import { TenantContextService } from '@/common/context/tenant-context.service';
 import { CustomObjectToolFactoryService } from '@/modules/custom-objects/services/custom-object-tool-factory.service';
@@ -46,6 +48,21 @@ const AGENT_SYSTEM_PROMPT = [
 
 const REFUSAL_ANSWER = "I can't help with that request.";
 const NO_ANSWER = "I couldn't come up with an answer to that.";
+
+/**
+ * A rejected request (bad schema, refusal, cut-off output) or an exhausted
+ * budget fails the same way on every attempt, so Temporal must not retry it:
+ * each retry is another paid request.
+ */
+export function toPlannerFailure(err: unknown): unknown {
+  if (err instanceof AiProviderError && !err.retryable) {
+    return ApplicationFailure.nonRetryable(err.message, 'AiProviderError');
+  }
+  if (err instanceof AiBudgetExceededException) {
+    return ApplicationFailure.nonRetryable(err.message, 'AiBudgetExceeded');
+  }
+  return err;
+}
 
 /**
  * The agent's history as provider messages: each assistant tool call is
@@ -247,20 +264,24 @@ export function createAgentReactActivities(deps: {
 
     async planReActTurn(input) {
       return deps.tenantContext.runWithTenant(input.organizationId, async () => {
-        const result = await deps.aiService.generateWithTools(
-          'automations.ai_agent',
-          {
-            system: AGENT_SYSTEM_PROMPT,
-            tools: input.availableTools,
-            messages: toAiMessages(input.conversationHistory),
-            // Every round resends the same tools, instructions and history.
-            cache: true,
-          },
-          {
-            organizationId: input.organizationId,
-            ...(input.userId ? { userId: input.userId } : {}),
-          },
-        );
+        const result = await deps.aiService
+          .generateWithTools(
+            'automations.ai_agent',
+            {
+              system: AGENT_SYSTEM_PROMPT,
+              tools: input.availableTools,
+              messages: toAiMessages(input.conversationHistory),
+              // Every round resends the same tools, instructions and history.
+              cache: true,
+            },
+            {
+              organizationId: input.organizationId,
+              ...(input.userId ? { userId: input.userId } : {}),
+            },
+          )
+          .catch((err: unknown) => {
+            throw toPlannerFailure(err);
+          });
         if (result.stopReason === 'refusal') {
           return { thought: '', model: result.model, finalAnswer: REFUSAL_ANSWER };
         }

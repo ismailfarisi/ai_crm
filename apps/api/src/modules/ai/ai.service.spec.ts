@@ -495,9 +495,37 @@ describe('AiService', () => {
         10,
         0,
       );
+      // The configured claude-sonnet-5's 4096 output tokens alone come to
+      // $0.041; anything above that is the text, schema and image input.
       const reservedEstimate =
         redisBudgetGuard.checkAndReserve.mock.calls[0][1];
-      expect(reservedEstimate).toBeGreaterThan(0.07);
+      expect(reservedEstimate).toBeGreaterThan(0.045);
+    });
+
+    it("reserves at the configured model's rate when the call names no model", async () => {
+      stubProvider();
+      const { service, budgetRepo, redisBudgetGuard, aiConfigService } = makeService();
+      aiConfigService.resolveProviderConfig.mockResolvedValue({
+        provider: 'anthropic',
+        apiKey: 'k',
+        model: 'claude-haiku-5-5',
+      });
+      budgetRepo.findOne = jest.fn().mockResolvedValue({
+        organizationId: orgId,
+        monthlyBudgetUsd: 10,
+        isEnabled: true,
+      });
+
+      await service.generateText(
+        'test.feature',
+        { messages: [{ role: 'user', content: 'hi' }] },
+        { organizationId: orgId, userId },
+      );
+
+      // 4096 output tokens at Haiku's $0.50/M, not the $15/M fallback.
+      const reservedEstimate = redisBudgetGuard.checkAndReserve.mock.calls[0][1];
+      expect(reservedEstimate).toBeLessThan(0.003);
+      expect(reservedEstimate).toBeGreaterThan(0.002);
     });
 
     it('logs provider-reported usage when budget reconciliation fails', async () => {

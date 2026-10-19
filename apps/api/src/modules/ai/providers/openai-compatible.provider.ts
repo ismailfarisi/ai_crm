@@ -14,9 +14,13 @@ import {
   AiToolResultContent,
   AiUsage,
 } from '../interfaces/ai-provider.interface';
+import { fromProviderToolName, toProviderToolName } from './tool-names';
 
 /** Kept low: OpenRouter proxies models whose output cap is far below OpenAI's. */
 const DEFAULT_MAX_TOKENS = 4096;
+
+/** Worth another attempt: the request was fine, the service was not. */
+const RETRYABLE_STATUSES = new Set([408, 409, 429]);
 
 interface OpenAiToolCall {
   id?: string;
@@ -28,6 +32,8 @@ interface OpenAiAssistantMessage {
   role?: 'assistant';
   content?: string | null;
   tool_calls?: OpenAiToolCall[];
+  /** OpenRouter's reasoning blocks; sent back so the model keeps its own reasoning. */
+  reasoning_details?: unknown;
 }
 
 interface OpenAiChatCompletionResponse {
@@ -139,7 +145,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
             tools: options.tools.map((tool) => ({
               type: 'function',
               function: {
-                name: tool.name,
+                name: toProviderToolName(tool.name),
                 description: tool.description,
                 parameters: tool.inputSchema,
               },
@@ -151,17 +157,17 @@ export class OpenAiCompatibleProvider implements AiProvider {
     const choice = json.choices?.[0];
     if (choice?.finish_reason === 'length') {
       // A tool call's arguments may be half-written; never act on them.
-      throw new AiProviderError('AI response was cut off before it was complete');
+      throw new AiProviderError('AI response was cut off before it was complete', false);
     }
     const message = choice?.message ?? {};
     return {
       text: message.content ?? '',
       toolCalls: (message.tool_calls ?? []).map((call) => ({
         id: call.id ?? '',
-        name: call.function.name,
+        name: fromProviderToolName(call.function.name),
         input: this.parseArguments(call),
       })),
-      raw: { provider: this.name, content: { ...message, role: 'assistant' } },
+      raw: { provider: this.name, content: this.replayableTurn(message) },
       usage: this.usageOf(json),
       model: json.model ?? this.defaultModel,
       stopReason:
@@ -171,14 +177,31 @@ export class OpenAiCompatibleProvider implements AiProvider {
     };
   }
 
+  /**
+   * Only the request-side fields of the assistant message. A response also
+   * carries `refusal`, `annotations`, `audio` and provider extras, which
+   * strict endpoints reject when they come back inside `messages`.
+   */
+  private replayableTurn(message: OpenAiAssistantMessage): OpenAiAssistantMessage {
+    return {
+      role: 'assistant',
+      content: message.content ?? null,
+      ...(message.tool_calls?.length ? { tool_calls: message.tool_calls } : {}),
+      ...(message.reasoning_details !== undefined
+        ? { reasoning_details: message.reasoning_details }
+        : {}),
+    };
+  }
+
   private assertComplete(finishReason: string | undefined): void {
     if (finishReason === 'length') {
       throw new AiProviderError(
         'AI response was cut off before the structured output was complete',
+        false,
       );
     }
     if (finishReason === 'content_filter') {
-      throw new AiProviderError('The AI provider declined to answer this request');
+      throw new AiProviderError('The AI provider declined to answer this request', false);
     }
   }
 
@@ -188,6 +211,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
     } catch {
       throw new AiProviderError(
         'AI response tool arguments were not valid JSON',
+        false,
       );
     }
   }
@@ -243,7 +267,10 @@ export class OpenAiCompatibleProvider implements AiProvider {
           tool_calls: toolUses.map((b) => ({
             id: b.id,
             type: 'function',
-            function: { name: b.name, arguments: JSON.stringify(b.input) },
+            function: {
+              name: toProviderToolName(b.name),
+              arguments: JSON.stringify(b.input),
+            },
           })),
         },
       ];
@@ -300,6 +327,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
       const errorBody = await response.text().catch(() => '');
       throw new AiProviderError(
         `${this.name} API error (${response.status}): ${errorBody || response.statusText}`,
+        response.status >= 500 || RETRYABLE_STATUSES.has(response.status),
       );
     }
 

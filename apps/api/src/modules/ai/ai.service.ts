@@ -139,6 +139,7 @@ export class AiService {
       reservation = await this.reserveBudget(
         actor.organizationId,
         options,
+        options.model || providerConfig.model,
         provider.defaultMaxTokens,
       );
       providerCallStarted = true;
@@ -178,6 +179,7 @@ export class AiService {
   private async reserveBudget(
     organizationId: string,
     options: BudgetedOptions,
+    model: string,
     providerDefaultMaxTokens: number,
   ): Promise<{ reservedAmount: number; periodKey: string } | undefined> {
     const budget = await this.budgetRepo.findOne({ where: { organizationId } });
@@ -216,8 +218,9 @@ export class AiService {
       Math.ceil(inputCharacters / 4) + imageCount * 4096,
     );
     const outputTokens = Math.max(1, options.maxTokens ?? providerDefaultMaxTokens);
-    // Reserved as if nothing were cached; reconciliation charges the real mix.
-    const estimatedCostUsd = this.estimateCostUsd(options.model ?? '', {
+    // Reserved as if nothing were cached, at the rate of the model that will
+    // actually run; reconciliation charges the real mix.
+    const estimatedCostUsd = this.estimateCostUsd(model, {
       inputTokens,
       outputTokens,
     });

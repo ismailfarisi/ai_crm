@@ -22,6 +22,19 @@ const activities = proxyActivities<AgentReactActivities>({
     maximumAttempts: 3,
   },
 });
+/**
+ * The planner runs a thinking model with a 16k output cap, so one round can
+ * take well over 45 seconds. A timed-out attempt is still billed, and the
+ * activity marks deterministic provider failures non-retryable itself.
+ */
+const plannerActivities = proxyActivities<
+  Pick<AgentReactActivities, 'planReActTurn'>
+>({
+  startToCloseTimeout: '3 minutes',
+  retry: {
+    maximumAttempts: 3,
+  },
+});
 const commitActivities = proxyActivities<
   Pick<AgentReactActivities, 'commitToolMutationActivity'>
 >({
@@ -228,7 +241,7 @@ async function runAgentLoop(
       ...surface,
     });
 
-    const turn = await activities.planReActTurn({
+    const turn = await plannerActivities.planReActTurn({
       organizationId: input.organizationId,
       userId: input.userId,
       prompt: goal,

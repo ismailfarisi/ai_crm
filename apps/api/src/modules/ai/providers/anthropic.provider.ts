@@ -22,6 +22,11 @@ import {
   AiContentBlock,
   AiUsage,
 } from '../interfaces/ai-provider.interface';
+import { fromProviderToolName, toProviderToolName } from './tool-names';
+import { toStructuredOutputSchema } from './structured-output-schema';
+
+/** Rejected on retry too: the request itself is wrong, not the connection. */
+const NON_RETRYABLE_STATUSES = new Set([400, 401, 403, 404, 413, 422]);
 
 /**
  * Generous enough that structured output and tool arguments are not cut off
@@ -59,15 +64,19 @@ export class AnthropicProvider implements AiProvider {
   ): Promise<AiStructuredResult<T>> {
     const response = await this.create(options, {
       output_config: {
-        format: { type: 'json_schema', schema: options.jsonSchema },
+        format: {
+          type: 'json_schema',
+          schema: toStructuredOutputSchema(options.jsonSchema),
+        },
       },
     });
     if (response.stop_reason === 'refusal') {
-      throw new AiProviderError('The AI provider declined to answer this request');
+      throw new AiProviderError('The AI provider declined to answer this request', false);
     }
     if (response.stop_reason === 'max_tokens') {
       throw new AiProviderError(
         'AI response was cut off before the structured output was complete',
+        false,
       );
     }
 
@@ -75,13 +84,14 @@ export class AnthropicProvider implements AiProvider {
     if (!text) {
       throw new AiProviderError(
         'AI response did not include the expected structured output',
+        false,
       );
     }
     let data: T;
     try {
       data = JSON.parse(text) as T;
     } catch {
-      throw new AiProviderError('AI response structured output was not valid JSON');
+      throw new AiProviderError('AI response structured output was not valid JSON', false);
     }
 
     return { data, usage: this.usageOf(response), model: response.model };
@@ -89,14 +99,14 @@ export class AnthropicProvider implements AiProvider {
 
   async generateWithTools(options: AiToolOptions): Promise<AiToolResult> {
     const tools: Tool[] = options.tools.map((tool) => ({
-      name: tool.name,
+      name: toProviderToolName(tool.name),
       description: tool.description,
       input_schema: tool.inputSchema as Tool['input_schema'],
     }));
     const response = await this.create(options, tools.length ? { tools } : {});
     if (response.stop_reason === 'max_tokens') {
       // A tool call's arguments may be half-written; never act on them.
-      throw new AiProviderError('AI response was cut off before it was complete');
+      throw new AiProviderError('AI response was cut off before it was complete', false);
     }
 
     return {
@@ -105,7 +115,7 @@ export class AnthropicProvider implements AiProvider {
         .filter((b): b is ToolUseBlock => b.type === 'tool_use')
         .map((b) => ({
           id: b.id,
-          name: b.name,
+          name: fromProviderToolName(b.name),
           input: (b.input ?? {}) as Record<string, unknown>,
         })),
       raw: { provider: this.name, content: response.content },
@@ -170,7 +180,12 @@ export class AnthropicProvider implements AiProvider {
       case 'text':
         return { type: 'text', text: block.text };
       case 'tool_use':
-        return { type: 'tool_use', id: block.id, name: block.name, input: block.input };
+        return {
+          type: 'tool_use',
+          id: block.id,
+          name: toProviderToolName(block.name),
+          input: block.input,
+        };
       case 'tool_result':
         return {
           type: 'tool_result',
@@ -196,7 +211,9 @@ export class AnthropicProvider implements AiProvider {
   private normalizeError(err: unknown): AiProviderError {
     if (err instanceof AiProviderError) return err;
     if (err instanceof APIError) {
-      return new AiProviderError(`Anthropic API error: ${err.message}`);
+      const retryable =
+        typeof err.status !== 'number' || !NON_RETRYABLE_STATUSES.has(err.status);
+      return new AiProviderError(`Anthropic API error: ${err.message}`, retryable);
     }
     const message = err instanceof Error ? err.message : String(err);
     return new AiProviderError(`Failed to call Anthropic: ${message}`);

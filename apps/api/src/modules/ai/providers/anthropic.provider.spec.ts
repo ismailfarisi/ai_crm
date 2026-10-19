@@ -142,7 +142,10 @@ describe('AnthropicProvider', () => {
       });
       const call = mockCreate.mock.calls[0][0];
       expect(call.output_config).toEqual({
-        format: { type: 'json_schema', schema: { type: 'object', properties: {} } },
+        format: {
+          type: 'json_schema',
+          schema: { type: 'object', properties: {}, additionalProperties: false },
+        },
       });
       expect(call.tool_choice).toBeUndefined();
       expect(call.tools).toBeUndefined();
@@ -167,6 +170,53 @@ describe('AnthropicProvider', () => {
       });
       await expect(call).rejects.toBeInstanceOf(AiProviderError);
       await expect(call).rejects.toThrow(message);
+    });
+
+    it('rewrites the schema to what structured outputs accept', async () => {
+      mockCreate.mockResolvedValue({
+        content: [{ type: 'text', text: '{}' }],
+        usage: { input_tokens: 1, output_tokens: 1 },
+        model: 'claude-opus-5-5',
+        stop_reason: 'end_turn',
+      });
+
+      await provider.generateStructured({
+        messages: [{ role: 'user', content: 'extract this' }],
+        jsonSchema: {
+          type: 'object',
+          properties: {
+            amount: { type: 'number', minimum: 0 },
+            // A property that happens to share a constraint keyword's name must survive.
+            minimum: { type: 'string', maxLength: 10, format: 'phone' },
+            lines: {
+              type: 'array',
+              minItems: 1,
+              items: { type: 'object', properties: { sku: { type: 'string' } } },
+            },
+          },
+          required: ['amount'],
+          additionalProperties: true,
+        },
+        schemaName: 'extract_receipt',
+      });
+
+      expect(mockCreate.mock.calls[0][0].output_config.format.schema).toEqual({
+        type: 'object',
+        properties: {
+          amount: { type: 'number' },
+          minimum: { type: 'string' },
+          lines: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: { sku: { type: 'string' } },
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ['amount'],
+        additionalProperties: false,
+      });
     });
 
     it('throws AiProviderError when the output is not valid JSON', async () => {
@@ -200,7 +250,7 @@ describe('AnthropicProvider', () => {
       const content = [
         { type: 'thinking', thinking: '', signature: 'sig-1' },
         { type: 'text', text: 'Creating it.' },
-        { type: 'tool_use', id: 'toolu_1', name: 'quote.create', input: { customer: 'Acme' } },
+        { type: 'tool_use', id: 'toolu_1', name: 'quote__create', input: { customer: 'Acme' } },
       ];
       mockCreate.mockResolvedValue({
         content,
@@ -230,9 +280,10 @@ describe('AnthropicProvider', () => {
       const call = mockCreate.mock.calls[0][0];
       expect(call.cache_control).toEqual({ type: 'ephemeral' });
       expect(call.tool_choice).toBeUndefined();
+      // Dotted skill names are not valid tool names; the dot goes out as `__`.
       expect(call.tools).toEqual([
         {
-          name: 'quote.create',
+          name: 'quote__create',
           description: 'Create a quote',
           input_schema: tools[0].inputSchema,
         },
@@ -242,7 +293,7 @@ describe('AnthropicProvider', () => {
     it('replays its own raw turn verbatim and maps tool results', async () => {
       const raw = [
         { type: 'thinking', thinking: '', signature: 'sig-1' },
-        { type: 'tool_use', id: 'toolu_1', name: 'quote.create', input: { customer: 'Acme' } },
+        { type: 'tool_use', id: 'toolu_1', name: 'quote__create', input: { customer: 'Acme' } },
       ];
       mockCreate.mockResolvedValue({
         content: [{ type: 'text', text: 'Done.' }],
@@ -301,8 +352,27 @@ describe('AnthropicProvider', () => {
       });
 
       expect(mockCreate.mock.calls[0][0].messages[1].content).toEqual([
-        { type: 'tool_use', id: 'call_1', name: 'quote.create', input: { customer: 'Acme' } },
+        { type: 'tool_use', id: 'call_1', name: 'quote__create', input: { customer: 'Acme' } },
       ]);
+    });
+
+    it('marks a rejected request non-retryable but a transient failure retryable', async () => {
+      // The mocked APIError takes a message only; the real one carries `status`.
+      const apiError = (message: string, status: number) =>
+        Object.assign(new (APIError as unknown as new (m: string) => Error)(message), {
+          status,
+        });
+      const call = () =>
+        provider.generateWithTools({ tools, messages: [{ role: 'user', content: 'x' }] });
+
+      mockCreate.mockRejectedValueOnce(apiError('invalid tool name', 400));
+      await expect(call()).rejects.toMatchObject({
+        constructor: AiProviderError,
+        retryable: false,
+      });
+
+      mockCreate.mockRejectedValueOnce(apiError('overloaded', 529));
+      await expect(call()).rejects.toMatchObject({ retryable: true });
     });
 
     it('throws rather than return possibly half-written tool arguments', async () => {
