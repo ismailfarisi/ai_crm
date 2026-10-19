@@ -22,6 +22,7 @@ import {
   type TaxReportRow,
   type TaxRuleDto,
   type TaxRulePayload,
+  type VatStatus,
   treatmentAllowed,
   treatmentIsReverseCharge,
 } from '@saas/shared';
@@ -286,7 +287,7 @@ export class TaxService {
       this.rules.find({ where: { tenantId, kind: 'PURCHASE' } }),
     ]);
     const resolved = resolveTaxCode(
-      { country: supplier.country, taxId: supplier.taxId },
+      await this.taxParty(tenantId, supplier),
       'PURCHASE',
       rules.map(toTaxRuleDto),
       codes.map(toTaxCodeDto),
@@ -338,9 +339,31 @@ export class TaxService {
     const customer = await this.customers.findOne({
       where: { id: customerId, tenantId },
     });
-    return customer
-      ? { country: customer.country, taxId: customer.taxId }
-      : null;
+    return customer ? this.taxParty(tenantId, customer) : null;
+  }
+
+  /**
+   * The party as the tax rules should see it.
+   *
+   * In UAE VAT mode the party's VAT status, not its free-text country, says
+   * whether it is at home: a registered or unregistered party is in the UAE
+   * even when its country was never filled in, so it must not fall through to
+   * the `*` rule (zero-rated sale, reverse-charge purchase). Only a party
+   * marked outside the UAE keeps its own country. Elsewhere nothing changes.
+   */
+  private async taxParty(
+    tenantId: string,
+    party: { country: string | null; taxId: string | null; vatStatus: VatStatus },
+  ): Promise<TaxParty> {
+    if (party.vatStatus !== 'OUTSIDE_UAE') {
+      const organization = await this.organizations.findOne({
+        where: { id: tenantId },
+      });
+      if (organization && isUaeVatMode(organization)) {
+        return { country: 'AE', taxId: party.taxId };
+      }
+    }
+    return { country: party.country, taxId: party.taxId };
   }
 
   /* ------------------------------------------------------------------ *

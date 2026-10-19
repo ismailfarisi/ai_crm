@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { TaxService } from './tax.service';
+import { UAE_STARTER_CODES, UAE_STARTER_RULES, treatmentIsReverseCharge } from '@saas/shared';
 
 const tenantId = 'org-1';
 
@@ -245,5 +246,76 @@ describe('TaxService codes in UAE VAT mode', () => {
     await expect(
       s.createCode(tenantId, input({ kind: 'SALES', rate: 20 }) as any),
     ).resolves.toMatchObject({ rate: 20, isReverseCharge: false });
+  });
+});
+
+describe('TaxService parties in UAE VAT mode', () => {
+  const uae = { country: 'AE', taxId: '100123456700003', baseCurrency: 'AED' };
+  const starterCodes = UAE_STARTER_CODES.map((c) => ({
+    id: `${c.kind}-${c.code}`,
+    tenantId,
+    code: c.code,
+    name: c.name,
+    rate: c.rate,
+    kind: c.kind,
+    isReverseCharge: treatmentIsReverseCharge(c.treatment),
+    treatment: c.treatment,
+    ledgerAccountId: null,
+    isActive: true,
+  }));
+  const starterRules = UAE_STARTER_RULES.map((r, i) => ({
+    id: `rule-${i}`,
+    tenantId,
+    kind: r.kind,
+    country: r.country,
+    requiresTaxId: false,
+    taxCodeId: `${r.kind}-${r.code}`,
+    priority: 0,
+  }));
+
+  function service(
+    party: { country: string | null; taxId: string | null; vatStatus: string },
+    org: Record<string, unknown> = uae,
+  ) {
+    const rows = (list: any[]) => ({
+      find: jest.fn(async () => list),
+      findOne: jest.fn(async () => null),
+    });
+    const parties = { find: jest.fn(async () => []), findOne: jest.fn(async () => ({ id: 'p1', ...party })) };
+    const organizations = { findOne: jest.fn(async () => ({ id: tenantId, ...org })) };
+    return new TaxService(
+      rows(starterCodes) as any,
+      rows(starterRules) as any,
+      parties as any,
+      parties as any,
+      rows([]) as any,
+      rows([]) as any,
+      rows([]) as any,
+      rows([]) as any,
+      organizations as any,
+    );
+  }
+
+  it('charges 5% to a domestic customer whose country was never filled in', async () => {
+    const [out] = await service({ country: null, taxId: null, vatStatus: 'NOT_REGISTERED' }).applyToLines(tenantId, [line()], 'c1');
+    expect(out).toEqual(expect.objectContaining({ taxCode: 'SR', taxRate: 5, taxReverseCharge: false }));
+  });
+
+  it('charges standard VAT, not reverse charge, on a supplier with no country', async () => {
+    const code = await service({ country: null, taxId: null, vatStatus: 'REGISTERED' }).purchaseCodeForSupplier(tenantId, 's1');
+    expect(code).toEqual(expect.objectContaining({ code: 'SR', rate: 5 }));
+  });
+
+  it('zero-rates a customer marked outside the UAE', async () => {
+    const [out] = await service({ country: 'GB', taxId: null, vatStatus: 'OUTSIDE_UAE' }).applyToLines(tenantId, [line()], 'c1');
+    expect(out).toEqual(expect.objectContaining({ taxCode: 'ZR', taxRate: 0 }));
+  });
+
+  it('leaves the country alone outside UAE VAT mode', async () => {
+    const [out] = await service(
+      { country: null, taxId: null, vatStatus: 'NOT_REGISTERED' },
+      { ...uae, baseCurrency: 'USD' },
+    ).applyToLines(tenantId, [line()], 'c1');
+    expect(out).toEqual(expect.objectContaining({ taxCode: 'ZR' }));
   });
 });
