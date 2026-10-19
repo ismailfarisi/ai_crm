@@ -263,6 +263,41 @@ order lines, so an order's tax is only resolved when the bill arrives.
 region or state matching, so anywhere with sub-national tax (US states, Canadian
 provinces) cannot be modelled.
 
+### UAE tenants on a non-AED base currency cannot enter UAE VAT mode — open
+
+UAE VAT mode assumes the organization's base currency is AED, because returns
+and tax invoices are stated in dirhams. An organization whose country is AE but
+whose base currency is something else is not switched into UAE mode. Supporting
+it would need a conversion of every taxable amount into AED at a rate the FTA
+accepts, which is not built.
+
+### Domestic reverse charge is not modelled — open
+
+The UAE domestic reverse charge (gold, diamonds, hydrocarbons, and phones,
+computers and tablets sold to resellers) makes the buyer account for the tax.
+Only the import and cross-border reverse charge on purchases has a tax code;
+these domestic supplies have none, so they must be handled by hand.
+
+### Advance payments before an invoice create no tax point — open
+
+In the UAE, tax becomes due when payment is received, even before an invoice is
+issued. A customer payment or deposit recorded ahead of an invoice does not
+create a tax point or any output tax. The tax is recognised only when the
+invoice is issued.
+
+### Records retention: five years, fifteen for real estate — open
+
+UAE tax law requires documents to be kept for 5 years (15 years for real
+estate). Nothing deletes tax documents today, but any future deletion or
+archival job, including tenant offboarding, must respect that period.
+
+### Organization PATCH clears omitted fields — open
+
+`updateOrganizationSchema` turns omitted keys into null, so a PATCH carrying
+only `taxId` also clears `country`. The web form sends every field, so it is
+unaffected; API callers must send every field too. This predates the UAE VAT
+work and was found during it.
+
 ---
 
 ## Chat command layer
