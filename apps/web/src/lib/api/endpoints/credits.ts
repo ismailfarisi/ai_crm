@@ -12,6 +12,8 @@ import type {
   TaxRuleDto,
   TaxRulePayload,
   UaeVatStatusDto,
+  VatSettingsDto,
+  VatSettingsPayload,
 } from '@saas/shared';
 import { apiFetch, apiFetchBlob } from '../client';
 
@@ -47,6 +49,9 @@ export const creditsEndpoints = {
   tax: {
     codes: () => apiFetch<TaxCodeDto[]>('/finance/tax-codes'),
     vatStatus: () => apiFetch<UaeVatStatusDto>('/finance/vat/status'),
+    vatSettings: () => apiFetch<VatSettingsDto | null>('/finance/vat-settings'),
+    saveVatSettings: (input: VatSettingsPayload) =>
+      apiFetch<VatSettingsDto>('/finance/vat-settings', { method: 'PUT', body: input }),
     createCode: (input: TaxCodePayload) => apiFetch<TaxCodeDto>('/finance/tax-codes', { method: 'POST', body: input }),
     updateCode: (id: string, input: TaxCodePayload) =>
       apiFetch<TaxCodeDto>(`/finance/tax-codes/${id}`, { method: 'PUT', body: input }),
@@ -63,6 +68,7 @@ export const creditsKeys = {
   deliveryNotes: (salesOrderId: string) => ['delivery-notes', salesOrderId] as const,
   taxCodes: ['tax', 'codes'] as const,
   uaeVatStatus: ['tax', 'vat-status'] as const,
+  vatSettings: ['tax', 'vat-settings'] as const,
   taxRules: ['tax', 'rules'] as const,
   taxReport: (from: string, to: string) => ['tax', 'report', from, to] as const,
 };

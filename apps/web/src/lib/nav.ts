@@ -19,6 +19,7 @@ import {
   ReceiptText,
   ShieldCheck,
   Sparkles,
+  Store,
   UserRoundCog,
   Users,
   Wrench,
@@ -157,6 +158,12 @@ export const SECONDARY_SECTIONS: NavSection[] = [
         href: '/settings/company',
         label: 'Company',
         icon: Building2,
+        rule: { permission: PERMISSIONS.ORG_READ },
+      },
+      {
+        href: '/settings/branches',
+        label: 'Branches',
+        icon: Store,
         rule: { permission: PERMISSIONS.ORG_READ },
       },
       {

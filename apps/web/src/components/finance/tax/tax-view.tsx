@@ -14,7 +14,9 @@ import { useTaxCodes, useTaxReport, useTaxRules, useTaxSettingsAction, useUaeVat
 import { useCan } from '@/lib/session-context';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/primitives';
+import { useOrganization } from '@/hooks/use-organization';
 import { FinanceNav } from '../finance-nav';
+import { VatSettingsCard } from './vat-settings-card';
 
 const TREATMENT_LABELS: Record<VatTreatment, string> = {
   STANDARD: 'Standard rated',
@@ -47,6 +49,7 @@ export function TaxView() {
   const act = useTaxSettingsAction();
   // No tax:read means this fails; that simply reads as "not UAE mode".
   const uaeMode = useUaeVatStatus().data?.enabled === true;
+  const orgIsUae = useOrganization().data?.country === 'AE';
 
   const [code, setCode] = useState({ code: '', name: '', rate: '', kind: 'SALES' as TaxKind, isReverseCharge: false, treatment: '' as VatTreatment | '' });
   const [rule, setRule] = useState({ kind: 'SALES' as TaxKind, country: '', requiresTaxId: false, taxCodeId: '' });
@@ -61,6 +64,8 @@ export function TaxView() {
     <div className="space-y-6">
       <PageHeader title="Tax" description="Codes, the rules that choose them, and what is owed for a period." />
       <FinanceNav />
+
+      {orgIsUae && <VatSettingsCard />}
 
       <section aria-labelledby="report-heading" className="rounded border border-line bg-surface">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">

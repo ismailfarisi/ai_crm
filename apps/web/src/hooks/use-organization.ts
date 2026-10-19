@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import type { OrganizationProfileDto, UpdateOrganizationPayload } from '@saas/shared';
+import type { BranchDto, BranchPayload, OrganizationProfileDto, UpdateOrganizationPayload } from '@saas/shared';
 import { api, queryKeys } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/client';
 
@@ -73,5 +73,27 @@ export function useClearOrganizationLogo() {
           ? error.message
           : 'Could not remove the logo',
       ),
+  });
+}
+
+export function useBranches() {
+  return useQuery<BranchDto[]>({ queryKey: queryKeys.branches, queryFn: () => api.branches.list() });
+}
+
+/** Create (no id) or update a branch. It can change whether the organisation is in UAE VAT mode. */
+export function useSaveBranch() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, payload }: { id?: string; payload: BranchPayload }) =>
+      id ? api.branches.update(id, payload) : api.branches.create(payload),
+    onSuccess: async (_branch, { id }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.branches }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.uaeVatStatus }),
+      ]);
+      toast.success(id ? 'Branch saved' : 'Branch added');
+    },
+    // The dialog shows the server's message inline, so no toast here.
   });
 }
