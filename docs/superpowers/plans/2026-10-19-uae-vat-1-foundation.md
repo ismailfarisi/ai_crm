@@ -25,7 +25,7 @@
 
 ## Review Focus
 
-1. **TRN typed with spaces or dashes** (`100-1234-5678-9012-3`, `100 123 456 789 012`) — accepted and stored as 15 digits; displayed back digits-only. Test in Task 1 and Task 2.
+1. **TRN typed with spaces or dashes** (`100-1234-5678-9012`, `100 123 456 789 012`) — accepted and stored as 15 digits; displayed back digits-only. Test in Task 1 and Task 2.
 2. **An existing AE customer whose tax ID is legacy free text** (not a valid TRN) — the migration backfills it `NOT_REGISTERED` so nothing blocks; opening and saving it shows the TRN error inline so the user fixes or clears it. A loaded AE customer with a valid TRN must round-trip through the schema. Test in Task 2.
 3. **Head-office emirate cannot be inferred** (region "Business Bay", city null) — emirate stays null, tenant still works, `UaeVatService.status()` lists "Head office has no emirate". Test in Task 5.
 4. **Switching an AE tenant on with base currency USD** — refused with the explanatory message, nothing seeded. Test in Task 5.
@@ -53,7 +53,7 @@
 - [ ] **Step 1: Write the failing tests** in `uae.test.ts`:
 
 ```ts
-expect(normaliseTrn('100-1234-5678-9012-3')).toBe('100123456789012');
+expect(normaliseTrn('100-1234-5678-9012')).toBe('100123456789012');
 expect(normaliseTrn(' 100 123 456 789 012 ')).toBe('100123456789012');
 expect(isValidTrn('10012345678901')).toBe(false);      // 14 digits
 expect(isValidTrn('1001234567890123')).toBe(false);    // 16
@@ -108,7 +108,7 @@ expect(UAE_STARTER_CODES.filter((c) => c.kind === 'PURCHASE').map((c) => c.code)
   - `vat.ts`: `branchSchema` (`name` 1..120, `addressLine1/2` ≤200, `city` ≤120, `emirate: Emirate | null`, `isHeadOffice` default false, `invoicePrefix` null or `/^[A-Z0-9]{2,6}$/` upper-cased, `isActive` default true), `BranchDto` (those fields + `id`), `vatSettingsSchema` (`periodFrequency: VatFrequency`, `firstPeriodStart: 'YYYY-MM-DD'` on the 1st of a month, `registrationDate: 'YYYY-MM-DD'`, `vatStartDate: 'YYYY-MM-DD'`, `taxAgentName`, `taxAgencyName` ≤200 nullable, `tan`, `taan` ≤20 nullable; refine `isPeriodStart(firstPeriodStart, periodFrequency, vatStartDate)` with message `'The VAT start date must be the first day of a tax period'`; refine `vatStartDate >= firstPeriodStart`), `VatSettingsDto` (same fields), `UaeVatStatusDto { enabled: boolean; problems: string[]; settings: VatSettingsDto | null; suggestedVatStartDate: string | null }`.
   - Permission `TAX_PERMISSIONS.TAX_FILE = 'tax:file'`, description `'Mark a VAT return as filed, which locks its period, and reopen one filed by mistake'`, granted to `admin` only.
 
-- [ ] **Step 1: Write failing tests.** `customer.spec.ts`: AE + `'100-1234-5678-9012-3'` parses to `taxId: '100123456789012'`; AE + `'12345'` fails on `taxId` with `'A UAE TRN is 15 digits'`; GB + `'GB123456789'` passes unchanged; GB + `emirate: 'DXB'` outputs `emirate: null`; a full `CustomerDto`-shaped object with `vatStatus: 'REGISTERED'` re-parses (round-trip). `vat.test.ts`: `vatSettingsSchema` rejects `vatStartDate: '2026-12-01'` for quarterly anchor `2026-02-01` and accepts `'2026-11-01'`; `branchSchema` upper-cases `invoicePrefix: 'dxb'` → `'DXB'` and rejects `'D'`; `taxCodeSchema` rejects `{ kind: 'SALES', treatment: 'IMPORT_GOODS' }`.
+- [ ] **Step 1: Write failing tests.** `customer.spec.ts`: AE + `'100-1234-5678-9012'` parses to `taxId: '100123456789012'`; AE + `'12345'` fails on `taxId` with `'A UAE TRN is 15 digits'`; GB + `'GB123456789'` passes unchanged; GB + `emirate: 'DXB'` outputs `emirate: null`; a full `CustomerDto`-shaped object with `vatStatus: 'REGISTERED'` re-parses (round-trip). `vat.test.ts`: `vatSettingsSchema` rejects `vatStartDate: '2026-12-01'` for quarterly anchor `2026-02-01` and accepts `'2026-11-01'`; `branchSchema` upper-cases `invoicePrefix: 'dxb'` → `'DXB'` and rejects `'D'`; `taxCodeSchema` rejects `{ kind: 'SALES', treatment: 'IMPORT_GOODS' }`.
 - [ ] **Step 2: Run** `pnpm --filter @saas/shared test` — Expected: new tests FAIL.
 - [ ] **Step 3: Implement** the schema changes, DTO fields and permission.
 - [ ] **Step 4: Run** `pnpm --filter @saas/shared test && pnpm --filter @saas/shared build` — Expected: PASS, build clean. Then `pnpm --filter api exec tsc --noEmit` and `pnpm --filter web exec tsc --noEmit` and fix every compile error the new required DTO fields cause by adding them at the mapping site (`customers.service.ts` `toDto`, the supplier DTO mapper in `purchasing.service.ts`, `toTaxCodeDto` in `tax.service.ts`) — the columns themselves arrive in Task 3, so commit Tasks 2 and 3 together if the compile cannot pass alone.
