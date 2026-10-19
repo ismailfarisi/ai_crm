@@ -15,6 +15,7 @@ import {
   TRIAL_DAYS,
 } from '@saas/shared';
 import { Organization } from '@/modules/organizations/entities/organization.entity';
+import { BranchesService } from '@/modules/organizations/branches.service';
 import { AuditService } from '../audit/audit.service';
 import { LedgerService } from '@/modules/finance/ledger.service';
 import { InvitationsService } from '@/modules/invitations/invitations.service';
@@ -41,6 +42,7 @@ export class AuthService {
     private readonly dataSource: DataSource,
     private readonly invitations: InvitationsService,
     private readonly ledger: LedgerService,
+    private readonly branches: BranchesService,
     private readonly audit: AuditService,
     private readonly tenantContext: TenantContextService,
   ) {}
@@ -90,6 +92,7 @@ export class AuthService {
         // of accounts has nowhere to post, and every later journal write would
         // fail on a lookup instead of at signup.
         await this.ledger.provisionChartOfAccounts(organization.id, manager);
+        await this.branches.ensureHeadOffice(organization.id, manager);
         // A new organization starts on a trial. Inserted here rather than
         // lazily so the trial clock starts at signup, not at first billing visit.
         await manager.query(

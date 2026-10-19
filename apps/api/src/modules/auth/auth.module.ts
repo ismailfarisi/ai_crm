@@ -6,6 +6,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { FinanceModule } from '@/modules/finance/finance.module';
 import { InvitationsModule } from '@/modules/invitations/invitations.module';
 import { Organization } from '@/modules/organizations/entities/organization.entity';
+import { OrganizationsModule } from '@/modules/organizations/organizations.module';
 import { UsersModule } from '@/modules/users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -26,6 +27,7 @@ import { TokensService } from './tokens.service';
     FinanceModule,
     UsersModule,
     InvitationsModule,
+    OrganizationsModule,
   ],
   controllers: [AuthController],
   providers: [
