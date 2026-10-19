@@ -87,6 +87,17 @@ describe('UaeVatFoundation1790400000000', () => {
     ).toBe(true);
   });
 
+  it("stores a UAE organization's TRN as digits, and only when it is one", async () => {
+    const sql = (await record('up')).find((s) =>
+      s.includes('UPDATE "organizations"'),
+    );
+    expect(sql).toBeDefined();
+    // The pattern Postgres receives must be [\s-], backslash included.
+    expect(sql).toContain(`"tax_id" = regexp_replace("tax_id", '[\\s-]', '', 'g')`);
+    expect(sql).toContain(`"country" = 'AE'`);
+    expect(sql).toContain(`~ '^[0-9]{15}$'`);
+  });
+
   it('reads legacy UAE country text in the status backfill, leaving the country unchanged', async () => {
     const sqls = await record('up');
     for (const table of ['customers', 'suppliers']) {

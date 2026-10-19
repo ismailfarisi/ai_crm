@@ -174,6 +174,16 @@ export class UaeVatFoundation1790400000000 implements MigrationInterface {
       `UPDATE "tax_codes" SET "treatment" = 'ZERO_RATED' WHERE "code" = 'ZERO' AND "rate" = 0`,
     );
 
+    // A UAE organization's own TRN is stored as digits, as the profile form
+    // now saves it — typed with spaces or dashes it would not read as valid,
+    // and UAE VAT mode would stay off. Anything that is not a TRN once
+    // stripped is left exactly as typed.
+    const orgTrn = `regexp_replace("tax_id", '[\\s-]', '', 'g')`;
+    await queryRunner.query(
+      `UPDATE "organizations" SET "tax_id" = ${orgTrn}
+        WHERE "country" = 'AE' AND ${orgTrn} ~ '^[0-9]{15}$'`,
+    );
+
     // ─── RLS (same policy as 1787600000000-EnablePostgresRowLevelSecurity) ─
     for (const [table, tenantColumn] of NEW_TENANT_TABLES) {
       const column = `"${tenantColumn}"`;
