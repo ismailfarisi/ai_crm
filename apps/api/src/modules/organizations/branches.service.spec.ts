@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
 import type { BranchPayload } from '@saas/shared';
 import { BranchesService } from './branches.service';
@@ -131,6 +131,23 @@ describe('BranchesService', () => {
     await expect(
       service.create(tenantId, payload({ emirate: null })),
     ).rejects.toThrow('Pick the emirate this branch is in');
+  });
+
+  it('lets a legacy branch without an emirate be deactivated in UAE VAT mode', async () => {
+    const { service } = makeService({ rows: [branch({ emirate: null })] });
+    await expect(
+      service.update(tenantId, 'a', payload({ emirate: null, isActive: false })),
+    ).resolves.toMatchObject({ emirate: null, isActive: false });
+    await expect(
+      service.update(tenantId, 'a', payload({ emirate: null, isActive: true })),
+    ).rejects.toThrow('Pick the emirate this branch is in');
+  });
+
+  it('answers 404 for an unknown branch before judging the payload', async () => {
+    const { service } = makeService({ rows: [] });
+    await expect(
+      service.update(tenantId, 'nope', payload({ emirate: null })),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('allows a missing emirate outside UAE VAT mode', async () => {

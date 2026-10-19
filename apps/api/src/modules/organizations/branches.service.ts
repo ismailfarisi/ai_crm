@@ -124,6 +124,10 @@ export class BranchesService {
     id: string,
     input: BranchPayload,
   ): Promise<BranchDto> {
+    // An unknown branch is a 404 before anything about the payload is judged.
+    if (!(await this.branches.findOne({ where: { id, tenantId } }))) {
+      throw new NotFoundException('Branch not found');
+    }
     return this.write(tenantId, input, async (manager) => {
       const repo = manager.getRepository(Branch);
       const existing = await repo.findOne({ where: { id, tenantId } });
@@ -213,7 +217,9 @@ export class BranchesService {
     }
     const org = await this.organizations.findOne({ where: { id: tenantId } });
     if (!org) throw new NotFoundException('Organization not found');
-    if (isUaeVatMode(org) && !input.emirate) {
+    // Deactivating needs no emirate: a legacy branch without one must still
+    // be retirable, and an inactive branch never issues a document.
+    if (isUaeVatMode(org) && input.isActive !== false && !input.emirate) {
       throw new BadRequestException('Pick the emirate this branch is in');
     }
     try {
