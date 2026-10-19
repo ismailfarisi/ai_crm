@@ -252,6 +252,14 @@ invoice says the customer accounts for the tax. The purchase side — where a bi
 from an EU supplier should post both an input and an output tax line — is not
 implemented.
 
+### Purchase reverse-charge codes carry 5% but post nothing yet — open
+
+The seeded UAE purchase codes RC and IM carry the self-assessed 5% rate with
+`isReverseCharge`, as the FTA treatment requires. `purchaseTaxFor` and
+`taxBreakdown` still treat any reverse charge as 0%, so a bill on these codes
+posts no tax at all. The self-assessed output and input pair is stage 3 of the
+UAE VAT design.
+
 ### Purchase orders carry no tax code — open
 
 `tax_code_id` is on sales documents and on supplier bills, but not on purchase
