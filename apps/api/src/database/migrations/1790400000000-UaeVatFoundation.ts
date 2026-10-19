@@ -116,6 +116,17 @@ export class UaeVatFoundation1790400000000 implements MigrationInterface {
         ADD COLUMN "treatment" character varying(20),
         ADD CONSTRAINT "CHK_tax_codes_treatment" CHECK ("treatment" IN ${TREATMENTS})
     `);
+    // A UAE purchase reverse charge or goods import is self-assessed at 5%, so
+    // "reverse charge means 0%" now holds only for codes without one of those
+    // treatments (every EU code, and a UAE sales reverse-charge notice).
+    await queryRunner.query(`
+      ALTER TABLE "tax_codes"
+        DROP CONSTRAINT "CHK_tax_codes_reverse_charge_zero",
+        ADD CONSTRAINT "CHK_tax_codes_reverse_charge_zero" CHECK (
+          NOT "is_reverse_charge" OR "rate" = 0
+          OR ("kind" = 'PURCHASE' AND "treatment" IN ('REVERSE_CHARGE', 'IMPORT_GOODS'))
+        )
+    `);
 
     // ─── backfills, across every tenant ────────────────────────────────────
     await queryRunner.query(`SELECT set_config('app.bypass_rls', 'on', true)`);
@@ -183,6 +194,13 @@ export class UaeVatFoundation1790400000000 implements MigrationInterface {
     await queryRunner.query(`DROP TABLE IF EXISTS "vat_settings"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "branches"`);
 
+    // NOT VALID: 5% reverse-charge codes created since may still exist; the
+    // rule binds new rows again without failing the rollback on old ones.
+    await queryRunner.query(`
+      ALTER TABLE "tax_codes"
+        DROP CONSTRAINT IF EXISTS "CHK_tax_codes_reverse_charge_zero",
+        ADD CONSTRAINT "CHK_tax_codes_reverse_charge_zero" CHECK (NOT "is_reverse_charge" OR "rate" = 0) NOT VALID
+    `);
     await queryRunner.query(`
       ALTER TABLE "tax_codes"
         DROP CONSTRAINT IF EXISTS "CHK_tax_codes_treatment",

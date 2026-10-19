@@ -87,6 +87,18 @@ describe('UaeVatFoundation1790400000000', () => {
     ).toBe(true);
   });
 
+  // A UAE purchase reverse charge (or import) is self-assessed at 5%.
+  it('lets only a UAE purchase reverse charge or import carry a rate', async () => {
+    const up = (await record('up')).join('\n');
+    expect(up).toMatch(
+      /DROP CONSTRAINT "CHK_tax_codes_reverse_charge_zero",\s*ADD CONSTRAINT "CHK_tax_codes_reverse_charge_zero" CHECK \(\s*NOT "is_reverse_charge" OR "rate" = 0\s*OR \("kind" = 'PURCHASE' AND "treatment" IN \('REVERSE_CHARGE', 'IMPORT_GOODS'\)\)/,
+    );
+    const down = (await record('down')).join('\n');
+    expect(down).toContain(
+      `CHECK (NOT "is_reverse_charge" OR "rate" = 0) NOT VALID`,
+    );
+  });
+
   it('drops both tables and every added column on the way down', async () => {
     const sqls = (await record('down')).join('\n');
     expect(sqls).toContain(`DROP TABLE IF EXISTS "branches"`);

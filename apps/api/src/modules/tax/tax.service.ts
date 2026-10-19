@@ -7,6 +7,8 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, In, Not, QueryFailedError, Repository } from 'typeorm';
 import {
+  expectedUaeRate,
+  isUaeVatMode,
   resolveTaxCode,
   scaleBreakdown,
   taxBreakdown,
@@ -20,10 +22,13 @@ import {
   type TaxReportRow,
   type TaxRuleDto,
   type TaxRulePayload,
+  treatmentAllowed,
+  treatmentIsReverseCharge,
 } from '@saas/shared';
 import { CatalogItem } from '../catalog/entities/catalog-item.entity';
 import { Customer } from '../customers/entities/customer.entity';
 import { CreditNote } from '../credits/entities/credit-note.entity';
+import { Organization } from '../organizations/entities/organization.entity';
 import { SupplierBill } from '../payables/entities/supplier-bill.entity';
 import { Supplier } from '../purchasing/entities/supplier.entity';
 import { Invoice, InvoiceStatus } from '../quotes/entities/invoice.entity';
@@ -93,6 +98,8 @@ export class TaxService {
     private readonly creditNotes: Repository<CreditNote>,
     @InjectRepository(SupplierBill)
     private readonly bills: Repository<SupplierBill>,
+    @InjectRepository(Organization)
+    private readonly organizations: Repository<Organization>,
   ) {}
 
   /* ------------------------------------------------------------------ *
@@ -109,9 +116,9 @@ export class TaxService {
 
   async createCode(
     tenantId: string,
-    input: TaxCodePayload,
+    payload: TaxCodePayload,
   ): Promise<TaxCodeDto> {
-    this.assertCodeShape(input);
+    const input = await this.assertCodeShape(tenantId, payload);
     try {
       return toTaxCodeDto(
         await this.codes.save(this.codes.create({ tenantId, ...input })),
@@ -132,9 +139,9 @@ export class TaxService {
   async updateCode(
     tenantId: string,
     id: string,
-    input: TaxCodePayload,
+    payload: TaxCodePayload,
   ): Promise<TaxCodeDto> {
-    this.assertCodeShape(input);
+    const input = await this.assertCodeShape(tenantId, payload);
     const row = await this.codes.findOne({ where: { id, tenantId } });
     if (!row) throw new NotFoundException('Tax code not found');
     Object.assign(row, input);
@@ -425,12 +432,53 @@ export class TaxService {
     };
   }
 
-  private assertCodeShape(input: TaxCodePayload): void {
-    if (input.isReverseCharge && Number(input.rate) !== 0) {
+  /**
+   * Checks a code before it is stored, and returns it as it should be stored.
+   *
+   * In UAE VAT mode the treatment decides: it must be there, allowed for the
+   * kind, at the rate the treatment carries, and it — not the checkbox —
+   * says whether the code is reverse charge. A purchase reverse charge or
+   * import is 5% (the self-assessed tax); a sales reverse charge is a 0%
+   * notice. Elsewhere the EU rule stands: reverse charge is 0%.
+   */
+  private async assertCodeShape(
+    tenantId: string,
+    input: TaxCodePayload,
+  ): Promise<TaxCodePayload> {
+    const organization = await this.organizations.findOne({
+      where: { id: tenantId },
+    });
+    if (!organization || !isUaeVatMode(organization)) {
+      if (input.isReverseCharge && Number(input.rate) !== 0) {
+        throw new BadRequestException(
+          'A reverse charge code is charged at 0% — the customer accounts for the tax',
+        );
+      }
+      return input;
+    }
+
+    const { kind, treatment } = input;
+    if (!treatment) {
+      throw new BadRequestException('Choose a VAT treatment for this code');
+    }
+    if (!treatmentAllowed(kind, treatment)) {
       throw new BadRequestException(
-        'A reverse charge code is charged at 0% — the customer accounts for the tax',
+        'That VAT treatment is not available for this kind of tax code',
       );
     }
+    const rate = expectedUaeRate(kind, treatment);
+    if (Number(input.rate) !== rate) {
+      throw new BadRequestException(
+        `${treatment} codes are charged at ${rate}%`,
+      );
+    }
+    return {
+      ...input,
+      isReverseCharge:
+        kind === 'PURCHASE'
+          ? treatmentIsReverseCharge(treatment)
+          : treatment === 'REVERSE_CHARGE',
+    };
   }
 
   private duplicate(err: unknown, message: string): unknown {

@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { TaxService } from './tax.service';
 
 const tenantId = 'org-1';
@@ -71,6 +72,7 @@ function makeService(
     repo([]) as any,
     // A zero-rated catalog item.
     repo([{ id: 'book', taxCodeId: 'zero' }]) as any,
+    repo([]) as any,
     repo([]) as any,
     repo([]) as any,
     repo([]) as any,
@@ -150,7 +152,7 @@ describe('TaxService.purchaseTaxFor', () => {
   function service(code: Record<string, unknown> | null, supplierCode: unknown = null) {
     const codes = { findOne: jest.fn(async () => code), find: jest.fn(async () => []) };
     const none = { find: jest.fn(async () => []), findOne: jest.fn(async () => null) };
-    const s = new TaxService(codes as any, none as any, none as any, none as any, none as any, none as any, none as any, none as any);
+    const s = new TaxService(codes as any, none as any, none as any, none as any, none as any, none as any, none as any, none as any, none as any);
     jest.spyOn(s, 'purchaseCodeForSupplier').mockResolvedValue(supplierCode as any);
     return s;
   }
@@ -168,5 +170,80 @@ describe('TaxService.purchaseTaxFor', () => {
     await expect(service(code({ isReverseCharge: true })).purchaseTaxFor(tenantId, 'tc', null)).resolves.toMatchObject({ rate: 0 });
     await expect(service(code({ rate: 0 })).purchaseTaxFor(tenantId, 'tc', null)).resolves.toMatchObject({ rate: 0 });
     await expect(service(null).purchaseTaxFor(tenantId, null, 'sup')).resolves.toEqual({ code: null, rate: 0 });
+  });
+});
+
+describe('TaxService codes in UAE VAT mode', () => {
+  function service(org: Record<string, unknown>) {
+    const codes = {
+      create: jest.fn((v: Record<string, unknown>) => ({ id: 'new', ...v })),
+      save: jest.fn(async (v: Record<string, unknown>) => v),
+      findOne: jest.fn(async () => null),
+    };
+    const none = { find: jest.fn(async () => []), findOne: jest.fn(async () => null) };
+    const organizations = { findOne: jest.fn(async () => ({ id: tenantId, ...org })) };
+    const s = new TaxService(codes as any, none as any, none as any, none as any, none as any, none as any, none as any, none as any, organizations as any);
+    return { s, codes };
+  }
+  const uae = { country: 'AE', taxId: '100123456700003', baseCurrency: 'AED' };
+  const input = (over: Record<string, unknown>) => ({
+    code: 'X',
+    name: 'X',
+    rate: 5,
+    kind: 'PURCHASE' as const,
+    isReverseCharge: false,
+    ledgerAccountId: null,
+    isActive: true,
+    treatment: null,
+    ...over,
+  });
+
+  it('accepts a 5% purchase reverse charge and marks it reverse charge', async () => {
+    const { s, codes } = service(uae);
+    const dto = await s.createCode(tenantId, input({ code: 'RC', treatment: 'REVERSE_CHARGE' }) as any);
+    expect(dto.isReverseCharge).toBe(true);
+    expect(codes.save).toHaveBeenCalledWith(expect.objectContaining({ isReverseCharge: true, rate: 5 }));
+  });
+
+  it('refuses a standard sales code at anything but 5%', async () => {
+    const { s, codes } = service(uae);
+    await expect(
+      s.createCode(tenantId, input({ kind: 'SALES', rate: 20, treatment: 'STANDARD' }) as any),
+    ).rejects.toThrow('STANDARD codes are charged at 5%');
+    expect(codes.save).not.toHaveBeenCalled();
+  });
+
+  it('requires a treatment', async () => {
+    const { s } = service(uae);
+    await expect(s.createCode(tenantId, input({}) as any)).rejects.toThrow(
+      'Choose a VAT treatment for this code',
+    );
+  });
+
+  it('refuses a purchase-only treatment on a sales code', async () => {
+    const { s } = service(uae);
+    await expect(
+      s.createCode(tenantId, input({ kind: 'SALES', treatment: 'BLOCKED' }) as any),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('marks a sales reverse charge (0%) as reverse charge, and nothing else', async () => {
+    const { s } = service(uae);
+    await expect(
+      s.createCode(tenantId, input({ kind: 'SALES', rate: 0, treatment: 'REVERSE_CHARGE' }) as any),
+    ).resolves.toMatchObject({ isReverseCharge: true });
+    await expect(
+      s.createCode(tenantId, input({ kind: 'SALES', rate: 0, treatment: 'ZERO_RATED', isReverseCharge: true }) as any),
+    ).resolves.toMatchObject({ isReverseCharge: false });
+  });
+
+  it('keeps the EU rule outside UAE VAT mode', async () => {
+    const { s } = service({ ...uae, baseCurrency: 'USD' });
+    await expect(
+      s.createCode(tenantId, input({ isReverseCharge: true, rate: 5 }) as any),
+    ).rejects.toThrow(/charged at 0%/);
+    await expect(
+      s.createCode(tenantId, input({ kind: 'SALES', rate: 20 }) as any),
+    ).resolves.toMatchObject({ rate: 20, isReverseCharge: false });
   });
 });

@@ -1,15 +1,23 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { updateOrganizationSchema } from '@saas/shared';
 import { OrganizationsService } from './organizations.service';
 import { Organization } from './entities/organization.entity';
+import { seedUaeStarterCodes } from '../tax/uae-starter-codes';
+
+jest.mock('../tax/uae-starter-codes', () => ({
+  ...jest.requireActual('../tax/uae-starter-codes'),
+  seedUaeStarterCodes: jest.fn(async () => undefined),
+}));
 
 describe('OrganizationsService', () => {
   const tenantId = 'org-1';
   let repo: {
     findOne: jest.Mock;
     save: jest.Mock;
+    manager: { transaction: jest.Mock };
   };
+  let txManager: { getRepository: jest.Mock };
   let service: OrganizationsService;
 
   function organizationFixture(
@@ -41,10 +49,16 @@ describe('OrganizationsService', () => {
   }
 
   beforeEach(() => {
+    (seedUaeStarterCodes as jest.Mock).mockClear();
     repo = {
       findOne: jest.fn().mockResolvedValue(organizationFixture()),
       save: jest.fn().mockImplementation(async (o) => o),
+      manager: { transaction: jest.fn() },
     };
+    txManager = { getRepository: jest.fn(() => repo) };
+    repo.manager.transaction.mockImplementation(
+      async (fn: (m: unknown) => unknown) => fn(txManager),
+    );
     service = new OrganizationsService(
       repo as unknown as Repository<Organization>,
     );
@@ -106,6 +120,62 @@ describe('OrganizationsService', () => {
     expect(() =>
       updateOrganizationSchema.parse({ country: 'United States' }),
     ).toThrow(/two-letter code/i);
+  });
+
+  describe('UAE VAT mode', () => {
+    const TRN = '100123456700003';
+
+    it('refuses a TRN on a UAE organization whose base currency is not AED, saving nothing', async () => {
+      repo.findOne.mockResolvedValue(
+        organizationFixture({ country: 'AE', baseCurrency: 'USD' }),
+      );
+      const dto = updateOrganizationSchema.parse({
+        country: 'AE',
+        taxId: TRN,
+      });
+
+      await expect(service.update(tenantId, dto)).rejects.toThrow(
+        new BadRequestException(
+          'Your base currency is USD. UAE VAT returns are in AED, and the base currency cannot change once anything is posted.',
+        ),
+      );
+      expect(repo.save).not.toHaveBeenCalled();
+      expect(seedUaeStarterCodes).not.toHaveBeenCalled();
+    });
+
+    it('saves a TRN on a UAE dirham organization and seeds the starter codes in the same transaction', async () => {
+      repo.findOne.mockResolvedValue(
+        organizationFixture({ country: 'AE', baseCurrency: 'AED' }),
+      );
+      const dto = updateOrganizationSchema.parse({
+        country: 'AE',
+        taxId: TRN,
+      });
+
+      const result = await service.update(tenantId, dto);
+
+      expect(result.taxId).toBe(TRN);
+      expect(repo.manager.transaction).toHaveBeenCalledTimes(1);
+      expect(txManager.getRepository).toHaveBeenCalledWith(Organization);
+      expect(repo.save).toHaveBeenCalledTimes(1);
+      expect(seedUaeStarterCodes).toHaveBeenCalledWith(txManager, tenantId);
+    });
+
+    it('does not seed again for an organization already in UAE VAT mode', async () => {
+      repo.findOne.mockResolvedValue(
+        organizationFixture({ country: 'AE', baseCurrency: 'AED', taxId: TRN }),
+      );
+      const dto = updateOrganizationSchema.parse({
+        country: 'AE',
+        taxId: TRN,
+        city: 'Dubai',
+      });
+
+      await service.update(tenantId, dto);
+
+      expect(repo.save).toHaveBeenCalledTimes(1);
+      expect(seedUaeStarterCodes).not.toHaveBeenCalled();
+    });
   });
 
   /**

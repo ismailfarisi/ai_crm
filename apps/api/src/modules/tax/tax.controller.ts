@@ -10,26 +10,34 @@ import {
   Post,
   Put,
   Query,
+  Res,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 import {
   PERMISSIONS,
   taxCodeSchema,
   taxReportQuerySchema,
   taxRuleSchema,
+  vatSettingsSchema,
   type TaxCodePayload,
   type TaxReportQueryPayload,
   type TaxRulePayload,
+  type VatSettingsPayload,
 } from '@saas/shared';
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
 import { zodBody, zodQuery } from '@/common/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { TaxService } from './tax.service';
+import { UaeVatService } from './uae-vat.service';
 
 @ApiTags('tax')
 @Controller('finance')
 export class TaxController {
-  constructor(private readonly tax: TaxService) {}
+  constructor(
+    private readonly tax: TaxService,
+    private readonly uaeVat: UaeVatService,
+  ) {}
 
   @Get('tax-codes')
   @RequirePermissions(PERMISSIONS.TAX_READ)
@@ -100,5 +108,40 @@ export class TaxController {
     @Query(zodQuery(taxReportQuerySchema)) query: TaxReportQueryPayload,
   ) {
     return this.tax.report(user.organizationId, query.from, query.to);
+  }
+
+  @Get('vat/status')
+  @RequirePermissions(PERMISSIONS.TAX_READ)
+  @ApiOperation({
+    summary: 'Whether UAE VAT mode is on, and what is missing if it is not',
+  })
+  vatStatus(@CurrentUser() user: AuthenticatedUser) {
+    return this.uaeVat.status(user.organizationId);
+  }
+
+  /**
+   * `null` when nothing is saved yet — sent as JSON, because Nest sends an
+   * empty body for a null return and the web client parses every 200.
+   */
+  @Get('vat-settings')
+  @RequirePermissions(PERMISSIONS.TAX_READ)
+  @ApiOperation({ summary: 'The UAE VAT registration settings, or null' })
+  async getVatSettings(
+    @CurrentUser() user: AuthenticatedUser,
+    @Res() res: Response,
+  ): Promise<void> {
+    res.json(await this.uaeVat.getSettings(user.organizationId));
+  }
+
+  @Put('vat-settings')
+  @RequirePermissions(PERMISSIONS.TAX_MANAGE)
+  @ApiOperation({
+    summary: 'Save the UAE VAT registration settings (UAE VAT mode only)',
+  })
+  saveVatSettings(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(zodBody(vatSettingsSchema)) body: VatSettingsPayload,
+  ) {
+    return this.uaeVat.saveSettings(user.organizationId, body);
   }
 }

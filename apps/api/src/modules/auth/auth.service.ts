@@ -78,7 +78,8 @@ export class AuthService {
             // Both asked for at sign-up. The base currency can never be changed
             // once anything has been posted, and a country is what tax rules
             // match on, so neither is a decision to make on someone's behalf.
-            baseCurrency: input.baseCurrency ?? 'USD',
+            baseCurrency:
+              input.baseCurrency ?? (input.country === 'AE' ? 'AED' : 'USD'),
             country: input.country ?? null,
           }),
         );

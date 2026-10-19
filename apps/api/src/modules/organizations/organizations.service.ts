@@ -5,11 +5,20 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { LOGO_CONTENT_TYPES, LOGO_MAX_BYTES } from '@saas/shared';
+import {
+  LOGO_CONTENT_TYPES,
+  LOGO_MAX_BYTES,
+  isUaeVatMode,
+  isValidTrn,
+} from '@saas/shared';
 import type {
   OrganizationProfileDto,
   UpdateOrganizationPayload,
 } from '@saas/shared';
+import {
+  seedUaeStarterCodes,
+  uaeBaseCurrencyProblem,
+} from '../tax/uae-starter-codes';
 import { Organization } from './entities/organization.entity';
 
 /**
@@ -44,6 +53,7 @@ export class OrganizationsService {
     dto: UpdateOrganizationPayload,
   ): Promise<OrganizationProfileDto> {
     const organization = await this.findById(tenantId);
+    const wasUaeVatMode = isUaeVatMode(organization);
 
     // The schema has already normalised blanks to null and upper-cased the
     // country, so an explicit key here is a deliberate clear. `name` is the
@@ -54,9 +64,37 @@ export class OrganizationsService {
       (organization as unknown as Record<string, unknown>)[key] = value;
     }
 
-    return OrganizationsService.toDto(
-      await this.organizations.save(organization),
+    // A UAE business with a TRN must report in dirhams. Refused here rather
+    // than left as a quiet "not in UAE VAT mode", because the base currency
+    // cannot be changed later once anything is posted.
+    if (
+      organization.country === 'AE' &&
+      isValidTrn(organization.taxId) &&
+      organization.baseCurrency !== 'AED'
+    ) {
+      throw new BadRequestException(
+        uaeBaseCurrencyProblem(organization.baseCurrency),
+      );
+    }
+
+    if (wasUaeVatMode || !isUaeVatMode(organization)) {
+      return OrganizationsService.toDto(
+        await this.organizations.save(organization),
+      );
+    }
+
+    // Just moved into UAE VAT mode: the starter codes arrive with the change,
+    // or neither does.
+    const saved = await this.organizations.manager.transaction(
+      async (manager) => {
+        const row = await manager
+          .getRepository(Organization)
+          .save(organization);
+        await seedUaeStarterCodes(manager, tenantId);
+        return row;
+      },
     );
+    return OrganizationsService.toDto(saved);
   }
 
   /** Relations are never wanted here; the tenant record is what is asked for. */
