@@ -13,6 +13,7 @@ import {
   type CustomerDto,
 } from '@saas/shared';
 import { useCreateCustomer, useUpdateCustomer } from '@/hooks/use-customers';
+import { useOrganization } from '@/hooks/use-organization';
 import { ApiError } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -65,6 +66,9 @@ export function CustomerFormDialog({ open, onClose, customer }: CustomerFormDial
 
   const create = useCreateCustomer();
   const update = useUpdateCustomer();
+  // VAT status, emirate and TRN are UAE VAT ideas; elsewhere the form is the
+  // plain one, and the API picks the status.
+  const orgIsUae = useOrganization().data?.country === 'AE';
 
   const {
     register,
@@ -119,10 +123,13 @@ export function CustomerFormDialog({ open, onClose, customer }: CustomerFormDial
 
   const onSubmit = handleSubmit(async (values) => {
     try {
-      if (customer) {
-        await update.mutateAsync({ id: customer.id, input: values });
+      if (orgIsUae) {
+        if (customer) await update.mutateAsync({ id: customer.id, input: values });
+        else await create.mutateAsync(values);
       } else {
-        await create.mutateAsync(values);
+        const { vatStatus: _vatStatus, emirate: _emirate, ...rest } = values;
+        if (customer) await update.mutateAsync({ id: customer.id, input: rest });
+        else await create.mutateAsync({ ...rest, vatStatus: null, emirate: null });
       }
       onClose();
     } catch (error) {
@@ -134,7 +141,7 @@ export function CustomerFormDialog({ open, onClose, customer }: CustomerFormDial
     }
   });
 
-  const isUae = isUaeCountry(watch('country'));
+  const isUae = orgIsUae && isUaeCountry(watch('country'));
   const vatStatus = watch('vatStatus');
   const taxId = watch('taxId');
 
@@ -178,7 +185,7 @@ export function CustomerFormDialog({ open, onClose, customer }: CustomerFormDial
         <div className="grid gap-4 sm:grid-cols-2">
           <Input label="Phone" type="tel" error={errors.phone?.message} {...register('phone')} />
           <Input
-            label={isUae ? 'TRN' : 'Tax ID'}
+            label={isUae ? 'TRN' : orgIsUae ? 'Tax ID' : 'Tax ID / VAT'}
             hint={isUae ? '15 digits, as on the FTA certificate' : undefined}
             error={errors.taxId?.message}
             {...register('taxId', { onChange: followDefaultStatus })}
@@ -217,28 +224,30 @@ export function CustomerFormDialog({ open, onClose, customer }: CustomerFormDial
           />
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Select
-            label="VAT status"
-            options={VAT_STATUS_OPTIONS}
-            error={errors.vatStatus?.message}
-            {...register('vatStatus', {
-              onChange: () => {
-                statusTouched.current = true;
-              },
-            })}
-          />
-          {isUae && (
+        {orgIsUae && (
+          <div className="grid gap-4 sm:grid-cols-2">
             <Select
-              label="Emirate"
-              placeholder="Select an emirate"
-              options={EMIRATE_OPTIONS}
-              error={errors.emirate?.message}
-              {...register('emirate', { setValueAs: (v) => v || null })}
+              label="VAT status"
+              options={VAT_STATUS_OPTIONS}
+              error={errors.vatStatus?.message}
+              {...register('vatStatus', {
+                onChange: () => {
+                  statusTouched.current = true;
+                },
+              })}
             />
-          )}
-        </div>
-        {vatStatus === 'REGISTERED' && !(taxId ?? '').trim() && (
+            {isUae && (
+              <Select
+                label="Emirate"
+                placeholder="Select an emirate"
+                options={EMIRATE_OPTIONS}
+                error={errors.emirate?.message}
+                {...register('emirate', { setValueAs: (v) => v || null })}
+              />
+            )}
+          </div>
+        )}
+        {orgIsUae && vatStatus === 'REGISTERED' && !(taxId ?? '').trim() && (
           <p role="alert" className="text-sm text-amber-600 dark:text-amber-400">
             Invoices to this customer cannot be issued until a TRN is added.
           </p>

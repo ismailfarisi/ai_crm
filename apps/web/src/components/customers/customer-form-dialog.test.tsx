@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { CustomerFormDialog } from './customer-form-dialog';
 
@@ -7,6 +7,16 @@ vi.mock('@/hooks/use-customers', () => ({
   useCreateCustomer: () => ({ mutateAsync: createCustomer, isPending: false }),
   useUpdateCustomer: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
+
+const orgCountry = vi.hoisted(() => ({ value: 'AE' as string | null }));
+vi.mock('@/hooks/use-organization', () => ({
+  useOrganization: () => ({ data: { country: orgCountry.value } }),
+}));
+
+beforeEach(() => {
+  orgCountry.value = 'AE';
+  createCustomer.mockReset();
+});
 
 function open() {
   render(<CustomerFormDialog open onClose={() => {}} />);
@@ -64,5 +74,26 @@ describe('CustomerFormDialog VAT fields', () => {
 
     await waitFor(() => expect(createCustomer).toHaveBeenCalled());
     expect(createCustomer.mock.calls[0][0]).toMatchObject({ country: 'GB', emirate: null });
+  });
+});
+
+describe('CustomerFormDialog outside the UAE', () => {
+  it('is the plain form: no VAT status, emirate or TRN, and the API picks the status', async () => {
+    orgCountry.value = 'GB';
+    open();
+
+    fireEvent.change(screen.getByLabelText('Country'), { target: { value: 'AE' } });
+    expect(screen.queryByLabelText('VAT status')).toBeNull();
+    expect(screen.queryByLabelText('Emirate')).toBeNull();
+    expect(screen.queryByLabelText('TRN')).toBeNull();
+    expect(screen.queryByText('15 digits, as on the FTA certificate')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Country'), { target: { value: 'GB' } });
+    fireEvent.change(screen.getByLabelText('Tax ID / VAT'), { target: { value: 'GB123456789' } });
+
+    fireEvent.change(screen.getByLabelText(/Company name/), { target: { value: 'Acme' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create customer' }));
+
+    await waitFor(() => expect(createCustomer).toHaveBeenCalled());
+    expect(createCustomer.mock.calls[0][0]).toMatchObject({ vatStatus: null, emirate: null });
   });
 });
