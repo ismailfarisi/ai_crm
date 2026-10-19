@@ -13,7 +13,6 @@ import type {
   AssistantEventInput,
   ToolAuditProvenance,
   ToolCallSpec,
-  ToolExecutionResult,
 } from './activities/agent-react.activities';
 
 const activities = proxyActivities<AgentReactActivities>({
