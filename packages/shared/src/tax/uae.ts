@@ -113,15 +113,19 @@ export function assertUaeTrn(country: string | null, taxId: string | null): stri
 /**
  * The status to store for a party. An explicit `patch.vatStatus` wins (null
  * means "not explicitly set", so a form that sends null does not wipe it).
- * Otherwise the status is re-derived on create, or when the patch touches the
- * country or tax ID; failing that the current status stands.
+ * Otherwise the status is re-derived on create, or when the patch changes the
+ * country or tax ID; failing that the current status stands. A form that
+ * resends the country and tax ID unchanged does not count as a change.
  */
 export function resolveVatStatus(
   current: { country: string | null; taxId: string | null; vatStatus: VatStatus | null } | null,
   patch: { country?: string | null; taxId?: string | null; vatStatus?: VatStatus | null },
 ): VatStatus {
   if (patch.vatStatus != null) return patch.vatStatus;
-  const touched = patch.country !== undefined || patch.taxId !== undefined;
+  const touched =
+    !current ||
+    (patch.country !== undefined && (patch.country?.trim() || null) !== (current.country?.trim() || null)) ||
+    (patch.taxId !== undefined && normaliseTrn(patch.taxId) !== normaliseTrn(current.taxId));
   if (current && !touched && current.vatStatus != null) return current.vatStatus;
   return defaultVatStatus(
     patch.country !== undefined ? patch.country : (current?.country ?? null),

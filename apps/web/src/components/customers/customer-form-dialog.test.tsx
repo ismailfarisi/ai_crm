@@ -1,21 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import type { CustomerDto } from '@saas/shared';
 import { CustomerFormDialog } from './customer-form-dialog';
 
 const createCustomer = vi.fn();
+const updateCustomer = vi.fn();
 vi.mock('@/hooks/use-customers', () => ({
   useCreateCustomer: () => ({ mutateAsync: createCustomer, isPending: false }),
-  useUpdateCustomer: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateCustomer: () => ({ mutateAsync: updateCustomer, isPending: false }),
 }));
 
-const orgCountry = vi.hoisted(() => ({ value: 'AE' as string | null }));
+// `loaded: false` is the organization query still pending, or refused.
+const org = vi.hoisted(() => ({ country: 'AE' as string | null, loaded: true }));
 vi.mock('@/hooks/use-organization', () => ({
-  useOrganization: () => ({ data: { country: orgCountry.value } }),
+  useOrganization: () => ({ data: org.loaded ? { country: org.country } : undefined }),
 }));
 
 beforeEach(() => {
-  orgCountry.value = 'AE';
+  org.country = 'AE';
+  org.loaded = true;
   createCustomer.mockReset();
+  updateCustomer.mockReset();
 });
 
 function open() {
@@ -79,7 +84,7 @@ describe('CustomerFormDialog VAT fields', () => {
 
 describe('CustomerFormDialog outside the UAE', () => {
   it('is the plain form: no VAT status, emirate or TRN, and the API picks the status', async () => {
-    orgCountry.value = 'GB';
+    org.country = 'GB';
     open();
 
     fireEvent.change(screen.getByLabelText('Country'), { target: { value: 'AE' } });
@@ -95,5 +100,41 @@ describe('CustomerFormDialog outside the UAE', () => {
 
     await waitFor(() => expect(createCustomer).toHaveBeenCalled());
     expect(createCustomer.mock.calls[0][0]).toMatchObject({ vatStatus: null, emirate: null });
+  });
+});
+
+describe('CustomerFormDialog before the organization is known', () => {
+  it('keeps the UAE fields hidden and sends no VAT status or emirate on an update', async () => {
+    org.loaded = false;
+    const customer = {
+      id: 'c1',
+      companyName: 'Acme',
+      contactName: null,
+      email: null,
+      phone: null,
+      addressLine1: null,
+      addressLine2: null,
+      city: null,
+      postalCode: null,
+      country: 'AE',
+      taxId: '100123456789012',
+      emirate: 'DXB',
+      vatStatus: 'REGISTERED',
+      currency: 'AED',
+      paymentTermsDays: 30,
+      notes: null,
+    } as unknown as CustomerDto;
+    render(<CustomerFormDialog open onClose={() => {}} customer={customer} />);
+
+    expect(screen.queryByLabelText('VAT status')).toBeNull();
+    expect(screen.queryByLabelText('Emirate')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Phone'), { target: { value: '+971 4 000 0000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(updateCustomer).toHaveBeenCalled());
+    const { input } = updateCustomer.mock.calls[0][0];
+    expect(input).not.toHaveProperty('vatStatus');
+    expect(input).not.toHaveProperty('emirate');
+    expect(input).toMatchObject({ phone: '+971 4 000 0000', country: 'AE' });
   });
 });

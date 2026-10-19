@@ -127,6 +127,11 @@ export function CustomerFormDialog({ open, onClose, customer }: CustomerFormDial
         if (customer) await update.mutateAsync({ id: customer.id, input: values });
         else await create.mutateAsync(values);
       } else {
+        // Outside the UAE, or while the organisation is loading or cannot be
+        // read (the fields stay hidden then): an update never sends the VAT
+        // status or emirate, so the API keeps what is stored, re-deriving the
+        // status only when the country or tax ID changes. A new customer
+        // sends null and the API picks the status.
         const { vatStatus: _vatStatus, emirate: _emirate, ...rest } = values;
         if (customer) await update.mutateAsync({ id: customer.id, input: rest });
         else await create.mutateAsync({ ...rest, vatStatus: null, emirate: null });

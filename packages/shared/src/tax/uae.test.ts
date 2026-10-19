@@ -101,6 +101,11 @@ describe('resolveVatStatus', () => {
     expect(resolveVatStatus(registered, { country: 'GB' })).toBe('OUTSIDE_UAE');
     expect(resolveVatStatus(registered, { taxId: null })).toBe('NOT_REGISTERED');
   });
+
+  it('keeps a chosen status when a form resends the country and TRN unchanged', () => {
+    const chosen = { ...registered, vatStatus: 'NOT_REGISTERED' as const };
+    expect(resolveVatStatus(chosen, { country: 'AE', taxId: '100-1234-5678-9012' })).toBe('NOT_REGISTERED');
+  });
 });
 
 describe('emirates', () => {
