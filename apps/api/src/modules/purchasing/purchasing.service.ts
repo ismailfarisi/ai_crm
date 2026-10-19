@@ -18,9 +18,7 @@ import type {
   UpdateSupplierPayload,
 } from '@saas/shared';
 import {
-  isUaeCountry,
-  isValidTrn,
-  normaliseTrn,
+  assertUaeTrn,
   resolveVatStatus,
 } from '@saas/shared';
 import {
@@ -320,15 +318,19 @@ export class PurchasingService {
         );
       }
     }
-    const country =
-      input.country !== undefined ? input.country : supplier.country;
-    let taxId = input.taxId !== undefined ? input.taxId : supplier.taxId;
+    let taxId = supplier.taxId;
     // The schema only sees the patch; here we see the record it lands on.
-    if (isUaeCountry(country) && taxId != null) {
-      if (!isValidTrn(taxId)) {
-        throw new BadRequestException('A UAE TRN is 15 digits');
+    // A legacy record with a free-text tax ID stays saveable until its
+    // country or tax ID is edited.
+    if (input.country !== undefined || input.taxId !== undefined) {
+      const country =
+        input.country !== undefined ? input.country : supplier.country;
+      taxId = input.taxId !== undefined ? input.taxId : supplier.taxId;
+      try {
+        taxId = assertUaeTrn(country, taxId);
+      } catch (e) {
+        throw new BadRequestException((e as Error).message);
       }
-      taxId = normaliseTrn(taxId);
     }
     const vatStatus = resolveVatStatus(supplier, input);
     Object.assign(supplier, input, { taxId, vatStatus });

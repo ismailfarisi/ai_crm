@@ -170,6 +170,23 @@ describe('CustomersService', () => {
       }
     });
 
+    it('saves an unrelated edit on a legacy UAE record with a free-text tax ID', async () => {
+      const { service, repo } = makeService();
+      Object.assign(customer, {
+        country: 'AE',
+        taxId: 'TRN pending',
+        vatStatus: 'NOT_REGISTERED',
+      });
+      try {
+        await service.update(actor, customer.id, { phone: '04 555 0100' } as never);
+        expect(repo.save).toHaveBeenCalledWith(
+          expect.objectContaining({ taxId: 'TRN pending' }),
+        );
+      } finally {
+        Object.assign(customer, { country: null, taxId: null, vatStatus: undefined });
+      }
+    });
+
     it('rejects a malformed TRN against the stored UAE country, and normalises a valid one', async () => {
       const { service, repo } = makeService();
       Object.assign(customer, { country: 'United Arab Emirates', taxId: null });

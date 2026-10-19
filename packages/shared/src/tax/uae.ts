@@ -100,6 +100,17 @@ export function defaultVatStatus(country: string | null, taxId: string | null): 
 }
 
 /**
+ * The tax ID to store for a party in this country. In the UAE it must be a
+ * TRN and is returned as digits; elsewhere (or when absent) it is returned
+ * unchanged. Throws so each caller can choose its own error type.
+ */
+export function assertUaeTrn(country: string | null, taxId: string | null): string | null {
+  if (!isUaeCountry(country) || taxId == null) return taxId;
+  if (!isValidTrn(taxId)) throw new Error('A UAE TRN is 15 digits');
+  return normaliseTrn(taxId);
+}
+
+/**
  * The status to store for a party. An explicit `patch.vatStatus` wins (null
  * means "not explicitly set", so a form that sends null does not wipe it).
  * Otherwise the status is re-derived on create, or when the patch touches the

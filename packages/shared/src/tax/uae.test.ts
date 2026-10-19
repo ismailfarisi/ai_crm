@@ -13,6 +13,7 @@ import {
   normaliseTrn,
   periodContaining,
   resolveVatStatus,
+  assertUaeTrn,
   isUaeCountry,
   treatmentAllowed,
   treatmentIsReverseCharge,
@@ -66,6 +67,15 @@ describe('legacy country values', () => {
   it('treats a blank country as none', () => {
     expect(defaultVatStatus('   ', '100123456789012')).toBe('NOT_REGISTERED');
     expect(defaultVatStatus('', null)).toBe('NOT_REGISTERED');
+  });
+});
+
+describe('assertUaeTrn', () => {
+  it('normalises a valid UAE TRN and rejects an invalid one', () => {
+    expect(assertUaeTrn('AE', '100-1234-5678-9012')).toBe('100123456789012');
+    expect(() => assertUaeTrn('United Arab Emirates', '12345')).toThrow('A UAE TRN is 15 digits');
+    expect(assertUaeTrn('AE', null)).toBeNull();
+    expect(assertUaeTrn('GB', 'GB 123')).toBe('GB 123');
   });
 });
 

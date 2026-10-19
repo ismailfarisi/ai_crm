@@ -168,6 +168,19 @@ describe('PurchasingService — suppliers', () => {
       expect(saved.vatStatus).toBe('REGISTERED');
     });
 
+    it('saves an unrelated edit on a legacy UAE supplier with a free-text tax ID', async () => {
+      const { service } = makeService({
+        suppliers: [
+          { ...acme, country: 'AE', taxId: 'TRN pending', vatStatus: 'NOT_REGISTERED' },
+        ],
+      });
+      const saved = await service.updateSupplier(tenantId, 'sup-1', {
+        leadTimeDays: 4,
+      } as any);
+      expect(saved.leadTimeDays).toBe(4);
+      expect(saved.taxId).toBe('TRN pending');
+    });
+
     it('validates the TRN against the stored UAE country and normalises it', async () => {
       const { service } = makeService({
         suppliers: [{ ...acme, country: 'AE', taxId: null, vatStatus: 'NOT_REGISTERED' }],

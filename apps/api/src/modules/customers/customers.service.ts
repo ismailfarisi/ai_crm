@@ -11,9 +11,7 @@ import {
   type CustomerOverviewDto,
   type PaginatedResult,
   type UpdateCustomerInput,
-  isUaeCountry,
-  isValidTrn,
-  normaliseTrn,
+  assertUaeTrn,
   resolveVatStatus,
 } from '@saas/shared';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
@@ -183,15 +181,19 @@ export class CustomersService {
     input: UpdateCustomerInput,
   ): Promise<CustomerDto> {
     const customer = await this.findEntity(actor, id);
-    const country =
-      input.country !== undefined ? input.country : customer.country;
-    let taxId = input.taxId !== undefined ? input.taxId : customer.taxId;
+    let taxId = customer.taxId;
     // The schema only sees the patch; here we see the record it lands on.
-    if (isUaeCountry(country) && taxId != null) {
-      if (!isValidTrn(taxId)) {
-        throw new BadRequestException('A UAE TRN is 15 digits');
+    // A legacy record with a free-text tax ID stays saveable until its
+    // country or tax ID is edited.
+    if (input.country !== undefined || input.taxId !== undefined) {
+      const country =
+        input.country !== undefined ? input.country : customer.country;
+      taxId = input.taxId !== undefined ? input.taxId : customer.taxId;
+      try {
+        taxId = assertUaeTrn(country, taxId);
+      } catch (e) {
+        throw new BadRequestException((e as Error).message);
       }
-      taxId = normaliseTrn(taxId);
     }
     const vatStatus = resolveVatStatus(customer, input);
     Object.assign(customer, input, { taxId, vatStatus });
