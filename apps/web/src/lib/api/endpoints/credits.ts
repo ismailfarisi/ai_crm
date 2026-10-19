@@ -68,7 +68,6 @@ export const creditsKeys = {
   deliveryNotes: (salesOrderId: string) => ['delivery-notes', salesOrderId] as const,
   taxCodes: ['tax', 'codes'] as const,
   uaeVatStatus: ['tax', 'vat-status'] as const,
-  vatSettings: ['tax', 'vat-settings'] as const,
   taxRules: ['tax', 'rules'] as const,
   taxReport: (from: string, to: string) => ['tax', 'report', from, to] as const,
 };

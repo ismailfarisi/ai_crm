@@ -182,20 +182,13 @@ export function useUaeVatStatus() {
   return useQuery({ queryKey: queryKeys.uaeVatStatus, queryFn: () => api.tax.vatStatus(), retry: false });
 }
 
-export function useVatSettings() {
-  return useQuery({ queryKey: queryKeys.vatSettings, queryFn: () => api.tax.vatSettings(), retry: false });
-}
-
 /** Errors are left to the caller, which shows the server's message inline. */
 export function useSaveVatSettings() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: VatSettingsPayload) => api.tax.saveVatSettings(input),
     onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.vatSettings }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.uaeVatStatus }),
-      ]);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.uaeVatStatus });
       toast.success('VAT settings saved');
     },
   });
