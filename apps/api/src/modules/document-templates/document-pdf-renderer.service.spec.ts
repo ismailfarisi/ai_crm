@@ -1,4 +1,8 @@
-import { DocumentPdfRendererService } from './document-pdf-renderer.service';
+import { inflateSync } from 'zlib';
+import {
+  DocumentPdfRendererService,
+  toPdfText,
+} from './document-pdf-renderer.service';
 import {
   DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
   DocumentTemplateConfig,
@@ -255,5 +259,83 @@ describe('DocumentPdfRendererService', () => {
     const buffer = await renderer.render(docWithStringDates, configWithBank);
     expect(buffer).toBeInstanceOf(Buffer);
     expect(buffer.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+  });
+
+  /** The text pdfkit drew, decoded from its (compressed, hex) content streams. */
+  function pdfText(buffer: Buffer): string {
+    const raw = buffer.toString('latin1');
+    const strings: string[] = [];
+    const streamRe = /stream\r?\n/g;
+    let match: RegExpExecArray | null;
+    while ((match = streamRe.exec(raw))) {
+      const start = match.index + match[0].length;
+      const end = raw.indexOf('endstream', start);
+      let content: string;
+      try {
+        content = inflateSync(buffer.subarray(start, end)).toString('latin1');
+      } catch {
+        continue;
+      }
+      for (const tj of content.matchAll(/\[([^\]]*)\]\s*TJ/g)) {
+        let text = '';
+        for (const hex of tj[1].matchAll(/<([0-9a-fA-F]+)>/g)) {
+          text += Buffer.from(hex[1], 'hex').toString('latin1');
+        }
+        strings.push(text);
+      }
+    }
+    return strings.join('\n');
+  }
+
+  it('prints the issue date as the calendar day in Dubai', async () => {
+    // 21:30 UTC on the 24th is 01:30 on the 25th in Dubai.
+    const buffer = await renderer.render({
+      ...baseDoc,
+      issuedAt: '2026-10-24T21:30:00.000Z',
+    });
+    expect(pdfText(buffer)).toContain('Issued: Oct 25, 2026');
+  });
+
+  it('labels each tax line with its rate once', async () => {
+    const buffer = await renderer.render({
+      ...baseDoc,
+      totals: {
+        ...baseDoc.totals,
+        taxes: [{ rate: 5, label: 'Tax', amount: 420 }],
+      },
+    });
+    const text = pdfText(buffer);
+    expect(text).toContain('Tax (5%):');
+    expect(pdfText(await renderer.render(baseDoc))).toContain('VAT 20%:');
+  });
+
+  it('keeps an em dash and swaps characters the PDF font cannot print', async () => {
+    const buffer = await renderer.render({
+      ...baseDoc,
+      items: [
+        {
+          description: 'Sample run — 5 prototypes → approval',
+          quantity: 1,
+          unitPrice: 10,
+          amount: 10,
+        },
+      ],
+    });
+    // pdfkit writes the em dash as WinAnsi 0x97, which the font maps to "emdash".
+    expect(pdfText(buffer)).toContain('Sample run \x97 5 prototypes -> approval');
+  });
+});
+
+describe('toPdfText', () => {
+  it('passes Latin-1 and the WinAnsi extras through', () => {
+    expect(toPdfText('Café — “quoted” €5 × 2')).toBe(
+      'Café — “quoted” €5 × 2',
+    );
+  });
+
+  it('maps look-alikes, drops missing accents and marks the rest', () => {
+    expect(toPdfText('5\u2009mm ≤ 10 → ok')).toBe('5 mm <= 10 -> ok');
+    expect(toPdfText('Māori Ődor')).toBe('Maori Odor');
+    expect(toPdfText('مرحبا')).toBe('?????');
   });
 });

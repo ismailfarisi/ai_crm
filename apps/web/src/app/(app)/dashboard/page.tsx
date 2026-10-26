@@ -326,7 +326,9 @@ export default async function DashboardPage() {
           </div>
 
           {/* Middle Row: Golden Wave KPI Chart (60% width) + Warm Schedule & Deals Cards (40% width) */}
-          <div className="grid gap-5 lg:grid-cols-12">
+          {/* grid-cols-1 caps the phone column at the screen width: the cards' truncated
+              titles otherwise widen it by their full text and the page scrolls sideways. */}
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
             <div className="lg:col-span-7">
               <DashboardKpiChart
                 series={revenueSeries}

@@ -1,7 +1,9 @@
 'use client';
 
 import {
+  DOCUMENT_TIME_ZONE,
   formatPaymentTerms,
+  formatTaxLineLabel,
   type DocumentTemplateConfig,
   type UniversalDocumentData,
   type DocumentType,
@@ -30,6 +32,7 @@ export function formatDocDate(d: string | Date | undefined | null): string {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
+      timeZone: DOCUMENT_TIME_ZONE,
     });
   } catch {
     return String(d);
@@ -351,8 +354,10 @@ export function DocumentTemplateSheet({
 
       {/* 4. Items Table */}
       {data.items && data.items.length > 0 && (
-        <div className="overflow-hidden rounded-lg border border-slate-200 print:rounded-lg print:border-slate-300">
-          <table className="w-full text-left border-collapse text-xs">
+        // On a phone the columns keep their width and the table scrolls sideways,
+        // rather than squeezing the prices into "AE…".
+        <div className="overflow-x-auto rounded-lg border border-slate-200 print:overflow-visible print:rounded-lg print:border-slate-300">
+          <table className="w-full min-w-[32rem] text-left border-collapse text-xs print:min-w-0">
             <thead
               style={{
                 backgroundColor: config.itemsTable?.headerBackgroundColor || primaryColor,
@@ -461,7 +466,7 @@ export function DocumentTemplateSheet({
           {config.totals?.showTaxSummary &&
             data.totals?.taxes?.map((tax, i) => (
               <div key={i} className="flex justify-between text-slate-600">
-                <span>{tax.label || `Tax (${tax.rate}%)`}:</span>
+                <span>{formatTaxLineLabel(tax)}:</span>
                 <span className="font-semibold text-slate-900 tabular-nums">
                   {formatDocCurrency(tax.amount, currency)}
                 </span>

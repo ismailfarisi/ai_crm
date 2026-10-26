@@ -1,4 +1,5 @@
 import type { BillingStage } from '../orders/billing';
+import { documentTaxLines, type DocumentTaxLine } from '../tax/tax';
 
 export type QuoteLineItemType = 'product' | 'section' | 'note';
 
@@ -143,6 +144,30 @@ export function calculateQuoteTotals(items: QuoteLineItem[]): QuoteTotals {
  */
 export function stripLineCosts(items: QuoteLineItem[]): QuoteLineItem[] {
   return (items || []).map(({ cost: _cost, ...rest }) => rest);
+}
+
+/**
+ * The tax lines a printed quote or invoice shows, one per rate, from its
+ * product lines and its stored tax. See `documentTaxLines`.
+ */
+export function quoteDocumentTaxes(
+  items: QuoteLineItem[] | null | undefined,
+  taxAmount: number,
+  label?: string,
+): DocumentTaxLine[] | undefined {
+  const lines = (items || [])
+    .filter((item) => item.type === 'product' || !item.type)
+    .map((item) => {
+      const qty = Number(item.quantity) || 0;
+      const price = Number(item.unitPrice) || 0;
+      const discount = Math.min(100, Math.max(0, Number(item.discount) || 0));
+      return {
+        net: item.subtotal != null ? Number(item.subtotal) : qty * price * (1 - discount / 100),
+        rate: Number(item.taxRate) || 0,
+        reverseCharge: item.taxReverseCharge,
+      };
+    });
+  return documentTaxLines(lines, taxAmount, label);
 }
 
 /** The subset of `QuoteTotals` that is safe without `quote:view_cost`. */

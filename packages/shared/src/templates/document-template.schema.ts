@@ -145,6 +145,15 @@ export const DEFAULT_DOCUMENT_TEMPLATE_CONFIG: DocumentTemplateConfig = {
   },
 };
 
+/**
+ * The zone printed document dates are read in, so the PDF and the on-screen
+ * preview show the same calendar day whatever the server or browser zone: a
+ * quote created at 01:00 in Dubai must not print as the day before on a UTC
+ * host. Organizations have no timezone setting yet; the customers are in the
+ * UAE.
+ */
+export const DOCUMENT_TIME_ZONE = 'Asia/Dubai';
+
 export const universalDocumentDataSchema = z.object({
   type: documentTypeSchema,
   number: z.string(),

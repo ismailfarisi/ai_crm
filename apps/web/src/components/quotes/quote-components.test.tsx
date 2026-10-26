@@ -192,7 +192,7 @@ describe('QuotePrintModal', () => {
       />
     );
 
-    expect(screen.getByText('QUOTE Document Preview')).toBeDefined();
+    expect(screen.getByRole('heading', { name: 'QUOTE Document Preview' })).toBeDefined();
     expect(screen.getByText('S7 Berlin GmbH')).toBeDefined();
     expect(screen.getByText('Carton')).toBeDefined();
     expect(screen.getByText('$9.97')).toBeDefined();
@@ -231,7 +231,24 @@ describe('QuotePrintModal', () => {
       />
     );
 
-    expect(screen.queryByText('QUOTE Document Preview')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'QUOTE Document Preview' })).toBeNull();
+  });
+
+  it('prints the quote issue date and the tax rate', () => {
+    renderWithClient(
+      <QuotePrintModal
+        open={true}
+        onClose={vi.fn()}
+        headerData={dummyHeader}
+        items={dummyItems}
+        totals={dummyTotals}
+        issuedAt="2026-10-24T10:15:00.000Z"
+      />
+    );
+
+    // Browser-locale order: "October 24, 2026" or "24 October 2026".
+    expect(screen.getAllByText(/October 24, 2026|24 October 2026/).length).toBeGreaterThan(0);
+    expect(screen.getByText('Tax (5%):')).toBeDefined();
   });
 });
 

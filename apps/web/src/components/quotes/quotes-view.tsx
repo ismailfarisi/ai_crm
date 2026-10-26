@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Plus, FileText, Clock, CheckCircle, Banknote, Sparkles, type LucideIcon } from 'lucide-react';
-import { formatOrganizationAddress } from '@saas/shared';
+import { formatOrganizationAddress, quoteDocumentTaxes } from '@saas/shared';
 import { useQuotes, type Quote } from '@/hooks/use-quotes';
 import { api } from '@/lib/api/endpoints';
 import { formatMoney } from '@/lib/utils';
@@ -278,9 +278,10 @@ export function QuotesView() {
             totals: {
               subtotal: Number(printingQuote.subtotalAmount || printingQuote.totalAmount || 0),
               discounts: Number(printingQuote.discountAmount || 0),
-              taxes: printingQuote.taxAmount
-                ? [{ rate: 0, label: 'Taxes', amount: Number(printingQuote.taxAmount) }]
-                : undefined,
+              taxes: quoteDocumentTaxes(
+                printingQuote.items,
+                Number(printingQuote.taxAmount || 0),
+              ),
               total: Number(printingQuote.totalAmount || 0),
             },
             paymentTerms: printingQuote.paymentTerms || undefined,

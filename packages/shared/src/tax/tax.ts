@@ -213,6 +213,58 @@ export function scaleBreakdown(
   });
 }
 
+export interface DocumentTaxLine {
+  rate: number;
+  label: string;
+  amount: number;
+}
+
+/**
+ * The tax lines a printed quote or invoice shows under the subtotal, one per
+ * rate, adding up to the document's stored tax to the cent.
+ *
+ * The stored tax stays the source of truth: the lines only say which rate it
+ * was charged at. Lines that carry no rate (an old document) fall back to the
+ * effective rate on the subtotal, so the label never claims 0% on a non-zero
+ * tax.
+ */
+export function documentTaxLines(
+  lines: { net?: number | null; rate?: number | null; reverseCharge?: boolean }[],
+  taxAmount: number,
+  label = 'Tax',
+): DocumentTaxLine[] | undefined {
+  const tax = Number(taxAmount) || 0;
+  if (!tax) return undefined;
+
+  const groups = taxBreakdown(
+    lines.map((line) => ({
+      net: Number(line.net) || 0,
+      rate: Number(line.rate) || 0,
+      reverseCharge: line.reverseCharge,
+    })),
+  ).filter((group) => group.rate > 0);
+
+  if (groups.length === 0) {
+    const net = lines.reduce((sum, line) => sum + (Number(line.net) || 0), 0);
+    const rate = net > 0 ? Math.round((tax / net) * 10000) / 100 : 0;
+    return [{ rate, label, amount: tax }];
+  }
+  if (groups.length === 1) {
+    return [{ rate: groups[0].rate, label, amount: tax }];
+  }
+  const net = groups.reduce((sum, group) => sum + group.net, 0);
+  return scaleBreakdown(groups, { net, tax }).map((group) => ({
+    rate: group.rate,
+    label,
+    amount: group.tax,
+  }));
+}
+
+/** "Tax (5%)"; a label that already names its rate is left alone. */
+export function formatTaxLineLabel(line: { rate: number; label: string }): string {
+  return line.label.includes('%') ? line.label : `${line.label} (${line.rate}%)`;
+}
+
 export const REVERSE_CHARGE_NOTICE =
   'Reverse charge: the customer is liable to account for the VAT on this supply.';
 
