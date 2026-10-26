@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import { SiteFooter } from '@/components/site-footer';
 import { SiteHeader } from '@/components/site-header';
+import { WhatsAppButton } from '@/components/whatsapp';
 import { site } from '@/lib/site';
 import './globals.css';
 
@@ -31,6 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <SiteHeader />
         <main className="flex-1">{children}</main>
         <SiteFooter />
+        <WhatsAppButton />
       </body>
     </html>
   );

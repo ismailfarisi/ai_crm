@@ -43,7 +43,7 @@ export function appRedirects(appUrl) {
     source: `/${route}/:path*`,
     destination: `${base}/${route}/:path*`,
     // Temporary: a browser caches a permanent redirect, and the app's domain
-    // may move again (kerf.ae) before launch.
+    // may move again before launch.
     permanent: false,
   }));
 }

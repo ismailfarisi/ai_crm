@@ -37,9 +37,17 @@ export function SiteFooter() {
           <Link href="/security" className="hover:text-ink">
             Security
           </Link>
-          <a href={`mailto:${site.contactEmail}`} className="hover:text-ink">
+          <a href={site.contactUrl} className="hover:text-ink">
             Contact
           </a>
+          <a href={site.whatsappUrl} className="hover:text-ink">
+            WhatsApp: {site.whatsappDisplay}
+          </a>
+          {site.contactEmail && (
+            <a href={`mailto:${site.contactEmail}`} className="hover:text-ink">
+              {site.contactEmail}
+            </a>
+          )}
           <a href={site.signInUrl} className="hover:text-ink">
             Sign in
           </a>
