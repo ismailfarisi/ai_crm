@@ -65,6 +65,10 @@ describe('ExpensesService', () => {
           claimSequenceValue += 1;
           return [{ current_value: claimSequenceValue }];
         }),
+        // The organization, read for its base currency.
+        getRepository: jest.fn(() => ({
+          findOne: jest.fn().mockResolvedValue({ baseCurrency: 'USD' }),
+        })),
       } as any,
     };
 
@@ -403,6 +407,8 @@ describe('ExpensesService', () => {
           expect.objectContaining({ role: 'ACCOUNTS_PAYABLE', credit: 4200 }),
         ]),
         expect.anything(),
+        // Claim in base currency: converted at 1.
+        1,
       );
     });
 
@@ -472,6 +478,7 @@ describe('ExpensesService', () => {
         tenantId,
         expect.any(Array),
         txManager,
+        1,
       );
       // The claim row is locked before its status is read.
       expect(expenseRepo.findOne).toHaveBeenCalledWith(

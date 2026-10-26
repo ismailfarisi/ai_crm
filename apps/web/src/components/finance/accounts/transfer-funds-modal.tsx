@@ -51,6 +51,7 @@ export function TransferFundsModal({
   const [fromAccountId, setFromAccountId] = useState<string>(initialFrom);
   const [toAccountId, setToAccountId] = useState<string>(initialTo);
   const [amount, setAmount] = useState<string>('');
+  const [toAmount, setToAmount] = useState<string>('');
   const [transferDate, setTransferDate] = useState<string>(
     new Date().toISOString().split('T')[0],
   );
@@ -68,6 +69,7 @@ export function TransferFundsModal({
       setFromAccountId(from);
       setToAccountId(to);
       setAmount('');
+      setToAmount('');
       setTransferDate(new Date().toISOString().split('T')[0]);
       setDescription('');
       setError(null);
@@ -81,6 +83,12 @@ export function TransferFundsModal({
   const isSameAccount = Boolean(fromAccountId && toAccountId && fromAccountId === toAccountId);
   const sourceBalance = fromAccount?.balance ?? 0;
   const isOverdrawn = fromAccount ? numericAmount > sourceBalance : false;
+  // Across currencies only the bank knows what arrived, so it is asked for.
+  const crossCurrency = Boolean(
+    fromAccount && toAccount && fromAccount.currency !== toAccount.currency,
+  );
+  const numericToAmount = parseFloat(toAmount) || 0;
+  const arriving = crossCurrency ? numericToAmount : numericAmount;
 
   const handleQuickPercent = (percent: number) => {
     if (!fromAccount) return;
@@ -109,12 +117,17 @@ export function TransferFundsModal({
       setError('Transfer amount must be greater than $0.00.');
       return;
     }
+    if (crossCurrency && numericToAmount <= 0) {
+      setError(`Enter how much ${toAccount?.currency} arrived in ${toAccount?.name}.`);
+      return;
+    }
 
     try {
       await onSubmit({
         fromAccountId,
         toAccountId,
         amount: numericAmount,
+        ...(crossCurrency ? { toAmount: numericToAmount } : {}),
         description: description.trim() || undefined,
       });
       onClose();
@@ -261,6 +274,22 @@ export function TransferFundsModal({
               {sourceBalance.toFixed(2)}).
             </p>
           )}
+
+          {crossCurrency && (
+            <Input
+              id="input-transfer-to-amount"
+              data-testid="input-transfer-to-amount"
+              label={`Amount received in ${toAccount?.currency}`}
+              hint={`${fromAccount?.currency} and ${toAccount?.currency} differ: enter what the bank credited, so the books use its rate.`}
+              type="number"
+              step="0.01"
+              min="0.01"
+              placeholder="0.00"
+              value={toAmount}
+              onChange={(e) => setToAmount(e.target.value)}
+              required
+            />
+          )}
         </div>
 
         {/* Date & Description */}
@@ -366,7 +395,7 @@ export function TransferFundsModal({
               <span>
                 Dest new balance:{' '}
                 <strong className="font-mono text-ink">
-                  {formatFinanceCurrency(toAccount.balance + numericAmount, toAccount.currency)}
+                  {formatFinanceCurrency(toAccount.balance + arriving, toAccount.currency)}
                 </strong>
               </span>
             </div>

@@ -240,15 +240,6 @@ export class FinanceController {
     return this.financeService.listOccurrences(user.organizationId, id);
   }
 
-  @Get('journal-entries')
-  @RequirePermissions(PERMISSIONS.FINANCE_READ)
-  @ApiOperation({
-    summary: 'List journal entries',
-    description: 'Lists all double-entry journal entries for tenant',
-  })
-  async findAllJournalEntries(
-    @CurrentUser() user: AuthenticatedUser,
-  ): Promise<JournalEntry[]> {
-    return this.financeService.findAllJournalEntries(user.organizationId);
-  }
+  // The journal, manual journals and the chart of accounts' writes live in
+  // BooksController.
 }

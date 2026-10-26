@@ -12,6 +12,8 @@ import {
   Percent,
   Coins,
   FileBarChart,
+  BookOpen,
+  ListTree,
   LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -43,6 +45,16 @@ export const FINANCE_NAV_ITEMS: FinanceTabItem[] = [
     href: '/finance/accounts',
     label: 'Bank & Cash Accounts',
     icon: Landmark,
+  },
+  {
+    href: '/finance/journal',
+    label: 'Journal',
+    icon: BookOpen,
+  },
+  {
+    href: '/finance/chart-of-accounts',
+    label: 'Chart of Accounts',
+    icon: ListTree,
   },
   {
     href: '/finance/subscriptions',

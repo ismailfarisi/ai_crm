@@ -22,6 +22,7 @@ import { customObjectsEndpoints, customObjectsKeys } from './custom-objects';
 import { assistantEndpoints, assistantKeys } from './assistant';
 import { payrollEndpoints, payrollKeys } from './payroll';
 import { timesheetsEndpoints, timesheetsKeys } from './timesheets';
+import { booksEndpoints, booksKeys } from './books';
 
 /**
  * Guards for the composed API surface.
@@ -57,6 +58,7 @@ const SLICES = [
   ['assistant', assistantEndpoints, assistantKeys],
   ['payroll', payrollEndpoints, payrollKeys],
   ['timesheets', timesheetsEndpoints, timesheetsKeys],
+  ['books', booksEndpoints, booksKeys],
 ] as const;
 
 const API_SECTIONS = [
@@ -67,7 +69,7 @@ const API_SECTIONS = [
   'salesOrders', 'quoteAcceptance', 'workOrders', 'board', 'creditNotes', 'deliveryNotes', 'tax',
   'notifications', 'billing', 'currencies', 'reports', 'organization', 'branches', 'audit', 'attachments',
   'documentTemplates', 'savedViews', 'customObjects', 'assistant',
-  'employees', 'payroll', 'settlements', 'timesheets',
+  'employees', 'payroll', 'settlements', 'timesheets', 'books',
 ];
 
 const QUERY_KEYS = [
@@ -98,6 +100,7 @@ const QUERY_KEYS = [
   'payrollRuns', 'payrollRun', 'payslip', 'openingGratuityPreview', 'openingLeavePreview', 'pensionPeriod',
   'settlements', 'settlement', 'settlementStatement',
   'timesheets', 'crewTimesheets', 'timesheetEmployees', 'timesheetOperations',
+  'periodLock', 'journals', 'ledgerAccounts', 'trialBalance', 'reconciliation', 'vatReturn',
 ];
 
 describe('api surface composition', () => {

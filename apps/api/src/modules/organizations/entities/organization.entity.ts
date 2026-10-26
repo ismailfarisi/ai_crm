@@ -39,6 +39,19 @@ export class Organization extends BaseEntity {
   @Column({ name: 'base_currency', type: 'char', length: 3, default: 'USD' })
   baseCurrency: string;
 
+  /**
+   * Nothing dated on or before this day can be posted. Enforced by the
+   * `journal_entries_period_lock` trigger, not by the services.
+   */
+  @Column({ name: 'books_locked_through', type: 'date', nullable: true })
+  booksLockedThrough: string | null;
+
+  @Column({ name: 'books_locked_at', type: 'timestamptz', nullable: true })
+  booksLockedAt: Date | null;
+
+  @Column({ name: 'books_locked_by_id', type: 'uuid', nullable: true })
+  booksLockedById: string | null;
+
   /* ---------------------------------------------------------------- *
    * Who the company is on paper
    *

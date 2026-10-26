@@ -7,6 +7,7 @@ import {
   CreditCard,
   Layers,
   ArrowLeftRight,
+  ListChecks,
   Plus,
   Star,
   CheckCircle2,
@@ -28,6 +29,8 @@ export interface AccountBalanceGridProps {
   onSelectAccount?: (account: FinanceAccountDto) => void;
   /** Moves the default flag onto an account. Omitted where the viewer cannot. */
   onMakeDefault?: (accountId: string) => void;
+  /** Opens bank reconciliation for an account. Omitted where the viewer cannot. */
+  onReconcile?: (accountId: string) => void;
   title?: string;
   description?: string;
   className?: string;
@@ -87,6 +90,7 @@ export function AccountBalanceGrid({
   onNewAccount,
   onSelectAccount,
   onMakeDefault,
+  onReconcile,
   title = 'Treasury & Bank Accounts',
   description = 'Real-time balances across connected corporate banks, petty cash reserves, and clearing gateways.',
   className,
@@ -289,6 +293,21 @@ export function AccountBalanceGrid({
                       >
                         <Star className="size-3" />
                         Make default
+                      </button>
+                    )}
+                    {onReconcile && (
+                      <button
+                        type="button"
+                        data-testid={`account-reconcile-btn-${account.id}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onReconcile(account.id);
+                        }}
+                        title="Match the bank statement against the ledger"
+                        className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink cursor-pointer"
+                      >
+                        <ListChecks className="size-3" />
+                        Reconcile
                       </button>
                     )}
                     {onTransfer && (

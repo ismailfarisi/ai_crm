@@ -86,3 +86,76 @@ export async function cashAccountAmount(
     `${account.name} holds ${accountCurrency}, but this is a ${documentCurrency} payment. Use an account in ${documentCurrency} or in ${base}.`,
   );
 }
+
+/**
+ * What a transfer between two accounts is worth in base currency, each side.
+ *
+ * - Same currency: one amount, converted at today's rate (1 in base).
+ * - One side in base: the bank's own conversion sets the value — the base
+ *   amount that left or arrived — so both sides carry it and nothing is
+ *   gained or lost on the day.
+ * - Two foreign currencies: each side at today's rate for its currency, and
+ *   the gap between them is an exchange difference.
+ *
+ * `toAmount` is required whenever the currencies differ: only the bank knows
+ * what arrived.
+ */
+export async function transferValues(
+  manager: EntityManager,
+  tenantId: string,
+  input: {
+    from: Pick<FinanceAccount, 'name' | 'currency'>;
+    to: Pick<FinanceAccount, 'name' | 'currency'>;
+    amount: number;
+    toAmount?: number | null;
+  },
+  date: Date = new Date(),
+): Promise<{
+  arriving: number;
+  fromBase: number;
+  toBase: number;
+  currency: string | null;
+  rate: number;
+}> {
+  const base = await baseCurrencyFor(manager, tenantId);
+  const code = (c: string | null | undefined) =>
+    (c ?? '').trim().toUpperCase() || base;
+  const fromCurrency = code(input.from.currency);
+  const toCurrency = code(input.to.currency);
+  const amount = input.amount;
+
+  if (fromCurrency === toCurrency) {
+    const rate = await fxRateFor(manager, tenantId, fromCurrency, date);
+    const value = toBase(amount, rate);
+    return {
+      arriving: amount,
+      fromBase: value,
+      toBase: value,
+      currency: fromCurrency,
+      rate,
+    };
+  }
+
+  const arriving = Number(input.toAmount);
+  if (!(arriving > 0)) {
+    throw new BadRequestException(
+      `${input.from.name} holds ${fromCurrency} and ${input.to.name} holds ${toCurrency}. Enter how much ${toCurrency} arrived.`,
+    );
+  }
+  if (fromCurrency === base)
+    return { arriving, fromBase: amount, toBase: amount, currency: null, rate: 1 };
+  if (toCurrency === base)
+    return { arriving, fromBase: arriving, toBase: arriving, currency: null, rate: 1 };
+
+  const [fromRate, toRate] = await Promise.all([
+    fxRateFor(manager, tenantId, fromCurrency, date),
+    fxRateFor(manager, tenantId, toCurrency, date),
+  ]);
+  return {
+    arriving,
+    fromBase: toBase(amount, fromRate),
+    toBase: toBase(arriving, toRate),
+    currency: null,
+    rate: 1,
+  };
+}

@@ -182,11 +182,24 @@ export function isSpread(line: { servicePeriodStart?: string | null; servicePeri
  * value. That is a simplification: strictly, the portion still on the shelf
  * should revalue stock. It keeps a bill from reaching back into a moving
  * average that later receipts and issues have already moved on from.
+ *
+ * Two VAT treatments change the tax lines:
+ *
+ * - **Blocked** input tax (entertainment, private-use cars) cannot be
+ *   reclaimed, so it is part of the cost: it debits the largest expense the
+ *   bill carries (cost of sales when the bill is all goods), not tax payable.
+ * - **Reverse charge and imports.** The supplier charged nothing; the buyer
+ *   self-assesses. Output and input tax are both booked on tax payable, so
+ *   they cancel in the ledger and the VAT return shows both sides.
+ *
+ *   Dr Tax payable     self-assessed input tax
+ *   Cr Tax payable     self-assessed output tax
  */
 export function billPostingLines(
   lines: BillLineForPosting[],
   taxAmount: number,
   reference: { billNumber: string; supplierName: string },
+  vat: { blocked?: boolean; selfAssessed?: number } = {},
 ): JournalLineInput[] {
   let grni = 0;
   let variance = 0;
@@ -237,8 +250,26 @@ export function billPostingLines(
       description: label,
     });
   }
-  if (tax !== 0) {
+  if (tax !== 0 && vat.blocked) {
+    // Never prepaid: nothing would ever release it to expense.
+    let costRole: LedgerRole = grni !== 0 ? LEDGER_ROLES.COGS : LEDGER_ROLES.OPERATING_EXPENSE;
+    let largest = 0;
+    for (const [role, amount] of expenseByRole) {
+      if (role !== LEDGER_ROLES.PREPAID_EXPENSES && amount > largest) {
+        largest = amount;
+        costRole = role;
+      }
+    }
+    out.push({ role: costRole, accountName: 'Non-recoverable VAT', debit: tax, credit: 0, description: label });
+  } else if (tax !== 0) {
     out.push({ role: LEDGER_ROLES.TAX_PAYABLE, accountName: 'Input tax', debit: tax, credit: 0, description: label });
+  }
+  const selfAssessed = money(Math.max(0, vat.selfAssessed ?? 0));
+  if (selfAssessed !== 0) {
+    out.push(
+      { role: LEDGER_ROLES.TAX_PAYABLE, accountName: 'Input tax (reverse charge)', debit: selfAssessed, credit: 0, description: label },
+      { role: LEDGER_ROLES.TAX_PAYABLE, accountName: 'Output tax (reverse charge)', debit: 0, credit: selfAssessed, description: label },
+    );
   }
   if (payable !== 0) {
     out.push({ role: LEDGER_ROLES.ACCOUNTS_PAYABLE, accountName: 'Accounts payable', debit: 0, credit: payable, description: label });

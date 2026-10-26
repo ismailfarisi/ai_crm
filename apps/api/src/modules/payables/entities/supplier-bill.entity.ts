@@ -120,6 +120,21 @@ export class SupplierBill extends SoftDeletableEntity {
   @Column({ name: 'tax_code_id', type: 'uuid', nullable: true })
   taxCodeId: string | null;
 
+  /**
+   * VAT self-assessed under the reverse charge (or on an import), fixed when
+   * the bill is approved. The supplier charged none, so it is not in
+   * `taxAmount` or the total.
+   */
+  @Column({
+    name: 'reverse_charge_tax',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+    transformer: numericTransformer,
+  })
+  reverseChargeTax: number;
+
   @Column({ name: 'created_by_id', type: 'uuid', nullable: true })
   createdById: string | null;
 

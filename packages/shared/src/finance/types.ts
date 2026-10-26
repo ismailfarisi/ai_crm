@@ -149,6 +149,13 @@ export interface JournalEntryDto {
   entryDate: string;
   lines: JournalLineDto[];
   totalAmount: number;
+  /** Why a manual journal was posted. Null on entries a document posted. */
+  memo?: string | null;
+  createdById?: string | null;
+  /** The entry this one reverses, for a reversal. */
+  reversesEntryId?: string | null;
+  currency?: string | null;
+  fxRate?: number;
   createdAt: string;
 }
 
@@ -194,6 +201,12 @@ export interface TransferFundsPayload {
   fromAccountId: string;
   toAccountId: string;
   amount: number;
+  /**
+   * What arrived, in the destination account's currency, when the two
+   * accounts hold different currencies. The bank did the conversion; this is
+   * the only honest record of its rate.
+   */
+  toAmount?: number;
   description?: string;
 }
 

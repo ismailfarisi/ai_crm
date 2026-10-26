@@ -110,6 +110,19 @@ export class TaxController {
     return this.tax.report(user.organizationId, query.from, query.to);
   }
 
+  @Get('vat/return')
+  @RequirePermissions(PERMISSIONS.TAX_READ)
+  @ApiOperation({
+    summary: 'The UAE VAT201 return for a period, box by box',
+    description: 'UAE VAT mode only. Same documents and dates as the tax report.',
+  })
+  vatReturn(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(zodQuery(taxReportQuerySchema)) query: TaxReportQueryPayload,
+  ) {
+    return this.tax.vat201(user.organizationId, query.from, query.to);
+  }
+
   @Get('vat/status')
   @RequirePermissions(PERMISSIONS.TAX_READ)
   @ApiOperation({

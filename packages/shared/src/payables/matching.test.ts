@@ -138,6 +138,33 @@ describe('billPostingLines', () => {
     expect(isBalanced(lines)).toBe(true);
   });
 
+  it('expenses blocked VAT instead of reclaiming it', () => {
+    const lines = billPostingLines(
+      [
+        { description: 'Client dinner', qty: 1, unitCost: 400, category: 'Travel' },
+        { description: 'Taxi', qty: 1, unitCost: 100 },
+      ],
+      25,
+      ref,
+      { blocked: true },
+    );
+    expect(code(lines)).toEqual(['TRAVEL:400/0', 'OPERATING_EXPENSE:100/0', 'TRAVEL:25/0', 'ACCOUNTS_PAYABLE:0/525']);
+    expect(isBalanced(lines)).toBe(true);
+  });
+
+  it('self-assesses reverse-charge VAT on both sides of tax payable', () => {
+    const lines = billPostingLines([{ description: 'Cloud hosting', qty: 1, unitCost: 1000 }], 0, ref, {
+      selfAssessed: 50,
+    });
+    expect(code(lines)).toEqual([
+      'OPERATING_EXPENSE:1000/0',
+      'TAX_PAYABLE:50/0',
+      'TAX_PAYABLE:0/50',
+      'ACCOUNTS_PAYABLE:0/1000',
+    ]);
+    expect(isBalanced(lines)).toBe(true);
+  });
+
   it('balances a mixed bill with tax', () => {
     const lines = billPostingLines(
       [

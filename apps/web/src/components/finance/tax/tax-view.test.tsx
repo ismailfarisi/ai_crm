@@ -17,6 +17,7 @@ vi.mock('@/hooks/use-organization', () => ({ useOrganization: vi.fn() }));
 vi.mock('@/lib/session-context', () => ({ useCan: vi.fn() }));
 vi.mock('../finance-nav', () => ({ FinanceNav: () => null }));
 vi.mock('./vat-settings-card', () => ({ VatSettingsCard: () => null }));
+vi.mock('./vat-return-card', () => ({ VatReturnCard: () => null }));
 
 const code = (over: Partial<TaxCodeDto>): TaxCodeDto => ({
   id: 'zero-s',
