@@ -1,6 +1,11 @@
 'use client';
 
-import type { DocumentTemplateConfig, UniversalDocumentData, DocumentType } from '@saas/shared';
+import {
+  formatPaymentTerms,
+  type DocumentTemplateConfig,
+  type UniversalDocumentData,
+  type DocumentType,
+} from '@saas/shared';
 
 interface DocumentTemplateSheetProps {
   data: UniversalDocumentData;
@@ -71,6 +76,8 @@ export function DocumentTemplateSheet({
   const docTitle = docTitleMap[data.type] || data.type;
   const currency = data.currency || 'USD';
   const orgName = data.organization?.name || organizationName || 'Your Company';
+  // A column of dashes says nothing, so it shows only when a line has a code.
+  const showItemCode = !!config.itemsTable?.showItemCode && !!data.items?.some((item) => item.code);
 
   return (
     <div
@@ -236,7 +243,7 @@ export function DocumentTemplateSheet({
               {data.paymentTerms && (
                 <p>
                   <strong className="text-slate-700">Terms:</strong>{' '}
-                  <span className="uppercase">{data.paymentTerms.replace('_', ' ')}</span>
+                  <span>{formatPaymentTerms(data.paymentTerms)}</span>
                 </p>
               )}
             </div>
@@ -353,7 +360,7 @@ export function DocumentTemplateSheet({
               }}
             >
               <tr className="uppercase tracking-wider font-semibold">
-                {config.itemsTable?.showItemCode && <th className={`${tableDensity} w-20`}>Code</th>}
+                {showItemCode && <th className={`${tableDensity} w-20`}>Code</th>}
                 {config.itemsTable?.showDescription && (
                   <th className={`${tableDensity}`}>Description</th>
                 )}
@@ -384,7 +391,7 @@ export function DocumentTemplateSheet({
                       : 'bg-white'
                   } print:break-inside-avoid`}
                 >
-                  {config.itemsTable?.showItemCode && (
+                  {showItemCode && (
                     <td className={`${tableDensity} font-mono text-slate-500`}>
                       {item.code || `—`}
                     </td>
@@ -506,7 +513,7 @@ export function DocumentTemplateSheet({
               Payment Terms
             </p>
             <p className="mt-0.5 leading-relaxed">
-              {data.paymentTerms || config.footer?.paymentTerms}
+              {data.paymentTerms ? formatPaymentTerms(data.paymentTerms) : config.footer?.paymentTerms}
             </p>
           </div>
         )}

@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/data-table';
 import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
 import { type Quote, useDownloadQuotePdf } from '@/hooks/use-quotes';
+import { formatMoney } from '@/lib/utils';
 
 interface QuotesTableProps {
   quotes: Quote[];
@@ -104,10 +105,7 @@ export function QuotesTable({ quotes, isLoading = false, onSignal, onPrint }: Qu
         header: ({ column }) => <DataTableColumnHeader column={column} title="Total Amount" />,
         cell: ({ row }) => (
           <span className="font-medium text-ink">
-            ${(Number(row.original.totalAmount) || 0).toLocaleString(undefined, {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })}
+            {formatMoney(Number(row.original.totalAmount) || 0, row.original.currency)}
           </span>
         ),
       },

@@ -289,6 +289,21 @@ export function calculateInvoiceDueDate(issuedAt: Date, paymentTerms: string): D
   return null;
 }
 
+/**
+ * paymentTerms as a customer should read it on a document ("Net 30 days",
+ * not "net_30"). Anything that is not one of the stored codes is free text
+ * someone typed, and prints as it is.
+ */
+export function formatPaymentTerms(paymentTerms: string): string {
+  if (paymentTerms === 'immediate') return 'Due on receipt';
+  if (paymentTerms === 'end_of_month') return 'End of month';
+
+  const netMatch = /^net_(\d+)$/.exec(paymentTerms);
+  if (netMatch) return `Net ${netMatch[1]} days`;
+
+  return paymentTerms;
+}
+
 export interface QuoteDto {
   id: string;
   tenantId: string;

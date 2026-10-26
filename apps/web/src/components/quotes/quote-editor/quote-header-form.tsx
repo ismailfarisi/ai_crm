@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Building2, Mail, Calendar, DollarSign, CreditCard, Tag } from 'lucide-react';
+import { Building2, Mail, Calendar, Coins, CreditCard, Tag } from 'lucide-react';
 import type { CustomerDto } from '@saas/shared';
 import { CURRENCY_OPTIONS, currencyLabel } from '@saas/shared';
 import { api } from '@/lib/api/endpoints';
@@ -245,7 +245,7 @@ export function QuoteHeaderForm({
           {/* Currency */}
           <div className="space-y-1.5">
             <label className="flex items-center gap-1.5 text-xs font-medium text-ink">
-              <DollarSign className="size-3.5 text-ink-subtle" />
+              <Coins className="size-3.5 text-ink-subtle" />
               Currency
             </label>
             {readOnly ? (

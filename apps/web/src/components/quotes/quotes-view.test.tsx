@@ -16,7 +16,7 @@ vi.mock('@/hooks/use-quotes', async (importOriginal) => {
 
 vi.mock('@/hooks/use-organization', () => ({
   useOrganization: () => ({
-    data: { name: 'Test Org' },
+    data: { name: 'Test Org', baseCurrency: 'USD' },
     isLoading: false,
   }),
 }));

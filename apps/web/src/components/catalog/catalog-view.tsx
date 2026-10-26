@@ -24,7 +24,8 @@ import {
   useTooling,
   useWorkCenters,
 } from '@/hooks/use-catalog-admin';
-import { cn } from '@/lib/utils';
+import { useOrganization } from '@/hooks/use-organization';
+import { cn, formatMoney } from '@/lib/utils';
 import { Can } from '@/components/auth/can';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -52,14 +53,6 @@ const UOM_LABELS: Record<string, string> = {
   KG: 'Kilogram',
   EACH: 'Each',
 };
-
-function money(value: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-  }).format(value);
-}
 
 function percent(fraction: number): string {
   return `${Math.round(fraction * 1000) / 10}%`;
@@ -92,6 +85,8 @@ export function CatalogView() {
   const workCenters = useWorkCenters();
   const tooling = useTooling();
   const templates = useTemplates();
+  // Catalog prices and rates are in the company's base currency.
+  const currency = useOrganization().data?.baseCurrency;
 
   const [editingItem, setEditingItem] = useState<CatalogItemDto | null>(null);
   const [editingMaterial, setEditingMaterial] = useState<MaterialDto | null>(null);
@@ -176,14 +171,14 @@ export function CatalogView() {
         accessorKey: 'listPrice',
         header: ({ column }) => <DataTableColumnHeader column={column} title="Price" />,
         cell: ({ row }) => (
-          <span className="tabular-nums text-ink">{money(row.original.listPrice)}</span>
+          <span className="tabular-nums text-ink">{formatMoney(row.original.listPrice, currency)}</span>
         ),
       },
       {
         accessorKey: 'standardCost',
         header: ({ column }) => <DataTableColumnHeader column={column} title="Cost" />,
         cell: ({ row }) => (
-          <span className="tabular-nums text-ink-muted">{money(row.original.standardCost)}</span>
+          <span className="tabular-nums text-ink-muted">{formatMoney(row.original.standardCost, currency)}</span>
         ),
       },
       {
@@ -219,7 +214,7 @@ export function CatalogView() {
       },
       actionsColumn<CatalogItemDto>('products', (r) => r.name, setEditingItem),
     ],
-    [],
+    [currency],
   );
 
   const materialColumns = useMemo<ColumnDef<MaterialDto, unknown>[]>(
@@ -248,7 +243,7 @@ export function CatalogView() {
         accessorKey: 'costPerUom',
         header: ({ column }) => <DataTableColumnHeader column={column} title="Cost" />,
         cell: ({ row }) => (
-          <span className="tabular-nums text-ink">{money(row.original.costPerUom)}</span>
+          <span className="tabular-nums text-ink">{formatMoney(row.original.costPerUom, currency)}</span>
         ),
       },
       {
@@ -272,7 +267,7 @@ export function CatalogView() {
       },
       actionsColumn<MaterialDto>('materials', (r) => r.name, setEditingMaterial),
     ],
-    [],
+    [currency],
   );
 
   const workCenterColumns = useMemo<ColumnDef<WorkCenterDto, unknown>[]>(
@@ -288,11 +283,11 @@ export function CatalogView() {
         cell: ({ row }) => (
           <div className="tabular-nums">
             <p className="text-ink">
-              {money(row.original.machineCostPerHour + row.original.laborCostPerHour)}
+              {formatMoney(row.original.machineCostPerHour + row.original.laborCostPerHour, currency)}
             </p>
             <p className="text-xs text-ink-subtle">
-              {money(row.original.machineCostPerHour)} machine +{' '}
-              {money(row.original.laborCostPerHour)} labour
+              {formatMoney(row.original.machineCostPerHour, currency)} machine +{' '}
+              {formatMoney(row.original.laborCostPerHour, currency)} labour
             </p>
           </div>
         ),
@@ -322,7 +317,7 @@ export function CatalogView() {
       },
       actionsColumn<WorkCenterDto>('work-centers', (r) => r.name, setEditingWorkCenter),
     ],
-    [],
+    [currency],
   );
 
   const toolingColumns = useMemo<ColumnDef<ToolingDto, unknown>[]>(
@@ -335,7 +330,7 @@ export function CatalogView() {
       {
         accessorKey: 'cost',
         header: ({ column }) => <DataTableColumnHeader column={column} title="Cost" />,
-        cell: ({ row }) => <span className="tabular-nums text-ink">{money(row.original.cost)}</span>,
+        cell: ({ row }) => <span className="tabular-nums text-ink">{formatMoney(row.original.cost, currency)}</span>,
       },
       {
         accessorKey: 'amortize',
@@ -357,7 +352,7 @@ export function CatalogView() {
       },
       actionsColumn<ToolingDto>('tooling', (r) => r.name, setEditingTooling),
     ],
-    [],
+    [currency],
   );
 
   /*

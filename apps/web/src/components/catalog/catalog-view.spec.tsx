@@ -29,6 +29,11 @@ vi.mock('@/hooks/use-catalog-admin', () => ({
   useDeleteTemplate: vi.fn(),
 }));
 
+// Prices are shown in the company's base currency.
+vi.mock('@/hooks/use-organization', () => ({
+  useOrganization: () => ({ data: { baseCurrency: 'AED' } }),
+}));
+
 // The "New …" button is gated on catalog:manage, which PageGuard already
 // enforces before this component renders at all.
 vi.mock('@/components/auth/can', () => ({
@@ -114,7 +119,8 @@ describe('CatalogView', () => {
     render(<CatalogView />);
 
     expect(screen.getByText('Rigid gift box 200×150×80')).toBeInTheDocument();
-    expect(screen.getByText('$3.70')).toBeInTheDocument();
+    // In the company's base currency, never a hard-coded dollar.
+    expect(screen.getByText('AED 3.70')).toBeInTheDocument();
     // (3.70 - 2.22) / 3.70 = 40%
     expect(screen.getByText('40%')).toBeInTheDocument();
   });
