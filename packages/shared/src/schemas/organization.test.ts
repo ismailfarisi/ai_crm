@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { updateOrganizationSchema } from './organization';
+import { formatOrganizationAddress, updateOrganizationSchema } from './organization';
 
 describe('updateOrganizationSchema', () => {
   it('leaves an omitted key out, so a PATCH touches only what it sends', () => {
@@ -19,5 +19,24 @@ describe('updateOrganizationSchema', () => {
       country: 'AE',
       taxId: '100123456789012',
     });
+  });
+});
+
+describe('formatOrganizationAddress', () => {
+  const base = { addressLine1: 'Warehouse 12, Al Quoz 3', addressLine2: null, postalCode: null, country: 'AE' };
+
+  it('says the city once when the emirate is the same city', () => {
+    expect(formatOrganizationAddress({ ...base, city: 'Dubai', region: 'Dubai' })).toEqual([
+      'Warehouse 12, Al Quoz 3',
+      'Dubai',
+      'AE',
+    ]);
+    expect(formatOrganizationAddress({ ...base, city: 'Dubai', region: ' dubai ' })[1]).toBe('Dubai');
+  });
+
+  it('keeps a region that differs from the city', () => {
+    expect(formatOrganizationAddress({ ...base, city: 'Khor Fakkan', region: 'Sharjah', postalCode: '123' })[1]).toBe(
+      'Khor Fakkan, Sharjah, 123',
+    );
   });
 });

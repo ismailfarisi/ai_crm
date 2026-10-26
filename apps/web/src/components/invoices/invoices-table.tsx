@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
 import { useCan } from '@/lib/session-context';
+import { formatMoney } from '@/lib/utils';
 
 interface InvoicesTableProps {
   invoices: InvoiceDto[];
@@ -113,10 +114,7 @@ export function InvoicesTable({
         header: ({ column }) => <DataTableColumnHeader column={column} title="Amount" />,
         cell: ({ row }) => (
           <span className="font-medium text-ink">
-            ${(row.original.amount || 0).toLocaleString(undefined, {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })}
+            {formatMoney(row.original.amount || 0, row.original.currency)}
           </span>
         ),
       },

@@ -20,6 +20,7 @@ import {
 } from '@saas/shared';
 import { serverFetchOrNull } from '@/lib/api/server';
 import { can } from '@/lib/access';
+import { formatMoney } from '@/lib/utils';
 import { requireSession } from '@/lib/get-session';
 import { Badge, Card, CardBody, CardHeader, CardTitle } from '@/components/ui/primitives';
 import { DashboardGaugeWidget } from '@/components/dashboard/dashboard-gauge-widget';
@@ -118,7 +119,7 @@ function monthlyRevenue(
 }
 
 /** Quotes that need a decision, newest first. */
-function quotesAwaitingAction(quotes: DashboardQuote[]) {
+function quotesAwaitingAction(quotes: DashboardQuote[], baseCurrency?: string) {
   return quotes
     .filter((q) => q.status === 'AWAITING_APPROVAL' || q.status === 'DRAFT')
     .sort(
@@ -135,11 +136,9 @@ function quotesAwaitingAction(quotes: DashboardQuote[]) {
       categoryLabel:
         q.status === 'AWAITING_APPROVAL' ? 'Awaiting approval' : 'Draft',
       timeLabel: q.quoteNumber ?? 'Not yet numbered',
-      amount: new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: q.currency || 'USD',
-        maximumFractionDigits: 0,
-      }).format(Number(q.totalAmount) || 0),
+      amount: formatMoney(Number(q.totalAmount) || 0, q.currency || baseCurrency, {
+        decimals: 0,
+      }),
       statusBadge:
         q.status === 'AWAITING_APPROVAL' ? 'Needs your decision' : undefined,
       href: `/quotes/${q.id}`,
@@ -253,7 +252,7 @@ export default async function DashboardPage() {
     Array.isArray(invoices) ? invoices : (invoices?.items ?? []),
     now,
   );
-  const awaiting = quotesAwaitingAction(quotes ?? []);
+  const awaiting = quotesAwaitingAction(quotes ?? [], organization?.baseCurrency);
 
   const invoicedThisMonth = revenueSeries[revenueSeries.length - 1]?.value ?? 0;
   const invoicedLastMonth = revenueSeries[revenueSeries.length - 2]?.value ?? 0;
@@ -333,11 +332,9 @@ export default async function DashboardPage() {
                 series={revenueSeries}
                 title="Invoiced revenue"
                 metricLabel="This month"
-                metricValue={new Intl.NumberFormat('en-US', {
-                  style: 'currency',
-                  currency: 'USD',
-                  maximumFractionDigits: 0,
-                }).format(invoicedThisMonth)}
+                metricValue={formatMoney(invoicedThisMonth, organization?.baseCurrency, {
+                  decimals: 0,
+                })}
                 growthLabel={
                   revenueGrowth === null
                     ? undefined

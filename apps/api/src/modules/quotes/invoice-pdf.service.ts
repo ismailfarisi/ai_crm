@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
+import { formatPaymentTerms } from '@saas/shared';
 import { Invoice, InvoiceStatus } from './entities/invoice.entity';
 
 const CURRENCY_LOCALE = undefined;
@@ -133,7 +134,7 @@ export class InvoicePdfService {
     doc
       .font('Helvetica-Bold')
       .fontSize(10)
-      .text(`Payment Terms: ${invoice.paymentTerms}`, 50, y);
+      .text(`Payment Terms: ${formatPaymentTerms(invoice.paymentTerms)}`, 50, y);
     if (invoice.notes) {
       y += 20;
       doc

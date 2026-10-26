@@ -3,6 +3,7 @@ import PDFDocument from 'pdfkit';
 import {
   DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
   DocumentTemplateConfig,
+  formatPaymentTerms,
   UniversalDocumentData,
 } from '@saas/shared';
 
@@ -815,7 +816,10 @@ export class DocumentPdfRendererService {
         const t = config.itemsTable;
         const columns: TableColumn[] = [];
 
-        const codeWidth = t.showItemCode ? 65 : 0;
+        // A column of dashes says nothing, so it shows only when a line has a code.
+        const showItemCode =
+          t.showItemCode && docData.items.some((item) => !!item.code);
+        const codeWidth = showItemCode ? 65 : 0;
         const qtyWidth = t.showQuantity ? 45 : 0;
         const priceWidth = t.showUnitPrice ? 65 : 0;
         const discountWidth = t.showDiscount ? 48 : 0;
@@ -831,7 +835,7 @@ export class DocumentPdfRendererService {
           totalColWidth;
         const descWidth = Math.max(100, contentWidth - fixedSum);
 
-        if (t.showItemCode) {
+        if (showItemCode) {
           columns.push({
             id: 'code',
             label: 'Item / Code',
@@ -1252,7 +1256,9 @@ export class DocumentPdfRendererService {
 
         y += 12;
 
-        const terms = docData.paymentTerms || config.footer.paymentTerms;
+        const terms = docData.paymentTerms
+          ? formatPaymentTerms(docData.paymentTerms)
+          : config.footer.paymentTerms;
         if (terms) {
           doc
             .font(boldFont)

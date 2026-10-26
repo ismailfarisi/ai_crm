@@ -1,7 +1,12 @@
 'use client';
 
 import { useMemo } from 'react';
-import type { QuoteLineItem, QuoteTotals, UniversalDocumentData } from '@saas/shared';
+import {
+  formatOrganizationAddress,
+  type QuoteLineItem,
+  type QuoteTotals,
+  type UniversalDocumentData,
+} from '@saas/shared';
 import type { QuoteHeaderFormData } from './quote-header-form';
 import { api } from '@/lib/api/endpoints';
 import { DocumentPrintModal } from '@/components/documents/document-print-modal';
@@ -33,15 +38,12 @@ export function QuotePrintModal({
   onSaveBeforeDownload,
 }: QuotePrintModalProps) {
   const { data: orgProfile } = useOrganization();
-  const currency = headerData.currency || 'USD';
+  const currency = headerData.currency || orgProfile?.baseCurrency || 'USD';
 
   const effectiveOrgName = organizationName || orgProfile?.name || 'Your Company';
-  const effectiveOrgAddress = [
-    orgProfile?.addressLine1,
-    orgProfile?.addressLine2,
-    [orgProfile?.city, orgProfile?.region, orgProfile?.postalCode].filter(Boolean).join(' '),
-    orgProfile?.country,
-  ].filter(Boolean).join(', ') || undefined;
+  const effectiveOrgAddress = orgProfile
+    ? formatOrganizationAddress(orgProfile).join(', ') || undefined
+    : undefined;
 
   const universalData = useMemo<UniversalDocumentData>(() => {
     return {
@@ -71,7 +73,8 @@ export function QuotePrintModal({
           const price = Number(it.unitPrice) || 0;
           const disc = Number(it.discount) || 0;
           return {
-            code: it.id,
+            // The line id is internal; the customer sees a code only when the line has a SKU.
+            code: it.sku || undefined,
             description: it.description,
             quantity: qty,
             unitPrice: price,

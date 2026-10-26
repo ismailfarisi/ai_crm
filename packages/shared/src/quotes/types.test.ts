@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateQuoteTotals, QuoteLineItem } from './types';
+import { calculateQuoteTotals, formatPaymentTerms, QuoteLineItem } from './types';
 
 describe('calculateQuoteTotals', () => {
   it('correctly calculates untaxed subtotal, discounts, taxes, and total amount', () => {
@@ -82,5 +82,18 @@ describe('calculateQuoteTotals', () => {
     expect(totals.discountAmount).toBe(0);
     expect(totals.taxAmount).toBe(0);
     expect(totals.totalAmount).toBe(0);
+  });
+});
+
+describe('formatPaymentTerms', () => {
+  it('turns the stored codes into words a customer can read', () => {
+    expect(formatPaymentTerms('net_30')).toBe('Net 30 days');
+    expect(formatPaymentTerms('net_15')).toBe('Net 15 days');
+    expect(formatPaymentTerms('immediate')).toBe('Due on receipt');
+    expect(formatPaymentTerms('end_of_month')).toBe('End of month');
+  });
+
+  it('prints free text as it was typed', () => {
+    expect(formatPaymentTerms('50% advance, balance on delivery')).toBe('50% advance, balance on delivery');
   });
 });

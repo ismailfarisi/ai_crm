@@ -6,6 +6,28 @@ export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
 }
 
+/**
+ * An amount in an ISO currency, e.g. "AED 1,250.00".
+ *
+ * Pass the document's own currency, or the company's base currency
+ * (`organization.baseCurrency`) for totals that are not on one document. With
+ * no currency yet (the company has not loaded) it prints the bare number
+ * rather than guess a symbol.
+ */
+export function formatMoney(
+  amount: number,
+  currency: string | null | undefined,
+  { decimals = 2 }: { decimals?: number } = {},
+): string {
+  const digits = { minimumFractionDigits: decimals, maximumFractionDigits: decimals };
+  if (!currency) return amount.toLocaleString('en-US', digits);
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency, ...digits }).format(amount);
+  } catch {
+    return `${currency} ${amount.toLocaleString('en-US', digits)}`;
+  }
+}
+
 export function formatDate(value: string | Date | null | undefined): string {
   if (!value) return '—';
   return new Intl.DateTimeFormat('en-GB', {

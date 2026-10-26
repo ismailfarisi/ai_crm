@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import {
   DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+  formatOrganizationAddress,
   invoicePosition,
   RecordInvoicePaymentPayload,
   UniversalDocumentData,
@@ -457,17 +458,9 @@ export class InvoicesService {
         'INVOICE',
       );
 
-    const address =
-      [
-        organization?.addressLine1,
-        organization?.addressLine2,
-        [organization?.city, organization?.region, organization?.postalCode]
-          .filter(Boolean)
-          .join(' '),
-        organization?.country,
-      ]
-        .filter(Boolean)
-        .join(', ') || undefined;
+    const address = organization
+      ? formatOrganizationAddress(organization).join(', ') || undefined
+      : undefined;
 
     const logoUrl =
       organization?.logoData && organization?.logoContentType

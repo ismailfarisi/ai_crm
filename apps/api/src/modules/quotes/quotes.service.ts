@@ -13,6 +13,7 @@ import {
   calculateQuoteTotals,
   CreateQuotePayload,
   DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+  formatOrganizationAddress,
   PERMISSIONS,
   UniversalDocumentData,
   validateBillingSchedule,
@@ -823,17 +824,9 @@ export class QuotesService {
         'QUOTE',
       );
 
-    const address =
-      [
-        organization?.addressLine1,
-        organization?.addressLine2,
-        [organization?.city, organization?.region, organization?.postalCode]
-          .filter(Boolean)
-          .join(' '),
-        organization?.country,
-      ]
-        .filter(Boolean)
-        .join(', ') || undefined;
+    const address = organization
+      ? formatOrganizationAddress(organization).join(', ') || undefined
+      : undefined;
 
     const logoUrl =
       organization?.logoData && organization?.logoContentType

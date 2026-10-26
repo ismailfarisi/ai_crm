@@ -103,7 +103,10 @@ export function formatOrganizationAddress(
     'addressLine1' | 'addressLine2' | 'city' | 'region' | 'postalCode' | 'country'
   >,
 ): string[] {
-  const cityLine = [org.city, org.region, org.postalCode].filter(Boolean).join(', ');
+  // In the UAE the emirate is usually the city ("Dubai, Dubai"), so say it once.
+  const sameAsCity =
+    !!org.city && !!org.region && org.city.trim().toLowerCase() === org.region.trim().toLowerCase();
+  const cityLine = [org.city, sameAsCity ? null : org.region, org.postalCode].filter(Boolean).join(', ');
 
   return [org.addressLine1, org.addressLine2, cityLine, org.country]
     .map((line) => (line ?? '').trim())

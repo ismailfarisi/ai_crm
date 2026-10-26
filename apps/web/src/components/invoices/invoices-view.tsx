@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Receipt, DollarSign, CheckCircle, type LucideIcon } from 'lucide-react';
-import type { InvoiceDto } from '@saas/shared';
+import { Receipt, Banknote, CheckCircle, type LucideIcon } from 'lucide-react';
+import { formatOrganizationAddress, type InvoiceDto } from '@saas/shared';
 import {
   useDownloadInvoicePdf,
   useInvoices,
@@ -20,6 +20,7 @@ import { InvoiceCreditsDialog } from '@/components/credits/invoice-credits-dialo
 import { DocumentPrintModal } from '@/components/documents/document-print-modal';
 import { useOrganization } from '@/hooks/use-organization';
 import { api } from '@/lib/api/endpoints';
+import { formatMoney } from '@/lib/utils';
 
 const STAT_TONES = {
   brand: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
@@ -62,12 +63,11 @@ export function InvoicesView() {
   const downloadPdf = useDownloadInvoicePdf();
 
   const orgName = orgProfile?.name || 'Your Company';
-  const orgAddress = [
-    orgProfile?.addressLine1,
-    orgProfile?.addressLine2,
-    [orgProfile?.city, orgProfile?.region, orgProfile?.postalCode].filter(Boolean).join(' '),
-    orgProfile?.country,
-  ].filter(Boolean).join(', ') || undefined;
+  const orgAddress = orgProfile
+    ? formatOrganizationAddress(orgProfile).join(', ') || undefined
+    : undefined;
+  // Totals across invoices are shown in the company's base currency.
+  const baseCurrency = orgProfile?.baseCurrency;
 
   const [payingInvoice, setPayingInvoice] = useState<InvoiceDto | null>(null);
   const [historyInvoice, setHistoryInvoice] = useState<InvoiceDto | null>(null);
@@ -82,15 +82,9 @@ export function InvoicesView() {
   const totalIssuedAmount = invoices.reduce((acc, inv) => acc + (inv.amount || 0), 0);
   const paidAmount = invoices.reduce((acc, inv) => acc + (inv.paidAmount || 0), 0);
 
-  const formattedTotalIssued = `$${totalIssuedAmount.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+  const formattedTotalIssued = formatMoney(totalIssuedAmount, baseCurrency);
 
-  const formattedPaidAmount = `$${paidAmount.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+  const formattedPaidAmount = formatMoney(paidAmount, baseCurrency);
 
   const handleSend = async (invoice: InvoiceDto) => {
     setSendingId(invoice.id);
@@ -110,7 +104,7 @@ export function InvoicesView() {
 
       <div className="flex flex-wrap items-center gap-x-12 gap-y-4 py-2">
         <Stat label="Issued Invoices" value={issuedInvoicesCount} icon={Receipt} tone="brand" />
-        <Stat label="Total Issued Amount" value={formattedTotalIssued} icon={DollarSign} tone="info" />
+        <Stat label="Total Issued Amount" value={formattedTotalIssued} icon={Banknote} tone="info" />
         <Stat label="Paid Amount" value={formattedPaidAmount} icon={CheckCircle} tone="success" />
       </div>
 
@@ -169,7 +163,7 @@ export function InvoicesView() {
             status: printingInvoice.status,
             issuedAt: printingInvoice.issuedAt,
             dueDate: printingInvoice.dueDate || undefined,
-            currency: printingInvoice.currency || 'USD',
+            currency: printingInvoice.currency || baseCurrency || 'USD',
             organization: {
               name: orgName,
               address: orgAddress,

@@ -1004,6 +1004,42 @@ describe('QuotesService', () => {
       expect(result.filename).toBe('QT-2026-0001.pdf');
     });
 
+    it('prints the emirate once when it is also the city', async () => {
+      orgRepo.findOne = jest.fn().mockResolvedValue({
+        id: tenantId,
+        name: 'Luxe Box Packaging LLC',
+        addressLine1: 'Warehouse 12, Al Quoz Industrial Area 3',
+        city: 'Dubai',
+        region: 'Dubai',
+        country: 'AE',
+      });
+      quoteRepo.findOne = jest.fn().mockResolvedValue({
+        id: quoteId,
+        tenantId,
+        quoteNumber: 'QT-2026-0002',
+        customerName: 'Palm Crescent Hotel',
+        status: QuoteStatus.DRAFT,
+        items: [],
+        subtotalAmount: 0,
+        discountAmount: 0,
+        taxAmount: 0,
+        totalAmount: 0,
+        currency: 'AED',
+        createdAt: new Date('2026-01-01'),
+      } as unknown as Quote);
+
+      await service.getPdf(tenantId, quoteId);
+
+      expect(pdfRenderer.render).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organization: expect.objectContaining({
+            address: 'Warehouse 12, Al Quoz Industrial Area 3, Dubai, AE',
+          }),
+        }),
+        DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+      );
+    });
+
     it('throws NotFoundException if quote does not exist', async () => {
       quoteRepo.findOne = jest.fn().mockResolvedValue(null);
 

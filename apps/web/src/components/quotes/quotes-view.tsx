@@ -2,9 +2,11 @@
 
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
-import { Plus, FileText, Clock, CheckCircle, DollarSign, Sparkles, type LucideIcon } from 'lucide-react';
+import { Plus, FileText, Clock, CheckCircle, Banknote, Sparkles, type LucideIcon } from 'lucide-react';
+import { formatOrganizationAddress } from '@saas/shared';
 import { useQuotes, type Quote } from '@/hooks/use-quotes';
 import { api } from '@/lib/api/endpoints';
+import { formatMoney } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { PageHeader } from '@/components/ui/primitives';
@@ -56,22 +58,18 @@ export function QuotesView() {
   const [search, setSearch] = useState('');
 
   const orgName = orgProfile?.name || 'Your Company';
-  const orgAddress = [
-    orgProfile?.addressLine1,
-    orgProfile?.addressLine2,
-    [orgProfile?.city, orgProfile?.region, orgProfile?.postalCode].filter(Boolean).join(' '),
-    orgProfile?.country,
-  ].filter(Boolean).join(', ') || undefined;
+  const orgAddress = orgProfile
+    ? formatOrganizationAddress(orgProfile).join(', ') || undefined
+    : undefined;
+  // Totals across quotes are shown in the company's base currency.
+  const baseCurrency = orgProfile?.baseCurrency;
 
   const totalQuotes = quotes.length;
   const awaitingApproval = quotes.filter((q) => q.status === 'AWAITING_APPROVAL').length;
   const approved = quotes.filter((q) => q.status === 'APPROVED').length;
   const totalValue = quotes.reduce((acc, q) => acc + (Number(q.totalAmount) || 0), 0);
 
-  const formattedTotalValue = `$${totalValue.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+  const formattedTotalValue = formatMoney(totalValue, baseCurrency);
 
   const filteredQuotes = useMemo(() => {
     if (!search.trim()) return quotes;
@@ -89,7 +87,7 @@ export function QuotesView() {
       const sum = quotes
         .filter((q) => q.status === status)
         .reduce((acc, q) => acc + (Number(q.totalAmount) || 0), 0);
-      return `$${sum.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+      return formatMoney(sum, baseCurrency, { decimals: 0 });
     };
 
     return [
@@ -98,7 +96,7 @@ export function QuotesView() {
       { key: 'APPROVED', label: 'Confirmed', summaryTotal: `Total: ${calcTotal('APPROVED')}` },
       { key: 'REJECTED', label: 'Rejected', summaryTotal: `Total: ${calcTotal('REJECTED')}` },
     ];
-  }, [quotes]);
+  }, [quotes, baseCurrency]);
 
   const handleKanbanMoveStage = async (quoteId: string, nextStageKey: string) => {
     const quote = quotes.find((q) => q.id === quoteId);
@@ -155,7 +153,7 @@ export function QuotesView() {
         <Stat label="Total Quotes" value={totalQuotes} icon={FileText} tone="brand" />
         <Stat label="Awaiting Approval" value={awaitingApproval} icon={Clock} tone="warning" />
         <Stat label="Approved" value={approved} icon={CheckCircle} tone="success" />
-        <Stat label="Total Value" value={formattedTotalValue} icon={DollarSign} tone="info" />
+        <Stat label="Total Value" value={formattedTotalValue} icon={Banknote} tone="info" />
       </div>
 
       <DataViewContainer
@@ -178,7 +176,7 @@ export function QuotesView() {
                       {q.quoteNumber || 'DRAFT'}
                     </span>
                     <span className="text-xs font-semibold text-ink">
-                      ${Number(q.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      {formatMoney(Number(q.totalAmount || 0), q.currency)}
                     </span>
                   </div>
                   <Link
@@ -219,7 +217,7 @@ export function QuotesView() {
           open={Boolean(confirmApproveQuote)}
           onClose={() => setConfirmApproveQuote(null)}
           title="Confirm Quote Approval"
-          description={`Approve quote ${confirmApproveQuote.quoteNumber || confirmApproveQuote.title} for $${Number(confirmApproveQuote.totalAmount || 0).toLocaleString()}? This locks pricing and enables production execution.`}
+          description={`Approve quote ${confirmApproveQuote.quoteNumber || confirmApproveQuote.title} for ${formatMoney(Number(confirmApproveQuote.totalAmount || 0), confirmApproveQuote.currency)}? This locks pricing and enables production execution.`}
         >
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" size="sm" onClick={() => setConfirmApproveQuote(null)}>
@@ -250,7 +248,7 @@ export function QuotesView() {
             number: printingQuote.quoteNumber || `QUO-${printingQuote.id.slice(0, 8).toUpperCase()}`,
             issuedAt: (printingQuote as any).createdAt || new Date(),
             validUntil: printingQuote.validUntil ? new Date(printingQuote.validUntil) : undefined,
-            currency: printingQuote.currency || 'USD',
+            currency: printingQuote.currency || baseCurrency || 'USD',
             status: printingQuote.status,
             organization: {
               name: orgName,
