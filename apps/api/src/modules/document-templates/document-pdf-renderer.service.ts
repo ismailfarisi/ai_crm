@@ -2,10 +2,84 @@ import { Injectable } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
 import {
   DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+  DOCUMENT_TIME_ZONE,
   DocumentTemplateConfig,
   formatPaymentTerms,
+  formatTaxLineLabel,
   UniversalDocumentData,
 } from '@saas/shared';
+
+/**
+ * Characters the built-in PDF fonts can print besides Latin-1: the
+ * Windows-1252 extras (curly quotes, dashes, bullet, euro, ...). Anything else
+ * pdfkit writes as raw bytes, which shows up as junk or nothing at all.
+ */
+const WIN_ANSI_EXTRAS = new Set(
+  '\u20ac\u201a\u0192\u201e\u2026\u2020\u2021\u02c6\u2030\u0160\u2039\u0152\u017d' +
+    '\u2018\u2019\u201c\u201d\u2022\u2013\u2014\u02dc\u2122\u0161\u203a\u0153\u017e\u0178',
+);
+
+const PDF_TEXT_SUBSTITUTES: Record<string, string> = {
+  '\u2010': '-', // hyphen
+  '\u2011': '-', // non-breaking hyphen
+  '\u2012': '\u2013', // figure dash
+  '\u2015': '\u2014', // horizontal bar
+  '\u2212': '-', // minus sign
+  '\u2009': ' ', // thin space
+  '\u202f': ' ', // narrow no-break space
+  '\u2002': ' ',
+  '\u2003': ' ',
+  '\u200b': '', // zero-width space
+  '\u2032': "'",
+  '\u2033': '"',
+  '\u2190': '<-',
+  '\u2192': '->',
+  '\u2264': '<=',
+  '\u2265': '>=',
+  '\u2248': '~',
+  '\u2260': '!=',
+  '\u2713': 'v',
+  '\u2714': 'v',
+};
+
+/**
+ * Maps text onto what the built-in (WinAnsi) PDF fonts can print: supported
+ * characters pass through, a few look-alikes are swapped in, accents the font
+ * lacks are dropped, and anything left becomes "?" rather than garbage.
+ */
+export function toPdfText(text: string): string {
+  let out = '';
+  for (const ch of text) {
+    const code = ch.codePointAt(0)!;
+    if (code < 0x7f || (code >= 0xa0 && code <= 0xff) || WIN_ANSI_EXTRAS.has(ch)) {
+      out += ch;
+    } else if (ch in PDF_TEXT_SUBSTITUTES) {
+      out += PDF_TEXT_SUBSTITUTES[ch];
+    } else {
+      const base = ch.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+      out += base && [...base].every((c) => c.codePointAt(0)! < 0x7f) ? base : '?';
+    }
+  }
+  return out;
+}
+
+/** Routes every string pdfkit prints or measures through `toPdfText`. */
+function useWinAnsiText(doc: PDFKit.PDFDocument): void {
+  const text = doc.text.bind(doc);
+  const widthOfString = doc.widthOfString.bind(doc);
+  const heightOfString = doc.heightOfString.bind(doc);
+  const clean = (value: unknown) =>
+    typeof value === 'string' ? toPdfText(value) : value;
+  doc.text = ((value: unknown, ...rest: unknown[]) =>
+    (text as (...args: unknown[]) => PDFKit.PDFDocument)(
+      clean(value),
+      ...rest,
+    )) as typeof doc.text;
+  doc.widthOfString = ((value: string, options?: PDFKit.Mixins.TextOptions) =>
+    widthOfString(toPdfText(value), options)) as typeof doc.widthOfString;
+  doc.heightOfString = ((value: string, options?: PDFKit.Mixins.TextOptions) =>
+    heightOfString(toPdfText(value), options)) as typeof doc.heightOfString;
+}
 
 function getFont(fontFamily: string, bold = false): string {
   if (fontFamily === 'Times-Roman') {
@@ -40,6 +114,7 @@ function formatDate(value: Date | string | undefined | null): string {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
+    timeZone: DOCUMENT_TIME_ZONE,
   });
 }
 
@@ -205,6 +280,7 @@ export class DocumentPdfRendererService {
           margins,
           bufferPages: true,
         });
+        useWinAnsiText(doc);
 
         const chunks: Buffer[] = [];
         doc.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -1186,7 +1262,7 @@ export class DocumentPdfRendererService {
           ) {
             for (const tax of docData.totals.taxes) {
               renderTotalLine(
-                `${tax.label} (${tax.rate}%):`,
+                `${formatTaxLineLabel(tax)}:`,
                 formatMoney(tax.amount, docData.currency),
               );
             }

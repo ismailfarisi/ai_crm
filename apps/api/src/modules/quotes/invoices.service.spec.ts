@@ -421,6 +421,37 @@ describe('InvoicesService', () => {
       });
     });
 
+    it('labels the tax with the rate the lines were taxed at', async () => {
+      const invoice = {
+        ...baseInvoice(),
+        items: [
+          {
+            id: 'l1',
+            type: 'product',
+            description: 'Gift box',
+            quantity: 100,
+            unitPrice: 10,
+            taxRate: 5,
+            subtotal: 1000,
+          },
+        ],
+        taxAmount: 50,
+        amount: 1050,
+      };
+      invoiceRepo.findOne = jest.fn().mockResolvedValue(invoice);
+
+      await service.getPdf(tenantId, invoiceId);
+
+      expect(pdfRenderer.render).toHaveBeenCalledWith(
+        expect.objectContaining({
+          totals: expect.objectContaining({
+            taxes: [{ rate: 5, label: 'Tax', amount: 50 }],
+          }),
+        }),
+        DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+      );
+    });
+
     it('falls back to DEFAULT_DOCUMENT_TEMPLATE_CONFIG when no custom template is resolved', async () => {
       const invoice = baseInvoice();
       invoiceRepo.findOne = jest.fn().mockResolvedValue(invoice);

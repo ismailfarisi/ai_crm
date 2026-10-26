@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  documentTaxLines,
+  formatTaxLineLabel,
   normaliseCountry,
   resolveTaxCode,
   scaleBreakdown,
@@ -124,5 +126,57 @@ describe('scaleBreakdown', () => {
     const deposit = scaleBreakdown(full, { net: 120, tax: 21 });
     expect(deposit.reduce((s, r) => s + r.net, 0)).toBeCloseTo(120, 10);
     expect(deposit.reduce((s, r) => s + r.tax, 0)).toBeCloseTo(21, 10);
+  });
+});
+
+describe('documentTaxLines', () => {
+  it('returns nothing when the document carries no tax', () => {
+    expect(documentTaxLines([{ net: 100, rate: 5 }], 0)).toBeUndefined();
+  });
+
+  it('names the single rate the stored tax was charged at', () => {
+    // QT-2026-0024: two 5% lines, AED 808.50 of tax.
+    expect(
+      documentTaxLines(
+        [
+          { net: 650, rate: 5 },
+          { net: 15520, rate: 5 },
+        ],
+        808.5,
+      ),
+    ).toEqual([{ rate: 5, label: 'Tax', amount: 808.5 }]);
+  });
+
+  it('splits mixed rates and still adds up to the stored tax', () => {
+    const lines = documentTaxLines(
+      [
+        { net: 100, rate: 5 },
+        { net: 200, rate: 20 },
+        { net: 50, rate: 0 },
+      ],
+      45,
+      'VAT',
+    );
+    expect(lines).toEqual([
+      { rate: 5, label: 'VAT', amount: 5 },
+      { rate: 20, label: 'VAT', amount: 40 },
+    ]);
+    expect(lines!.reduce((s, l) => s + l.amount, 0)).toBe(45);
+  });
+
+  it('falls back to the effective rate when the lines carry none', () => {
+    expect(documentTaxLines([{ net: 200 }], 10)).toEqual([
+      { rate: 5, label: 'Tax', amount: 10 },
+    ]);
+  });
+});
+
+describe('formatTaxLineLabel', () => {
+  it('appends the rate', () => {
+    expect(formatTaxLineLabel({ rate: 5, label: 'Tax' })).toBe('Tax (5%)');
+  });
+
+  it('keeps a label that already names its rate', () => {
+    expect(formatTaxLineLabel({ rate: 8.5, label: 'State Tax (8.5%)' })).toBe('State Tax (8.5%)');
   });
 });

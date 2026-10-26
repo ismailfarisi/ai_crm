@@ -80,6 +80,8 @@ export function QuoteEditorPage({
   const [status, setStatus] = useState<QuoteStatus>(initialQuote?.status || 'DRAFT');
   const [createdBy, setCreatedBy] = useState<QuoteCreatedBy>(initialQuote?.createdBy || 'HUMAN');
   const [prompt, setPrompt] = useState<string | null>(initialQuote?.prompt || null);
+  // The quote's issue date on the printed document; unset until it is first saved.
+  const [createdAt, setCreatedAt] = useState<string | null>(initialQuote?.createdAt ?? null);
 
   const [headerData, setHeaderData] = useState<QuoteHeaderFormData>({
     title: initialQuote?.title || '',
@@ -150,6 +152,7 @@ export function QuoteEditorPage({
             setId(q.id);
             setStatus(q.status);
             setCreatedBy(q.createdBy);
+            setCreatedAt(q.createdAt ?? null);
             setPrompt(q.prompt || null);
             setHeaderData({
               title: q.title || '',
@@ -340,6 +343,7 @@ export function QuoteEditorPage({
 
         const created = await api.quotes.create(payload);
         setId(created.id);
+        setCreatedAt(created.createdAt ?? null);
         setStatus(created.status);
         if (created.items) setItems(created.items);
         toast.success('New quotation created');
@@ -389,6 +393,7 @@ export function QuoteEditorPage({
         const created = await api.quotes.create(payload);
         targetId = created.id;
         setId(created.id);
+        setCreatedAt(created.createdAt ?? null);
       } else {
         await api.quotes.update(targetId, {
           title: headerData.title.trim(),
@@ -808,6 +813,7 @@ export function QuoteEditorPage({
         open={isPrintModalOpen}
         onClose={() => setIsPrintModalOpen(false)}
         quoteId={id}
+        issuedAt={createdAt}
         onSaveBeforeDownload={handleSaveDraft}
         headerData={headerData}
         items={items}

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Receipt, Banknote, CheckCircle, type LucideIcon } from 'lucide-react';
-import { formatOrganizationAddress, type InvoiceDto } from '@saas/shared';
+import { formatOrganizationAddress, quoteDocumentTaxes, type InvoiceDto } from '@saas/shared';
 import {
   useDownloadInvoicePdf,
   useInvoices,
@@ -192,9 +192,10 @@ export function InvoicesView() {
             totals: {
               subtotal: Number(printingInvoice.subtotalAmount || printingInvoice.amount || 0),
               discounts: Number(printingInvoice.discountAmount || 0),
-              taxes: printingInvoice.taxAmount
-                ? [{ rate: 0, label: 'Taxes', amount: Number(printingInvoice.taxAmount) }]
-                : undefined,
+              taxes: quoteDocumentTaxes(
+                printingInvoice.items,
+                Number(printingInvoice.taxAmount || 0),
+              ),
               total: Number(printingInvoice.amount || 0),
               amountPaid: Number(printingInvoice.paidAmount || 0),
               balanceDue: Math.max(

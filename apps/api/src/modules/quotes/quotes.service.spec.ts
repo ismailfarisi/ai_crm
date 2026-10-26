@@ -963,6 +963,8 @@ describe('QuotesService', () => {
           totals: expect.objectContaining({
             subtotal: 550,
             discounts: 55,
+            // The rate the lines were taxed at, not a placeholder 0%.
+            taxes: [{ rate: 5, label: 'Tax', amount: 24.75 }],
             total: 519.75,
           }),
         }),

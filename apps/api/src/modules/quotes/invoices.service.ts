@@ -10,6 +10,7 @@ import {
   DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
   formatOrganizationAddress,
   invoicePosition,
+  quoteDocumentTaxes,
   RecordInvoicePaymentPayload,
   UniversalDocumentData,
   VoidInvoicePayload,
@@ -504,9 +505,10 @@ export class InvoicesService {
       totals: {
         subtotal: Number(invoice.subtotalAmount || 0),
         discounts: Number(invoice.discountAmount || 0),
-        taxes: invoice.taxAmount
-          ? [{ rate: 0, label: 'Tax', amount: Number(invoice.taxAmount) }]
-          : undefined,
+        taxes: quoteDocumentTaxes(
+          invoice.items,
+          Number(invoice.taxAmount || 0),
+        ),
         total: Number(invoice.amount || 0),
         amountPaid: Number(invoice.paidAmount || 0),
         balanceDue: Math.max(

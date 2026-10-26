@@ -13,6 +13,8 @@ import {
   type WorkOrderOperationDto,
 } from '@saas/shared';
 import { useWorkOrder, useWorkOrderAction } from '@/hooks/use-work-orders';
+import { useOrganization } from '@/hooks/use-organization';
+import { formatMoney } from '@/lib/utils';
 import { useCan } from '@/lib/session-context';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -25,7 +27,6 @@ const fmtMinutes = (n: number) => {
   if (r < 60) return `${r} min`;
   return `${Math.floor(r / 60)}h ${String(r % 60).padStart(2, '0')}m`;
 };
-const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /** Re-renders once a second while any clock is running, so the time on screen moves. */
 function useNow(active: boolean) {
@@ -455,6 +456,9 @@ function CostSummary({ wo }: { wo: NonNullable<ReturnType<typeof useWorkOrder>['
   ];
   const est = wo.estimatedCost!;
   const act = wo.actualCost;
+  // Job costs are kept in the company's base currency.
+  const { data: org } = useOrganization();
+  const money = (n: number) => formatMoney(n, org?.baseCurrency);
   const unitDelta = act && est.unit > 0 ? (act.unit - est.unit) / est.unit : null;
 
   return (

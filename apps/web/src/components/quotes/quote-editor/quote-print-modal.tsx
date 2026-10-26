@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import {
   formatOrganizationAddress,
+  quoteDocumentTaxes,
   type QuoteLineItem,
   type QuoteTotals,
   type UniversalDocumentData,
@@ -22,6 +23,8 @@ export interface QuotePrintModalProps {
   status?: string;
   organizationName?: string;
   quoteId?: string | null;
+  /** When the quote was created: its issue date. Today for a quote not yet saved. */
+  issuedAt?: string | Date | null;
   onSaveBeforeDownload?: () => Promise<string | null>;
 }
 
@@ -35,6 +38,7 @@ export function QuotePrintModal({
   status = 'DRAFT',
   organizationName,
   quoteId,
+  issuedAt,
   onSaveBeforeDownload,
 }: QuotePrintModalProps) {
   const { data: orgProfile } = useOrganization();
@@ -50,7 +54,7 @@ export function QuotePrintModal({
       type: 'QUOTE',
       number: headerData.quoteNumber || 'QT-DRAFT',
       status: status || 'DRAFT',
-      issuedAt: new Date(),
+      issuedAt: issuedAt ? new Date(issuedAt) : new Date(),
       validUntil: headerData.validUntil ? new Date(headerData.validUntil) : undefined,
       currency,
       organization: {
@@ -86,15 +90,13 @@ export function QuotePrintModal({
       totals: {
         subtotal: totals.subtotalAmount,
         discounts: totals.discountAmount,
-        taxes: totals.taxAmount
-          ? [{ rate: 0, label: 'Taxes', amount: totals.taxAmount }]
-          : undefined,
+        taxes: quoteDocumentTaxes(items, totals.taxAmount),
         total: totals.totalAmount,
       },
       paymentTerms: headerData.paymentTerms,
       notes: termsAndConditions ?? undefined,
     };
-  }, [headerData, items, totals, termsAndConditions, status, effectiveOrgName, effectiveOrgAddress, orgProfile, currency]);
+  }, [headerData, items, totals, termsAndConditions, status, issuedAt, effectiveOrgName, effectiveOrgAddress, orgProfile, currency]);
 
   return (
     <DocumentPrintModal

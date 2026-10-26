@@ -15,6 +15,7 @@ import {
   DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
   formatOrganizationAddress,
   PERMISSIONS,
+  quoteDocumentTaxes,
   UniversalDocumentData,
   validateBillingSchedule,
   type BillingStage,
@@ -870,9 +871,10 @@ export class QuotesService {
       totals: {
         subtotal: Number(quote.subtotalAmount || 0),
         discounts: Number(quote.discountAmount || 0),
-        taxes: quote.taxAmount
-          ? [{ rate: 0, label: 'Tax', amount: Number(quote.taxAmount) }]
-          : undefined,
+        taxes: quoteDocumentTaxes(
+          quote.items,
+          Number(quote.taxAmount || 0),
+        ),
         total: Number(quote.totalAmount || 0),
       },
       notes:
