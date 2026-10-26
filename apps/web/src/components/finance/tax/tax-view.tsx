@@ -19,6 +19,7 @@ import { PageHeader } from '@/components/ui/primitives';
 import { useOrganization } from '@/hooks/use-organization';
 import { FinanceNav } from '../finance-nav';
 import { VatSettingsCard } from './vat-settings-card';
+import { VatReturnCard } from './vat-return-card';
 
 const TREATMENT_LABELS: Record<VatTreatment, string> = {
   STANDARD: 'Standard rated',
@@ -123,6 +124,8 @@ export function TaxView() {
           <p className="p-4 text-sm text-ink-subtle">{report.isError ? 'Could not load the report.' : 'Loading…'}</p>
         )}
       </section>
+
+      {uaeMode && <VatReturnCard from={from} to={to} />}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section aria-labelledby="codes-heading" className="rounded border border-line bg-surface">

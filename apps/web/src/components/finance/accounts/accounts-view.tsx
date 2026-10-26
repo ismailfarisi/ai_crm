@@ -24,7 +24,9 @@ import {
   useUpdateFinanceAccount,
   useTransferFunds,
 } from '@/hooks/use-finance';
-import type { FinanceAccountDto } from '@saas/shared';
+import { PERMISSIONS, type FinanceAccountDto } from '@saas/shared';
+import { useRouter } from 'next/navigation';
+import { useCan } from '@/lib/session-context';
 
 const STAT_TONES = {
   brand: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
@@ -64,6 +66,8 @@ export function AccountsView() {
   const createAccountMutation = useCreateFinanceAccount();
   const updateAccountMutation = useUpdateFinanceAccount();
   const transferFundsMutation = useTransferFunds();
+  const router = useRouter();
+  const canReconcile = useCan({ permission: PERMISSIONS.BANK_RECONCILE });
 
   const [isNewAccountModalOpen, setIsNewAccountModalOpen] = useState(false);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
@@ -156,6 +160,7 @@ export function AccountsView() {
         onTransfer={handleOpenTransfer}
         onNewAccount={() => setIsNewAccountModalOpen(true)}
         onMakeDefault={(id) => updateAccountMutation.mutate({ id, isDefault: true })}
+        onReconcile={canReconcile ? (id) => router.push(`/finance/accounts/${id}/reconcile`) : undefined}
       />
 
       {/* Modals */}

@@ -34,6 +34,11 @@ beforeEach(() => {
   }
 });
 
+// The modal defaults a claim's currency to the company's base currency.
+vi.mock('@/hooks/use-organization', () => ({
+  useOrganization: () => ({ data: { baseCurrency: 'USD' } }),
+}));
+
 // Mock hook useScanReceipt
 vi.mock('@/hooks/use-expenses', () => ({
   useScanReceipt: () => ({

@@ -29,6 +29,9 @@ import { Role } from '../rbac/entities/role.entity';
 import { TimesheetEntry } from '../job-costing/entities/timesheet-entry.entity';
 import { Branch } from '../organizations/entities/branch.entity';
 import { VatSettings } from '../tax/entities/vat-settings.entity';
+import { JournalEntry } from '../finance/entities/journal-entry.entity';
+import { LedgerAccount } from '../finance/entities/ledger-account.entity';
+import { BankStatementLine } from '../finance/entities/bank-statement-line.entity';
 
 /**
  * The one file to touch when a sprint adds a document type worth auditing.
@@ -96,6 +99,15 @@ export const AUDIT_SUBJECTS: Record<string, AuditSubject> = {
     subject: 'VAT_SETTINGS',
     entity: VatSettings,
     singleton: true,
+  },
+  'finance/journal-entries': { subject: 'JOURNAL_ENTRY', entity: JournalEntry },
+  'finance/ledger-accounts': {
+    subject: 'LEDGER_ACCOUNT',
+    entity: LedgerAccount,
+  },
+  'finance/bank-statement-lines': {
+    subject: 'BANK_STATEMENT_LINE',
+    entity: BankStatementLine,
   },
 };
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   Upload,
   Sparkles,
@@ -35,6 +35,7 @@ import {
   normaliseExpenseCategory,
 } from '@saas/shared';
 import { useScanReceipt } from '@/hooks/use-expenses';
+import { useOrganization } from '@/hooks/use-organization';
 
 export interface SubmitExpenseModalProps {
   open: boolean;
@@ -86,7 +87,14 @@ export function SubmitExpenseModal({
   const [expenseDate, setExpenseDate] = useState(
     initialData?.expenseDate || new Date().toISOString().split('T')[0],
   );
-  const [currency, setCurrency] = useState(initialData?.currency || 'USD');
+  // A claim is converted into base currency when it posts, so defaulting to
+  // anything else would ask for an exchange rate nobody meant to use.
+  const baseCurrency = useOrganization().data?.baseCurrency;
+  const [currency, setCurrency] = useState(initialData?.currency || baseCurrency || 'USD');
+  const currencyTouched = useRef(Boolean(initialData?.currency));
+  useEffect(() => {
+    if (baseCurrency && !currencyTouched.current) setCurrency(baseCurrency);
+  }, [baseCurrency]);
   const [amount, setAmount] = useState<string>(
     initialData?.amount !== undefined ? String(initialData.amount) : '',
   );
@@ -114,7 +122,8 @@ export function SubmitExpenseModal({
     setMerchantName(initialData?.merchantName || '');
     setCategory(initialData?.category || 'Software & SaaS');
     setExpenseDate(initialData?.expenseDate || new Date().toISOString().split('T')[0]);
-    setCurrency(initialData?.currency || 'USD');
+    setCurrency(initialData?.currency || baseCurrency || 'USD');
+    currencyTouched.current = Boolean(initialData?.currency);
     setAmount(initialData?.amount !== undefined ? String(initialData.amount) : '');
     setNotes('');
     setReceiptUrl(initialData?.receiptUrl || null);
@@ -512,7 +521,10 @@ export function SubmitExpenseModal({
             label="Currency"
             data-testid="select-currency"
             value={currency}
-            onChange={(e) => setCurrency(e.target.value)}
+            onChange={(e) => {
+              currencyTouched.current = true;
+              setCurrency(e.target.value);
+            }}
             options={CURRENCY_OPTIONS}
           />
 

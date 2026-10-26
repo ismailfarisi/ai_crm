@@ -28,6 +28,12 @@ export const JOURNAL_SINGLE_POSTING_INDEX = 'uq_journal_entries_single_posting';
     where: `"referenceType" = 'EXPENSE' OR ("referenceType" = 'MANUAL' AND "referenceId" LIKE 'opening-balance:%')`,
   },
 )
+/** One reversal per entry. Created in 1790500000000-AccountingCore. */
+@Index('uq_journal_entries_reverses', ['reversesEntryId'], {
+  unique: true,
+  where: '"reverses_entry_id" IS NOT NULL',
+})
+@Index('idx_journal_entries_tenant_date', ['tenantId', 'entryDate'])
 export class JournalEntry {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -85,6 +91,18 @@ export class JournalEntry {
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
+
+  /** Why a manual journal was posted; documents explain themselves. */
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  memo: string | null;
+
+  /** Who posted a manual journal or reversal. Null on document postings. */
+  @Column({ name: 'created_by_id', type: 'uuid', nullable: true })
+  createdById: string | null;
+
+  /** The entry this one reverses. */
+  @Column({ name: 'reverses_entry_id', type: 'uuid', nullable: true })
+  reversesEntryId: string | null;
 
   /** The currency the source document was in; null for entries from before multi-currency. */
   @Column({ type: 'char', length: 3, nullable: true })

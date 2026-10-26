@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
 import type { Request, Response } from 'express';
-import type { ApiErrorBody } from '@saas/shared';
+import { PERIOD_LOCKED_SQLSTATE, type ApiErrorBody } from '@saas/shared';
 
 /**
  * One error shape for the whole API. Unexpected errors are logged with a stack
@@ -60,13 +60,21 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     if (exception instanceof QueryFailedError) {
-      // 23505 = unique_violation. Anything else is a bug, not user input.
+      // 23505 = unique_violation; KB001 = the period-lock trigger, whose
+      // message is written for the user. Anything else is a bug.
       const code = (exception as QueryFailedError & { code?: string }).code;
       if (code === '23505') {
         return {
           statusCode: HttpStatus.CONFLICT,
           message: 'That record already exists',
           error: 'Conflict',
+        };
+      }
+      if (code === PERIOD_LOCKED_SQLSTATE) {
+        return {
+          statusCode: HttpStatus.CONFLICT,
+          message: exception.message,
+          error: 'PeriodLocked',
         };
       }
     }

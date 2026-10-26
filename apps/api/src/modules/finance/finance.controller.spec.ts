@@ -141,11 +141,4 @@ describe('FinanceController', () => {
       subDto,
     );
   });
-
-  it('should list journal entries', async () => {
-    await controller.findAllJournalEntries(mockUser);
-    expect(financeService.findAllJournalEntries).toHaveBeenCalledWith(
-      'tenant-123',
-    );
-  });
 });

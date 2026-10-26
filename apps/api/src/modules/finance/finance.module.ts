@@ -34,6 +34,10 @@ import { FinanceService } from './finance.service';
 import { LedgerService } from './ledger.service';
 import { ExpensesService } from './expenses.service';
 import { FinanceController } from './finance.controller';
+import { BooksController } from './books.controller';
+import { BooksService } from './books.service';
+import { ReconciliationService } from './reconciliation.service';
+import { BankStatementLine } from './entities/bank-statement-line.entity';
 import { ExpensesController } from './expenses.controller';
 import { TemporalModule } from '../temporal/temporal.module';
 import { AiModule } from '../ai/ai.module';
@@ -49,6 +53,7 @@ import { TaxModule } from '../tax/tax.module';
       RecurringExpenseOccurrence,
       JournalEntry,
       LedgerAccount,
+      BankStatementLine,
       // Read by the currency and reporting services; owned elsewhere.
       FxRate,
       Organization,
@@ -72,13 +77,20 @@ import { TaxModule } from '../tax/tax.module';
     AiModule,
     TaxModule,
   ],
-  controllers: [FinanceController, ExpensesController, ReportsController],
+  controllers: [
+    FinanceController,
+    ExpensesController,
+    ReportsController,
+    BooksController,
+  ],
   providers: [
     FinanceService,
     ExpensesService,
     LedgerService,
     CurrencyService,
     ReportsService,
+    BooksService,
+    ReconciliationService,
   ],
   exports: [FinanceService, ExpensesService, LedgerService, CurrencyService],
 })

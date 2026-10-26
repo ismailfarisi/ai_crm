@@ -15,6 +15,8 @@ import {
   JournalEntry,
 } from './entities/journal-entry.entity';
 import { LedgerService } from './ledger.service';
+import { BooksService } from './books.service';
+import { baseCurrencyFor, cashAccountAmount, fxRateFor } from './fx';
 import { TemporalService } from '../temporal/temporal.service';
 import { AiService } from '../ai/ai.service';
 import {
@@ -127,7 +129,11 @@ export class ExpensesService {
       employeeName,
       category: dto.category || 'General Expense',
       amount: dto.amount,
-      currency: dto.currency || 'USD',
+      // Base currency when unstated: the claim posts converted into it, and a
+      // made-up 'USD' would demand a rate for money nobody spent in dollars.
+      currency:
+        dto.currency ||
+        (await baseCurrencyFor(this.expenseRepository.manager, tenantId)),
       status,
       merchantName: dto.merchantName || null,
       expenseDate: dto.expenseDate ? new Date(dto.expenseDate) : new Date(),
@@ -382,14 +388,21 @@ export class ExpensesService {
     if (already) return;
 
     const label = claim.claimNumber || claim.id;
+    const spent = claim.expenseDate ? new Date(claim.expenseDate) : new Date();
+    // Converted at the rate on the day the money was spent, like any
+    // document. A claim approved after its month was closed is booked on the
+    // first open day: the approver did not choose the date and cannot move it.
+    const rate = await fxRateFor(manager, tenantId, claim.currency, spent);
 
     const entry = journal.create({
       tenantId,
       entryNumber: `JE-EXP-${label}`,
       referenceType: 'EXPENSE',
       referenceId,
-      entryDate: claim.expenseDate ? new Date(claim.expenseDate) : new Date(),
+      entryDate: await BooksService.openPostingDate(manager, tenantId, spent),
       totalAmount: amount,
+      currency: claim.currency || null,
+      fxRate: rate,
       lines: await this.ledger.resolveLines(
         tenantId,
         [
@@ -409,6 +422,7 @@ export class ExpensesService {
           },
         ],
         manager,
+        rate,
       ),
     });
 
@@ -446,13 +460,36 @@ export class ExpensesService {
     );
     const label = claim.claimNumber || claim.id;
 
+    // The payable clears at the rate it was accrued at; the cash leaves at
+    // today's, and the difference is an exchange gain or loss. An accrual from
+    // before conversion existed was booked at face value, so its settlement is
+    // too — converting only one side would invent a difference.
+    const accrual = await journal.findOne({
+      where: { tenantId, referenceType: 'EXPENSE', referenceId: claim.id },
+    });
+    const legacy = accrual != null && !accrual.currency;
+    const accruedRate = legacy ? 1 : Number(accrual?.fxRate ?? 1) || 1;
+    const now = new Date();
+    const payRate = legacy
+      ? 1
+      : await fxRateFor(manager, tenantId, claim.currency, now);
+    const leaving = legacy
+      ? amount
+      : await cashAccountAmount(manager, tenantId, account, {
+          amount,
+          currency: claim.currency,
+          rate: payRate,
+        });
+
     const entry = journal.create({
       tenantId,
       entryNumber: `JE-EXPPAY-${label}`,
       referenceType: 'EXPENSE',
       referenceId,
-      entryDate: new Date(),
+      entryDate: now,
       totalAmount: amount,
+      currency: legacy ? null : claim.currency || null,
+      fxRate: payRate,
       lines: await this.ledger.resolveLines(
         tenantId,
         [
@@ -461,6 +498,7 @@ export class ExpensesService {
             accountName: 'Accounts payable',
             debit: amount,
             credit: 0,
+            fxRate: accruedRate,
             description: `Settlement of expense claim ${label}`,
           },
           {
@@ -468,21 +506,24 @@ export class ExpensesService {
             accountName: account.name,
             debit: 0,
             credit: amount,
+            fxRate: payRate,
             description: `Reimbursement of expense claim ${label}`,
           },
         ],
         manager,
+        payRate,
       ),
     });
 
     await journal.save(entry);
 
     // Relative, never read-modify-write: a payment landing in the same
-    // account meanwhile would otherwise be lost from the balance.
+    // account meanwhile would otherwise be lost from the balance. In the
+    // account's own currency, which is not always the claim's.
     await manager.query(
       `UPDATE "finance_accounts" SET "balance" = "balance" - $1, "updatedAt" = now()
        WHERE "id" = $2 AND "tenantId" = $3`,
-      [amount, account.id, tenantId],
+      [leaving, account.id, tenantId],
     );
   }
 

@@ -45,7 +45,7 @@ import { Invoice, InvoiceStatus } from '../quotes/entities/invoice.entity';
 import { JournalEntry } from './entities/journal-entry.entity';
 import { ExpenseClaim } from './entities/expense-claim.entity';
 import { LedgerService } from './ledger.service';
-import { baseCurrencyFor, cashAccountAmount } from './fx';
+import { baseCurrencyFor, cashAccountAmount, transferValues } from './fx';
 import { Supplier } from '../purchasing/entities/supplier.entity';
 import { TaxService } from '../tax/tax.service';
 import { Employee } from '../payroll/entities/employee.entity';
@@ -774,8 +774,16 @@ export class FinanceService {
         );
       }
 
+      const value = await transferValues(manager, tenantId, {
+        from: fromAccount,
+        to: toAccount,
+        amount,
+        toAmount: dto.toAmount,
+      });
+
       // Relative, never read-modify-write, the same as invoice payments: the
-      // database does the arithmetic on the numeric column.
+      // database does the arithmetic on the numeric column. Each account
+      // moves in its own currency.
       await manager.query(
         `UPDATE "finance_accounts" SET "balance" = "balance" - $1, "updatedAt" = now()
          WHERE "id" = $2 AND "tenantId" = $3`,
@@ -784,7 +792,7 @@ export class FinanceService {
       await manager.query(
         `UPDATE "finance_accounts" SET "balance" = "balance" + $1, "updatedAt" = now()
          WHERE "id" = $2 AND "tenantId" = $3`,
-        [amount, toAccount.id, tenantId],
+        [value.arriving, toAccount.id, tenantId],
       );
 
       const randomSuffix = Math.floor(Math.random() * 1000)
@@ -792,6 +800,10 @@ export class FinanceService {
         .padStart(3, '0');
       const entryNumber = `JE-TRF-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}${randomSuffix}`;
 
+      // Lines are stated in base currency here, already converted: the two
+      // sides may be in different currencies, which resolveLines' single
+      // document currency cannot express.
+      const difference = round2(value.toBase - value.fromBase);
       const journal = manager.getRepository(JournalEntry);
       const journalEntry = journal.create({
         tenantId,
@@ -800,6 +812,8 @@ export class FinanceService {
         referenceId: `${fromAccount.id}->${toAccount.id}`,
         entryDate: new Date(),
         totalAmount: amount,
+        currency: value.currency,
+        fxRate: value.rate,
         lines: await this.ledger.resolveLines(
           tenantId,
           [
@@ -807,17 +821,28 @@ export class FinanceService {
               financeAccountId: fromAccount.id,
               accountName: fromAccount.name,
               debit: 0,
-              credit: amount,
+              credit: value.fromBase,
               description: dto.description || `Transfer to ${toAccount.name}`,
             },
             {
               financeAccountId: toAccount.id,
               accountName: toAccount.name,
-              debit: amount,
+              debit: value.toBase,
               credit: 0,
               description:
                 dto.description || `Transfer from ${fromAccount.name}`,
             },
+            ...(difference !== 0
+              ? [
+                  {
+                    role: LEDGER_ROLES.FX_GAIN_LOSS,
+                    accountName: 'Exchange gains and losses',
+                    debit: difference < 0 ? -difference : 0,
+                    credit: difference > 0 ? difference : 0,
+                    description: 'Exchange difference on transfer',
+                  },
+                ]
+              : []),
           ],
           manager,
         ),

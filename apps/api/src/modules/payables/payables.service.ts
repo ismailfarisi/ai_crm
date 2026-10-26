@@ -18,6 +18,7 @@ import {
   AGING_BUCKETS,
   agingBucket,
   billPostingLines,
+  reverseChargeTax,
   billTotals,
   expenseCategoryRole,
   firstOfMonth,
@@ -45,6 +46,7 @@ import { LedgerService } from '../finance/ledger.service';
 import { FinanceAccount } from '../finance/entities/finance-account.entity';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
 import { TaxService } from '../tax/tax.service';
+import { TaxCode } from '../tax/entities/tax.entity';
 import { cashAccountAmount, fxRateFor } from '../finance/fx';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PurchaseOrder } from '../purchasing/entities/purchase-order.entity';
@@ -599,6 +601,16 @@ export class PayablesService {
         bill.currency,
         bill.billDate,
       );
+      // A reverse-charge or import code means the supplier charged no VAT and
+      // the buyer self-assesses it at the code's rate; blocked VAT is a cost.
+      const taxCode = bill.taxCodeId
+        ? await manager
+            .getRepository(TaxCode)
+            .findOne({ where: { id: bill.taxCodeId, tenantId } })
+        : null;
+      const selfAssessed = taxCode?.isReverseCharge
+        ? reverseChargeTax(Number(bill.subtotalAmount), Number(taxCode.rate))
+        : 0;
       const postingLines = billPostingLines(
         (bill.lines ?? []).map((l) => ({
           description: l.description,
@@ -611,6 +623,7 @@ export class PayablesService {
         })),
         bill.taxAmount,
         { billNumber: bill.billNumber, supplierName: bill.supplierName },
+        { blocked: taxCode?.treatment === 'BLOCKED', selfAssessed },
       );
 
       // GRNI was credited in base currency at the rate each delivery arrived
@@ -715,6 +728,7 @@ export class PayablesService {
       await this.notifications.resolve(tenantId, bill.id, manager);
       bill.status = 'APPROVED';
       bill.fxRate = billRate;
+      bill.reverseChargeTax = selfAssessed;
       bill.matchStatus = matched.status;
       bill.varianceApproved = variance;
       bill.approvedAt = new Date();

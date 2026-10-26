@@ -7,8 +7,13 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, In, Not, QueryFailedError, Repository } from 'typeorm';
 import {
+  buildVat201,
   expectedUaeRate,
   isUaeVatMode,
+  type Emirate,
+  type Vat201Dto,
+  type Vat201PurchaseInput,
+  type Vat201SaleInput,
   resolveTaxCode,
   scaleBreakdown,
   taxBreakdown,
@@ -30,6 +35,7 @@ import { CatalogItem } from '../catalog/entities/catalog-item.entity';
 import { Customer } from '../customers/entities/customer.entity';
 import { CreditNote } from '../credits/entities/credit-note.entity';
 import { Organization } from '../organizations/entities/organization.entity';
+import { Branch } from '../organizations/entities/branch.entity';
 import { SupplierBill } from '../payables/entities/supplier-bill.entity';
 import { Supplier } from '../purchasing/entities/supplier.entity';
 import { Invoice, InvoiceStatus } from '../quotes/entities/invoice.entity';
@@ -381,11 +387,154 @@ export class TaxService {
    * approved, the point at which it becomes a liability in these books.
    */
   async report(tenantId: string, from: Date, to: Date): Promise<TaxReportDto> {
+    const { invoices, credits, bills, purchaseCodes } =
+      await this.periodDocuments(tenantId, from, to);
+
+    const output = new Accumulator();
+    // Reported in base currency, at the rate each document was posted at —
+    // the figure that reached the tax account.
+    for (const invoice of invoices) {
+      output.add(breakdownForInvoice(invoice), 1, invoice.fxRate ?? 1);
+    }
+    for (const credit of credits) {
+      output.add(credit.taxBreakdown ?? [], -1, credit.fxRate ?? 1);
+    }
+
+    const input = new Accumulator();
+    // Reverse-charge purchases are due as output tax as well as recovered as
+    // input tax: the buyer self-assessed both. Kept apart from sales so
+    // `reverseChargeNet` still means sales whose customer accounts for it.
+    const selfAssessed = new Accumulator();
+    const purchaseById = new Map(purchaseCodes.map((c) => [c.id, c]));
+    for (const bill of bills) {
+      const code = bill.taxCodeId
+        ? purchaseById.get(bill.taxCodeId)
+        : undefined;
+      const line = {
+        taxCodeId: code?.id ?? null,
+        code: code?.code ?? 'Uncoded',
+        rate: code ? Number(code.rate) : 0,
+        reverseCharge: code?.isReverseCharge ?? false,
+        net: Number(bill.subtotalAmount),
+      };
+      const rc = Number(bill.reverseChargeTax) || 0;
+      input.add(
+        [
+          {
+            ...line,
+            // Blocked input tax was paid but cannot be reclaimed.
+            tax:
+              code?.treatment === 'BLOCKED'
+                ? 0
+                : Number(bill.taxAmount) + (line.reverseCharge ? rc : 0),
+          },
+        ],
+        1,
+        bill.fxRate ?? 1,
+      );
+      if (line.reverseCharge && rc > 0) {
+        selfAssessed.add([{ ...line, tax: rc }], 1, bill.fxRate ?? 1);
+      }
+    }
+
+    const salesRows = output.rows();
+    const outputRows = [...salesRows, ...selfAssessed.rows()];
+    const inputRows = input.rows();
+    const outputTax = sum(outputRows.map((r) => r.tax));
+    const inputTax = sum(inputRows.map((r) => r.tax));
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      output: outputRows,
+      input: inputRows,
+      outputTax,
+      inputTax,
+      netPayable: sum([outputTax, -inputTax]),
+      reverseChargeNet: sum(
+        salesRows.filter((r) => r.reverseCharge).map((r) => r.net),
+      ),
+    };
+  }
+
+  /**
+   * The VAT201 for a period, in AED, at the rate each document was posted at.
+   *
+   * Only in UAE VAT mode: the boxes, the emirate split and the dirham amounts
+   * mean nothing for a tenant filing anywhere else. Same documents and dates
+   * as `report`, so the two always agree on the tax payable.
+   */
+  async vat201(tenantId: string, from: Date, to: Date): Promise<Vat201Dto> {
+    const organization = await this.organizations.findOne({
+      where: { id: tenantId },
+    });
+    if (!organization || !isUaeVatMode(organization)) {
+      throw new ConflictException(
+        'The VAT201 is available once the organization is in UAE VAT mode: country UAE, a valid TRN and AED as the base currency.',
+      );
+    }
+    const { invoices, credits, bills, purchaseCodes } =
+      await this.periodDocuments(tenantId, from, to);
+    const salesCodes = await this.codes.find({
+      where: { tenantId, kind: 'SALES' },
+    });
+    const salesById = new Map(salesCodes.map((c) => [c.id, c]));
+    const purchaseById = new Map(purchaseCodes.map((c) => [c.id, c]));
+    const headOffice = await this.organizations.manager
+      .getRepository(Branch)
+      .findOne({ where: { tenantId, isHeadOffice: true } });
+
+    const aed = (n: number, rate: number) => (cents(n * rate) / 100);
+    const sales: Vat201SaleInput[] = [];
+    const addSales = (
+      lines: TaxBreakdownLine[],
+      rate: number,
+      creditNote: boolean,
+    ) => {
+      for (const line of lines) {
+        const code = line.taxCodeId ? salesById.get(line.taxCodeId) : undefined;
+        const sign = creditNote ? -1 : 1;
+        sales.push({
+          treatment:
+            code?.treatment ?? (line.reverseCharge ? 'REVERSE_CHARGE' : null),
+          rate: Number(line.rate) || 0,
+          net: sign * aed(Number(line.net) || 0, rate),
+          tax: sign * aed(Number(line.tax) || 0, rate),
+          creditNote,
+        });
+      }
+    };
+    for (const invoice of invoices)
+      addSales(breakdownForInvoice(invoice), invoice.fxRate ?? 1, false);
+    for (const credit of credits)
+      addSales(credit.taxBreakdown ?? [], credit.fxRate ?? 1, true);
+
+    const purchases: Vat201PurchaseInput[] = bills.map((bill) => {
+      const code = bill.taxCodeId ? purchaseById.get(bill.taxCodeId) : undefined;
+      const rate = bill.fxRate ?? 1;
+      return {
+        treatment: code?.treatment ?? null,
+        rate: code ? Number(code.rate) : 0,
+        net: aed(Number(bill.subtotalAmount), rate),
+        tax: aed(Number(bill.taxAmount), rate),
+        selfAssessed: aed(Number(bill.reverseChargeTax) || 0, rate),
+      };
+    });
+
+    return buildVat201({
+      from: from.toISOString().slice(0, 10),
+      to: to.toISOString().slice(0, 10),
+      emirate: (headOffice?.emirate as Emirate | null) ?? null,
+      sales,
+      purchases,
+    });
+  }
+
+  /** The documents a return for [from, to] is made of. */
+  private async periodDocuments(tenantId: string, from: Date, to: Date) {
     if (!(to > from))
       throw new BadRequestException(
         'The end of the period must be after the start',
       );
-
     const [invoices, credits, bills, purchaseCodes] = await Promise.all([
       this.invoices.find({
         where: {
@@ -406,55 +555,7 @@ export class TaxService {
       }),
       this.codes.find({ where: { tenantId, kind: 'PURCHASE' } }),
     ]);
-
-    const output = new Accumulator();
-    // Reported in base currency, at the rate each document was posted at —
-    // the figure that reached the tax account.
-    for (const invoice of invoices) {
-      output.add(breakdownForInvoice(invoice), 1, invoice.fxRate ?? 1);
-    }
-    for (const credit of credits) {
-      output.add(credit.taxBreakdown ?? [], -1, credit.fxRate ?? 1);
-    }
-
-    const input = new Accumulator();
-    const purchaseById = new Map(purchaseCodes.map((c) => [c.id, c]));
-    for (const bill of bills) {
-      const code = bill.taxCodeId
-        ? purchaseById.get(bill.taxCodeId)
-        : undefined;
-      input.add(
-        [
-          {
-            taxCodeId: code?.id ?? null,
-            code: code?.code ?? 'Uncoded',
-            rate: code ? Number(code.rate) : 0,
-            reverseCharge: code?.isReverseCharge ?? false,
-            net: Number(bill.subtotalAmount),
-            tax: Number(bill.taxAmount),
-          },
-        ],
-        1,
-        bill.fxRate ?? 1,
-      );
-    }
-
-    const outputRows = output.rows();
-    const inputRows = input.rows();
-    const outputTax = sum(outputRows.map((r) => r.tax));
-    const inputTax = sum(inputRows.map((r) => r.tax));
-    return {
-      from: from.toISOString(),
-      to: to.toISOString(),
-      output: outputRows,
-      input: inputRows,
-      outputTax,
-      inputTax,
-      netPayable: sum([outputTax, -inputTax]),
-      reverseChargeNet: sum(
-        outputRows.filter((r) => r.reverseCharge).map((r) => r.net),
-      ),
-    };
+    return { invoices, credits, bills, purchaseCodes };
   }
 
   /**

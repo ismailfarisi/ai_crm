@@ -174,13 +174,19 @@ nothing.
 
 ## Money and currency
 
-### Expense claims and account transfers are not currency-converted — open
+### Expense claims and account transfers are not currency-converted — resolved (2026-10-26)
 
-S8 converted every posting site that reaches the ledger through documents —
-invoices, payments, credit notes, refunds, bills, receipts, tax — but expense
-claims and treasury transfers still post at face value. A claim in a currency
-other than the base currency posts the wrong number. Convert them the way
-`order-provisioning` and `payables` do, through `fxRateFor` and `resolveLines`.
+A claim's accrual converts at the rate on its expense date; the reimbursement
+clears the payable at that rate and takes the cash at the day's rate, with the
+gap in exchange gains and losses. Accruals posted before this (no `currency`
+on the entry) settle at face value too, so no difference is invented. Claims
+now default to the base currency instead of `USD`, in the form and the API.
+
+A transfer between accounts in different currencies asks for the amount that
+arrived (`toAmount`). When one side is base currency the bank's own conversion
+sets the value of both sides; between two foreign currencies each side goes at
+the day's rate and the gap is an exchange difference (`transferValues` in
+`finance/fx.ts`).
 
 ### A finance account must match the document or the base currency — by design
 
@@ -209,6 +215,57 @@ job, but it reads like an error in the report.
 
 Every ledger entry is denominated in it. `PUT /finance/currencies/base` refuses
 with a 409 after the first journal entry.
+
+---
+
+## Keeping the books
+
+Manual journals, the period lock and bank reconciliation
+(`1790500000000-AccountingCore`).
+
+### The period lock is a trigger, and compares UTC dates — by design
+
+`journal_entries_period_lock` refuses any entry dated on or before
+`organizations.books_locked_through`, whatever posted it. Documents, payroll and
+Temporal activities all go through it; the API answers `KB001` with a 409. Dates
+compare in UTC, like every report's range, so an entry made at 01:00 in Dubai
+on the 1st is dated the last day of the previous month. The one automated
+posting that moves itself forward rather than failing is an expense claim's
+accrual (`BooksService.openPostingDate`): its date is the employee's, not the
+approver's. Revaluing a locked month fails, which is the point.
+
+### Manual journals cannot touch receivables, payables, stock or 1000 — by design
+
+Those accounts are reconciled to their documents (aging, stock valuation), so a
+journal to them would break the reconciliation with nothing to explain it. The
+same goes for 1000, which only groups the bank accounts. Corrections go through
+a credit note, a bill or a stock adjustment.
+
+### Journals cannot move a foreign-currency bank account — open
+
+A journal states base-currency amounts; a USD account's balance is in dollars,
+and there is no rate on a journal to convert at. Such lines are refused, so a
+bank charge on a foreign account must go through a transfer or a payment. The
+same applies to "Book & match" on its statement lines.
+
+### Only document-free journals can be reversed — by design
+
+A journal posted by an invoice, a bill or payroll is undone through that
+document, or the document and the ledger disagree. Each journal is reversed at
+most once (`uq_journal_entries_reverses`).
+
+### Reconciliation matches one statement line to one entry — open
+
+A deposit of three cheques, or one payment covering two bills, cannot be matched
+yet: it needs splitting on one side or the other. For an account not in base
+currency the amounts are not compared, because the ledger side is in base.
+The statement balance is the sum of every line imported, so it is only a real
+closing balance when imports start from the account's first day.
+
+### No fixed-asset register — open
+
+Depreciation is a monthly manual journal against an asset account and its
+accumulated depreciation, with nothing scheduling it.
 
 ---
 
@@ -245,20 +302,35 @@ point, trials that have already lapsed restrict immediately, so extend
 
 ## Tax
 
-### Purchases have no reverse charge — open
+### Purchase reverse charge — resolved for UAE, open elsewhere
 
-Reverse charge is applied to sales: an EU customer with a tax id gets 0% and the
-invoice says the customer accounts for the tax. The purchase side — where a bill
-from an EU supplier should post both an input and an output tax line — is not
-implemented.
+An approved bill on a reverse-charge code (UAE `RC` or `IM`) self-assesses the
+code's rate on its net: debit and credit tax payable by the same amount, fixed
+in `supplier_bills.reverse_charge_tax`. The tax report shows it as both output
+and input tax; the VAT201 puts it in box 3 or 6 and in box 10.
 
-### Purchase reverse-charge codes carry 5% but post nothing yet — open
+Outside UAE VAT mode a reverse-charge code must carry 0% (EU rule in
+`assertCodeShape`), so an EU purchase still self-assesses nothing. Supporting it
+would mean letting a purchase reverse-charge code carry the buyer's own rate.
 
-The seeded UAE purchase codes RC and IM carry the self-assessed 5% rate with
-`isReverseCharge`, as the FTA treatment requires. `purchaseTaxFor` and
-`taxBreakdown` still treat any reverse charge as 0%, so a bill on these codes
-posts no tax at all. The self-assessed output and input pair is stage 3 of the
-UAE VAT design.
+### Blocked input VAT is a cost — resolved (2026-10-26)
+
+A bill on a `BLOCKED` code used to debit tax payable like any input tax, so the
+return reclaimed VAT the law does not allow. It now debits the bill's largest
+expense line (cost of sales when the bill is all goods), stays out of the input
+tax total and out of VAT201 box 9.
+
+### The VAT201 puts all standard-rated sales in the head office's emirate — open
+
+Invoices do not record the branch that made the supply, so box 1 cannot be split
+by emirate. A business with branches in several emirates must split box 1 by
+hand. A return with no head-office emirate set warns rather than guessing one.
+Box 2 (tourist refunds) and box 7 (import adjustments) are always zero.
+
+### Input tax is dated by approval, not by the supplier's invoice date — open
+
+The tax report and VAT201 take bills by `approvedAt`, as before. A bill dated
+in September but approved in October lands in October's return.
 
 ### Purchase orders carry no tax code — open
 
@@ -507,8 +579,11 @@ What overheads posting and recurring bills leave out, and the choices behind it.
 - **No assistant skill for recurring expenses — open.** Changes made through
   the web app only; a chat skill would have to call `AuditService.record`
   itself.
-- **No chart-of-accounts editor — open.** Tenants cannot add accounts, so the
-  expense accounts the seed creates are the ones available.
+- **Chart-of-accounts editor — resolved (2026-10-26), with one gap open.**
+  Tenants add, rename, re-parent, retire and delete their own accounts under
+  Finance → Chart of Accounts. Documents still post by role, so an expense
+  category on a bill or a claim cannot yet be pointed at a tenant's own
+  account; those accounts are reached through manual journals.
 - **Journal lines posted to 6000 before this change were not re-routed — by
   design.** Restating history into the new accounts would rewrite closed
   periods.
