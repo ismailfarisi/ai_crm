@@ -87,7 +87,7 @@ export default function SecurityPage() {
               We’re happy to walk your IT team through how Kerf works.
             </p>
             <div className="mt-6">
-              <ButtonLink href={`mailto:${site.contactEmail}?subject=Security`}>
+              <ButtonLink href={site.contactUrl}>
                 Contact us
               </ButtonLink>
             </div>

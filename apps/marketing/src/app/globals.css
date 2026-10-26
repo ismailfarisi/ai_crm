@@ -19,6 +19,8 @@
   --color-good: oklch(0.6 0.14 155);
   --color-good-soft: oklch(0.955 0.04 155);
   --color-whatsapp: oklch(0.93 0.06 145);
+  /* WhatsApp's own green, only for the floating chat button. */
+  --color-whatsapp-brand: #25d366;
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
