@@ -14,7 +14,7 @@ import { CanvasHeader } from '@/components/automations/canvas/canvas-header';
 import { NodePaletteDrawer } from '@/components/automations/drawers/node-palette-drawer';
 import { NodeInspectorDrawer } from '@/components/automations/drawers/node-inspector-drawer';
 import { TestRunDrawer } from '@/components/automations/drawers/test-run-drawer';
-import type { AutomationNodeType, AutomationNode } from '@saas/shared';
+import type { AutomationNodeType, AutomationNode, AutomationWorkflowDto } from '@saas/shared';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -25,23 +25,56 @@ export default function AutomationStudioPage({ params }: PageProps) {
   const router = useRouter();
 
   const { data: workflow, isLoading, error, refresh } = useAutomation(id);
+
+  if (isLoading) {
+    return (
+      <div className="h-[calc(100vh-3.5rem)] flex items-center justify-center bg-surface-muted text-ink-muted">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+          <p className="text-xs font-semibold">Loading Automation Studio...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !workflow) {
+    return (
+      <div className="h-[calc(100vh-3.5rem)] flex items-center justify-center bg-surface-muted text-ink">
+        <div className="p-8 rounded-2xl bg-surface border border-border shadow-sm max-w-md text-center space-y-4">
+          <h3 className="text-sm font-bold text-ink">Automation Not Found</h3>
+          <p className="text-xs text-ink-muted">The requested automation workflow does not exist or has been deleted.</p>
+          <button
+            onClick={() => router.push('/automations')}
+            className="px-4 py-2 rounded-xl bg-brand text-ink text-xs font-semibold hover:bg-brand-hover cursor-pointer"
+          >
+            Back to Automations
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // The canvas seeds its state from the saved graph when it mounts, so it must
+  // not mount until the workflow has loaded: mounted early it starts empty, and
+  // saving that empty canvas would overwrite the stored graph.
+  return <AutomationStudio key={workflow.id} workflow={workflow} refresh={refresh} />;
+}
+
+interface AutomationStudioProps {
+  workflow: AutomationWorkflowDto;
+  refresh?: () => unknown;
+}
+
+function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
   const updateWorkflowMutation = useUpdateAutomationWorkflow();
   const testRunMutation = useTestRunAutomation();
 
-  const [workflowName, setWorkflowName] = useState<string>('');
-  const [workflowStatus, setWorkflowStatus] = useState<'DRAFT' | 'ACTIVE' | 'PAUSED'>('DRAFT');
+  const [workflowName, setWorkflowName] = useState<string>(workflow.name);
+  const [workflowStatus, setWorkflowStatus] = useState<'DRAFT' | 'ACTIVE' | 'PAUSED'>(workflow.status);
 
   // Drawers visibility states
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
   const [isTestRunOpen, setIsTestRunOpen] = useState(false);
-
-  // Sync initial workflow data
-  React.useEffect(() => {
-    if (workflow) {
-      setWorkflowName(workflow.name);
-      setWorkflowStatus(workflow.status);
-    }
-  }, [workflow]);
 
   // React Flow canvas state management
   const {
@@ -63,12 +96,11 @@ export default function AutomationStudioPage({ params }: PageProps) {
     redo,
     getGraphPayload,
   } = useAutomationCanvas({
-    initialNodes: workflow?.nodes || [],
-    initialEdges: workflow?.edges || [],
+    initialNodes: workflow.nodes || [],
+    initialEdges: workflow.edges || [],
   });
 
   const handleSave = async () => {
-    if (!workflow) return;
     try {
       const graphPayload = getGraphPayload();
       await updateWorkflowMutation.mutateAsync({
@@ -99,7 +131,6 @@ export default function AutomationStudioPage({ params }: PageProps) {
   };
 
   const handleExecuteTest = async (payload: Record<string, any>) => {
-    if (!workflow) return null;
     try {
       const res = await testRunMutation.mutateAsync({
         id: workflow.id,
@@ -112,34 +143,6 @@ export default function AutomationStudioPage({ params }: PageProps) {
       return null;
     }
   };
-
-  if (isLoading) {
-    return (
-      <div className="h-[calc(100vh-3.5rem)] flex items-center justify-center bg-surface-muted text-ink-muted">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand border-t-transparent" />
-          <p className="text-xs font-semibold">Loading Automation Studio...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !workflow) {
-    return (
-      <div className="h-[calc(100vh-3.5rem)] flex items-center justify-center bg-surface-muted text-ink">
-        <div className="p-8 rounded-2xl bg-surface border border-border shadow-sm max-w-md text-center space-y-4">
-          <h3 className="text-sm font-bold text-ink">Automation Not Found</h3>
-          <p className="text-xs text-ink-muted">The requested automation workflow does not exist or has been deleted.</p>
-          <button
-            onClick={() => router.push('/automations')}
-            className="px-4 py-2 rounded-xl bg-brand text-ink text-xs font-semibold hover:bg-brand-hover cursor-pointer"
-          >
-            Back to Automations
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div data-testid="automation-studio-page" className="h-[calc(100vh-3.5rem)] flex flex-col overflow-hidden bg-surface-muted">

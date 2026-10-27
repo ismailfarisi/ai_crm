@@ -128,6 +128,44 @@ describe('ExpressionEvaluator', () => {
         'https://api.crm.com',
       );
     });
+
+    it('should support arithmetic, logical operators, length and array literals', () => {
+      const context: ExpressionContext = {
+        $json: { price: 10, qty: 3, tags: ['a', 'b'], name: 'Theo', note: null },
+      };
+      expect(evaluateExpression('$json.price * $json.qty + 1', context)).toBe(31);
+      expect(evaluateExpression('$json.qty > 1 && $json.price < 20', context)).toBe(true);
+      expect(evaluateExpression('!$json.missing || false', context)).toBe(true);
+      expect(evaluateExpression('$json.note ?? "none"', context)).toBe('none');
+      expect(evaluateExpression('$json.tags.length', context)).toBe(2);
+      expect(evaluateExpression('$json.tags[1]', context)).toBe('b');
+      expect(evaluateExpression('$json.name.length', context)).toBe(4);
+      expect(evaluateExpression('[$json.qty, -$json.price]', context)).toEqual([3, -10]);
+    });
+
+    it('should not reach anything outside the context it is given', () => {
+      const context: ExpressionContext = { $json: { name: 'Theo', items: [] } };
+      const escapes = [
+        'process',
+        'process.env',
+        'globalThis',
+        'this',
+        'require("child_process")',
+        '$json.constructor',
+        '$json.constructor.constructor("return process")()',
+        '$json.items.constructor.constructor("return process")()',
+        '$json.__proto__',
+        '$json["__proto__"]',
+        '$json.name.toUpperCase()',
+        '$json.hasOwnProperty',
+        '(() => process)()',
+        'x = 1',
+      ];
+      for (const expression of escapes) {
+        expect(evaluateExpression(expression, context)).toBeUndefined();
+        expect(evaluateExpression(`{{ ${expression} }}`, context)).toBeUndefined();
+      }
+    });
   });
 
   describe('interpolateObject', () => {

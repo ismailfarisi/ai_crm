@@ -144,6 +144,52 @@ describe('AutomationActivities', () => {
         }),
       ).rejects.toThrow('Code transform execution failed');
     });
+
+    it('should pass the context through and return plain JSON', async () => {
+      const result = await executeCodeTransformActivity({
+        code: 'return { id: context.$trigger.id, when: typeof Date.now() }',
+        input: {},
+        context: { $trigger: { id: 'q-1' } },
+      });
+
+      expect(result.output).toEqual({ id: 'q-1', when: 'number' });
+    });
+
+    it('should run without access to the host process', async () => {
+      const result = await executeCodeTransformActivity({
+        code: `return {
+          process: typeof process,
+          require: typeof require,
+          escaped: (() => {
+            try { return typeof input.constructor.constructor('return process')(); }
+            catch (err) { return 'blocked'; }
+          })(),
+        }`,
+        input: {},
+      });
+
+      expect(result.output).toEqual({
+        process: 'undefined',
+        require: 'undefined',
+        // QuickJS has no `process` global, so the constructor trick throws.
+        escaped: 'blocked',
+      });
+    });
+
+    it('should stop code that never finishes', async () => {
+      await expect(
+        executeCodeTransformActivity({ code: 'while (true) {} return 1', input: {} }),
+      ).rejects.toThrow('Code transform execution failed: interrupted');
+    });
+
+    it('should stop code that exhausts its memory allowance', async () => {
+      await expect(
+        executeCodeTransformActivity({
+          code: 'const a = []; while (true) a.push("x".repeat(1e6) + a.length); return a',
+          input: {},
+        }),
+      ).rejects.toThrow('Code transform execution failed');
+    });
   });
 
   describe('executeCrmMutationActivity', () => {

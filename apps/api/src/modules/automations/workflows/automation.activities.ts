@@ -1,3 +1,10 @@
+import quickJsReleaseSync from '@jitl/quickjs-wasmfile-release-sync';
+import quickJsModuleLoader from '@jitl/quickjs-wasmfile-release-sync/emscripten-module';
+import {
+  newQuickJSWASMModuleFromVariant,
+  type QuickJSSyncVariant,
+  type QuickJSWASMModule,
+} from 'quickjs-emscripten-core';
 import {
   AiPromptActivityConfig,
   AiPromptActivityResult,
@@ -155,26 +162,65 @@ export async function executeEmailActivity(
   };
 }
 
+const TRANSFORM_TIMEOUT_MS = 1_000;
+const TRANSFORM_MEMORY_LIMIT_BYTES = 32 * 1024 * 1024;
+const TRANSFORM_STACK_LIMIT_BYTES = 512 * 1024;
+
+// The variant loads its Emscripten module with import(), which Jest's CommonJS
+// runtime rejects. A static import resolves the same file everywhere.
+const quickJsVariant: QuickJSSyncVariant = {
+  ...quickJsReleaseSync,
+  importModuleLoader: async () => quickJsModuleLoader,
+};
+
+let quickJs: Promise<QuickJSWASMModule> | undefined;
+
 /**
- * Executes custom JS transform code securely.
+ * Runs tenant-authored transform code in QuickJS, a separate JS engine
+ * compiled to WebAssembly. The code sees only `input` and `context` (copied
+ * in as JSON) and the standard built-ins: no `process`, no `require`, no I/O.
+ * Each run gets a fresh runtime with a memory cap and a wall-clock deadline,
+ * and its result comes back as JSON.
  */
 export async function executeCodeTransformActivity(
   config: CodeTransformActivityConfig,
 ): Promise<CodeTransformActivityResult> {
+  const QuickJS = await (quickJs ??= newQuickJSWASMModuleFromVariant(quickJsVariant));
+  const runtime = QuickJS.newRuntime();
+  runtime.setMemoryLimit(TRANSFORM_MEMORY_LIMIT_BYTES);
+  runtime.setMaxStackSize(TRANSFORM_STACK_LIMIT_BYTES);
+  const deadline = Date.now() + TRANSFORM_TIMEOUT_MS;
+  runtime.setInterruptHandler(() => Date.now() > deadline);
+  const vm = runtime.newContext();
+
   try {
     const code = config.code.trim();
     const functionBody = code.includes('return') ? code : `return (${code});`;
+    const asJsonLiteral = (value: unknown) =>
+      JSON.stringify(JSON.stringify(value ?? null));
 
-    const transformFn = new Function(
-      'input',
-      'context',
-      `"use strict"; ${functionBody}`,
+    const result = vm.evalCode(
+      `"use strict";
+       const __output = (function (input, context) { ${functionBody}
+       })(JSON.parse(${asJsonLiteral(config.input)}), JSON.parse(${asJsonLiteral(config.context ?? {})}));
+       __output === undefined ? undefined : JSON.stringify(__output);`,
+      'transform.js',
     );
-    const output = transformFn(config.input, config.context ?? {});
 
-    return { output };
+    if (result.error) {
+      const error = vm.dump(result.error);
+      result.error.dispose();
+      throw new Error(error?.message ?? String(error));
+    }
+
+    const json = vm.dump(result.value) as string | undefined;
+    result.value.dispose();
+    return { output: json === undefined ? undefined : JSON.parse(json) };
   } catch (err: any) {
     throw new Error(`Code transform execution failed: ${err.message}`);
+  } finally {
+    vm.dispose();
+    runtime.dispose();
   }
 }
 

@@ -1,3 +1,5 @@
+import jsep from 'jsep';
+
 export interface ExpressionContext {
   $json?: Record<string, any>;
   $trigger?: Record<string, any>;
@@ -14,10 +16,107 @@ export interface ExpressionContext {
   [key: string]: any;
 }
 
+/** Thrown for any syntax the evaluator refuses; `evaluateExpression` turns it into `undefined`. */
+class UnsupportedExpressionError extends Error {}
+
+/**
+ * Reads a property the way a template author means it: own data only. Nothing
+ * on a prototype is reachable, so `constructor`, `__proto__` and methods all
+ * read as undefined. `length` is the one inherited property allowed.
+ */
+function readProperty(target: unknown, key: unknown): unknown {
+  if (target === null || target === undefined) return undefined;
+  if (typeof key !== 'string' && typeof key !== 'number') return undefined;
+  if (key === 'length' && (typeof target === 'string' || Array.isArray(target))) {
+    return target.length;
+  }
+  if (typeof target !== 'object') return undefined;
+  return Object.prototype.hasOwnProperty.call(target, key)
+    ? (target as Record<string | number, unknown>)[key]
+    : undefined;
+}
+
+function evaluateNode(node: jsep.Expression, scope: Record<string, unknown>): unknown {
+  switch (node.type) {
+    case 'Literal':
+      return (node as jsep.Literal).value;
+
+    case 'Identifier': {
+      const { name } = node as jsep.Identifier;
+      if (name === 'undefined') return undefined;
+      if (Object.prototype.hasOwnProperty.call(scope, name)) return scope[name];
+      throw new UnsupportedExpressionError(`Unknown identifier ${name}`);
+    }
+
+    case 'MemberExpression': {
+      const member = node as jsep.MemberExpression;
+      const target = evaluateNode(member.object, scope);
+      const key = member.computed
+        ? evaluateNode(member.property, scope)
+        : (member.property as jsep.Identifier).name;
+      return readProperty(target, key);
+    }
+
+    case 'ArrayExpression':
+      return (node as jsep.ArrayExpression).elements.map((element) =>
+        element ? evaluateNode(element, scope) : undefined,
+      );
+
+    case 'UnaryExpression': {
+      const unary = node as jsep.UnaryExpression;
+      const arg = evaluateNode(unary.argument, scope) as any;
+      switch (unary.operator) {
+        case '!': return !arg;
+        case '-': return -arg;
+        case '+': return +arg;
+      }
+      break;
+    }
+
+    case 'ConditionalExpression': {
+      const cond = node as jsep.ConditionalExpression;
+      return evaluateNode(cond.test, scope)
+        ? evaluateNode(cond.consequent, scope)
+        : evaluateNode(cond.alternate, scope);
+    }
+
+    case 'BinaryExpression': {
+      const binary = node as jsep.BinaryExpression;
+      const left = evaluateNode(binary.left, scope) as any;
+      // Short-circuit the logical operators before touching the right side.
+      if (binary.operator === '&&') return left && evaluateNode(binary.right, scope);
+      if (binary.operator === '||') return left || evaluateNode(binary.right, scope);
+      if (binary.operator === '??') return left ?? evaluateNode(binary.right, scope);
+      const right = evaluateNode(binary.right, scope) as any;
+      switch (binary.operator) {
+        case '===': return left === right;
+        case '!==': return left !== right;
+        case '==': return left == right;
+        case '!=': return left != right;
+        case '<': return left < right;
+        case '<=': return left <= right;
+        case '>': return left > right;
+        case '>=': return left >= right;
+        case '+': return left + right;
+        case '-': return left - right;
+        case '*': return left * right;
+        case '/': return left / right;
+        case '%': return left % right;
+      }
+      break;
+    }
+  }
+  throw new UnsupportedExpressionError(`Unsupported expression: ${node.type}`);
+}
+
 /**
  * Evaluates a single dynamic expression against an execution context.
- * Supports $json, $trigger, $node, $env, and standard JS operations.
- * Safely returns undefined on missing paths or syntax/eval errors.
+ *
+ * Expressions are parsed, never compiled: the grammar is paths into `$json`,
+ * `$trigger`, `$node` and `$env`, literals, arithmetic, comparisons, `&&`
+ * `||` `??`, `!` and the ternary. There are no function calls and no access
+ * to globals, so a template cannot reach the worker process. Anything outside
+ * that, and any missing path, evaluates to undefined.
  */
 export function evaluateExpression(
   expression: string,
@@ -40,27 +139,12 @@ export function evaluateExpression(
   }
 
   try {
-    const $json = context.$json ?? {};
-    const $trigger = context.$trigger ?? {};
-    const $node = context.$node ?? {};
-    const $env = context.$env ?? {};
-
-    // Use Function constructor for safe context evaluation
-    const evaluator = new Function(
-      '$json',
-      '$trigger',
-      '$node',
-      '$env',
-      'context',
-      `"use strict";
-       try {
-         return (${cleaned});
-       } catch (err) {
-         return undefined;
-       }`,
-    );
-
-    return evaluator($json, $trigger, $node, $env, context);
+    return evaluateNode(jsep(cleaned), {
+      $json: context.$json ?? {},
+      $trigger: context.$trigger ?? {},
+      $node: context.$node ?? {},
+      $env: context.$env ?? {},
+    });
   } catch {
     return undefined;
   }

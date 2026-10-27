@@ -12,7 +12,7 @@ import {
   agentApprovalRequestedSignal,
   agentReActWorkflow,
   approvalSignal,
-} from '@/modules/channels/workflows/agent-react.workflow';
+} from '../../channels/workflows/agent-react.workflow';
 import type * as activities from './automation.activities';
 import {
   evaluateExpression,
