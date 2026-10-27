@@ -1,0 +1,22 @@
+# switeaz.com production. DNS records in Cloudflare are DNS-only (grey
+# cloud), so Caddy gets its own certificates over HTTP-01 and is the only
+# proxy in front of the API (TRUST_PROXY_HOPS=1).
+
+switeaz.com {
+	encode zstd gzip
+	reverse_proxy marketing:3000
+}
+
+www.switeaz.com {
+	redir https://switeaz.com{uri} permanent
+}
+
+app.switeaz.com {
+	encode zstd gzip
+	reverse_proxy web:3000
+}
+
+# No `encode` here: the assistant streams over SSE.
+api.switeaz.com {
+	reverse_proxy api:4000
+}

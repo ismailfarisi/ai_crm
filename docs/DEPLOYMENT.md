@@ -1,5 +1,21 @@
 # Deployment
 
+## AWS EC2 (switeaz.com)
+
+Since 2026-10-27 `switeaz.com`, `www.`, `app.` and `api.switeaz.com` are served by one **t3.micro** in AWS `ap-south-1` (account `100137600454`): instance `i-0d08c5de5083638bf` (`ai-crm-production`), Elastic IP `35.154.69.204`, security group `ai-crm-sg` (80/443 only, no SSH; shell access is SSM Session Manager). Cloudflare has DNS-only (grey cloud) A records for those four names; the `*.switeaz.com` wildcard still points at the old staging host.
+
+The box has 1 GB of RAM and 2 GB of swap, so nothing is built on it. Images are built elsewhere and pushed to ECR (`crm-api`, also used by the worker, `crm-web`, `crm-marketing`), tagged with the short commit SHA. On the box, `/opt/ai_crm` is a checkout of this repo and the stack is `docker-compose.staging.yml` plus `deploy/ec2/docker-compose.ec2.yml`, which swaps the builds for ECR images, sizes each process for the box and runs Caddy (`deploy/ec2/Caddyfile`) in compose.
+
+The env file is the SecureString SSM parameter `/ai-crm/production/env` (the instance role can read `/ai-crm/*` only). `deploy.sh` writes it to `/opt/ai_crm/.env.production` on every deploy. Back the parameter up before editing it: it holds `PAYROLL_DATA_KEY`. Mail is `console` until SES is set up for the domain.
+
+Every push to `master` deploys (`.github/workflows/deploy.yml`, also runnable by hand from the Actions tab). It assumes the `ai-crm-github-actions` role (trusted for this repo's `master` only), builds the three images with the public URLs baked in, pushes them, then runs `deploy/ec2/deploy.sh` on the box over SSM Run Command: fetch the env, pull, migrate, recreate the app services, wait for `/api/v1/health`. Postgres, Redis and Temporal are never recreated. To redeploy a tag that is already in ECR, from a shell on the box:
+
+```bash
+cd /opt/ai_crm && git fetch && git checkout --force <sha> && IMAGE_TAG=<short sha> REF=<sha> bash deploy/ec2/deploy.sh
+```
+
+Nightly backups land in `/opt/ai_crm-backups` on the same disk; the off-host copy described under Backups is still to do.
+
 ## Staging Host
 
 The staging checkout lives at `/home/deploy/ai_crm` on SSH host `ismail`. The active Caddy configuration is `/etc/caddy/Caddyfile` (not `/home/deploy/Caddyfile`). Current routes are:

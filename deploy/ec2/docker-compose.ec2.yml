@@ -1,0 +1,94 @@
+# Production on one t3.micro (1 GB RAM + 2 GB swap), layered on
+# docker-compose.staging.yml:
+#
+#   docker compose -p crm --env-file .env.production \
+#     -f docker-compose.staging.yml -f deploy/ec2/docker-compose.ec2.yml up -d
+#
+# Differences from staging: images are pulled from ECR (a 1 GB box cannot run
+# `next build`), Caddy runs in compose instead of on the host, and every
+# process is sized for the small box. See docs/DEPLOYMENT.md, "AWS EC2".
+
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
+services:
+  postgres:
+    <<: *logging
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - effective_cache_size=256MB
+
+  redis:
+    <<: *logging
+
+  backup:
+    <<: *logging
+
+  temporal:
+    <<: *logging
+
+  api:
+    <<: *logging
+    build: !reset null
+    image: ${ECR_REGISTRY}/crm-api:${IMAGE_TAG}
+    env_file: !override
+      - .env.production
+    environment:
+      NODE_OPTIONS: --max-old-space-size=256
+
+  worker:
+    <<: *logging
+    build: !reset null
+    image: ${ECR_REGISTRY}/crm-api:${IMAGE_TAG}
+    env_file: !override
+      - .env.production
+    environment:
+      NODE_OPTIONS: --max-old-space-size=256
+
+  web:
+    <<: *logging
+    build: !reset null
+    image: ${ECR_REGISTRY}/crm-web:${IMAGE_TAG}
+    env_file: !override
+      - .env.production
+    environment:
+      NODE_OPTIONS: --max-old-space-size=192
+
+  marketing:
+    <<: *logging
+    build: !reset null
+    image: ${ECR_REGISTRY}/crm-marketing:${IMAGE_TAG}
+    environment:
+      NODE_OPTIONS: --max-old-space-size=128
+
+  caddy:
+    <<: *logging
+    image: caddy:2.10
+    container_name: crm_caddy
+    restart: unless-stopped
+    depends_on:
+      - api
+      - web
+      - marketing
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/ec2/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

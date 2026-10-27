@@ -1,0 +1,88 @@
+name: Deploy (EC2)
+
+# Builds the api, web and marketing images, pushes them to ECR and deploys
+# them to the switeaz.com host (see docs/DEPLOYMENT.md, "AWS EC2"). The AWS
+# role trusts this repo's master branch only.
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-ec2
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-south-1
+  AWS_ROLE: arn:aws:iam::100137600454:role/ai-crm-github-actions
+  ECR_REGISTRY: 100137600454.dkr.ecr.ap-south-1.amazonaws.com
+  INSTANCE_ID: i-0d08c5de5083638bf
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - app: api
+            build-args: ""
+          - app: web
+            build-args: |
+              NEXT_PUBLIC_API_URL=https://api.switeaz.com/api/v1
+          - app: marketing
+            build-args: |
+              NEXT_PUBLIC_APP_URL=https://app.switeaz.com
+              NEXT_PUBLIC_SITE_URL=https://switeaz.com
+              NEXT_PUBLIC_CONTACT_EMAIL=hello@kerf.ae
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - uses: docker/setup-buildx-action@v3
+      - id: tag
+        run: echo "tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          build-args: ${{ matrix.build-args }}
+          push: true
+          provenance: false
+          tags: ${{ env.ECR_REGISTRY }}/crm-${{ matrix.app }}:${{ steps.tag.outputs.tag }}
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Run deploy.sh on the host
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_SHA::7}"
+          script="cd /opt/ai_crm && git fetch --quiet origin && git checkout --quiet --force ${GITHUB_SHA} && IMAGE_TAG=${tag} REF=${GITHUB_SHA} bash deploy/ec2/deploy.sh 2>&1"
+          params=$(jq -n --arg s "$script" '{commands: [$s], executionTimeout: ["1800"]}')
+          id=$(aws ssm send-command --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript --timeout-seconds 600 \
+            --parameters "$params" --query Command.CommandId --output text)
+          echo "SSM command $id"
+          for _ in $(seq 1 180); do
+            status=$(aws ssm get-command-invocation --command-id "$id" --instance-id "$INSTANCE_ID" \
+              --query Status --output text 2>/dev/null || echo Pending)
+            case "$status" in Pending|InProgress|Delayed) sleep 10 ;; *) break ;; esac
+          done
+          aws ssm get-command-invocation --command-id "$id" --instance-id "$INSTANCE_ID" \
+            --query '[StandardOutputContent,StandardErrorContent]' --output text
+          echo "status: $status"
+          [ "$status" = Success ]
