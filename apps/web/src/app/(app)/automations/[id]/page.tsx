@@ -65,9 +65,10 @@ export default function AutomationStudioPage({ params }: PageProps) {
 }
 
 // The server keeps the secret it already has; never echo it back.
-function withoutSecret(config: Record<string, any>): Record<string, any> {
-  const { signatureSecret: _secret, ...rest } = config;
-  return rest;
+// `regenerateSignature` is transient: it travels beside triggerConfig, never inside it.
+function triggerPatch(config: Record<string, any>) {
+  const { signatureSecret: _secret, regenerateSignature, ...rest } = config;
+  return { triggerConfig: rest, ...(regenerateSignature ? { regenerateSignature: true } : {}) };
 }
 
 interface AutomationStudioProps {
@@ -90,6 +91,7 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
   // an untouched trigger is never sent: the API treats any triggerConfig on an ACTIVE
   // automation as a graph change and makes the saver the owner.
   const [editedTriggerConfig, setEditedTriggerConfig] = useState<Record<string, any> | null>(null);
+  const [triggerInvalid, setTriggerInvalid] = useState(false);
   const triggerConfig = editedTriggerConfig ?? workflow.triggerConfig ?? {};
 
   // Drawers visibility states
@@ -130,13 +132,12 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
           status: workflowStatus,
           nodes: graphPayload.nodes,
           edges: graphPayload.edges,
-          ...(editedTriggerConfig
-            ? { triggerConfig: withoutSecret(editedTriggerConfig) }
-            : {}),
+          ...(editedTriggerConfig ? triggerPatch(editedTriggerConfig) : {}),
         },
       });
       markClean();
       setEditedTriggerConfig(null);
+      setTriggerInvalid(false);
       toast.success('Automation workflow saved successfully');
       refresh?.();
     } catch (err: any) {
@@ -179,6 +180,7 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
         onStatusToggle={handleStatusToggle}
         isDirty={isDirty || editedTriggerConfig !== null}
         isSaving={updateWorkflowMutation.isPending}
+        saveBlockedReason={triggerInvalid ? 'Fix the schedule before saving' : null}
         onSave={handleSave}
         onOpenTestRun={() => setIsTestRunOpen(true)}
         onOpenPalette={() => setIsPaletteOpen(true)}
@@ -219,6 +221,7 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
             triggerConfig={triggerConfig}
             canEditTrigger={canEditTrigger}
             onTriggerConfigChange={setEditedTriggerConfig}
+            onTriggerValidityChange={(valid) => setTriggerInvalid(!valid)}
             onRegenerateWebhook={() => regenerateWebhook.mutateAsync(workflow.id)}
             onUpdate={(id, data) => updateNodeData(id, data)}
             onDelete={(id) => deleteNode(id)}

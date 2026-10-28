@@ -84,6 +84,37 @@ describe('AutomationStudioPage', () => {
     expect(canvas).toHaveTextContent('Email owner');
   });
 
+  it('lifts regenerateSignature out of triggerConfig when saving a secret rotation', async () => {
+    const hook: AutomationWorkflowDto = {
+      ...savedWorkflow,
+      triggerType: 'WEBHOOK',
+      webhookSlug: 'a'.repeat(43),
+      triggerConfig: { requireSignature: true, signatureSecret: 'old' },
+      nodes: [{ id: 't', type: 'webhookTrigger', position: { x: 0, y: 0 }, data: { label: 'Hook', config: {} } }],
+      edges: [],
+    };
+    mutateAsync.mockReset();
+    mutateAsync.mockResolvedValue(hook);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    automationState.current = { data: hook, isLoading: false };
+    const params = Promise.resolve({ id: 'wf-1' });
+    await act(async () =>
+      render(
+        <Suspense fallback={null}>
+          <AutomationStudioPage params={params} />
+        </Suspense>,
+      ),
+    );
+    fireEvent.click(await screen.findByText('Hook'));
+    fireEvent.click(await screen.findByTestId('webhook-secret-regenerate'));
+    expect(screen.getByTestId('save-workflow-btn')).toHaveTextContent('Save Changes*');
+    fireEvent.click(screen.getByTestId('save-workflow-btn'));
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
+    const input = mutateAsync.mock.calls[0][0].input;
+    expect(input.regenerateSignature).toBe(true);
+    expect(input.triggerConfig).toEqual({ requireSignature: true });
+  });
+
   describe('trigger settings in the save payload', () => {
     const scheduleWorkflow: AutomationWorkflowDto = {
       ...savedWorkflow,
@@ -118,6 +149,18 @@ describe('AutomationStudioPage', () => {
       const input = mutateAsync.mock.calls[0][0].input;
       expect(input.name).toBe('Renamed');
       expect(input).not.toHaveProperty('triggerConfig');
+    });
+
+    it('blocks Save while the schedule is invalid, so a stale schedule is never sent', async () => {
+      await open();
+      fireEvent.click(screen.getByText('Tick'));
+      fireEvent.change(await screen.findByTestId('schedule-frequency'), { target: { value: 'monthly' } });
+      fireEvent.change(screen.getByTestId('schedule-day-of-month'), { target: { value: '31' } });
+      expect(screen.getByTestId('save-workflow-btn')).toBeDisabled();
+      fireEvent.click(screen.getByTestId('save-workflow-btn'));
+      expect(mutateAsync).not.toHaveBeenCalled();
+      fireEvent.change(screen.getByTestId('schedule-day-of-month'), { target: { value: '15' } });
+      expect(screen.getByTestId('save-workflow-btn')).not.toBeDisabled();
     });
 
     it('sends triggerConfig after a schedule edit, marks the canvas dirty, then resets', async () => {

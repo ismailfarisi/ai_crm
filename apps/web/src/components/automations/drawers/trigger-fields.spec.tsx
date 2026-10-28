@@ -56,6 +56,7 @@ describe('WebhookTriggerFields', () => {
   it('writes requireSignature and shows the secret with Copy and the header note', () => {
     const onChange = vi.fn();
     const { rerender } = render(<WebhookTriggerFields workflow={active} config={{}} onChange={onChange} />);
+    expect(screen.getByLabelText('Webhook address')).toBe(screen.getByTestId('webhook-url'));
     fireEvent.click(screen.getByTestId('webhook-require-signature'));
     expect(onChange).toHaveBeenCalledWith({ requireSignature: true });
     rerender(
@@ -70,6 +71,26 @@ describe('WebhookTriggerFields', () => {
     expect(screen.getByText(/X-Kerf-Signature: sha256=/)).toBeInTheDocument();
   });
 
+  it('regenerates the secret after confirmation by writing regenerateSignature', () => {
+    const onChange = vi.fn();
+    const config = { requireSignature: true, signatureSecret: 'shh-secret' };
+    vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    render(<WebhookTriggerFields workflow={active} config={config} onChange={onChange} />);
+    fireEvent.click(screen.getByTestId('webhook-secret-regenerate'));
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('webhook-secret-regenerate'));
+    expect(onChange).toHaveBeenCalledWith({ ...config, regenerateSignature: true });
+  });
+
+  it('survives a rejected regenerate mutation', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const onRegenerate = vi.fn().mockRejectedValue(new Error('nope'));
+    render(<WebhookTriggerFields workflow={active} config={{}} onChange={vi.fn()} onRegenerate={onRegenerate} />);
+    fireEvent.click(screen.getByText('Regenerate'));
+    await Promise.resolve();
+    expect(onRegenerate).toHaveBeenCalled();
+  });
+
   it('writes redirectUrl', () => {
     const onChange = vi.fn();
     render(<WebhookTriggerFields workflow={active} config={{ requireSignature: false }} onChange={onChange} />);
@@ -81,9 +102,41 @@ describe('WebhookTriggerFields', () => {
 describe('ScheduleTriggerFields', () => {
   const now = () => new Date('2026-10-29T06:00:00Z');
 
+  const stored = { frequency: 'daily' as const, time: '09:00', timezone: 'Asia/Dubai' };
+
+  it('starts empty without a stored schedule and writes nothing on mount', () => {
+    const onChange = vi.fn();
+    const onValidityChange = vi.fn();
+    render(<ScheduleTriggerFields onChange={onChange} onValidityChange={onValidityChange} now={now} />);
+    expect(screen.getByTestId('schedule-empty-prompt')).toHaveTextContent('Choose when this automation runs');
+    expect((screen.getByTestId('schedule-frequency') as HTMLSelectElement).value).toBe('');
+    expect(screen.queryByTestId('schedule-summary')).toBeNull();
+    expect(screen.queryByTestId('schedule-next-runs')).toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByTestId('schedule-frequency'), { target: { value: 'daily' } });
+    expect(onChange).toHaveBeenCalledWith({ frequency: 'daily', time: '09:00', timezone: 'Asia/Dubai' });
+    expect(screen.queryByTestId('schedule-empty-prompt')).toBeNull();
+  });
+
+  it('shows the saved schedule read-only without inputs', () => {
+    render(<ScheduleTriggerFields schedule={stored} canEdit={false} onChange={vi.fn()} now={now} />);
+    expect(screen.queryByTestId('schedule-frequency')).toBeNull();
+    expect(screen.getByTestId('schedule-summary')).toHaveTextContent('Every day at 09:00');
+    expect(screen.getByTestId('schedule-next-runs').querySelectorAll('li')).toHaveLength(3);
+  });
+
+  it('reports invalid input to the parent', () => {
+    const onValidityChange = vi.fn();
+    render(<ScheduleTriggerFields schedule={stored} onChange={vi.fn()} onValidityChange={onValidityChange} now={now} />);
+    expect(onValidityChange).toHaveBeenLastCalledWith(true);
+    fireEvent.change(screen.getByTestId('schedule-frequency'), { target: { value: 'monthly' } });
+    fireEvent.change(screen.getByTestId('schedule-day-of-month'), { target: { value: '31' } });
+    expect(onValidityChange).toHaveBeenLastCalledWith(false);
+  });
+
   it('defaults to Gulf time and shows the summary and three next runs', () => {
     const onChange = vi.fn();
-    render(<ScheduleTriggerFields onChange={onChange} now={now} />);
+    render(<ScheduleTriggerFields schedule={stored} onChange={onChange} now={now} />);
     expect((screen.getByTestId('schedule-timezone') as HTMLSelectElement).value).toBe('Asia/Dubai');
     expect(screen.getByTestId('schedule-summary')).toHaveTextContent(
       describeSchedule({ frequency: 'daily', time: '09:00', timezone: 'Asia/Dubai' }),
@@ -95,7 +148,7 @@ describe('ScheduleTriggerFields', () => {
 
   it('shows the right fields per frequency and allows several weekdays', () => {
     const onChange = vi.fn();
-    render(<ScheduleTriggerFields onChange={onChange} now={now} />);
+    render(<ScheduleTriggerFields schedule={stored} onChange={onChange} now={now} />);
     const freq = screen.getByTestId('schedule-frequency');
 
     fireEvent.change(freq, { target: { value: 'hourly' } });
@@ -117,7 +170,7 @@ describe('ScheduleTriggerFields', () => {
   });
 
   it('formats next runs in the chosen zone', () => {
-    render(<ScheduleTriggerFields onChange={vi.fn()} now={now} />);
+    render(<ScheduleTriggerFields schedule={stored} onChange={vi.fn()} now={now} />);
     fireEvent.change(screen.getByTestId('schedule-timezone'), { target: { value: 'UTC' } });
     expect(screen.getByTestId('schedule-next-runs').querySelector('li')).toHaveTextContent('09:00');
     expect(screen.getByTestId('schedule-summary')).toHaveTextContent('UTC');
@@ -136,7 +189,7 @@ describe('ScheduleTriggerFields', () => {
 
   it('shows the zod message and does not write invalid input', () => {
     const onChange = vi.fn();
-    render(<ScheduleTriggerFields onChange={onChange} now={now} />);
+    render(<ScheduleTriggerFields schedule={stored} onChange={onChange} now={now} />);
     fireEvent.change(screen.getByTestId('schedule-frequency'), { target: { value: 'monthly' } });
     onChange.mockClear();
     fireEvent.change(screen.getByTestId('schedule-day-of-month'), { target: { value: '31' } });
@@ -178,6 +231,7 @@ describe('NodeInspectorDrawer trigger sections', () => {
         onClose={vi.fn()}
       />,
     );
+    expect(screen.getAllByText('Choose when this automation runs')).toHaveLength(1);
     fireEvent.change(screen.getByTestId('schedule-frequency'), { target: { value: 'hourly' } });
     expect(onTriggerConfigChange).toHaveBeenCalledWith({
       schedule: { frequency: 'hourly', minute: 0, timezone: 'Asia/Dubai' },

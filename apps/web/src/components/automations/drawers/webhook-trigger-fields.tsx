@@ -4,10 +4,13 @@ import React from 'react';
 import type { AutomationWorkflowDto, WebhookTriggerConfig } from '@saas/shared';
 import { API_PUBLIC_URL } from '@/lib/api/config';
 
+/** `regenerateSignature` is transient: the page lifts it out of triggerConfig when saving. */
+export type WebhookTriggerEdit = WebhookTriggerConfig & { regenerateSignature?: boolean };
+
 export interface WebhookTriggerFieldsProps {
   workflow: Pick<AutomationWorkflowDto, 'status' | 'webhookSlug'>;
-  config: WebhookTriggerConfig;
-  onChange: (config: WebhookTriggerConfig) => void;
+  config: WebhookTriggerEdit;
+  onChange: (config: WebhookTriggerEdit) => void;
   onRegenerate?: () => void | Promise<unknown>;
 }
 
@@ -28,18 +31,31 @@ export function WebhookTriggerFields({ workflow, config, onChange, onRegenerate 
     const ok = window.confirm(
       'Replace the webhook address? The current address stops working immediately.',
     );
-    if (ok) await onRegenerate?.();
+    if (!ok) return;
+    try {
+      await onRegenerate?.();
+    } catch {
+      /* the mutation reports its own error */
+    }
   };
 
-  const patch = (next: Partial<WebhookTriggerConfig>) => onChange({ ...config, ...next });
+  const handleRegenerateSecret = () => {
+    const ok = window.confirm(
+      'Replace the signature secret? Senders using the current secret will be rejected until they switch.',
+    );
+    if (ok) onChange({ ...config, regenerateSignature: true });
+  };
+
+  const patch = (next: Partial<WebhookTriggerEdit>) => onChange({ ...config, ...next });
 
   return (
     <div data-testid="webhook-trigger-fields" className="space-y-3 pt-2 border-t border-border/40">
-      <label className="text-[11px] font-medium text-ink">Webhook address</label>
+      <label htmlFor="webhook-url" className="text-[11px] font-medium text-ink">Webhook address</label>
       <div className="flex gap-1">
         <input
           type="text"
           readOnly
+          id="webhook-url"
           data-testid="webhook-url"
           value={url ?? ''}
           placeholder="Hidden — ask someone who can edit this automation"
@@ -98,17 +114,31 @@ export function WebhookTriggerFields({ workflow, config, onChange, onRegenerate 
                   >
                     Copy
                   </button>
+                  <button
+                    type="button"
+                    data-testid="webhook-secret-regenerate"
+                    onClick={handleRegenerateSecret}
+                    className="rounded-lg border border-border px-2 text-xs text-ink"
+                  >
+                    Regenerate
+                  </button>
                 </div>
               ) : (
                 <p className="text-[10px] text-ink-muted">The secret is generated when you save.</p>
+              )}
+              {config.regenerateSignature && (
+                <p data-testid="webhook-secret-pending" className="text-[10px] text-ink-muted">
+                  A new secret is created when you save; it appears here afterwards.
+                </p>
               )}
             </div>
           )}
 
           <div className="space-y-1">
-            <label className="text-[11px] font-medium text-ink">Redirect after a form post (https)</label>
+            <label htmlFor="webhook-redirect-url" className="text-[11px] font-medium text-ink">Redirect after a form post (https)</label>
             <input
               type="url"
+              id="webhook-redirect-url"
               data-testid="webhook-redirect-url"
               value={config.redirectUrl ?? ''}
               onChange={(e) => patch({ redirectUrl: e.target.value || undefined })}
@@ -118,7 +148,7 @@ export function WebhookTriggerFields({ workflow, config, onChange, onRegenerate 
           </div>
 
           <div className="space-y-1">
-            <label className="text-[11px] font-medium text-ink">Examples</label>
+            <p className="text-[11px] font-medium text-ink">Examples</p>
             <pre data-testid="webhook-curl" className="overflow-x-auto rounded-lg bg-surface-muted p-2 text-[10px] font-mono text-ink">
 {`curl -X POST ${url} -H 'Content-Type: application/json' -d '{"name":"Ana"}'`}
             </pre>

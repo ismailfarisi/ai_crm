@@ -25,6 +25,8 @@ export interface CanvasHeaderProps {
   onStatusToggle: () => void;
   isDirty: boolean;
   isSaving: boolean;
+  /** Blocks Save (e.g. a trigger editor holds invalid input); explained by the title. */
+  saveBlockedReason?: string | null;
   onSave: () => void;
   onOpenTestRun: () => void;
   onOpenPalette: () => void;
@@ -43,6 +45,7 @@ export function CanvasHeader({
   onStatusToggle,
   isDirty,
   isSaving,
+  saveBlockedReason,
   onSave,
   onOpenTestRun,
   onOpenPalette,
@@ -181,7 +184,8 @@ export function CanvasHeader({
         <button
           type="button"
           data-testid="save-workflow-btn"
-          disabled={isSaving}
+          disabled={isSaving || !!saveBlockedReason}
+          title={saveBlockedReason ?? undefined}
           onClick={onSave}
           className={clsx(
             'flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-ink-inverted shadow-xs transition-all cursor-pointer',

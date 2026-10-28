@@ -62,6 +62,7 @@ export interface NodeInspectorDrawerProps {
   canEditTrigger?: boolean;
   onTriggerConfigChange?: (config: Record<string, any>) => void;
   onRegenerateWebhook?: () => void | Promise<unknown>;
+  onTriggerValidityChange?: (valid: boolean) => void;
 }
 
 export function NodeInspectorDrawer({
@@ -79,6 +80,7 @@ export function NodeInspectorDrawer({
   canEditTrigger,
   onTriggerConfigChange,
   onRegenerateWebhook,
+  onTriggerValidityChange,
 }: NodeInspectorDrawerProps) {
   const [showHelper, setShowHelper] = useState(false);
   const [activeTab, setActiveTab] = useState<'params' | 'settings'>('params');
@@ -444,7 +446,6 @@ export function NodeInspectorDrawer({
             {/* Trigger Nodes (Webhook / Schedule / CRM Event) */}
             {node.type === 'webhookTrigger' && workflow && (
               <>
-                <p className="text-[11px] font-semibold text-ink">Choose when this automation runs</p>
                 <WebhookTriggerFields
                   workflow={workflow}
                   config={triggerConfig ?? {}}
@@ -456,9 +457,10 @@ export function NodeInspectorDrawer({
 
             {node.type === 'scheduleTrigger' && (
               <>
-                <p className="text-[11px] font-semibold text-ink">Choose when this automation runs</p>
                 <ScheduleTriggerFields
                   key={node.id}
+                  canEdit={canEditTrigger}
+                  onValidityChange={onTriggerValidityChange}
                   schedule={(triggerConfig as ScheduleTriggerConfig | undefined)?.schedule}
                   onChange={(schedule) => onTriggerConfigChange?.({ ...(triggerConfig ?? {}), schedule })}
                 />
