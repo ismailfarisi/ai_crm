@@ -869,6 +869,22 @@ with per-node results as the run proceeds. Left for the run-history round.
 partial update may reset them unless the client sends both. Automation CRM
 steps avoid it by sending only the named fields.
 
+### The AI-email setting is saved with the budget form — open
+
+"Allow automations to email AI-written text to customers" lives on the AI
+budget row and is saved through the same form (`PATCH /ai/budget`), so turning
+it on or off requires a monthly budget amount above zero. An organisation that
+wants unlimited AI spend still has to enter a cap to change the setting. Give
+it its own control when the AI settings page is next reworked.
+
+### Changing the AI-email setting is audited without its value — open
+
+The change writes an audit row with who and when, but no before/after value:
+`ai` is one of the bodyless audit prefixes (`AUDIT_BODYLESS_PREFIXES`) because
+its routes carry provider API keys. The trail shows that the budget was saved,
+not whether customer email was switched on. Recording it needs a field-level
+allowlist for `PATCH /ai/budget`, or an explicit `AuditService.record` call.
+
 ---
 
 ## Staging environment
