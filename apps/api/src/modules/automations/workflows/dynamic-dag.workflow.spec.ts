@@ -640,6 +640,59 @@ describe('DynamicDagWorkflow', () => {
     expect(result.nodeResults['fallback-email'].status).toBe('SUCCESS');
   });
 
+  describe('aiAgentNode acting user', () => {
+    const run = async (extra: Partial<DynamicWorkflowInput>) => {
+      mockExecuteChild.mockResolvedValueOnce({
+        status: 'COMPLETED',
+        finalResponse: 'done',
+        stepsExecuted: 1,
+      });
+      await dynamicDagWorkflow({
+        executionId: 'exec-who',
+        workflowId: 'wf-who',
+        tenantId: 'tenant-1',
+        triggerPayload: {},
+        nodes: [
+          {
+            id: 'trigger',
+            type: 'webhookTrigger',
+            position: { x: 0, y: 0 },
+            data: { label: 'T', config: {} },
+          },
+          {
+            id: 'agent',
+            type: 'aiAgentNode',
+            position: { x: 100, y: 0 },
+            data: { label: 'A', config: { goal: 'do it' } },
+          },
+        ],
+        edges: [{ id: 'e1', source: 'trigger', target: 'agent' }],
+        ...extra,
+      } as DynamicWorkflowInput);
+      const calls = mockExecuteChild.mock.calls;
+      return calls[calls.length - 1][1].args[0].userId;
+    };
+
+    it('uses actorUserId when set', async () => {
+      expect(await run({ actorUserId: 'actor', ownerUserId: 'owner' })).toBe(
+        'actor',
+      );
+    });
+
+    it('falls back to ownerUserId when nobody triggered the run', async () => {
+      expect(await run({ ownerUserId: 'owner' })).toBe('owner');
+    });
+
+    it('ignores event.actorUserId inside the trigger payload', async () => {
+      expect(
+        await run({
+          ownerUserId: 'owner',
+          triggerPayload: { event: { actorUserId: 'spoofed' } },
+        }),
+      ).toBe('owner');
+    });
+  });
+
   it('should execute agentReActWorkflow child workflow for aiAgentNode and pass result to downstream nodes via $json', async () => {
     mockActivities.executeEmailActivity.mockResolvedValue({
       success: true,

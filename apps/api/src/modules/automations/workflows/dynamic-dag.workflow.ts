@@ -463,10 +463,9 @@ export async function dynamicDagWorkflow(
             args: [
               {
                 organizationId: input.tenantId,
-                userId:
-                  input.actorUserId ??
-                  input.triggerPayload.event?.actorUserId ??
-                  '',
+                // Webhook and schedule runs have no actor; they act as the
+                // user who activated the automation.
+                userId: input.actorUserId ?? input.ownerUserId ?? '',
                 conversationId: childConversationId,
                 prompt: interpolatedGoal,
                 parentWorkflowId: workflowInfo().workflowId,
