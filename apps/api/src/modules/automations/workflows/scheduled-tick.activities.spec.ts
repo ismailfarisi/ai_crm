@@ -1,4 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
+import { WorkflowNotFoundError } from '@temporalio/client';
+import { Like } from 'typeorm';
 import { Test } from '@nestjs/testing';
 import { ClsModule } from 'nestjs-cls';
 import { TenantContextService } from '@/common/context/tenant-context.service';
@@ -37,6 +39,11 @@ describe('startScheduledRunActivity', () => {
   let workflows: { findOne: jest.Mock };
   let automations: { triggerExecution: jest.Mock };
   let billing: { restrictionFor: jest.Mock };
+  let executions: { findOne: jest.Mock };
+  let describe_: jest.Mock;
+  let getHandle: jest.Mock;
+  let temporal: { getClient: jest.Mock };
+  let contextAtPreviousLookup: { system: boolean; tenant: string | null }[];
   let contextAtLookup: { system: boolean; tenant: string | null }[];
   let contextAtTrigger: { system: boolean; tenant: string | null }[];
   let activity: ReturnType<
@@ -78,11 +85,31 @@ describe('startScheduledRunActivity', () => {
     billing = {
       restrictionFor: jest.fn().mockResolvedValue({ restricted: false }),
     };
+    contextAtPreviousLookup = [];
+    // No earlier scheduled run unless a test says so.
+    executions = {
+      findOne: jest.fn().mockImplementation(async () => {
+        contextAtPreviousLookup.push({
+          system: tenantContext.isSystem(),
+          tenant: tenantContext.getTenantId(),
+        });
+        return null;
+      }),
+    };
+    describe_ = jest
+      .fn()
+      .mockResolvedValue({ status: { name: 'COMPLETED' } });
+    getHandle = jest.fn().mockReturnValue({ describe: describe_ });
+    temporal = {
+      getClient: jest.fn().mockResolvedValue({ workflow: { getHandle } }),
+    };
     activity = createScheduledTickActivities({
       workflows,
+      executions,
       automations,
       billing,
       tenantContext,
+      temporal,
     }).startScheduledRunActivity;
   });
 
@@ -176,6 +203,97 @@ describe('startScheduledRunActivity', () => {
       `schedule:${SCHEDULED_AT}`,
       `schedule:${SCHEDULED_AT}`,
     ]);
+  });
+
+  describe('while the previous scheduled run is still running', () => {
+    const previous = {
+      id: 'exec-0',
+      idempotencyKey: 'schedule:2026-10-29T04:30:00.000Z',
+      temporalWorkflowId: 'automation-exec-exec-0',
+    };
+
+    it('looks up the latest scheduled execution of this automation, in the tenant', async () => {
+      await activity(input);
+      expect(executions.findOne).toHaveBeenCalledTimes(1);
+      const [query] = executions.findOne.mock.calls[0];
+      expect(query.where.workflowId).toBe('wf-1');
+      expect(query.where.tenantId).toBe(TENANT);
+      expect(query.where.idempotencyKey).toEqual(Like('schedule:%'));
+      expect(query.order).toEqual({ startedAt: 'DESC' });
+      expect(contextAtPreviousLookup).toEqual([
+        { system: false, tenant: TENANT },
+      ]);
+    });
+
+    it('no previous scheduled execution: the run starts without asking Temporal', async () => {
+      await expect(activity(input)).resolves.toEqual({
+        started: true,
+        executionId: 'exec-1',
+      });
+      expect(temporal.getClient).not.toHaveBeenCalled();
+    });
+
+    it('previous run RUNNING: skips this tick and starts nothing', async () => {
+      executions.findOne.mockResolvedValueOnce(previous);
+      describe_.mockResolvedValueOnce({ status: { name: 'RUNNING' } });
+
+      await expect(activity(input)).resolves.toEqual({
+        started: false,
+        reason: 'previous_run_active',
+      });
+      expect(getHandle).toHaveBeenCalledWith('automation-exec-exec-0');
+      expect(automations.triggerExecution).not.toHaveBeenCalled();
+    });
+
+    it.each(['COMPLETED', 'FAILED', 'TERMINATED', 'CANCELLED'])(
+      'previous run %s: the run starts',
+      async (name) => {
+        executions.findOne.mockResolvedValueOnce(previous);
+        describe_.mockResolvedValueOnce({ status: { name } });
+        await expect(activity(input)).resolves.toEqual({
+          started: true,
+          executionId: 'exec-1',
+        });
+      },
+    );
+
+    it('previous run unknown to Temporal (never started): treated as finished', async () => {
+      executions.findOne.mockResolvedValueOnce(previous);
+      describe_.mockRejectedValueOnce(
+        new WorkflowNotFoundError('not found', previous.temporalWorkflowId, undefined),
+      );
+      await expect(activity(input)).resolves.toEqual({
+        started: true,
+        executionId: 'exec-1',
+      });
+    });
+
+    it('any other describe error throws so the tick is retried', async () => {
+      executions.findOne.mockResolvedValueOnce(previous);
+      describe_.mockRejectedValueOnce(new Error('UNAVAILABLE'));
+      await expect(activity(input)).rejects.toThrow('UNAVAILABLE');
+      expect(automations.triggerExecution).not.toHaveBeenCalled();
+    });
+
+    it('a Temporal client that cannot connect throws so the tick is retried', async () => {
+      executions.findOne.mockResolvedValueOnce(previous);
+      temporal.getClient.mockRejectedValueOnce(new Error('UNAVAILABLE'));
+      await expect(activity(input)).rejects.toThrow('UNAVAILABLE');
+      expect(automations.triggerExecution).not.toHaveBeenCalled();
+    });
+
+    it("this same tick's own execution (a redelivery) is left to the idempotency key", async () => {
+      executions.findOne.mockResolvedValueOnce({
+        ...previous,
+        idempotencyKey: `schedule:${SCHEDULED_AT}`,
+      });
+      describe_.mockResolvedValueOnce({ status: { name: 'RUNNING' } });
+      await expect(activity(input)).resolves.toEqual({
+        started: true,
+        executionId: 'exec-1',
+      });
+      expect(temporal.getClient).not.toHaveBeenCalled();
+    });
   });
 
   it('falls back to the default time zone when the stored schedule has none', async () => {

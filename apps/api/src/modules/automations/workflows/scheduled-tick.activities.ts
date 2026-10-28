@@ -1,17 +1,22 @@
 import { NotFoundException } from '@nestjs/common';
-import type { Repository } from 'typeorm';
+import { WorkflowNotFoundError } from '@temporalio/client';
+import { Like, type Repository } from 'typeorm';
 import type { TenantContextService } from '@/common/context/tenant-context.service';
 import type { BillingService } from '@/modules/billing/billing.service';
+import type { TemporalService } from '@/modules/temporal/temporal.service';
 import type { AutomationsService } from '../automations.service';
+import type { AutomationExecution } from '../entities/automation-execution.entity';
 import type { AutomationWorkflow } from '../entities/automation-workflow.entity';
 
 const DEFAULT_TIMEZONE = 'Asia/Dubai';
 
 export interface ScheduledTickActivityDeps {
   workflows: Pick<Repository<AutomationWorkflow>, 'findOne'>;
+  executions: Pick<Repository<AutomationExecution>, 'findOne'>;
   automations: Pick<AutomationsService, 'triggerExecution'>;
   billing: Pick<BillingService, 'restrictionFor'>;
   tenantContext: Pick<TenantContextService, 'runAsSystem' | 'runWithTenant'>;
+  temporal: Pick<TemporalService, 'getClient'>;
 }
 
 export interface StartScheduledRunInput {
@@ -26,10 +31,52 @@ export type StartScheduledRunResult =
   | {
       started: false;
       reason:
-        'not_found' | 'not_active' | 'not_scheduled' | 'billing_restricted';
+        | 'not_found'
+        | 'not_active'
+        | 'not_scheduled'
+        | 'billing_restricted'
+        | 'previous_run_active';
     };
 
+const SCHEDULE_KEY_PREFIX = 'schedule:';
+
 export function createScheduledTickActivities(deps: ScheduledTickActivityDeps) {
+  /**
+   * Whether this automation's latest scheduled run (other than this tick's
+   * own) is still running in Temporal. The schedule's SKIP overlap covers only
+   * the tick workflow, which ends as soon as it has started the run; this
+   * makes a run that is still going skip the next tick too. Called in the
+   * tenant's context.
+   */
+  async function previousRunActive(
+    wf: AutomationWorkflow,
+    idempotencyKey: string,
+  ): Promise<boolean> {
+    const previous = await deps.executions.findOne({
+      where: {
+        workflowId: wf.id,
+        tenantId: wf.tenantId,
+        idempotencyKey: Like(`${SCHEDULE_KEY_PREFIX}%`),
+      },
+      order: { startedAt: 'DESC' },
+    });
+    // A redelivered tick finds its own execution: the idempotency key
+    // returns it from triggerExecution instead.
+    if (!previous || previous.idempotencyKey === idempotencyKey) return false;
+
+    const client = await deps.temporal.getClient();
+    try {
+      const description = await client.workflow
+        .getHandle(previous.temporalWorkflowId)
+        .describe();
+      return description.status.name === 'RUNNING';
+    } catch (err: unknown) {
+      // Never started (its start failed): nothing is running.
+      if (err instanceof WorkflowNotFoundError) return false;
+      throw err;
+    }
+  }
+
   return {
     /**
      * Starts the run for one schedule tick, as the automation's owner.
@@ -39,7 +86,9 @@ export function createScheduledTickActivities(deps: ScheduledTickActivityDeps) {
      * written (its schedule is removed on save, but a tick can already be in
      * flight, and a failed removal is only repaired at the next boot). Those
      * ticks return quietly instead of throwing, so Temporal does not retry
-     * them in a loop. Only a failed start throws, to be retried.
+     * them in a loop. A tick that arrives while the previous scheduled run
+     * is still running is skipped the same way. Only a failed start (or a
+     * failed check of the previous run) throws, to be retried.
      */
     async startScheduledRunActivity(
       input: StartScheduledRunInput,
@@ -66,6 +115,11 @@ export function createScheduledTickActivities(deps: ScheduledTickActivityDeps) {
           if (restricted)
             return { started: false, reason: 'billing_restricted' };
 
+          const idempotencyKey = `${SCHEDULE_KEY_PREFIX}${input.scheduledAt}`;
+          if (await previousRunActive(wf, idempotencyKey)) {
+            return { started: false, reason: 'previous_run_active' };
+          }
+
           const timezone =
             typeof wf.triggerConfig?.schedule?.timezone === 'string'
               ? wf.triggerConfig.schedule.timezone
@@ -82,7 +136,7 @@ export function createScheduledTickActivities(deps: ScheduledTickActivityDeps) {
                 // One run per slot: a redelivered or retried tick finds the
                 // execution the first one recorded (and resumes it if its
                 // start failed). Webhooks use a `webhook:` prefix.
-                idempotencyKey: `schedule:${input.scheduledAt}`,
+                idempotencyKey,
               },
             );
             return { started: true, executionId: exec.id };

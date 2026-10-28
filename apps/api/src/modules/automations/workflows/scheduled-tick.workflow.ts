@@ -11,7 +11,8 @@ const { startScheduledRunActivity } = proxyActivities<
   ReturnType<typeof createScheduledTickActivities>
 >({
   startToCloseTimeout: '1 minute',
-  // Only a failed Temporal start throws; everything else returns quietly.
+  // Only a failed Temporal call (the start, or the check of the previous
+  // run) throws; everything else returns quietly.
   // Retries stay well inside the hour, so a retrying tick never meets the
   // next one (overlap SKIP would drop it).
   retry: {

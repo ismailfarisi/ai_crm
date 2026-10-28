@@ -28,6 +28,8 @@ import { CustomRecordsService } from './modules/custom-objects/services/custom-r
 import { createScheduledTickActivities } from './modules/automations/workflows/scheduled-tick.activities';
 import { AutomationsService } from './modules/automations/automations.service';
 import { AutomationWorkflow } from './modules/automations/entities/automation-workflow.entity';
+import { AutomationExecution } from './modules/automations/entities/automation-execution.entity';
+import { TemporalService } from './modules/temporal/temporal.service';
 import { BillingService } from './modules/billing/billing.service';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
@@ -83,9 +85,12 @@ async function run(): Promise<void> {
     // here through QuotesModule -> AutomationsModule).
     const scheduledTickActivities = createScheduledTickActivities({
       workflows: appContext.get(getRepositoryToken(AutomationWorkflow)),
+      executions: appContext.get(getRepositoryToken(AutomationExecution)),
       automations: appContext.get(AutomationsService),
       billing: appContext.get(BillingService),
       tenantContext: appContext.get(TenantContextService),
+      // Asks whether the previous scheduled run is still going.
+      temporal: appContext.get(TemporalService),
     });
     const assistantActivities = createAssistantActivities({
       events: appContext.get(AssistantEventsService),
