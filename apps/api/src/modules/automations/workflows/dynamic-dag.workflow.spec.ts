@@ -12,7 +12,11 @@ const mockExecuteChild = jest.fn();
 
 jest.mock('@temporalio/workflow', () => {
   const handlers = new Map<any, Function>();
+  const actual = jest.requireActual('@temporalio/workflow');
   return {
+    ActivityFailure: actual.ActivityFailure,
+    ApplicationFailure: actual.ApplicationFailure,
+    ChildWorkflowFailure: actual.ChildWorkflowFailure,
     proxyActivities: () => ({
       executeHttpActivity: (...args: any[]) =>
         (global as any).__mockActivities.executeHttpActivity(...args),
@@ -49,6 +53,11 @@ jest.mock('@temporalio/workflow', () => {
 (global as any).__mockHandlers = mockHandlers;
 (global as any).__mockExecuteChild = mockExecuteChild;
 
+import {
+  ActivityFailure,
+  ApplicationFailure,
+  ChildWorkflowFailure,
+} from '@temporalio/workflow';
 import { dynamicDagWorkflow } from './dynamic-dag.workflow';
 import {
   approveNodeSignal,
@@ -1101,5 +1110,94 @@ describe('DynamicDagWorkflow', () => {
 
     expect(sleep).toHaveBeenCalledWith(2500);
     expect(result.nodeResults.delay.output.duration).toBe(2500);
+  });
+
+  it("keeps the step's own failure reason, not Temporal's wrapper", async () => {
+    const reason =
+      "AI isn't set up for this workspace. Ask an admin to add a model in Settings → AI.";
+    mockActivities.executeAiPromptActivity.mockRejectedValue(
+      new ActivityFailure(
+        'Activity task failed',
+        'executeAiPromptActivity',
+        '1',
+        undefined as any,
+        'worker',
+        ApplicationFailure.nonRetryable(reason),
+      ),
+    );
+
+    const result = await dynamicDagWorkflow({
+      executionId: 'exec-cause',
+      workflowId: 'wf-1',
+      tenantId: 'tenant-1',
+      triggerPayload: {},
+      nodes: [
+        { id: 'trig', type: 'manualTrigger', position: { x: 0, y: 0 }, data: { label: 'Go', config: {} } },
+        { id: 'ai', type: 'aiPromptNode', position: { x: 0, y: 0 }, data: { label: 'Draft', config: { prompt: 'hi' } } },
+      ],
+      edges: [{ id: 'e1', source: 'trig', target: 'ai' }],
+    });
+
+    expect(result.status).toBe('FAILED');
+    expect(result.nodeResults.ai.error).toBe(reason);
+    expect(result.errorMessage).toBe(reason);
+    expect(mockActivities.recordNodeResultActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeId: 'ai', status: 'FAILED', error: reason }),
+    );
+  });
+
+  it('keeps the innermost reason through a failed child workflow', async () => {
+    mockExecuteChild.mockRejectedValue(
+      new ChildWorkflowFailure(
+        'default',
+        { workflowId: 'child', runId: 'r' } as any,
+        'agentReActWorkflow',
+        undefined as any,
+        new ActivityFailure(
+          'Activity task failed',
+          'runAgentStep',
+          '2',
+          undefined as any,
+          'worker',
+          ApplicationFailure.nonRetryable('The model refused the request'),
+        ),
+      ),
+    );
+
+    const result = await dynamicDagWorkflow({
+      executionId: 'exec-child-cause',
+      workflowId: 'wf-1',
+      tenantId: 'tenant-1',
+      triggerPayload: {},
+      nodes: [
+        { id: 'trig', type: 'manualTrigger', position: { x: 0, y: 0 }, data: { label: 'Go', config: {} } },
+        { id: 'agent', type: 'aiAgentNode', position: { x: 0, y: 0 }, data: { label: 'Agent', config: { goal: 'do it' } } },
+      ],
+      edges: [{ id: 'e1', source: 'trig', target: 'agent' }],
+    });
+
+    expect(result.status).toBe('FAILED');
+    expect(result.nodeResults.agent.error).toBe('The model refused the request');
+    expect(result.errorMessage).toBe('The model refused the request');
+  });
+
+  it('keeps a plain error message unchanged', async () => {
+    mockActivities.executeHttpActivity.mockRejectedValue(
+      Object.assign(new Error('outer'), { cause: new Error('inner') }),
+    );
+
+    const result = await dynamicDagWorkflow({
+      executionId: 'exec-plain',
+      workflowId: 'wf-1',
+      tenantId: 'tenant-1',
+      triggerPayload: {},
+      nodes: [
+        { id: 'trig', type: 'manualTrigger', position: { x: 0, y: 0 }, data: { label: 'Go', config: {} } },
+        { id: 'http', type: 'httpRequestNode', position: { x: 0, y: 0 }, data: { label: 'Call', config: { url: 'https://x.test' } } },
+      ],
+      edges: [{ id: 'e1', source: 'trig', target: 'http' }],
+    });
+
+    expect(result.errorMessage).toBe('outer');
   });
 });

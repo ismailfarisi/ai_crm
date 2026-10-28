@@ -1,4 +1,6 @@
 import {
+  ActivityFailure,
+  ChildWorkflowFailure,
   condition,
   executeChild,
   getExternalWorkflowHandle,
@@ -52,6 +54,21 @@ const {
     maximumAttempts: 3,
   },
 });
+
+/**
+ * Temporal wraps a failed activity or child workflow ("Activity task failed",
+ * "Child Workflow execution failed"); the step's own reason is the innermost cause.
+ */
+function failureReason(err: any): string {
+  if (err instanceof ActivityFailure || err instanceof ChildWorkflowFailure) {
+    let reason: Error = err;
+    while (reason.cause instanceof Error && reason.cause.message) {
+      reason = reason.cause;
+    }
+    return reason.message;
+  }
+  return err?.message || String(err);
+}
 
 export async function dynamicDagWorkflow(
   input: DynamicWorkflowInput,
@@ -558,7 +575,7 @@ export async function dynamicDagWorkflow(
     } catch (err: any) {
       const nodeEndTime = Date.now();
       const durationMs = nodeEndTime - nodeStartTime;
-      nodeError = err?.message || String(err);
+      nodeError = failureReason(err);
 
       executionState.nodeResults[node.id] = {
         status: 'FAILED',
