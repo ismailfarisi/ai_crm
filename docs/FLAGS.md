@@ -843,6 +843,34 @@ costed from payroll and timesheets; machine time and overhead are not posted.
 
 ---
 
+## Automations
+
+### No automation chaining — by design, this round
+
+Changes made by an automation step (an Update CRM record step, for instance)
+never start other automations. Chaining invites loops; revisit it with an
+explicit depth limit.
+
+### The automation AI agent step acts as the triggering user — open
+
+The agent step still runs as the user who triggered the run, not as the
+automation's owner, unlike the CRM step. Its tool access follows that user's
+permissions.
+
+### Automation executions stay RUNNING with empty node results — open
+
+`recordNodeResultActivity` is a stub, so execution rows are not updated
+with per-node results as the run proceeds. Left for the run-history round.
+
+### `PATCH /contacts/:id` can reset status and source — open
+
+`updateContactSchema` is a zod 4 `.partial()`, which keeps defaults: parsing
+`{ jobTitle: 'x' }` yields `status: 'lead'` and `source: 'other'` as well, so a
+partial update may reset them unless the client sends both. Automation CRM
+steps avoid it by sending only the named fields.
+
+---
+
 ## Staging environment
 
 True of the staging box (`ssh ismail`, `~/ai_crm`), not of the code.
