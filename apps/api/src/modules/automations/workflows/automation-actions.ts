@@ -38,6 +38,14 @@ const AI_NOT_CONFIGURED =
   "AI isn't set up for this organisation. Add a provider in Settings → AI.";
 const emailSchema = z.string().email();
 
+/**
+ * Interpolation can turn a field into a number, an object or null; every text
+ * field is read as text before it is validated.
+ */
+function asText(value: unknown): string {
+  return typeof value === 'string' ? value : value == null ? '' : String(value);
+}
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -229,11 +237,14 @@ export function createAutomationActions(deps: AutomationActionDeps) {
         ctx.executionId,
         async () => {
           await resolveOwner(deps, ctx, 'send email');
+          const to = asText(config.to);
+          const subject = asText(config.subject);
+          const body = asText(config.body);
 
           // Validate everything before sending anything.
           const recipients = [
             ...new Set(
-              config.to
+              to
                 .split(',')
                 .map((r) => r.trim().toLowerCase())
                 .filter(Boolean),
@@ -269,19 +280,19 @@ export function createAutomationActions(deps: AutomationActionDeps) {
             }
           }
 
-          const html = escapeHtml(config.body).replace(/\r?\n/g, '<br>');
-          for (const to of recipients) {
+          const html = escapeHtml(body).replace(/\r?\n/g, '<br>');
+          for (const recipient of recipients) {
             // Per-recipient key: a Temporal retry after a partial send skips
             // the recipients that already went out. Provider errors propagate.
             await deps.idempotency.runOnce(
               ctx.tenantId,
-              `automation:${ctx.executionId}:${ctx.nodeId}:mail:${to}`,
+              `automation:${ctx.executionId}:${ctx.nodeId}:mail:${recipient}`,
               async () => {
                 await deps.mail.sendMail({
-                  to,
-                  subject: config.subject,
+                  to: recipient,
+                  subject,
                   html,
-                  text: config.body,
+                  text: body,
                 });
                 return { sent: true };
               },
@@ -302,7 +313,8 @@ export function createAutomationActions(deps: AutomationActionDeps) {
         async () => {
           const owner = await resolveOwner(deps, ctx, 'run an AI prompt');
 
-          if (!config.prompt?.trim()) {
+          const prompt = asText(config.prompt);
+          if (!prompt.trim()) {
             throw ApplicationFailure.nonRetryable('The AI prompt is empty');
           }
           if (!(await deps.ai.isConfigured(ctx.tenantId))) {
@@ -314,7 +326,7 @@ export function createAutomationActions(deps: AutomationActionDeps) {
           try {
             const res = await deps.ai.generateText(
               'automation.prompt',
-              { messages: [{ role: 'user', content: config.prompt }] },
+              { messages: [{ role: 'user', content: prompt }] },
               { organizationId: ctx.tenantId, userId: owner.id },
             );
             return {

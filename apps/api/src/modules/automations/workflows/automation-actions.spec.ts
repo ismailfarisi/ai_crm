@@ -254,6 +254,34 @@ describe('executeEmailActivity', () => {
     expect(sendMail).not.toHaveBeenCalled();
   });
 
+  it('treats a null recipient as no recipients', async () => {
+    const { deps, sendMail } = mailDeps();
+    const err = await failureOf(
+      createAutomationActions(deps).executeEmailActivity(
+        { to: null, subject: 'Hello', body: 'b' } as never,
+        ctx,
+      ),
+    );
+    expect(err).toBeInstanceOf(ApplicationFailure);
+    expect(err.nonRetryable).toBe(true);
+    expect(err.message).toBe('Send email has no recipients');
+    expect(sendMail).not.toHaveBeenCalled();
+  });
+
+  it('sends a non-text body and subject as text', async () => {
+    const { deps, sendMail } = mailDeps();
+    await createAutomationActions(deps).executeEmailActivity(
+      { to: 'a@x.com', subject: 7, body: 42 } as never,
+      ctx,
+    );
+    expect(sendMail).toHaveBeenCalledWith({
+      to: 'a@x.com',
+      subject: '7',
+      text: '42',
+      html: '42',
+    });
+  });
+
   it('does not resend recipients already sent on retry', async () => {
     const { deps, sendMail, runOnce } = mailDeps();
     sendMail
@@ -375,6 +403,33 @@ describe('executeAiPromptActivity', () => {
       model: 'm-1',
       usage: { inputTokens: 5, outputTokens: 7 },
     });
+  });
+
+  it('treats a null prompt as empty', async () => {
+    const deps = aiDeps();
+    const f = await failureOf(
+      createAutomationActions(deps).executeAiPromptActivity(
+        { prompt: null } as never,
+        ctx,
+      ),
+    );
+    expect(f).toBeInstanceOf(ApplicationFailure);
+    expect(f.nonRetryable).toBe(true);
+    expect(f.message).toBe('The AI prompt is empty');
+    expect(deps.ai.generateText).not.toHaveBeenCalled();
+  });
+
+  it('sends a non-text prompt as text', async () => {
+    const deps = aiDeps();
+    await createAutomationActions(deps).executeAiPromptActivity(
+      { prompt: 42 } as never,
+      ctx,
+    );
+    expect(deps.ai.generateText).toHaveBeenCalledWith(
+      'automation.prompt',
+      { messages: [{ role: 'user', content: '42' }] },
+      expect.anything(),
+    );
   });
 
   it('fails clearly when AI is not configured', async () => {
