@@ -7,8 +7,9 @@ import {
   useAutomation,
   useUpdateAutomationWorkflow,
   useTestRunAutomation,
+  useAutomationSettings,
 } from '@/hooks/use-automations';
-import { useAutomationCanvas } from '@/hooks/use-automation-canvas';
+import { useAutomationCanvas, toAutomationEdges } from '@/hooks/use-automation-canvas';
 import { AutomationCanvas } from '@/components/automations/canvas/automation-canvas';
 import { CanvasHeader } from '@/components/automations/canvas/canvas-header';
 import { NodePaletteDrawer } from '@/components/automations/drawers/node-palette-drawer';
@@ -68,6 +69,7 @@ interface AutomationStudioProps {
 function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
   const updateWorkflowMutation = useUpdateAutomationWorkflow();
   const testRunMutation = useTestRunAutomation();
+  const { data: settings } = useAutomationSettings();
 
   const [workflowName, setWorkflowName] = useState<string>(workflow.name);
   const [workflowStatus, setWorkflowStatus] = useState<'DRAFT' | 'ACTIVE' | 'PAUSED'>(workflow.status);
@@ -189,6 +191,8 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
           <NodeInspectorDrawer
             node={selectedNode as unknown as AutomationNode}
             allNodes={nodes as unknown as AutomationNode[]}
+            edges={toAutomationEdges(edges)}
+            aiEmailToCustomers={settings?.aiEmailToCustomers}
             onUpdate={(id, data) => updateNodeData(id, data)}
             onDelete={(id) => deleteNode(id)}
             onClose={() => setSelectedNode(null)}

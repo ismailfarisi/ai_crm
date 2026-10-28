@@ -22,12 +22,27 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import clsx from 'clsx';
-import type { AutomationNode } from '@saas/shared';
+import { usesAiOutput } from '@saas/shared';
+import type { AutomationEdge, AutomationNode } from '@saas/shared';
 import { ExpressionHelper } from './expression-helper';
+import { CrmStepFields } from './crm-step-fields';
+
+const CRM_EVENTS = [
+  { value: 'contact.created', label: 'Contact created' },
+  { value: 'contact.updated', label: 'Contact updated' },
+  { value: 'quote.created', label: 'Quote created' },
+  { value: 'quote.updated', label: 'Quote updated' },
+  { value: 'quote.accepted', label: 'Customer accepted a quote' },
+  { value: 'invoice.issued', label: 'Invoice issued' },
+  { value: 'invoice.overdue', label: 'Invoice overdue' },
+];
 
 export interface NodeInspectorDrawerProps {
   node: AutomationNode | null;
   allNodes?: AutomationNode[];
+  edges?: AutomationEdge[];
+  /** Org setting; undefined while it loads. */
+  aiEmailToCustomers?: boolean;
   onUpdate: (nodeId: string, data: Partial<AutomationNode['data']>) => void;
   onDelete?: (nodeId: string) => void;
   onClose: () => void;
@@ -38,6 +53,8 @@ export interface NodeInspectorDrawerProps {
 export function NodeInspectorDrawer({
   node,
   allNodes = [],
+  edges = [],
+  aiEmailToCustomers,
   onUpdate,
   onDelete,
   onClose,
@@ -50,6 +67,15 @@ export function NodeInspectorDrawer({
   if (!node) return null;
 
   const config = node.data?.config || {};
+
+  const aiHint =
+    node.type === 'sendEmailNode' &&
+    aiEmailToCustomers !== undefined &&
+    usesAiOutput(node, allNodes, edges)
+      ? aiEmailToCustomers
+        ? 'Uses AI-written text — can be sent to customers'
+        : 'Uses AI-written text — only your team can receive it'
+      : null;
 
   const handleConfigChange = (key: string, value: any) => {
     onUpdate(node.id, {
@@ -358,6 +384,11 @@ export function NodeInspectorDrawer({
                     placeholder="Hello {{ $json.name }}, your quote total is ${{ $json.amount }}."
                     className="w-full rounded-lg border border-border p-2 text-xs font-mono text-ink focus:border-brand focus:outline-none resize-none"
                   />
+                  {aiHint && (
+                    <p data-testid="email-ai-hint" className="text-[10px] text-ink-muted">
+                      {aiHint}
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -384,35 +415,10 @@ export function NodeInspectorDrawer({
 
             {/* CRM Mutate Node Config */}
             {node.type === 'crmMutateNode' && (
-              <div className="space-y-3 pt-2 border-t border-border/40">
-                <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-ink">Entity</label>
-                  <select
-                    data-testid="crm-entity-select"
-                    value={config.entity || 'quote'}
-                    onChange={(e) => handleConfigChange('entity', e.target.value)}
-                    className="w-full rounded-lg border border-border px-2 py-1.5 text-xs text-ink font-semibold bg-surface-muted"
-                  >
-                    <option value="quote">Quote</option>
-                    <option value="invoice">Invoice</option>
-                    <option value="contact">Contact</option>
-                    <option value="deal">Deal</option>
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-ink">Action</label>
-                  <select
-                    data-testid="crm-action-select"
-                    value={config.action || 'updateStatus'}
-                    onChange={(e) => handleConfigChange('action', e.target.value)}
-                    className="w-full rounded-lg border border-border px-2 py-1.5 text-xs text-ink font-semibold bg-surface-muted"
-                  >
-                    <option value="updateStatus">Update Status</option>
-                    <option value="generateInvoice">Generate Invoice from Quote</option>
-                    <option value="addNote">Add Activity Note</option>
-                  </select>
-                </div>
-              </div>
+              <CrmStepFields
+                config={config}
+                onChange={(next) => onUpdate(node.id, { config: next })}
+              />
             )}
 
             {/* Trigger Nodes (Webhook / Schedule / CRM Event) */}
@@ -447,16 +453,16 @@ export function NodeInspectorDrawer({
                 <label className="text-[11px] font-medium text-ink">CRM Event Trigger</label>
                 <select
                   data-testid="crm-event-select"
-                  value={config.event || 'QUOTE_CREATED'}
+                  value={config.event || ''}
                   onChange={(e) => handleConfigChange('event', e.target.value)}
                   className="w-full rounded-lg border border-border px-2 py-1.5 text-xs text-ink font-semibold bg-surface-muted"
                 >
-                  <option value="QUOTE_CREATED">Quote Created</option>
-                  <option value="QUOTE_APPROVED">Quote Approved</option>
-                  <option value="QUOTE_REJECTED">Quote Rejected</option>
-                  <option value="CONTACT_CREATED">Contact Created</option>
-                  <option value="DEAL_STAGE_CHANGED">Deal Stage Changed</option>
-                  <option value="RESERVE_BUDGET_CHANGED">Finance Reserve Budget Changed</option>
+                  <option value="">Choose an event</option>
+                  {CRM_EVENTS.map((ev) => (
+                    <option key={ev.value} value={ev.value}>
+                      {ev.label}
+                    </option>
+                  ))}
                 </select>
               </div>
             )}

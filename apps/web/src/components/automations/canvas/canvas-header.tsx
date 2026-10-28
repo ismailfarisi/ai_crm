@@ -193,6 +193,11 @@ export function CanvasHeader({
           <Save className="h-3.5 w-3.5" />
           {isSaving ? 'Saving...' : isDirty ? 'Save Changes*' : 'Saved'}
         </button>
+        {workflow?.status === 'ACTIVE' && isDirty && (
+          <span data-testid="owner-warning" className="text-[10px] text-ink-muted max-w-48 leading-tight">
+            Saving makes you the owner: steps will run with your permissions
+          </span>
+        )}
       </div>
     </header>
   );

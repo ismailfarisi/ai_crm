@@ -68,4 +68,31 @@ describe('CanvasHeader', () => {
     fireEvent.click(screen.getByTestId('save-workflow-btn'));
     expect(onSave).toHaveBeenCalled();
   });
+
+  describe('owner warning', () => {
+    const copy = 'Saving makes you the owner: steps will run with your permissions';
+    const base = {
+      workflowName: 'Flow',
+      onNameChange: vi.fn(),
+      onStatusToggle: vi.fn(),
+      isSaving: false,
+      onSave: vi.fn(),
+      onOpenTestRun: vi.fn(),
+      onOpenPalette: vi.fn(),
+    };
+
+    it('shows when the saved workflow is ACTIVE and there are unsaved changes', () => {
+      render(<CanvasHeader {...base} workflow={sampleWorkflow} status="ACTIVE" isDirty={true} />);
+      expect(screen.getByText(copy)).toBeDefined();
+    });
+
+    it('is hidden when clean, or when the saved workflow is not ACTIVE', () => {
+      const { rerender } = render(<CanvasHeader {...base} workflow={sampleWorkflow} status="ACTIVE" isDirty={false} />);
+      expect(screen.queryByText(copy)).toBeNull();
+      rerender(
+        <CanvasHeader {...base} workflow={{ ...sampleWorkflow, status: 'DRAFT' }} status="ACTIVE" isDirty={true} />,
+      );
+      expect(screen.queryByText(copy)).toBeNull();
+    });
+  });
 });

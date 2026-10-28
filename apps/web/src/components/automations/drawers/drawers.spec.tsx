@@ -186,4 +186,143 @@ describe('Automation Drawers', () => {
     fireEvent.click(screen.getByTestId('variable-item-$json.name'));
     expect(onSelect).toHaveBeenCalledWith('{{ $json.name }}');
   });
+
+  describe('real action fields', () => {
+    const mk = (type: AutomationNode['type'], config: Record<string, any> = {}, id = 'n'): AutomationNode => ({
+      id,
+      type,
+      position: { x: 0, y: 0 },
+      data: { label: id, config },
+    });
+    const optionTexts = (el: HTMLElement) =>
+      Array.from(el.querySelectorAll('option')).map((o) => o.textContent);
+
+    it('CRM step offers Contact/Quote and matching actions', () => {
+      const onUpdate = vi.fn();
+      const { rerender } = render(
+        <NodeInspectorDrawer node={mk('crmMutateNode', { entity: 'contact' })} onUpdate={onUpdate} onClose={vi.fn()} />,
+      );
+      expect(optionTexts(screen.getByTestId('crm-entity-select'))).toEqual(['Choose…', 'Contact', 'Quote']);
+      expect(optionTexts(screen.getByTestId('crm-action-select'))).toEqual(['Choose…', 'Create', 'Update']);
+      rerender(
+        <NodeInspectorDrawer node={mk('crmMutateNode', { entity: 'quote' })} onUpdate={onUpdate} onClose={vi.fn()} />,
+      );
+      expect(optionTexts(screen.getByTestId('crm-action-select'))).toEqual(['Choose…', 'Approve', 'Reject']);
+    });
+
+    it('changing the entity resets the action and drops stale fields', () => {
+      const onUpdate = vi.fn();
+      render(
+        <NodeInspectorDrawer
+          node={mk('crmMutateNode', { entity: 'contact', action: 'update', recordId: 'c1', fields: { email: 'a@b.c' } })}
+          onUpdate={onUpdate}
+          onClose={vi.fn()}
+        />,
+      );
+      fireEvent.change(screen.getByTestId('crm-entity-select'), { target: { value: 'quote' } });
+      expect(onUpdate).toHaveBeenCalledWith('n', { config: { entity: 'quote', action: '', recordId: 'c1' } });
+    });
+
+    it('legacy entity/action values show as unselected', () => {
+      render(
+        <NodeInspectorDrawer
+          node={mk('crmMutateNode', { entity: 'deal', action: 'updateStatus' })}
+          onUpdate={vi.fn()}
+          onClose={vi.fn()}
+        />,
+      );
+      expect((screen.getByTestId('crm-entity-select') as HTMLSelectElement).value).toBe('');
+      expect((screen.getByTestId('crm-action-select') as HTMLSelectElement).value).toBe('');
+    });
+
+    it('shows Record ID for update/approve/reject and Reason for reject only', () => {
+      const onUpdate = vi.fn();
+      const { rerender } = render(
+        <NodeInspectorDrawer node={mk('crmMutateNode', { entity: 'contact', action: 'create' })} onUpdate={onUpdate} onClose={vi.fn()} />,
+      );
+      expect(screen.queryByTestId('crm-record-id-input')).toBeNull();
+      rerender(
+        <NodeInspectorDrawer node={mk('crmMutateNode', { entity: 'quote', action: 'approve' })} onUpdate={onUpdate} onClose={vi.fn()} />,
+      );
+      expect(screen.getByTestId('crm-record-id-input')).toBeDefined();
+      expect(screen.queryByTestId('crm-reason-input')).toBeNull();
+      rerender(
+        <NodeInspectorDrawer node={mk('crmMutateNode', { entity: 'quote', action: 'reject' })} onUpdate={onUpdate} onClose={vi.fn()} />,
+      );
+      fireEvent.change(screen.getByTestId('crm-reason-input'), { target: { value: 'too low' } });
+      expect(onUpdate).toHaveBeenLastCalledWith('n', {
+        config: { entity: 'quote', action: 'reject', reason: 'too low' },
+      });
+    });
+
+    it('contact fields editor writes config.fields', () => {
+      const onUpdate = vi.fn();
+      render(
+        <NodeInspectorDrawer
+          node={mk('crmMutateNode', { entity: 'contact', action: 'create', fields: { email: '{{ $json.email }}' } })}
+          onUpdate={onUpdate}
+          onClose={vi.fn()}
+        />,
+      );
+      expect((screen.getByTestId('crm-field-value-0') as HTMLInputElement).value).toBe('{{ $json.email }}');
+      fireEvent.change(screen.getByTestId('crm-field-value-0'), { target: { value: 'x@y.z' } });
+      expect(onUpdate).toHaveBeenLastCalledWith('n', {
+        config: { entity: 'contact', action: 'create', fields: { email: 'x@y.z' } },
+      });
+      fireEvent.click(screen.getByTestId('crm-add-field-btn'));
+      expect(onUpdate).toHaveBeenLastCalledWith('n', {
+        config: { entity: 'contact', action: 'create', fields: { email: '{{ $json.email }}', firstName: '' } },
+      });
+      fireEvent.click(screen.getByTestId('crm-remove-field-0'));
+      expect(onUpdate).toHaveBeenLastCalledWith('n', {
+        config: { entity: 'contact', action: 'create', fields: {} },
+      });
+    });
+
+    it('CRM trigger lists exactly the emitted events, none selected by default', () => {
+      render(<NodeInspectorDrawer node={mk('crmEventTrigger', {})} onUpdate={vi.fn()} onClose={vi.fn()} />);
+      const select = screen.getByTestId('crm-event-select') as HTMLSelectElement;
+      expect(select.value).toBe('');
+      expect(optionTexts(select)).toEqual([
+        'Choose an event',
+        'Contact created',
+        'Contact updated',
+        'Quote created',
+        'Quote updated',
+        'Customer accepted a quote',
+        'Invoice issued',
+        'Invoice overdue',
+      ]);
+      expect(Array.from(select.options).map((o) => o.value)).toEqual([
+        '', 'contact.created', 'contact.updated', 'quote.created', 'quote.updated',
+        'quote.accepted', 'invoice.issued', 'invoice.overdue',
+      ]);
+    });
+
+    it('email step after an AI step shows the customer-delivery hint', () => {
+      const ai = mk('aiPromptNode', { prompt: 'write' }, 'ai');
+      const mail = mk('sendEmailNode', { to: 'a@b.c', subject: 's', body: '{{ $json.text }}' }, 'mail');
+      const edges = [{ id: 'e', source: 'ai', target: 'mail', sourceHandle: null, targetHandle: null }];
+      const { rerender } = render(
+        <NodeInspectorDrawer node={mail} allNodes={[ai, mail]} edges={edges} aiEmailToCustomers={false} onUpdate={vi.fn()} onClose={vi.fn()} />,
+      );
+      expect(screen.getByText('Uses AI-written text — only your team can receive it')).toBeDefined();
+      rerender(
+        <NodeInspectorDrawer node={mail} allNodes={[ai, mail]} edges={edges} aiEmailToCustomers={true} onUpdate={vi.fn()} onClose={vi.fn()} />,
+      );
+      expect(screen.getByText('Uses AI-written text — can be sent to customers')).toBeDefined();
+      rerender(
+        <NodeInspectorDrawer node={mail} allNodes={[ai, mail]} edges={edges} onUpdate={vi.fn()} onClose={vi.fn()} />,
+      );
+      expect(screen.queryByText(/Uses AI-written text/)).toBeNull();
+    });
+
+    it('email step without AI upstream shows no hint', () => {
+      const mail = mk('sendEmailNode', { to: 'a@b.c', body: 'hi' }, 'mail');
+      render(
+        <NodeInspectorDrawer node={mail} allNodes={[mail]} edges={[]} aiEmailToCustomers={false} onUpdate={vi.fn()} onClose={vi.fn()} />,
+      );
+      expect(screen.queryByText(/Uses AI-written text/)).toBeNull();
+    });
+  });
 });

@@ -17,6 +17,7 @@ vi.mock('@/hooks/use-automations', () => ({
   useAutomation: () => ({ ...automationState.current, error: null, refresh: vi.fn() }),
   useUpdateAutomationWorkflow: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useTestRunAutomation: () => ({ mutateAsync: vi.fn(), getExecution: vi.fn() }),
+  useAutomationSettings: () => ({ data: { aiEmailToCustomers: false } }),
 }));
 
 vi.mock('@/components/automations/canvas/automation-canvas', () => ({
