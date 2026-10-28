@@ -851,11 +851,14 @@ Changes made by an automation step (an Update CRM record step, for instance)
 never start other automations. Chaining invites loops; revisit it with an
 explicit depth limit.
 
-### The automation AI agent step acts as the triggering user — open
+### The automation AI agent step acts as the triggering user when there is one, otherwise the owner — by design
 
-The agent step still runs as the user who triggered the run, not as the
-automation's owner, unlike the CRM step. Its tool access follows that user's
-permissions.
+The agent step runs as the user who triggered the run (a test run, or the
+person behind a CRM event); its tool access follows that user's permissions.
+When no one triggered the run (a webhook or a schedule), it acts as the
+automation's owner, the user who switched it on. Webhook runs never
+auto-approve agent tools, whatever the step's setting: anyone holding the
+address can start one, so a person approves each tool call.
 
 ### Automation executions stay RUNNING with empty node results — open
 
