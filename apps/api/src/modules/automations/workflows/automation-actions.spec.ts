@@ -6,6 +6,8 @@ import {
   resolveOwner,
   type AutomationActionDeps,
 } from './automation-actions';
+import { AiBudgetExceededException } from '@/modules/ai/exceptions/ai-budget-exceeded.exception';
+import { AiNotConfiguredException } from '@/modules/ai/interfaces/ai-provider.interface';
 import type { AutomationActionContext } from './interfaces';
 
 const ctx: AutomationActionContext = {
@@ -169,7 +171,7 @@ describe('createAutomationActions', () => {
       'executeEmailActivity',
     ]);
     await expect(
-      actions.executeAiPromptActivity({} as never, ctx),
+      actions.executeCrmMutationActivity({} as never, ctx),
     ).rejects.toThrow('not implemented');
     expect(deps.tenantContext.runAsAutomation).toHaveBeenCalledWith(
       't1',
@@ -332,5 +334,86 @@ describe('executeEmailActivity', () => {
       expect(deps.ai.getBudgetStatus).not.toHaveBeenCalled();
       expect(deps.users.findActiveEmails).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('executeAiPromptActivity', () => {
+  const NOT_CONFIGURED =
+    "AI isn't set up for this organisation. Add a provider in Settings → AI.";
+  function aiDeps(ai: Partial<AutomationActionDeps['ai']> = {}) {
+    return makeDeps({
+      ai: {
+        isConfigured: jest.fn().mockResolvedValue(true),
+        generateText: jest.fn().mockResolvedValue({
+          text: 'Hello there',
+          model: 'm-1',
+          stopReason: 'end_turn',
+          usage: {
+            inputTokens: 5,
+            outputTokens: 7,
+            cacheReadInputTokens: 1,
+          },
+        }),
+        getBudgetStatus: jest.fn(),
+        ...ai,
+      },
+    } as Partial<AutomationActionDeps>);
+  }
+  const run = (deps: AutomationActionDeps, prompt = 'Say hi') =>
+    createAutomationActions(deps).executeAiPromptActivity({ prompt }, ctx);
+
+  it('calls generateText as the owner', async () => {
+    const deps = aiDeps();
+    const result = await run(deps);
+    expect(deps.ai.generateText).toHaveBeenCalledWith(
+      'automation.prompt',
+      { messages: [{ role: 'user', content: 'Say hi' }] },
+      { organizationId: 't1', userId: 'u1' },
+    );
+    expect(result).toEqual({
+      text: 'Hello there',
+      model: 'm-1',
+      usage: { inputTokens: 5, outputTokens: 7 },
+    });
+  });
+
+  it('fails clearly when AI is not configured', async () => {
+    const deps = aiDeps({ isConfigured: jest.fn().mockResolvedValue(false) });
+    const f = await failureOf(run(deps));
+    expect(f.nonRetryable).toBe(true);
+    expect(f.message).toBe(NOT_CONFIGURED);
+    expect(deps.ai.generateText).not.toHaveBeenCalled();
+  });
+
+  it('maps a not-configured error from the provider to the same failure', async () => {
+    const deps = aiDeps({
+      generateText: jest.fn().mockRejectedValue(new AiNotConfiguredException()),
+    });
+    const f = await failureOf(run(deps));
+    expect(f.nonRetryable).toBe(true);
+    expect(f.message).toBe(NOT_CONFIGURED);
+  });
+
+  it('surfaces budget exhaustion as a non-retryable failure', async () => {
+    const err = new AiBudgetExceededException('t1', 12, 10);
+    const deps = aiDeps({ generateText: jest.fn().mockRejectedValue(err) });
+    const f = await failureOf(run(deps));
+    expect(f.nonRetryable).toBe(true);
+    expect(f.message).toBe(err.message);
+  });
+
+  it('rethrows other provider errors so Temporal retries them', async () => {
+    const boom = new Error('503 upstream');
+    const deps = aiDeps({ generateText: jest.fn().mockRejectedValue(boom) });
+    await expect(run(deps)).rejects.toBe(boom);
+  });
+
+  it.each(['', '   \n '])('empty prompt %j fails', async (prompt) => {
+    const deps = aiDeps();
+    const f = await failureOf(run(deps, prompt));
+    expect(f.nonRetryable).toBe(true);
+    expect(f.message).toBe('The AI prompt is empty');
+    expect(deps.ai.isConfigured).not.toHaveBeenCalled();
+    expect(deps.ai.generateText).not.toHaveBeenCalled();
   });
 });

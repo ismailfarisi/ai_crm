@@ -2,6 +2,8 @@ import { NotFoundException } from '@nestjs/common';
 import { ApplicationFailure } from '@temporalio/activity';
 import { AUTOMATION_PERMISSIONS } from '@saas/shared';
 import { z } from 'zod';
+import { AiBudgetExceededException } from '@/modules/ai/exceptions/ai-budget-exceeded.exception';
+import { AiNotConfiguredException } from '@/modules/ai/interfaces/ai-provider.interface';
 import type { AiService } from '@/modules/ai/ai.service';
 import type { AuditService } from '@/modules/audit/audit.service';
 import type { ChannelIdempotencyService } from '@/modules/channels/services/channel-idempotency.service';
@@ -25,6 +27,8 @@ import type {
 const MAX_EMAIL_RECIPIENTS = 10;
 const AI_EMAIL_REFUSAL =
   "Your admin hasn't allowed automations to email AI-written text to customers. Send it to your team, or ask an admin to turn this on in Settings → AI.";
+const AI_NOT_CONFIGURED =
+  "AI isn't set up for this organisation. Add a provider in Settings → AI.";
 const emailSchema = z.string().email();
 
 function escapeHtml(text: string): string {
@@ -190,8 +194,40 @@ export function createAutomationActions(deps: AutomationActionDeps) {
         ctx.tenantId,
         ctx.executionId,
         async () => {
-          void config;
-          throw new Error('executeAiPromptActivity: not implemented');
+          const owner = await resolveOwner(deps, ctx, 'run an AI prompt');
+
+          if (!config.prompt?.trim()) {
+            throw ApplicationFailure.nonRetryable('The AI prompt is empty');
+          }
+          if (!(await deps.ai.isConfigured(ctx.tenantId))) {
+            throw ApplicationFailure.nonRetryable(AI_NOT_CONFIGURED);
+          }
+
+          // No idempotency wrapper: re-running a prompt on retry is cheaper
+          // than storing large outputs.
+          try {
+            const res = await deps.ai.generateText(
+              'automation.prompt',
+              { messages: [{ role: 'user', content: config.prompt }] },
+              { organizationId: ctx.tenantId, userId: owner.id },
+            );
+            return {
+              text: res.text,
+              model: res.model,
+              usage: {
+                inputTokens: res.usage.inputTokens,
+                outputTokens: res.usage.outputTokens,
+              },
+            };
+          } catch (err) {
+            if (err instanceof AiNotConfiguredException) {
+              throw ApplicationFailure.nonRetryable(AI_NOT_CONFIGURED);
+            }
+            if (err instanceof AiBudgetExceededException) {
+              throw ApplicationFailure.nonRetryable(err.message);
+            }
+            throw err;
+          }
         },
       );
     },
