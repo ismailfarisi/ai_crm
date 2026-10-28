@@ -474,6 +474,8 @@ describe('executeAiPromptActivity', () => {
 });
 
 describe('executeCrmMutationActivity', () => {
+  const C1 = '5f0c8a7e-2b1d-4c3e-9a8f-1e2d3c4b5a69';
+  const Q1 = '9b2e4d6f-8a1c-4e3b-b5d7-2f4a6c8e0b13';
   const ALL = [
     AUTOMATION_PERMISSIONS.AUTOMATION_EXECUTE,
     PERMISSIONS.CONTACT_CREATE,
@@ -481,7 +483,7 @@ describe('executeCrmMutationActivity', () => {
     PERMISSIONS.QUOTE_APPROVE,
   ];
   const contactBefore = {
-    id: 'c1',
+    id: C1,
     firstName: 'Ada',
     lastName: 'Lovelace',
     fullName: 'Ada Lovelace',
@@ -490,7 +492,7 @@ describe('executeCrmMutationActivity', () => {
   };
   const contactAfter = { ...contactBefore, jobTitle: 'CTO' };
   const quoteRow = (status: string) => ({
-    id: 'q1',
+    id: Q1,
     quoteNumber: 'QT-2026-0007',
     status,
     updatedAt: new Date('2026-10-28T10:00:00.000Z'),
@@ -576,18 +578,18 @@ describe('executeCrmMutationActivity', () => {
       const res = await run(deps, {
         entity: 'contact',
         action: 'update',
-        recordId: 'c1',
+        recordId: C1,
         fields: { jobTitle: ' CTO ' },
       });
       // The partial schema would otherwise default status/source back to
       // lead/other on every update.
-      expect(deps.contacts.update).toHaveBeenCalledWith(owner, 'c1', {
+      expect(deps.contacts.update).toHaveBeenCalledWith(owner, C1, {
         jobTitle: 'CTO',
       });
       expect(res).toEqual({
         entity: 'contact',
         action: 'update',
-        recordId: 'c1',
+        recordId: C1,
         record: contactAfter,
       });
     });
@@ -598,7 +600,7 @@ describe('executeCrmMutationActivity', () => {
         run(deps, {
           entity: 'contact',
           action: 'update',
-          recordId: 'c1',
+          recordId: C1,
           fields: { jobTitle: 'CTO', deal: 'big' },
         }),
       );
@@ -625,7 +627,7 @@ describe('executeCrmMutationActivity', () => {
     it('an update with no fields fails the step', async () => {
       const { deps } = crmDeps();
       const f = await failureOf(
-        run(deps, { entity: 'contact', action: 'update', recordId: 'c1' }),
+        run(deps, { entity: 'contact', action: 'update', recordId: C1 }),
       );
       expect(f.nonRetryable).toBe(true);
       expect(deps.contacts.update).not.toHaveBeenCalled();
@@ -633,20 +635,21 @@ describe('executeCrmMutationActivity', () => {
 
     it("rep cannot update another rep's contact", async () => {
       const { deps } = crmDeps();
-      const notFound = new NotFoundException('Contact c2 not found');
+      const C2 = '3d7a1c5e-9f2b-4a6d-8c1e-7b5f3a9d2e40';
+      const notFound = new NotFoundException(`Contact ${C2} not found`);
       (deps.contacts.findOne as jest.Mock).mockRejectedValue(notFound);
       (deps.contacts.update as jest.Mock).mockRejectedValue(notFound);
       const f = await failureOf(
         run(deps, {
           entity: 'contact',
           action: 'update',
-          recordId: 'c2',
+          recordId: C2,
           fields: { jobTitle: 'CTO' },
         }),
       );
       expect(f).toBeInstanceOf(ApplicationFailure);
       expect(f.nonRetryable).toBe(true);
-      expect(f.message).toBe('Contact c2 not found');
+      expect(f.message).toBe(`Contact ${C2} not found`);
       expect(deps.audit.record).not.toHaveBeenCalled();
     });
 
@@ -660,11 +663,11 @@ describe('executeCrmMutationActivity', () => {
         run(deps, {
           entity: 'contact',
           action: 'update',
-          recordId: 'c1',
+          recordId: C1,
           fields: { ownerId: other },
         }),
       );
-      expect(deps.contacts.update).toHaveBeenCalledWith(owner, 'c1', {
+      expect(deps.contacts.update).toHaveBeenCalledWith(owner, C1, {
         ownerId: other,
       });
       expect(f.nonRetryable).toBe(true);
@@ -681,7 +684,7 @@ describe('executeCrmMutationActivity', () => {
         run(deps, {
           entity: 'contact',
           action: 'update',
-          recordId: 'c1',
+          recordId: C1,
           fields: { jobTitle: 'CTO' },
         }),
       );
@@ -702,7 +705,7 @@ describe('executeCrmMutationActivity', () => {
         run(deps, {
           entity: 'contact',
           action: 'update',
-          recordId: 'c1',
+          recordId: C1,
           fields: { jobTitle: 'CTO' },
         }),
       );
@@ -716,11 +719,11 @@ describe('executeCrmMutationActivity', () => {
       const res = await run(deps, {
         entity: 'quote',
         action: 'approve',
-        recordId: 'q1',
+        recordId: Q1,
       });
       expect(deps.quotes.sendSignal).toHaveBeenCalledWith(
         't1',
-        'q1',
+        Q1,
         'APPROVE',
         undefined,
         'u1',
@@ -730,9 +733,9 @@ describe('executeCrmMutationActivity', () => {
       expect(res).toEqual({
         entity: 'quote',
         action: 'approve',
-        recordId: 'q1',
+        recordId: Q1,
         record: {
-          id: 'q1',
+          id: Q1,
           quoteNumber: 'QT-2026-0007',
           status: 'APPROVED',
           updatedAt: '2026-10-28T10:00:00.000Z',
@@ -745,12 +748,12 @@ describe('executeCrmMutationActivity', () => {
       await run(deps, {
         entity: 'quote',
         action: 'reject',
-        recordId: 'q1',
+        recordId: Q1,
         reason: 'Too thin',
       });
       expect(deps.quotes.sendSignal).toHaveBeenCalledWith(
         't1',
-        'q1',
+        Q1,
         'REJECT',
         { reason: 'Too thin' },
         'u1',
@@ -769,7 +772,7 @@ describe('executeCrmMutationActivity', () => {
         }),
       );
       const f = await failureOf(
-        run(deps, { entity: 'quote', action: 'approve', recordId: 'q1' }),
+        run(deps, { entity: 'quote', action: 'approve', recordId: Q1 }),
       );
       expect(f.nonRetryable).toBe(true);
       expect(f.message).toBe('Margin is 4.0%, below the 20.0% floor');
@@ -779,7 +782,7 @@ describe('executeCrmMutationActivity', () => {
     it('missing permission fails with the permission name', async () => {
       const { deps } = crmDeps([AUTOMATION_PERMISSIONS.AUTOMATION_EXECUTE]);
       const f = await failureOf(
-        run(deps, { entity: 'quote', action: 'reject', recordId: 'q1' }),
+        run(deps, { entity: 'quote', action: 'reject', recordId: Q1 }),
       );
       expect(f.nonRetryable).toBe(true);
       expect(f.message).toBe(
@@ -829,7 +832,7 @@ describe('executeCrmMutationActivity', () => {
       isActive: false,
     });
     const f = await failureOf(
-      run(deps, { entity: 'quote', action: 'approve', recordId: 'q1' }),
+      run(deps, { entity: 'quote', action: 'approve', recordId: Q1 }),
     );
     expect(f.message).toBe(
       'owner@acme.test can no longer approve quotes; reactivate the automation as someone who can',
@@ -841,7 +844,7 @@ describe('executeCrmMutationActivity', () => {
     await run(deps, {
       entity: 'contact',
       action: 'update',
-      recordId: 'c1',
+      recordId: C1,
       fields: { jobTitle: 'CTO' },
     });
     expect(deps.audit.record).toHaveBeenCalledTimes(1);
@@ -849,7 +852,7 @@ describe('executeCrmMutationActivity', () => {
       tenantId: 't1',
       action: 'automation.contact.update',
       subjectType: 'CONTACT',
-      subjectId: 'c1',
+      subjectId: C1,
       actorId: 'u1',
       actorName: 'Olive Owner',
       origin: 'HUMAN',
@@ -880,13 +883,13 @@ describe('executeCrmMutationActivity', () => {
 
   it('audits a quote decision with before and after snapshots', async () => {
     const { deps } = crmDeps();
-    await run(deps, { entity: 'quote', action: 'approve', recordId: 'q1' });
+    await run(deps, { entity: 'quote', action: 'approve', recordId: Q1 });
     expect(deps.audit.record).toHaveBeenCalledTimes(1);
     expect(deps.audit.record).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'automation.quote.approve',
         subjectType: 'QUOTE',
-        subjectId: 'q1',
+        subjectId: Q1,
         summary: 'Automation "Flow" approved quote QT-2026-0007',
         before: expect.objectContaining({ status: 'AWAITING_APPROVAL' }),
         after: expect.objectContaining({ status: 'APPROVED' }),
@@ -899,7 +902,7 @@ describe('executeCrmMutationActivity', () => {
     const config = {
       entity: 'contact',
       action: 'update',
-      recordId: 'c1',
+      recordId: C1,
       fields: { jobTitle: 'CTO' },
     };
     const first = await run(deps, config);
@@ -912,5 +915,36 @@ describe('executeCrmMutationActivity', () => {
     expect(deps.contacts.update).toHaveBeenCalledTimes(1);
     expect(deps.audit.record).toHaveBeenCalledTimes(1);
     expect(second).toEqual(first);
+  });
+
+  it.each([
+    ['contact', 'update', 'Ada Lovelace'],
+    ['quote', 'approve', 'QT-2026-0007'],
+    ['quote', 'reject', '12'],
+  ])('a %s %s with a record id that is not a UUID fails', async (entity, action, recordId) => {
+    const { deps } = crmDeps();
+    const f = await failureOf(
+      run(deps, { entity, action, recordId, fields: { jobTitle: 'CTO' } }),
+    );
+    expect(f).toBeInstanceOf(ApplicationFailure);
+    expect(f.nonRetryable).toBe(true);
+    expect(f.message).toBe(`Record ID "${recordId}" is not a valid ID`);
+    expect(deps.contacts.findOne).not.toHaveBeenCalled();
+    expect(deps.contacts.update).not.toHaveBeenCalled();
+    expect(deps.quotes.findQuoteById).not.toHaveBeenCalled();
+    expect(deps.quotes.sendSignal).not.toHaveBeenCalled();
+  });
+
+  it('accepts a record id that arrives as a padded UUID', async () => {
+    const { deps } = crmDeps();
+    await run(deps, {
+      entity: 'contact',
+      action: 'update',
+      recordId: `  ${C1} `,
+      fields: { jobTitle: 'CTO' },
+    });
+    expect(deps.contacts.update).toHaveBeenCalledWith(owner, C1, {
+      jobTitle: 'CTO',
+    });
   });
 });

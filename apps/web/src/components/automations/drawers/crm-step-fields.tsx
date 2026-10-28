@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Plus, X } from 'lucide-react';
 
 // Mirrors CrmMutateConfig in apps/api/src/modules/automations/workflows/interfaces.ts
@@ -39,6 +39,27 @@ const selectClass =
 const inputClass =
   'w-full rounded-lg border border-border px-3 py-1.5 text-xs font-mono text-ink focus:border-brand focus:outline-none';
 
+type FieldRow = [key: string, value: string];
+
+function rowsOf(fields: unknown): FieldRow[] {
+  return fields && typeof fields === 'object'
+    ? Object.entries(fields as Record<string, string>).map(([k, v]) => [k, v ?? ''])
+    : [];
+}
+
+/**
+ * Only filled-in rows reach config.fields: a blank value would otherwise be
+ * sent as "" and clear that field on the contact.
+ */
+function fieldsOf(rows: FieldRow[]): Record<string, string> {
+  return Object.fromEntries(rows.filter(([, v]) => v !== ''));
+}
+
+function sameFields(a: Record<string, string>, b: Record<string, string>): boolean {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((k) => Object.hasOwn(b, k) && a[k] === b[k]);
+}
+
 export interface CrmStepFieldsProps {
   config: Record<string, any>;
   onChange: (config: Record<string, any>) => void;
@@ -49,19 +70,32 @@ export function CrmStepFields({ config, onChange }: CrmStepFieldsProps) {
   const actions = ACTIONS[entity] ?? [];
   const action: string = actions.some((a) => a.value === config.action) ? config.action : '';
 
-  const fields: Record<string, string> =
-    config.fields && typeof config.fields === 'object' ? config.fields : {};
-  const rows = Object.entries(fields);
-  const unusedKeys = CONTACT_FIELD_KEYS.filter((k) => !(k in fields));
+  // Rows live here so a blank row can stay on screen without being written.
+  const [rows, setRows] = useState<FieldRow[]>(() => rowsOf(config.fields));
+  // Picks up a change made elsewhere (an undo, say); our own writes match the
+  // filled-in rows and leave blank rows alone.
+  const [syncedFields, setSyncedFields] = useState<unknown>(config.fields);
+  if (config.fields !== syncedFields) {
+    setSyncedFields(config.fields);
+    const incoming = rowsOf(config.fields);
+    if (!sameFields(fieldsOf(rows), Object.fromEntries(incoming))) setRows(incoming);
+  }
+
+  const usedKeys = new Set(rows.map(([k]) => k));
+  const unusedKeys = CONTACT_FIELD_KEYS.filter((k) => !usedKeys.has(k));
 
   const needsRecordId = action === 'update' || entity === 'quote';
   const usesFields = entity === 'contact' && (action === 'create' || action === 'update');
 
-  const setFields = (next: Record<string, string>) => onChange({ ...config, fields: next });
+  const setFieldRows = (next: FieldRow[]) => {
+    setRows(next);
+    onChange({ ...config, fields: fieldsOf(next) });
+  };
 
   const handleEntity = (value: string) => {
     // Fields and reason belong to a specific entity/action; carry neither over.
     const { fields: _f, reason: _r, ...rest } = config;
+    setRows([]);
     onChange({ ...rest, entity: value, action: '' });
   };
 
@@ -143,13 +177,9 @@ export function CrmStepFields({ config, onChange }: CrmStepFieldsProps) {
               <select
                 data-testid={`crm-field-key-${i}`}
                 value={key}
-                onChange={(e) => {
-                  const next: Record<string, string> = {};
-                  rows.forEach(([k, v]) => {
-                    next[k === key ? e.target.value : k] = v;
-                  });
-                  setFields(next);
-                }}
+                onChange={(e) =>
+                  setFieldRows(rows.map(([k, v], j): FieldRow => (j === i ? [e.target.value, v] : [k, v])))
+                }
                 className="w-28 shrink-0 rounded-lg border border-border px-2 py-1.5 text-xs text-ink bg-surface-muted"
               >
                 {[key, ...unusedKeys].map((k) => (
@@ -162,18 +192,16 @@ export function CrmStepFields({ config, onChange }: CrmStepFieldsProps) {
                 type="text"
                 data-testid={`crm-field-value-${i}`}
                 value={value ?? ''}
-                onChange={(e) => setFields({ ...fields, [key]: e.target.value })}
+                onChange={(e) =>
+                  setFieldRows(rows.map(([k, v], j): FieldRow => (j === i ? [k, e.target.value] : [k, v])))
+                }
                 placeholder="Value or {{ expression }}"
                 className={inputClass}
               />
               <button
                 type="button"
                 data-testid={`crm-remove-field-${i}`}
-                onClick={() => {
-                  const next = { ...fields };
-                  delete next[key];
-                  setFields(next);
-                }}
+                onClick={() => setFieldRows(rows.filter((_, j) => j !== i))}
                 className="p-1 rounded text-ink-subtle hover:text-danger cursor-pointer"
                 title="Remove field"
               >
@@ -185,7 +213,7 @@ export function CrmStepFields({ config, onChange }: CrmStepFieldsProps) {
             <button
               type="button"
               data-testid="crm-add-field-btn"
-              onClick={() => setFields({ ...fields, [unusedKeys[0]]: '' })}
+              onClick={() => setFieldRows([...rows, [unusedKeys[0], '']])}
               className="flex items-center gap-1 text-[11px] font-semibold text-ink hover:underline cursor-pointer"
             >
               <Plus className="h-3 w-3" />

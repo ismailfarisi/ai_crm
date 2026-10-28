@@ -271,11 +271,82 @@ describe('Automation Drawers', () => {
       });
       fireEvent.click(screen.getByTestId('crm-add-field-btn'));
       expect(onUpdate).toHaveBeenLastCalledWith('n', {
-        config: { entity: 'contact', action: 'create', fields: { email: '{{ $json.email }}', firstName: '' } },
+        config: { entity: 'contact', action: 'create', fields: { email: 'x@y.z' } },
       });
+      expect((screen.getByTestId('crm-field-value-1') as HTMLInputElement).value).toBe('');
       fireEvent.click(screen.getByTestId('crm-remove-field-0'));
       expect(onUpdate).toHaveBeenLastCalledWith('n', {
         config: { entity: 'contact', action: 'create', fields: {} },
+      });
+    });
+
+    describe('blank contact field rows', () => {
+      function Harness({ initial, onWrite }: { initial: AutomationNode; onWrite: (config: unknown) => void }) {
+        const [node, setNode] = React.useState(initial);
+        return (
+          <NodeInspectorDrawer
+            node={node}
+            onUpdate={(_id, data) => {
+              onWrite(data.config);
+              setNode((n) => ({ ...n, data: { ...n.data, ...data } }));
+            }}
+            onClose={vi.fn()}
+          />
+        );
+      }
+
+      it('a blank row stays on screen but is not written into config.fields', () => {
+        const onUpdate = vi.fn();
+        render(
+          <NodeInspectorDrawer
+            node={mk('crmMutateNode', { entity: 'contact', action: 'update', recordId: 'c1', fields: { jobTitle: 'CTO' } })}
+            onUpdate={onUpdate}
+            onClose={vi.fn()}
+          />,
+        );
+        fireEvent.click(screen.getByTestId('crm-add-field-btn'));
+        expect(onUpdate).toHaveBeenLastCalledWith('n', {
+          config: { entity: 'contact', action: 'update', recordId: 'c1', fields: { jobTitle: 'CTO' } },
+        });
+        expect(screen.getByTestId('crm-field-value-1')).toBeDefined();
+      });
+
+      it('clearing a value drops that field instead of writing an empty string', () => {
+        const onUpdate = vi.fn();
+        render(
+          <NodeInspectorDrawer
+            node={mk('crmMutateNode', { entity: 'contact', action: 'update', recordId: 'c1', fields: { jobTitle: 'CTO', phone: '1' } })}
+            onUpdate={onUpdate}
+            onClose={vi.fn()}
+          />,
+        );
+        fireEvent.change(screen.getByTestId('crm-field-value-0'), { target: { value: '' } });
+        expect(onUpdate).toHaveBeenLastCalledWith('n', {
+          config: { entity: 'contact', action: 'update', recordId: 'c1', fields: { phone: '1' } },
+        });
+        expect((screen.getByTestId('crm-field-value-0') as HTMLInputElement).value).toBe('');
+      });
+
+      it('a blank row survives the round trip through the parent and is written once filled', () => {
+        const onWrite = vi.fn();
+        render(
+          <Harness
+            initial={mk('crmMutateNode', { entity: 'contact', action: 'create', fields: { email: 'a@b.c' } })}
+            onWrite={onWrite}
+          />,
+        );
+        fireEvent.click(screen.getByTestId('crm-add-field-btn'));
+        expect(onWrite).toHaveBeenLastCalledWith({ entity: 'contact', action: 'create', fields: { email: 'a@b.c' } });
+        expect(screen.getByTestId('crm-field-value-1')).toBeDefined();
+        fireEvent.change(screen.getByTestId('crm-field-key-1'), { target: { value: 'jobTitle' } });
+        fireEvent.change(screen.getByTestId('crm-field-value-1'), { target: { value: 'CTO' } });
+        expect((screen.getByTestId('crm-field-key-1') as HTMLSelectElement).value).toBe('jobTitle');
+        expect((screen.getByTestId('crm-field-value-1') as HTMLInputElement).value).toBe('CTO');
+        expect(onWrite).toHaveBeenLastCalledWith({
+          entity: 'contact',
+          action: 'create',
+          fields: { email: 'a@b.c', jobTitle: 'CTO' },
+        });
       });
     });
 

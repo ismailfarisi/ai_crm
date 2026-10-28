@@ -37,6 +37,7 @@ const AI_EMAIL_REFUSAL =
 const AI_NOT_CONFIGURED =
   "AI isn't set up for this organisation. Add a provider in Settings → AI.";
 const emailSchema = z.string().email();
+const recordIdSchema = z.string().uuid();
 
 /**
  * Interpolation can turn a field into a number, an object or null; every text
@@ -374,10 +375,15 @@ export function createAutomationActions(deps: AutomationActionDeps) {
               `Update CRM record cannot ${action} a ${entity}`,
             );
           }
-          const recordId = config.recordId?.trim() ?? '';
+          const recordId = asText(config.recordId).trim();
           if (step.needsRecord && !recordId) {
             throw ApplicationFailure.nonRetryable(
               `Update CRM record needs the id of the ${entity} record to ${action}`,
+            );
+          }
+          if (step.needsRecord && !recordIdSchema.safeParse(recordId).success) {
+            throw ApplicationFailure.nonRetryable(
+              `Record ID "${recordId}" is not a valid ID`,
             );
           }
           if (!owner.permissions.includes(step.permission)) {

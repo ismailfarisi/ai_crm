@@ -416,6 +416,21 @@ describe('AutomationsService', () => {
       ).rejects.toThrow('Choose the CRM event that starts this automation');
     });
 
+    it('changing the trigger type on an ACTIVE workflow makes the saver the owner', async () => {
+      workflowRepo.findOne.mockResolvedValueOnce({
+        ...mockWorkflow,
+        status: 'ACTIVE',
+        activatedByUserId: 'u1',
+      });
+      const result = await service.updateWorkflow(
+        mockTenantId,
+        'wf-uuid-1',
+        { triggerType: 'SCHEDULE' },
+        'u2',
+      );
+      expect(result.activatedByUserId).toBe('u2');
+    });
+
     it('test run passes the clicking user as owner', async () => {
       workflowRepo.findOne.mockResolvedValueOnce({
         ...mockWorkflow,

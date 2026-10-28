@@ -159,6 +159,7 @@ export class AutomationsService {
       const graphChanged =
         payload.nodes !== undefined ||
         payload.edges !== undefined ||
+        payload.triggerType !== undefined ||
         payload.triggerConfig !== undefined;
       // Action steps run as the owner: whoever switches it on, or whoever
       // later changes what it does.

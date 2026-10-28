@@ -416,6 +416,7 @@ export function NodeInspectorDrawer({
             {/* CRM Mutate Node Config */}
             {node.type === 'crmMutateNode' && (
               <CrmStepFields
+                key={node.id}
                 config={config}
                 onChange={(next) => onUpdate(node.id, { config: next })}
               />

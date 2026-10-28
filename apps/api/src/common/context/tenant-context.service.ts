@@ -15,6 +15,7 @@ declare module 'nestjs-cls' {
   interface ClsStore {
     [CLS_TENANT_ID_KEY]?: string | null;
     [CLS_IS_SYSTEM_KEY]?: boolean;
+    [CLS_AUTOMATION_EXECUTION_KEY]?: string | null;
   }
 }
 

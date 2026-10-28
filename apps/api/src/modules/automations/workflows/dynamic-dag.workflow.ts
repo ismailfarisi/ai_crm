@@ -334,7 +334,11 @@ export async function dynamicDagWorkflow(
           break;
 
         case 'delayNode': {
-          const raw = config.durationMs ?? config.duration ?? config.delay ?? '1s';
+          // An emptied field in the editor is unset, not a zero-length wait.
+          const raw =
+            [config.durationMs, config.duration, config.delay].find(
+              (v) => v != null && !(typeof v === 'string' && v.trim() === ''),
+            ) ?? '1s';
           // A bare number (or numeric string) is milliseconds; "5s" style strings pass through.
           const duration =
             typeof raw === 'string' && /^\s*\d+(\.\d+)?\s*$/.test(raw)

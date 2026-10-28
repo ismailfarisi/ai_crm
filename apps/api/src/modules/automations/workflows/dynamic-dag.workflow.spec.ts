@@ -1112,6 +1112,29 @@ describe('DynamicDagWorkflow', () => {
     expect(result.nodeResults.delay.output.duration).toBe(2500);
   });
 
+  it.each([
+    [{ durationMs: '', duration: '', delay: '3s' }, '3s'],
+    [{ durationMs: '', duration: '5000' }, 5000],
+    [{ durationMs: '', duration: '', delay: '' }, '1s'],
+    [{ durationMs: '' }, '1s'],
+  ])('delay treats empty strings as unset: %j', async (config, expected) => {
+    const { sleep } = jest.requireMock('@temporalio/workflow');
+    const result = await dynamicDagWorkflow({
+      executionId: 'exec-delay-empty',
+      workflowId: 'wf-1',
+      tenantId: 'tenant-1',
+      triggerPayload: {},
+      nodes: [
+        { id: 'trig', type: 'manualTrigger', position: { x: 0, y: 0 }, data: { label: 'Go', config: {} } },
+        { id: 'delay', type: 'delayNode', position: { x: 0, y: 0 }, data: { label: 'Wait', config } },
+      ],
+      edges: [{ id: 'e1', source: 'trig', target: 'delay' }],
+    });
+
+    expect(sleep).toHaveBeenCalledWith(expected);
+    expect(result.nodeResults.delay.output.duration).toBe(expected);
+  });
+
   it("keeps the step's own failure reason, not Temporal's wrapper", async () => {
     const reason =
       "AI isn't set up for this workspace. Ask an admin to add a model in Settings → AI.";
