@@ -8,6 +8,7 @@ const EVENT_KEYS: Record<string, string[]> = {
 };
 
 const ids = ['quote-accepted-notify', 'invoice-overdue-reminder'] as const;
+const teamEmail = 'owner@acme.test';
 
 describe('automation templates', () => {
   it('offers exactly the two templates', () => {
@@ -17,7 +18,7 @@ describe('automation templates', () => {
   for (const id of ids) {
     for (const aiEmailToCustomers of [false, true]) {
       describe(`${id} (aiEmailToCustomers=${aiEmailToCustomers})`, () => {
-        const g = buildTemplateGraph(id, { aiEmailToCustomers });
+        const g = buildTemplateGraph(id, { aiEmailToCustomers, teamEmail });
         const trigger = g.nodes.find((n) => n.type === 'crmEventTrigger')!;
         const event = (trigger.data.config as { event: string }).event;
 
@@ -50,12 +51,29 @@ describe('automation templates', () => {
 
   it('switches the overdue recipient with aiEmailToCustomers', () => {
     const email = (on: boolean) =>
-      buildTemplateGraph('invoice-overdue-reminder', { aiEmailToCustomers: on }).nodes.find(
+      buildTemplateGraph('invoice-overdue-reminder', { aiEmailToCustomers: on, teamEmail }).nodes.find(
         (n) => n.type === 'sendEmailNode',
       )!.data.config as { to: string; body: string };
     expect(email(true).to).toBe('{{ $trigger.payload.customerEmail }}');
     expect(email(true).body).toBe('{{ $json.text }}');
-    expect(email(false).to).toBe('team@yourcompany.com');
+    expect(email(false).to).toBe(teamEmail);
     expect(email(false).body).toBe('Draft for {{ $trigger.payload.customerEmail }}:\n\n{{ $json.text }}');
+  });
+
+  it('sends the quote-accepted email to the signed-in user', () => {
+    const email = buildTemplateGraph('quote-accepted-notify', {
+      aiEmailToCustomers: false,
+      teamEmail,
+    }).nodes.find((n) => n.type === 'sendEmailNode')!.data.config as { to: string };
+    expect(email.to).toBe(teamEmail);
+  });
+
+  it('never ships a placeholder address', () => {
+    for (const id of ids) {
+      for (const aiEmailToCustomers of [false, true]) {
+        const g = buildTemplateGraph(id, { aiEmailToCustomers, teamEmail });
+        expect(JSON.stringify(g)).not.toContain('yourcompany.com');
+      }
+    }
   });
 });

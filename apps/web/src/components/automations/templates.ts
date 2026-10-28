@@ -34,7 +34,6 @@ export function overdueRecipientNote(aiEmailToCustomers: boolean): string {
     : 'Drafts go to your team to review';
 }
 
-const TEAM = 'team@yourcompany.com';
 const X = 100;
 const STEP = 150;
 
@@ -51,7 +50,8 @@ const chain = (ids: string[]): AutomationEdge[] =>
 
 export function buildTemplateGraph(
   id: AutomationTemplateId,
-  opts: { aiEmailToCustomers: boolean },
+  /** `teamEmail` is the signed-in user, a real inbox and an allowed recipient. */
+  opts: { aiEmailToCustomers: boolean; teamEmail: string },
 ): CreateAutomationWorkflowPayload & {
   nodes: AutomationNode[];
   edges: AutomationEdge[];
@@ -69,7 +69,7 @@ export function buildTemplateGraph(
       nodes: [
         node('trigger-1', 'crmEventTrigger', 0, 'Quote accepted', { event: 'quote.accepted' }),
         node('email-1', 'sendEmailNode', 1, 'Email the team', {
-          to: TEAM,
+          to: opts.teamEmail,
           subject: 'Quote {{ $trigger.payload.quoteNumber }} accepted',
           body:
             '{{ $trigger.payload.acceptedByName }} accepted quote {{ $trigger.payload.quoteNumber }} ' +
@@ -96,7 +96,7 @@ export function buildTemplateGraph(
       node('trigger-1', 'crmEventTrigger', 0, 'Invoice overdue', { event: 'invoice.overdue' }),
       node('ai-1', 'aiPromptNode', 1, 'Write reminder', { prompt }),
       node('email-1', 'sendEmailNode', 2, 'Send reminder', {
-        to: opts.aiEmailToCustomers ? '{{ $trigger.payload.customerEmail }}' : TEAM,
+        to: opts.aiEmailToCustomers ? '{{ $trigger.payload.customerEmail }}' : opts.teamEmail,
         subject: 'Payment reminder: invoice {{ $trigger.payload.invoiceNumber }}',
         body: opts.aiEmailToCustomers
           ? '{{ $json.text }}'

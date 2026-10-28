@@ -74,7 +74,7 @@ export function NodeInspectorDrawer({
     usesAiOutput(node, allNodes, edges)
       ? aiEmailToCustomers
         ? 'Uses AI-written text — can be sent to customers'
-        : 'Uses AI-written text — only your team can receive it'
+        : 'Uses AI-written text — only people with a login here can receive it'
       : null;
 
   const handleConfigChange = (key: string, value: any) => {

@@ -306,7 +306,7 @@ describe('Automation Drawers', () => {
       const { rerender } = render(
         <NodeInspectorDrawer node={mail} allNodes={[ai, mail]} edges={edges} aiEmailToCustomers={false} onUpdate={vi.fn()} onClose={vi.fn()} />,
       );
-      expect(screen.getByText('Uses AI-written text — only your team can receive it')).toBeDefined();
+      expect(screen.getByText('Uses AI-written text — only people with a login here can receive it')).toBeDefined();
       rerender(
         <NodeInspectorDrawer node={mail} allNodes={[ai, mail]} edges={edges} aiEmailToCustomers={true} onUpdate={vi.fn()} onClose={vi.fn()} />,
       );

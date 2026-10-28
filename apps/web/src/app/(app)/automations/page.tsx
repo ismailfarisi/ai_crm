@@ -37,6 +37,7 @@ import {
   PageHeader,
   Skeleton,
 } from '@/components/ui/primitives';
+import { useSession } from '@/lib/session-context';
 
 const TEMPLATE_ICONS: Record<AutomationTemplateId, React.ReactNode> = {
   'quote-accepted-notify': <CheckCircle2 className="size-4" />,
@@ -56,6 +57,7 @@ export default function AutomationsListPage() {
   const { data: workflows = [], isLoading } = useAutomations();
   const deleteMutation = useDeleteAutomationWorkflow();
   const createMutation = useCreateAutomationWorkflow();
+  const { session } = useSession();
 
   // Loading or failed settings count as off: drafts go to the team, never the customer.
   const { data: automationSettings } = useAutomationSettings();
@@ -76,7 +78,9 @@ export default function AutomationsListPage() {
 
   const createFromTemplate = async (id: AutomationTemplateId) => {
     try {
-      const created = await createMutation.mutateAsync(buildTemplateGraph(id, { aiEmailToCustomers }));
+      const created = await createMutation.mutateAsync(
+        buildTemplateGraph(id, { aiEmailToCustomers, teamEmail: session.user.email }),
+      );
       toast.success('Created new automation workflow');
       router.push(`/automations/${created.id}`);
     } catch {
