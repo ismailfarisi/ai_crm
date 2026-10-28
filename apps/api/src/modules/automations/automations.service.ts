@@ -48,7 +48,9 @@ function isSourceEventConflict(err: unknown): boolean {
 
 /**
  * The web editor keeps a CRM trigger's event on the trigger node, while the
- * event bridge matches on `triggerConfig.event`. Copy it across on every save.
+ * event bridge matches on `triggerConfig.event`. Copy it across on every save;
+ * a cleared event or a deleted trigger node clears it too, so the automation
+ * stops matching (and can't be activated) instead of firing on the old event.
  */
 function syncTriggerConfig(wf: {
   triggerType: string;
@@ -58,9 +60,13 @@ function syncTriggerConfig(wf: {
   if (wf.triggerType !== 'CRM_EVENT') return;
   const trigger = (wf.nodes || []).find((n) => n.type === 'crmEventTrigger');
   const event = trigger?.data?.config?.event;
+  const triggerConfig = { ...(wf.triggerConfig || {}) };
   if (typeof event === 'string' && event) {
-    wf.triggerConfig = { ...(wf.triggerConfig || {}), event };
+    triggerConfig.event = event;
+  } else {
+    delete triggerConfig.event;
   }
+  wf.triggerConfig = triggerConfig;
 }
 
 @Injectable()

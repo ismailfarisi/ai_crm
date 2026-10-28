@@ -343,6 +343,79 @@ describe('AutomationsService', () => {
       );
     });
 
+    it('clearing the trigger node event on save removes triggerConfig.event', async () => {
+      workflowRepo.findOne.mockResolvedValueOnce({
+        ...mockWorkflow,
+        triggerType: 'CRM_EVENT',
+        triggerConfig: { event: 'invoice.overdue', other: 1 },
+        nodes: [crmNode('invoice.overdue')],
+      });
+      const result = await service.updateWorkflow(
+        mockTenantId,
+        'wf-uuid-1',
+        { nodes: [crmNode('')] },
+        'u1',
+      );
+      expect(result.triggerConfig).toEqual({ other: 1 });
+    });
+
+    it('deleting the trigger node removes triggerConfig.event', async () => {
+      workflowRepo.findOne.mockResolvedValueOnce({
+        ...mockWorkflow,
+        triggerType: 'CRM_EVENT',
+        triggerConfig: { event: 'invoice.overdue' },
+        nodes: [crmNode('invoice.overdue')],
+      });
+      const result = await service.updateWorkflow(
+        mockTenantId,
+        'wf-uuid-1',
+        { nodes: [] },
+        'u1',
+      );
+      expect(result.triggerConfig).not.toHaveProperty('event');
+    });
+
+    it('a trigger node whose event is not text removes triggerConfig.event', async () => {
+      const result = await service.createWorkflow(mockTenantId, {
+        name: 'x',
+        triggerType: 'CRM_EVENT',
+        triggerConfig: { event: 'quote.accepted' },
+        nodes: [
+          {
+            ...crmNode('x'),
+            data: { label: 'CRM', config: { event: 42 } },
+          },
+        ],
+        edges: [],
+      } as any);
+      expect(result.triggerConfig).not.toHaveProperty('event');
+    });
+
+    it('activating after the event was cleared is rejected', async () => {
+      const saved = {
+        ...mockWorkflow,
+        triggerType: 'CRM_EVENT',
+        triggerConfig: { event: 'invoice.overdue' },
+        nodes: [crmNode('invoice.overdue')],
+      };
+      workflowRepo.findOne.mockResolvedValueOnce(saved);
+      const cleared = await service.updateWorkflow(
+        mockTenantId,
+        'wf-uuid-1',
+        { nodes: [crmNode('')] },
+        'u1',
+      );
+      workflowRepo.findOne.mockResolvedValueOnce(cleared);
+      await expect(
+        service.updateWorkflow(
+          mockTenantId,
+          'wf-uuid-1',
+          { status: 'ACTIVE' },
+          'u1',
+        ),
+      ).rejects.toThrow('Choose the CRM event that starts this automation');
+    });
+
     it('test run passes the clicking user as owner', async () => {
       workflowRepo.findOne.mockResolvedValueOnce({
         ...mockWorkflow,
