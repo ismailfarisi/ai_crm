@@ -18,7 +18,9 @@ const ctx: AutomationActionContext = {
   aiWritten: false,
 } as AutomationActionContext;
 
-function makeDeps(overrides: Partial<AutomationActionDeps> = {}): AutomationActionDeps {
+function makeDeps(
+  overrides: Partial<AutomationActionDeps> = {},
+): AutomationActionDeps {
   return {
     users: {
       findMember: jest.fn().mockResolvedValue({
@@ -37,15 +39,24 @@ function makeDeps(overrides: Partial<AutomationActionDeps> = {}): AutomationActi
       resolveAccess: jest.fn().mockResolvedValue({
         roles: ['sales'],
         level: 30,
-        permissions: [AUTOMATION_PERMISSIONS.AUTOMATION_EXECUTE, 'contact:read'],
+        permissions: [
+          AUTOMATION_PERMISSIONS.AUTOMATION_EXECUTE,
+          'contact:read',
+        ],
         isOwner: false,
       }),
     },
     tenantContext: {
-      runAsAutomation: jest.fn((_t: string, _e: string, fn: () => Promise<unknown>) => fn()),
+      runAsAutomation: jest.fn(
+        (_t: string, _e: string, fn: () => Promise<unknown>) => fn(),
+      ),
     },
     mail: { name: 'console', sendMail: jest.fn() },
-    ai: { generateText: jest.fn(), isConfigured: jest.fn(), getBudgetStatus: jest.fn() },
+    ai: {
+      generateText: jest.fn(),
+      isConfigured: jest.fn(),
+      getBudgetStatus: jest.fn(),
+    },
     contacts: { create: jest.fn(), update: jest.fn() },
     quotes: { sendSignal: jest.fn() },
     audit: { record: jest.fn() },
@@ -66,7 +77,11 @@ async function failureOf(p: Promise<unknown>): Promise<ApplicationFailure> {
 describe('resolveOwner', () => {
   it('fails non-retryably when the automation has no owner', async () => {
     const err = await failureOf(
-      resolveOwner(makeDeps(), { ...ctx, ownerUserId: undefined }, 'send email'),
+      resolveOwner(
+        makeDeps(),
+        { ...ctx, ownerUserId: undefined },
+        'send email',
+      ),
     );
     expect(err).toBeInstanceOf(ApplicationFailure);
     expect(err.nonRetryable).toBe(true);
@@ -91,7 +106,9 @@ describe('resolveOwner', () => {
 
   it('fails non-retryably when the owner no longer exists', async () => {
     const deps = makeDeps();
-    (deps.users.findMember as jest.Mock).mockRejectedValue(new NotFoundException());
+    (deps.users.findMember as jest.Mock).mockRejectedValue(
+      new NotFoundException(),
+    );
     const err = await failureOf(resolveOwner(deps, ctx, 'send email'));
     expect(err.nonRetryable).toBe(true);
     expect(err.message).toContain('can no longer send email');
@@ -152,12 +169,168 @@ describe('createAutomationActions', () => {
       'executeEmailActivity',
     ]);
     await expect(
-      actions.executeEmailActivity({ to: 'a@b.co', subject: 's', body: 'b' }, ctx),
+      actions.executeAiPromptActivity({} as never, ctx),
     ).rejects.toThrow('not implemented');
     expect(deps.tenantContext.runAsAutomation).toHaveBeenCalledWith(
       't1',
       'exec-1',
       expect.any(Function),
     );
+  });
+});
+
+const REFUSAL =
+  "Your admin hasn't allowed automations to email AI-written text to customers. Send it to your team, or ask an admin to turn this on in Settings → AI.";
+
+describe('executeEmailActivity', () => {
+  function mailDeps(extra: Partial<AutomationActionDeps> = {}) {
+    const sendMail = jest.fn().mockResolvedValue(undefined);
+    const done = new Map<string, unknown>();
+    const runOnce = jest.fn(
+      async (_t: string, key: string, fn: () => Promise<unknown>) => {
+        if (done.has(key)) return done.get(key);
+        const r = await fn();
+        done.set(key, r);
+        return r;
+      },
+    );
+    const deps = makeDeps({
+      mail: { name: 'console', sendMail },
+      idempotency: { runOnce },
+      ...extra,
+    } as Partial<AutomationActionDeps>);
+    return { deps, sendMail, runOnce };
+  }
+  const run = (deps: AutomationActionDeps, to: string, c = ctx, body = 'b') =>
+    createAutomationActions(deps).executeEmailActivity(
+      { to, subject: 'Hello', body },
+      c,
+    );
+
+  it('sends one mail per recipient with text body and escaped html', async () => {
+    const { deps, sendMail } = mailDeps();
+    await run(deps, 'a@x.com', ctx, 'Hi <b>\nThere');
+    expect(sendMail).toHaveBeenCalledTimes(1);
+    expect(sendMail).toHaveBeenCalledWith({
+      to: 'a@x.com',
+      subject: 'Hello',
+      text: 'Hi <b>\nThere',
+      html: 'Hi &lt;b&gt;<br>There',
+    });
+  });
+
+  it('escapes ampersands and quotes in the html part', async () => {
+    const { deps, sendMail } = mailDeps();
+    await run(deps, 'a@x.com', ctx, `a & "b" 'c'`);
+    expect(sendMail.mock.calls[0][0].html).toBe(
+      'a &amp; &quot;b&quot; &#39;c&#39;',
+    );
+  });
+
+  it('normalises recipients', async () => {
+    const { deps, sendMail } = mailDeps();
+    const res = await run(deps, 'a@x.com, ,A@x.com');
+    expect(sendMail).toHaveBeenCalledTimes(1);
+    expect(sendMail.mock.calls[0][0].to).toBe('a@x.com');
+    expect(res).toEqual({ sent: ['a@x.com'], provider: 'console' });
+  });
+
+  it('fails before sending when more than 10 recipients', async () => {
+    const { deps, sendMail } = mailDeps();
+    const to = Array.from({ length: 11 }, (_, i) => `u${i}@x.com`).join(',');
+    const err = await failureOf(run(deps, to));
+    expect(err.nonRetryable).toBe(true);
+    expect(err.message).toContain('10');
+    expect(sendMail).not.toHaveBeenCalled();
+  });
+
+  it('fails before sending on an invalid address', async () => {
+    const { deps, sendMail } = mailDeps();
+    const err = await failureOf(run(deps, 'a@x.com, nope'));
+    expect(err.nonRetryable).toBe(true);
+    expect(err.message).toContain('nope');
+    expect(sendMail).not.toHaveBeenCalled();
+  });
+
+  it('does not resend recipients already sent on retry', async () => {
+    const { deps, sendMail, runOnce } = mailDeps();
+    sendMail
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('smtp down'));
+    await expect(run(deps, 'a@x.com,b@x.com')).rejects.toThrow('smtp down');
+    expect(runOnce).toHaveBeenCalledWith(
+      't1',
+      'automation:exec-1:n1:mail:a@x.com',
+      expect.any(Function),
+    );
+    const res = await run(deps, 'a@x.com,b@x.com');
+    expect(sendMail.mock.calls.map((c) => c[0].to)).toEqual([
+      'a@x.com',
+      'b@x.com',
+      'b@x.com',
+    ]);
+    expect(res.sent).toEqual(['a@x.com', 'b@x.com']);
+  });
+
+  describe('AI-written text', () => {
+    const aiCtx = { ...ctx, aiWritten: true };
+    const withSetting = (on: boolean) =>
+      mailDeps({
+        ai: {
+          generateText: jest.fn(),
+          isConfigured: jest.fn(),
+          getBudgetStatus: jest
+            .fn()
+            .mockResolvedValue({ automationAiEmailToCustomers: on }),
+        },
+        users: {
+          findMember: jest.fn().mockResolvedValue({
+            id: 'u1',
+            tenantId: 't1',
+            email: 'owner@acme.test',
+            firstName: 'O',
+            lastName: 'O',
+            isActive: true,
+            teamId: null,
+            managerId: null,
+          }),
+          findActiveEmails: jest.fn().mockResolvedValue(['ana@team.com']),
+        },
+      } as unknown as Partial<AutomationActionDeps>);
+
+    it('refuses AI-written email to a customer when the setting is off', async () => {
+      const { deps, sendMail } = withSetting(false);
+      const err = await failureOf(
+        run(deps, 'ana@team.com, cust@out.com', aiCtx),
+      );
+      expect(err.nonRetryable).toBe(true);
+      expect(err.message).toBe(REFUSAL);
+      expect(sendMail).not.toHaveBeenCalled();
+    });
+
+    it('sends AI-written email to a team member with the setting off', async () => {
+      const { deps, sendMail } = withSetting(false);
+      await run(deps, 'ana@team.com', aiCtx);
+      expect(sendMail).toHaveBeenCalledTimes(1);
+    });
+
+    it('classifies team members case-insensitively', async () => {
+      const { deps, sendMail } = withSetting(false);
+      await run(deps, 'Ana@Team.com', aiCtx);
+      expect(sendMail).toHaveBeenCalledTimes(1);
+    });
+
+    it('sends AI-written email to a customer with the setting on', async () => {
+      const { deps, sendMail } = withSetting(true);
+      await run(deps, 'cust@out.com', aiCtx);
+      expect(sendMail).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not look up budget or members when the text is not AI-written', async () => {
+      const { deps } = withSetting(false);
+      await run(deps, 'cust@out.com');
+      expect(deps.ai.getBudgetStatus).not.toHaveBeenCalled();
+      expect(deps.users.findActiveEmails).not.toHaveBeenCalled();
+    });
   });
 });

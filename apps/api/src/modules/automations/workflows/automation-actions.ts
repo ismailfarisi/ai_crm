@@ -1,6 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { ApplicationFailure } from '@temporalio/activity';
 import { AUTOMATION_PERMISSIONS } from '@saas/shared';
+import { z } from 'zod';
 import type { AiService } from '@/modules/ai/ai.service';
 import type { AuditService } from '@/modules/audit/audit.service';
 import type { ChannelIdempotencyService } from '@/modules/channels/services/channel-idempotency.service';
@@ -20,6 +21,20 @@ import type {
   EmailActivityConfig,
   EmailActivityResult,
 } from './interfaces';
+
+const MAX_EMAIL_RECIPIENTS = 10;
+const AI_EMAIL_REFUSAL =
+  "Your admin hasn't allowed automations to email AI-written text to customers. Send it to your team, or ask an admin to turn this on in Settings → AI.";
+const emailSchema = z.string().email();
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 export interface AutomationActionDeps {
   mail: Pick<MailService, 'sendMail' | 'name'>;
@@ -103,8 +118,66 @@ export function createAutomationActions(deps: AutomationActionDeps) {
         ctx.tenantId,
         ctx.executionId,
         async () => {
-          void config;
-          throw new Error('executeEmailActivity: not implemented');
+          await resolveOwner(deps, ctx, 'send email');
+
+          // Validate everything before sending anything.
+          const recipients = [
+            ...new Set(
+              config.to
+                .split(',')
+                .map((r) => r.trim().toLowerCase())
+                .filter(Boolean),
+            ),
+          ];
+          if (recipients.length === 0) {
+            throw ApplicationFailure.nonRetryable(
+              'Send email has no recipients',
+            );
+          }
+          if (recipients.length > MAX_EMAIL_RECIPIENTS) {
+            throw ApplicationFailure.nonRetryable(
+              `Send email supports at most ${MAX_EMAIL_RECIPIENTS} recipients, got ${recipients.length}`,
+            );
+          }
+          for (const address of recipients) {
+            if (!emailSchema.safeParse(address).success) {
+              throw ApplicationFailure.nonRetryable(
+                `"${address}" is not a valid email address`,
+              );
+            }
+          }
+
+          if (ctx.aiWritten) {
+            const budget = await deps.ai.getBudgetStatus(ctx.tenantId);
+            if (!budget.automationAiEmailToCustomers) {
+              const team = new Set(
+                await deps.users.findActiveEmails(ctx.tenantId),
+              );
+              if (recipients.some((r) => !team.has(r))) {
+                throw ApplicationFailure.nonRetryable(AI_EMAIL_REFUSAL);
+              }
+            }
+          }
+
+          const html = escapeHtml(config.body).replace(/\r?\n/g, '<br>');
+          for (const to of recipients) {
+            // Per-recipient key: a Temporal retry after a partial send skips
+            // the recipients that already went out. Provider errors propagate.
+            await deps.idempotency.runOnce(
+              ctx.tenantId,
+              `automation:${ctx.executionId}:${ctx.nodeId}:mail:${to}`,
+              async () => {
+                await deps.mail.sendMail({
+                  to,
+                  subject: config.subject,
+                  html,
+                  text: config.body,
+                });
+                return { sent: true };
+              },
+            );
+          }
+          return { sent: recipients, provider: deps.mail.name };
         },
       );
     },
