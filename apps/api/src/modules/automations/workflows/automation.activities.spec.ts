@@ -68,41 +68,35 @@ describe('AutomationActivities', () => {
     });
   });
 
+  const ctx = {
+    tenantId: 't1',
+    workflowId: 'w1',
+    workflowName: 'Flow',
+    executionId: 'x1',
+    nodeId: 'n1',
+    aiWritten: false,
+  };
+
   describe('executeAiPromptActivity', () => {
-    it('should return mock response if provided', async () => {
-      const result = await executeAiPromptActivity({
-        prompt: 'Summarize customer feedback',
-        mockResponse: 'Customer is highly satisfied.',
+    it('is a stub that returns the new result shape', async () => {
+      const result = await executeAiPromptActivity({ prompt: 'Draft email to lead' }, ctx);
+
+      expect(result).toEqual({
+        text: '',
+        model: 'stub',
+        usage: { inputTokens: 0, outputTokens: 0 },
       });
-
-      expect(result.text).toBe('Customer is highly satisfied.');
-      expect(result.completion).toBe('Customer is highly satisfied.');
-      expect(result.usage).toBeDefined();
-    });
-
-    it('should generate simulated AI response if mockResponse not provided', async () => {
-      const result = await executeAiPromptActivity({
-        prompt: 'Draft email to lead',
-        model: 'gpt-4o',
-      });
-
-      expect(result.text).toContain('AI response for prompt');
-      expect(result.usage?.totalTokens).toBeGreaterThan(0);
     });
   });
 
   describe('executeEmailActivity', () => {
-    it('should log and return success with messageId and timestamp', async () => {
-      const result = await executeEmailActivity({
-        to: 'customer@example.com',
-        subject: 'Your Quote is Ready',
-        body: 'Please review your quote at ...',
-      });
+    it('is a stub that returns the new result shape', async () => {
+      const result = await executeEmailActivity(
+        { to: 'customer@example.com', subject: 'Your Quote is Ready', body: 'Hi' },
+        ctx,
+      );
 
-      expect(result.success).toBe(true);
-      expect(result.messageId).toMatch(/^email_/);
-      expect(result.to).toBe('customer@example.com');
-      expect(result.sentAt).toBeDefined();
+      expect(result).toEqual({ sent: [], provider: 'stub' });
     });
   });
 
@@ -193,21 +187,13 @@ describe('AutomationActivities', () => {
   });
 
   describe('executeCrmMutationActivity', () => {
-    it('should record CRM mutation and return metadata', async () => {
-      const result = await executeCrmMutationActivity({
-        entity: 'contact',
-        action: 'create',
-        data: { name: 'Sarah Connor', email: 'sarah@example.com' },
-      });
+    it('is a stub that echoes entity, action and record id', async () => {
+      const result = await executeCrmMutationActivity(
+        { entity: 'contact', action: 'update', recordId: 'c1', fields: { name: 'Sarah' } },
+        ctx,
+      );
 
-      expect(result.success).toBe(true);
-      expect(result.entity).toBe('contact');
-      expect(result.action).toBe('create');
-      expect(result.recordId).toMatch(/^contact_/);
-      expect(result.data).toEqual({
-        name: 'Sarah Connor',
-        email: 'sarah@example.com',
-      });
+      expect(result).toEqual({ entity: 'contact', action: 'update', recordId: 'c1', record: {} });
     });
   });
 

@@ -7,6 +7,7 @@ import {
 } from 'quickjs-emscripten-core';
 import {
   AiPromptActivityConfig,
+  AutomationActionContext,
   AiPromptActivityResult,
   CodeTransformActivityConfig,
   CodeTransformActivityResult,
@@ -104,62 +105,24 @@ export async function executeHttpActivity(
   }
 }
 
-/**
- * Executes an AI prompt and returns generated text and token metrics.
- */
+/** Stub until the real implementation lands; the workflow already passes `ctx`. */
 export async function executeAiPromptActivity(
   config: AiPromptActivityConfig,
+  ctx: AutomationActionContext,
 ): Promise<AiPromptActivityResult> {
-  if (config.mockResponse) {
-    return {
-      text: config.mockResponse,
-      completion: config.mockResponse,
-      usage: {
-        promptTokens: 15,
-        completionTokens: 25,
-        totalTokens: 40,
-      },
-    };
-  }
-
-  const promptSnippet =
-    config.prompt.length > 80
-      ? `${config.prompt.slice(0, 80)}...`
-      : config.prompt;
-  const simulatedOutput = `AI response for prompt: "${promptSnippet}" using model ${config.model || 'gpt-4o'}`;
-
-  return {
-    text: simulatedOutput,
-    completion: simulatedOutput,
-    usage: {
-      promptTokens: Math.max(10, Math.ceil(config.prompt.length / 4)),
-      completionTokens: 30,
-      totalTokens: Math.max(10, Math.ceil(config.prompt.length / 4)) + 30,
-    },
-  };
+  void config;
+  void ctx;
+  return { text: '', model: 'stub', usage: { inputTokens: 0, outputTokens: 0 } };
 }
 
-/**
- * Sends an email notification or message payload.
- */
+/** Stub until the real implementation lands. */
 export async function executeEmailActivity(
   config: EmailActivityConfig,
+  ctx: AutomationActionContext,
 ): Promise<EmailActivityResult> {
-  const messageId = `email_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-  const recipients = Array.isArray(config.to)
-    ? config.to.join(', ')
-    : config.to;
-
-  console.log(
-    `[AutomationActivity] sendEmail to [${recipients}], subject: "${config.subject}"`,
-  );
-
-  return {
-    success: true,
-    messageId,
-    to: config.to,
-    sentAt: new Date().toISOString(),
-  };
+  void config;
+  void ctx;
+  return { sent: [], provider: 'stub' };
 }
 
 const TRANSFORM_TIMEOUT_MS = 1_000;
@@ -224,26 +187,17 @@ export async function executeCodeTransformActivity(
   }
 }
 
-/**
- * Performs a mutation on a CRM record (Contact, Quote, Invoice, Deal, etc.).
- */
+/** Stub until the real implementation lands. */
 export async function executeCrmMutationActivity(
   config: CrmMutationActivityConfig,
+  ctx: AutomationActionContext,
 ): Promise<CrmMutationActivityResult> {
-  const recordId =
-    config.recordId ||
-    `${config.entity}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-
-  console.log(
-    `[AutomationActivity] crmMutation: entity=${config.entity}, action=${config.action}, recordId=${recordId}`,
-  );
-
+  void ctx;
   return {
-    success: true,
     entity: config.entity,
     action: config.action,
-    recordId,
-    data: config.data,
+    recordId: config.recordId ?? '',
+    record: {},
   };
 }
 

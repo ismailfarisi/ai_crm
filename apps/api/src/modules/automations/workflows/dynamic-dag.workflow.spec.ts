@@ -145,7 +145,7 @@ describe('DynamicDagWorkflow', () => {
         customerId: 'cust-123',
         email: 'boss@corp.com',
       },
-    });
+    }, expect.anything());
     expect(result.nodeResults['node-http'].status).toBe('SUCCESS');
     expect(result.nodeResults['node-crm'].status).toBe('SUCCESS');
   });
@@ -231,7 +231,7 @@ describe('DynamicDagWorkflow', () => {
     expect(mockActivities.executeEmailActivity).toHaveBeenCalledWith({
       to: 'vip@corp.com',
       subject: 'High Value Lead: $5000',
-    });
+    }, expect.anything());
     expect(result.nodeResults['email-high'].status).toBe('SUCCESS');
     expect(result.nodeResults['email-low']).toBeUndefined();
   });
@@ -505,7 +505,7 @@ describe('DynamicDagWorkflow', () => {
     expect(result.status).toBe('COMPLETED');
     expect(mockActivities.executeAiPromptActivity).toHaveBeenCalledWith({
       prompt: 'Summarize: Customer has 500 seats and $100k budget.',
-    });
+    }, expect.anything());
     expect(mockActivities.executeCodeTransformActivity).toHaveBeenCalled();
     expect(result.nodeResults['ai-node'].status).toBe('SUCCESS');
     expect(result.nodeResults['transform-node'].status).toBe('SUCCESS');
@@ -724,7 +724,7 @@ describe('DynamicDagWorkflow', () => {
     expect(mockActivities.executeEmailActivity).toHaveBeenCalledWith({
       to: 'client@acme.com',
       subject: 'Agent Resolution: Refund of $100 has been processed successfully.',
-    });
+    }, expect.anything());
   });
 
   it('should pause on aiAgentNode awaiting approval, record waiting result, and resume on approveNodeSignal', async () => {
@@ -839,7 +839,7 @@ describe('DynamicDagWorkflow', () => {
     expect(mockActivities.executeEmailActivity).toHaveBeenCalledWith({
       to: 'ops@acme.com',
       subject: 'Payout Executed: Prepared batch payout of $10,000.',
-    });
+    }, expect.anything());
   });
 
   it('should handle rejectNodeSignal on aiAgentNode and route to rejected branch', async () => {
@@ -930,7 +930,7 @@ describe('DynamicDagWorkflow', () => {
     expect(mockActivities.executeEmailActivity).toHaveBeenCalledWith({
       to: 'audit@acme.com',
       subject: 'Agent Rejected: Operation forbidden by policy',
-    });
+    }, expect.anything());
   });
 
   it('should handle SLA timeout on aiAgentNode approval and route to timeout branch', async () => {
@@ -1016,6 +1016,90 @@ describe('DynamicDagWorkflow', () => {
     expect(mockActivities.executeEmailActivity).toHaveBeenCalledWith({
       to: 'escalations@corp.com',
       subject: 'Agent Approval Timed Out',
+    }, expect.anything());
+  });
+  it('passes the action context to email, AI and CRM activities', async () => {
+    mockActivities.executeAiPromptActivity.mockResolvedValue({
+      text: 'Hello',
+      model: 'm',
+      usage: { inputTokens: 1, outputTokens: 1 },
     });
+    mockActivities.executeEmailActivity.mockResolvedValue({ sent: ['a@b.co'], provider: 'p' });
+    mockActivities.executeCrmMutationActivity.mockResolvedValue({
+      entity: 'contact',
+      action: 'update',
+      recordId: 'c1',
+      record: {},
+    });
+
+    const input: DynamicWorkflowInput = {
+      executionId: 'exec-ctx',
+      workflowId: 'wf-1',
+      workflowName: 'Overdue',
+      ownerUserId: 'u-owner',
+      tenantId: 'tenant-1',
+      triggerPayload: {},
+      nodes: [
+        { id: 'trig', type: 'manualTrigger', position: { x: 0, y: 0 }, data: { label: 'Go', config: {} } },
+        { id: 'ai', type: 'aiPromptNode', position: { x: 0, y: 0 }, data: { label: 'Draft', config: { prompt: 'write' } } },
+        {
+          id: 'mail',
+          type: 'sendEmailNode',
+          position: { x: 0, y: 0 },
+          data: { label: 'Mail', config: { to: 'a@b.co', subject: 'Hi', body: '{{ $json.text }}' } },
+        },
+        {
+          id: 'crm',
+          type: 'crmMutateNode',
+          position: { x: 0, y: 0 },
+          data: { label: 'Crm', config: { entity: 'contact', action: 'update', recordId: 'c1' } },
+        },
+      ],
+      edges: [
+        { id: 'e1', source: 'trig', target: 'ai' },
+        { id: 'e2', source: 'ai', target: 'mail' },
+        { id: 'e3', source: 'mail', target: 'crm' },
+      ],
+    };
+
+    const result = await dynamicDagWorkflow(input);
+
+    expect(result.status).toBe('COMPLETED');
+    expect(mockActivities.executeEmailActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'a@b.co', subject: 'Hi', body: 'Hello' }),
+      expect.objectContaining({
+        ownerUserId: 'u-owner',
+        nodeId: 'mail',
+        executionId: 'exec-ctx',
+        workflowName: 'Overdue',
+        aiWritten: true,
+      }),
+    );
+    expect(mockActivities.executeAiPromptActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ prompt: 'write' }),
+      expect.objectContaining({ nodeId: 'ai', aiWritten: false }),
+    );
+    expect(mockActivities.executeCrmMutationActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ entity: 'contact' }),
+      expect.objectContaining({ nodeId: 'crm', tenantId: 'tenant-1', workflowId: 'wf-1' }),
+    );
+  });
+
+  it('delay honours durationMs', async () => {
+    const { sleep } = jest.requireMock('@temporalio/workflow');
+    const result = await dynamicDagWorkflow({
+      executionId: 'exec-delay',
+      workflowId: 'wf-1',
+      tenantId: 'tenant-1',
+      triggerPayload: {},
+      nodes: [
+        { id: 'trig', type: 'manualTrigger', position: { x: 0, y: 0 }, data: { label: 'Go', config: {} } },
+        { id: 'delay', type: 'delayNode', position: { x: 0, y: 0 }, data: { label: 'Wait', config: { durationMs: '2500' } } },
+      ],
+      edges: [{ id: 'e1', source: 'trig', target: 'delay' }],
+    });
+
+    expect(sleep).toHaveBeenCalledWith(2500);
+    expect(result.nodeResults.delay.output.duration).toBe(2500);
   });
 });

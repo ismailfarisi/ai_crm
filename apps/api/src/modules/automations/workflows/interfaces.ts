@@ -6,6 +6,8 @@ export interface DynamicWorkflowInput {
   workflowId: string;
   tenantId: string;
   actorUserId?: string;
+  ownerUserId?: string;
+  workflowName?: string;
   nodes: AutomationNode[];
   edges: AutomationEdge[];
   triggerPayload: Record<string, any>;
@@ -79,40 +81,37 @@ export interface HttpActivityResult {
   data: any;
 }
 
+/** What an action activity needs to know about the step it is running for. */
+export interface AutomationActionContext {
+  tenantId: string;
+  workflowId: string;
+  workflowName: string;
+  executionId: string;
+  nodeId: string;
+  ownerUserId?: string;
+  /** True when the step's text was written by an upstream AI step. */
+  aiWritten: boolean;
+}
+
 export interface AiPromptActivityConfig {
   prompt: string;
-  model?: string;
-  systemPrompt?: string;
-  temperature?: number;
-  mockResponse?: string;
-  tenantId?: string;
 }
 
 export interface AiPromptActivityResult {
   text: string;
-  completion?: string;
-  usage?: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-  };
+  model: string;
+  usage: { inputTokens: number; outputTokens: number };
 }
 
 export interface EmailActivityConfig {
-  to: string | string[];
+  to: string;
   subject: string;
-  body?: string;
-  html?: string;
-  from?: string;
-  cc?: string[];
-  bcc?: string[];
+  body: string;
 }
 
 export interface EmailActivityResult {
-  success: boolean;
-  messageId: string;
-  to: string | string[];
-  sentAt: string;
+  sent: string[];
+  provider: string;
 }
 
 export interface CodeTransformActivityConfig {
@@ -126,19 +125,18 @@ export interface CodeTransformActivityResult {
 }
 
 export interface CrmMutationActivityConfig {
-  entity: 'contact' | 'quote' | 'invoice' | 'deal' | string;
-  action: 'create' | 'update' | 'delete' | 'upsert';
-  data: Record<string, any>;
+  entity: 'contact' | 'quote';
+  action: 'create' | 'update' | 'approve' | 'reject';
   recordId?: string;
-  tenantId?: string;
+  fields?: Record<string, unknown>;
+  reason?: string;
 }
 
 export interface CrmMutationActivityResult {
-  success: boolean;
   entity: string;
   action: string;
   recordId: string;
-  data: any;
+  record: Record<string, unknown>;
 }
 
 export interface RecordNodeResultParams {

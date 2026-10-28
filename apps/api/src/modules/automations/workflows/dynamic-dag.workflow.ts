@@ -7,6 +7,7 @@ import {
   sleep,
   workflowInfo,
 } from '@temporalio/workflow';
+import { usesAiOutput } from '@saas/shared';
 import type { AiAgentNodeConfig, AutomationEdge, AutomationNode } from '@saas/shared';
 import {
   agentApprovalRequestedSignal,
@@ -22,6 +23,7 @@ import {
 import {
   AiPromptActivityConfig,
   approveNodeSignal,
+  AutomationActionContext,
   CrmMutationActivityConfig,
   DynamicWorkflowInput,
   EmailActivityConfig,
@@ -258,6 +260,15 @@ export async function dynamicDagWorkflow(
       // Interpolate node configuration
       const rawConfig = node.data?.config || {};
       const config = interpolateObject(rawConfig, context);
+      const actionContext: AutomationActionContext = {
+        tenantId: input.tenantId,
+        workflowId: input.workflowId,
+        workflowName: input.workflowName ?? '',
+        executionId: input.executionId,
+        nodeId: node.id,
+        ownerUserId: input.ownerUserId,
+        aiWritten: usesAiOutput(node, input.nodes, input.edges),
+      };
 
       switch (node.type) {
         case 'webhookTrigger':
@@ -276,12 +287,14 @@ export async function dynamicDagWorkflow(
         case 'aiPromptNode':
           nodeOutput = await executeAiPromptActivity(
             config as unknown as AiPromptActivityConfig,
+            actionContext,
           );
           break;
 
         case 'sendEmailNode':
           nodeOutput = await executeEmailActivity(
             config as unknown as EmailActivityConfig,
+            actionContext,
           );
           break;
 
@@ -296,11 +309,17 @@ export async function dynamicDagWorkflow(
         case 'crmMutateNode':
           nodeOutput = await executeCrmMutationActivity(
             config as unknown as CrmMutationActivityConfig,
+            actionContext,
           );
           break;
 
         case 'delayNode': {
-          const duration = config.duration || config.delay || '1s';
+          const raw = config.durationMs ?? config.duration ?? config.delay ?? '1s';
+          // A bare number (or numeric string) is milliseconds; "5s" style strings pass through.
+          const duration =
+            typeof raw === 'string' && /^\s*\d+(\.\d+)?\s*$/.test(raw)
+              ? Number(raw)
+              : raw;
           await sleep(duration);
           nodeOutput = { delayed: true, duration };
           break;

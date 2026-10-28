@@ -22,6 +22,7 @@ export * from './quotes/guardrails';
 export * from './quotes/units';
 export * from './schemas/quote-send';
 export * from './automations/types';
+export * from './automations/ai-output';
 export * from './finance/ledger';
 export * from './finance/types';
 export * from './finance/expense-categories';
