@@ -43,7 +43,8 @@ export class AssistantSweepService {
         );
         if (!affected) continue;
         count++;
-        await this.temporal.getClient().workflow.getHandle(turn.workflowId).terminate('stale assistant turn').catch(() => undefined);
+        const client = await this.temporal.getClient();
+        await client.workflow.getHandle(turn.workflowId).terminate('stale assistant turn').catch(() => undefined);
         await this.tenantContext.runWithTenant(turn.tenantId, () => this.events.writeStatus(turn, 'swept:status'));
       }
       return count;

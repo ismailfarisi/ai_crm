@@ -612,7 +612,7 @@ export class ChannelsService {
       );
 
       try {
-        const client = this.temporalService.getClient();
+        const client = await this.temporalService.getClient();
         const intentConfig =
           await this.intentAgentConfigService.getEffective(orgId);
         if (

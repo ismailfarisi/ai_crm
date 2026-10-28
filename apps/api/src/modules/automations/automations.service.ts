@@ -366,7 +366,7 @@ export class AutomationsService {
     // start a second workflow for it.
     const temporalWorkflowId = `automation-exec-${exec.id}`;
     try {
-      const client = this.temporalService.getClient();
+      const client = await this.temporalService.getClient();
       await client.workflow.start(dynamicDagWorkflow, {
         taskQueue: 'automations-queue',
         workflowId: temporalWorkflowId,
@@ -502,7 +502,7 @@ export class AutomationsService {
     }
 
     try {
-      const client = this.temporalService.getClient();
+      const client = await this.temporalService.getClient();
       await client.workflow.start(dynamicDagWorkflow, {
         taskQueue: 'automations-queue',
         workflowId: temporalWorkflowId,
@@ -576,7 +576,7 @@ export class AutomationsService {
     }
 
     try {
-      const client = this.temporalService.getClient();
+      const client = await this.temporalService.getClient();
       const handle = client.workflow.getHandle(exec.temporalWorkflowId);
       if (payload.action === 'APPROVE') {
         await handle.signal(approveNodeSignal, {
@@ -617,9 +617,8 @@ export class AutomationsService {
     execution: AutomationExecution,
   ): Promise<WorkflowExecutionState> {
     try {
-      const handle = this.temporalService
-        .getClient()
-        .workflow.getHandle(execution.temporalWorkflowId);
+      const client = await this.temporalService.getClient();
+      const handle = client.workflow.getHandle(execution.temporalWorkflowId);
       return await handle.query(getExecutionStateQuery);
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);

@@ -79,7 +79,7 @@ function harness() {
   const workflow = { start: jest.fn().mockResolvedValue({ workflowId: 'wf' }), getHandle: jest.fn() };
   const handle = { signal: jest.fn().mockResolvedValue(undefined), cancel: jest.fn().mockResolvedValue(undefined) };
   workflow.getHandle.mockReturnValue(handle);
-  const temporal = { getClient: () => ({ workflow }) } as any;
+  const temporal = { getClient: async () => ({ workflow }) } as any;
   const events = { writeStatus: jest.fn().mockResolvedValue(undefined), publish: jest.fn() } as any;
   const service = new AssistantService(convRepo as any, turnRepo as any, msgRepo as any, temporal, events);
   return { service, conversations, turns, messages, workflow, handle, events };

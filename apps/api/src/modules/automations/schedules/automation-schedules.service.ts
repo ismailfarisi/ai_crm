@@ -31,6 +31,19 @@ export const SCHEDULE_ID_PREFIX = 'automation-schedule-';
 export const SCHEDULE_UPDATE_FAILED =
   "Couldn't update the automation's schedule. Try again in a minute.";
 
+/** Boot reconciliation waits this long between tries while Temporal is down… */
+export const RECONCILE_RETRY_MS = 30_000;
+/** …and gives up after this many. */
+export const RECONCILE_MAX_ATTEMPTS = 20;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    // A pending retry never holds the process open at shutdown.
+    timer.unref?.();
+  });
+}
+
 export function scheduleIdFor(workflowId: string): string {
   return `${SCHEDULE_ID_PREFIX}${workflowId}`;
 }
@@ -136,9 +149,9 @@ export class AutomationSchedulesService {
         if (!wf.id) {
           throw new Error('An automation must be saved before it is scheduled');
         }
-        await this.upsert(this.temporal.getClient(), wf, parsed.data);
+        await this.upsert(await this.temporal.getClient(), wf, parsed.data);
       } else if (options.hadSchedule !== false) {
-        await this.deleteIfPresent(this.temporal.getClient(), wf.id);
+        await this.deleteIfPresent(await this.temporal.getClient(), wf.id);
       }
     } catch (err: unknown) {
       this.logger.warn(
@@ -154,7 +167,7 @@ export class AutomationSchedulesService {
    */
   async deleteFor(wf: AutomationWorkflow): Promise<void> {
     try {
-      await this.deleteIfPresent(this.temporal.getClient(), wf.id);
+      await this.deleteIfPresent(await this.temporal.getClient(), wf.id);
     } catch (err: unknown) {
       this.logger.warn(
         `Schedule delete failed for automation ${wf.id}: ${errorText(err)}`,
@@ -166,18 +179,38 @@ export class AutomationSchedulesService {
   /**
    * Repair drift between the database and Temporal (a save whose DB write
    * failed after its schedule was written, schedules created while Temporal
-   * was being restored, …). Runs once at API boot; never throws.
+   * was being restored, …). Runs once at API boot, in the background; never
+   * throws. While Temporal cannot be reached it tries again every 30 s, up to
+   * 20 attempts, then gives up with a warning.
    */
   async reconcile(): Promise<void> {
-    try {
-      await this.reconcileOrThrow();
-    } catch (err: unknown) {
-      this.logger.warn(`Schedule reconciliation failed: ${errorText(err)}`);
+    for (let attempt = 1; ; attempt++) {
+      let client: Client;
+      try {
+        client = await this.temporal.getClient();
+      } catch (err: unknown) {
+        if (attempt >= RECONCILE_MAX_ATTEMPTS) {
+          this.logger.warn(
+            `Schedule reconciliation gave up after ${attempt} attempts: Temporal unavailable (${errorText(err)})`,
+          );
+          return;
+        }
+        this.logger.warn(
+          `Schedule reconciliation waiting for Temporal (attempt ${attempt} of ${RECONCILE_MAX_ATTEMPTS}): ${errorText(err)}`,
+        );
+        await delay(RECONCILE_RETRY_MS);
+        continue;
+      }
+      try {
+        await this.reconcileWith(client);
+      } catch (err: unknown) {
+        this.logger.warn(`Schedule reconciliation failed: ${errorText(err)}`);
+      }
+      return;
     }
   }
 
-  private async reconcileOrThrow(): Promise<void> {
-    const client = this.temporal.getClient();
+  private async reconcileWith(client: Client): Promise<void> {
     const active = await this.tenantContext.runAsSystem(() =>
       this.workflows.find({
         where: { status: 'ACTIVE', triggerType: 'SCHEDULE' },

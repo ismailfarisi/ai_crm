@@ -145,7 +145,7 @@ describe('AutomationSchedulesService', () => {
         list: jest.fn().mockImplementation(() => listOf([])),
       },
     };
-    temporal = { getClient: jest.fn().mockReturnValue(client) };
+    temporal = { getClient: jest.fn().mockResolvedValue(client) };
     lookups = [];
     workflows = {
       find: jest.fn().mockImplementation(async () => {
@@ -286,9 +286,7 @@ describe('AutomationSchedulesService', () => {
     });
 
     it('a Temporal client that is offline also blocks the save', async () => {
-      temporal.getClient.mockImplementation(() => {
-        throw new Error('Temporal client is not initialized');
-      });
+      temporal.getClient.mockRejectedValue(new Error('UNAVAILABLE'));
       await expect(service.sync(workflow())).rejects.toThrow(
         ServiceUnavailableException,
       );
@@ -468,12 +466,47 @@ describe('AutomationSchedulesService', () => {
       expect(client.schedule.create).toHaveBeenCalledTimes(2);
     });
 
-    it('never throws when Temporal is offline at boot', async () => {
-      temporal.getClient.mockImplementation(() => {
-        throw new Error('Temporal client is not initialized');
+    describe('when Temporal is unavailable at boot', () => {
+      beforeEach(() => jest.useFakeTimers());
+      afterEach(() => jest.useRealTimers());
+
+      it('retries every 30 s in the background, then reconciles', async () => {
+        temporal.getClient
+          .mockRejectedValueOnce(new Error('UNAVAILABLE'))
+          .mockRejectedValueOnce(new Error('UNAVAILABLE'))
+          .mockResolvedValue(client);
+        workflows.find.mockResolvedValue([workflow()]);
+
+        const done = service.reconcile();
+        await jest.advanceTimersByTimeAsync(0);
+        expect(temporal.getClient).toHaveBeenCalledTimes(1);
+        await jest.advanceTimersByTimeAsync(29_999);
+        expect(temporal.getClient).toHaveBeenCalledTimes(1);
+        await jest.advanceTimersByTimeAsync(1);
+        expect(temporal.getClient).toHaveBeenCalledTimes(2);
+        await jest.advanceTimersByTimeAsync(30_000);
+        await expect(done).resolves.toBeUndefined();
+
+        expect(temporal.getClient).toHaveBeenCalledTimes(3);
+        expect(client.schedule.create).toHaveBeenCalledTimes(1);
       });
-      workflows.find.mockResolvedValue([workflow()]);
-      await expect(service.reconcile()).resolves.toBeUndefined();
+
+      it('gives up with a warning after 20 attempts, never throwing', async () => {
+        temporal.getClient.mockRejectedValue(new Error('UNAVAILABLE'));
+        workflows.find.mockResolvedValue([workflow()]);
+        const warn = jest.spyOn(Logger.prototype, 'warn');
+
+        const done = service.reconcile();
+        await jest.advanceTimersByTimeAsync(19 * 30_000);
+        await expect(done).resolves.toBeUndefined();
+        await jest.advanceTimersByTimeAsync(10 * 30_000);
+
+        expect(temporal.getClient).toHaveBeenCalledTimes(20);
+        expect(client.schedule.create).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenLastCalledWith(
+          expect.stringContaining('gave up after 20 attempts'),
+        );
+      });
     });
 
     it('never throws when the database read fails', async () => {

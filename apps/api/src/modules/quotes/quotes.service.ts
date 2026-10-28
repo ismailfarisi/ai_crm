@@ -257,7 +257,7 @@ export class QuotesService {
     const workflowId = `quote-${savedQuote.id}`;
     let started: string | null = null;
     try {
-      const client = this.temporalService.getClient();
+      const client = await this.temporalService.getClient();
       const handle = await client.workflow.start(quoteWorkflow, {
         taskQueue: 'quotes-queue',
         workflowId,
@@ -636,9 +636,8 @@ export class QuotesService {
   ): Promise<void> {
     const workflowId = quote.workflowId || `quote-${quote.id}`;
     try {
-      const handle = this.temporalService
-        .getClient()
-        .workflow.getHandle(workflowId);
+      const client = await this.temporalService.getClient();
+      const handle = client.workflow.getHandle(workflowId);
       switch (action) {
         case 'APPROVE':
           await handle.signal(approveQuoteSignal);
@@ -761,22 +760,21 @@ export class QuotesService {
   private async startWorkflow(quote: Quote): Promise<void> {
     let started: string;
     try {
-      const handle = await this.temporalService
-        .getClient()
-        .workflow.start(quoteWorkflow, {
-          taskQueue: 'quotes-queue',
-          workflowId: `quote-${quote.id}`,
-          args: [
-            {
-              quoteId: quote.id,
-              tenantId: quote.tenantId,
-              mode: 'HUMAN',
-              title: quote.title,
-              items: quote.items,
-              totalAmount: Number(quote.totalAmount),
-            },
-          ],
-        });
+      const client = await this.temporalService.getClient();
+      const handle = await client.workflow.start(quoteWorkflow, {
+        taskQueue: 'quotes-queue',
+        workflowId: `quote-${quote.id}`,
+        args: [
+          {
+            quoteId: quote.id,
+            tenantId: quote.tenantId,
+            mode: 'HUMAN',
+            title: quote.title,
+            items: quote.items,
+            totalAmount: Number(quote.totalAmount),
+          },
+        ],
+      });
       started = handle.workflowId;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

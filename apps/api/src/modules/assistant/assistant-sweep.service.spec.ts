@@ -7,7 +7,7 @@ it('fails RUNNING turns with no progress for 7 minutes (longer than the 5-minute
     update: jest.fn().mockResolvedValue({ affected: 1 }),
   } as any;
   const handle = { terminate: jest.fn().mockResolvedValue(undefined) };
-  const temporal = { getClient: () => ({ workflow: { getHandle: () => handle } }) } as any;
+  const temporal = { getClient: async () => ({ workflow: { getHandle: () => handle } }) } as any;
   const events = { writeStatus: jest.fn().mockResolvedValue(undefined) } as any;
   const tenantContext = { runAsSystem: (fn: any) => fn(), runWithTenant: (_t: string, fn: any) => fn() } as any;
   const sweep = new AssistantSweepService(turns, temporal, events, tenantContext);

@@ -120,7 +120,7 @@ describe('AutomationsService', () => {
     };
 
     temporalService = {
-      getClient: jest.fn().mockReturnValue(mockTemporalClient),
+      getClient: jest.fn().mockResolvedValue(mockTemporalClient),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -674,9 +674,9 @@ describe('AutomationsService', () => {
 
       it('rethrows a failed start so the outbox retries the event', async () => {
         executionRepo.findOne.mockResolvedValueOnce(null);
-        temporalService.getClient.mockImplementationOnce(() => {
-          throw new Error('Temporal offline');
-        });
+        temporalService.getClient.mockRejectedValueOnce(
+          new Error('Temporal offline'),
+        );
 
         await expect(
           service.triggerExecution(mockTenantId, 'wf-uuid-1', {}, undefined, {
@@ -716,9 +716,9 @@ describe('AutomationsService', () => {
     });
 
     it('handles temporal offline gracefully without throwing', async () => {
-      temporalService.getClient.mockImplementationOnce(() => {
-        throw new Error('Temporal offline');
-      });
+      temporalService.getClient.mockRejectedValueOnce(
+          new Error('Temporal offline'),
+        );
 
       const exec = await service.triggerExecution(
         mockTenantId,

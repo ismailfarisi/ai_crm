@@ -164,7 +164,7 @@ describe('AutomationWebhookController (HTTP)', () => {
         },
         {
           provide: TemporalService,
-          useValue: { getClient: () => temporalClient },
+          useValue: { getClient: async () => temporalClient },
         },
         // Webhook runs never touch schedules.
         { provide: AutomationSchedulesService, useValue: {} },

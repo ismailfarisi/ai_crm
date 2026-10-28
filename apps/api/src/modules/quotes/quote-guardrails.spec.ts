@@ -126,7 +126,7 @@ describe('QuotesService — margin guardrails', () => {
         findOne: jest.fn().mockResolvedValue(null),
       } as unknown as Repository<Invoice>,
       {
-        getClient: () => {
+        getClient: async () => {
           throw new Error('Temporal unavailable');
         },
       } as unknown as TemporalService,

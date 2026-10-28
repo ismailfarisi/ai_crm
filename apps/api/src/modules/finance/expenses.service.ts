@@ -146,7 +146,7 @@ export class ExpensesService {
 
     if (status === 'SUBMITTED') {
       try {
-        const client = this.temporalService.getClient();
+        const client = await this.temporalService.getClient();
         const handle = await client.workflow.start(expenseApprovalWorkflow, {
           taskQueue: 'finance-queue',
           workflowId,
@@ -334,7 +334,7 @@ export class ExpensesService {
   ): Promise<void> {
     const workflowId = claim.temporalWorkflowId || `expense-${claim.id}`;
     try {
-      const client = this.temporalService.getClient();
+      const client = await this.temporalService.getClient();
       const handle = client.workflow.getHandle(workflowId);
 
       switch (dto.action) {

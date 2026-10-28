@@ -119,7 +119,7 @@ describe('ExpensesService', () => {
     });
 
     temporalService = {
-      getClient: jest.fn().mockReturnValue({
+      getClient: jest.fn().mockResolvedValue({
         workflow: {
           start: jest.fn().mockResolvedValue(mockWorkflowHandle),
           getHandle: jest.fn().mockReturnValue(mockWorkflowHandle),
@@ -225,7 +225,7 @@ describe('ExpensesService', () => {
     });
 
     it('handles Temporal server offline gracefully during creation', async () => {
-      temporalService.getClient = jest.fn().mockReturnValue({
+      temporalService.getClient = jest.fn().mockResolvedValue({
         workflow: {
           start: jest
             .fn()

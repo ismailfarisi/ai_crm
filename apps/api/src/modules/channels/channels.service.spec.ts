@@ -817,7 +817,7 @@ describe('ChannelsService', () => {
         const signalWithStart = jest.fn().mockResolvedValue({});
         return {
           temporalService: {
-            getClient: () => ({ workflow: { start, signalWithStart } }),
+            getClient: async () => ({ workflow: { start, signalWithStart } }),
           },
           start,
           signalWithStart,

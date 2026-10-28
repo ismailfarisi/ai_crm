@@ -115,7 +115,7 @@ describe('QuotesService', () => {
     };
 
     temporalService = {
-      getClient: jest.fn().mockReturnValue({
+      getClient: jest.fn().mockResolvedValue({
         workflow: {
           start: jest.fn().mockResolvedValue(mockWorkflowHandle),
           getHandle: jest.fn().mockReturnValue(mockWorkflowHandle),
@@ -369,7 +369,7 @@ describe('QuotesService', () => {
     // A workflow id on record says a workflow is waiting for a signal. If the
     // start failed, none is, and the row must not claim otherwise.
     it('leaves workflowId empty when Temporal could not start the workflow', async () => {
-      temporalService.getClient = jest.fn().mockReturnValue({
+      temporalService.getClient = jest.fn().mockResolvedValue({
         workflow: {
           start: jest.fn().mockRejectedValue(new Error('Temporal unavailable')),
         },

@@ -160,7 +160,7 @@ export class AssistantService {
     }
 
     try {
-      await this.temporal.getClient().workflow.start(agentReActWorkflow, {
+      await (await this.temporal.getClient()).workflow.start(agentReActWorkflow, {
         taskQueue: ASSISTANT_TASK_QUEUE,
         workflowId: turn.workflowId,
         args: [
@@ -204,9 +204,8 @@ export class AssistantService {
       .execute();
     if (!affected) throw new ConflictException('This action is no longer waiting for approval');
     try {
-      await this.temporal
-        .getClient()
-        .workflow.getHandle(turn.workflowId)
+      await (await this.temporal.getClient()).workflow
+        .getHandle(turn.workflowId)
         .signal(approvalSignal, {
           approved: body.approved,
           toolId: body.toolCallId,
@@ -228,7 +227,8 @@ export class AssistantService {
     if (!affected) throw new ConflictException('This turn has already finished');
     const cancelled = { ...turn, status: 'CANCELLED' as const, pendingAction: null, finishedAt: new Date() };
     await this.events.writeStatus(cancelled, 'cancelled:status');
-    await this.temporal.getClient().workflow.getHandle(turn.workflowId).cancel().catch(() => undefined);
+    const client = await this.temporal.getClient();
+    await client.workflow.getHandle(turn.workflowId).cancel().catch(() => undefined);
     return toTurnDto(cancelled);
   }
 }
