@@ -10,17 +10,23 @@ import {
   Search,
   Sparkles,
   Trash2,
-  Webhook,
   Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import clsx from 'clsx';
-import type { AutomationTriggerType, AutomationWorkflowDto } from '@saas/shared';
+import type { AutomationWorkflowDto } from '@saas/shared';
 import {
   useAutomations,
+  useAutomationSettings,
   useCreateAutomationWorkflow,
   useDeleteAutomationWorkflow,
 } from '@/hooks/use-automations';
+import {
+  AUTOMATION_TEMPLATES,
+  buildTemplateGraph,
+  overdueRecipientNote,
+  type AutomationTemplateId,
+} from '@/components/automations/templates';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import {
@@ -32,43 +38,10 @@ import {
   Skeleton,
 } from '@/components/ui/primitives';
 
-interface Template {
-  name: string;
-  description: string;
-  triggerType: AutomationTriggerType;
-  label: string;
-  blurb: string;
-  icon: React.ReactNode;
-}
-
-const TEMPLATES: Template[] = [
-  {
-    name: 'Quote Approval to Invoice Flow',
-    description:
-      'Pause on Quote creation for manager approval; generate Invoice on approval.',
-    triggerType: 'CRM_EVENT',
-    label: 'CRM event',
-    blurb: 'Assigns quotes, checks margin, waits for approval, then issues the invoice.',
-    icon: <CheckCircle2 className="size-4" />,
-  },
-  {
-    name: 'Daily AI CFO Cashflow Health Check',
-    description:
-      'Runs daily at 8am: fetches burn rate and emails executive cash summary.',
-    triggerType: 'SCHEDULE',
-    label: 'Scheduled',
-    blurb: 'Reads receivables and runway each morning and sends the owner a summary.',
-    icon: <Sparkles className="size-4" />,
-  },
-  {
-    name: 'Inbound Webhook to Lead Enrichment',
-    description: 'Captures external website leads via webhook and creates CRM contacts.',
-    triggerType: 'WEBHOOK',
-    label: 'Webhook',
-    blurb: 'Takes a JSON payload, enriches the company details, and alerts the team.',
-    icon: <Webhook className="size-4" />,
-  },
-];
+const TEMPLATE_ICONS: Record<AutomationTemplateId, React.ReactNode> = {
+  'quote-accepted-notify': <CheckCircle2 className="size-4" />,
+  'invoice-overdue-reminder': <Sparkles className="size-4" />,
+};
 
 const TRIGGER_FILTERS = ['ALL', 'WEBHOOK', 'SCHEDULE', 'CRM_EVENT', 'MANUAL'] as const;
 
@@ -84,6 +57,10 @@ export default function AutomationsListPage() {
   const deleteMutation = useDeleteAutomationWorkflow();
   const createMutation = useCreateAutomationWorkflow();
 
+  // Loading or failed settings count as off: drafts go to the team, never the customer.
+  const { data: automationSettings } = useAutomationSettings();
+  const aiEmailToCustomers = automationSettings?.aiEmailToCustomers === true;
+
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('ALL');
   const [pendingDelete, setPendingDelete] = useState<AutomationWorkflowDto | null>(null);
@@ -97,22 +74,9 @@ export default function AutomationsListPage() {
     return matchesSearch && (filterType === 'ALL' || wf.triggerType === filterType);
   });
 
-  const createFromTemplate = async (template: Template) => {
+  const createFromTemplate = async (id: AutomationTemplateId) => {
     try {
-      const created = await createMutation.mutateAsync({
-        name: template.name,
-        description: template.description,
-        triggerType: template.triggerType,
-        nodes: [
-          {
-            id: 'trigger-1',
-            type: template.triggerType === 'WEBHOOK' ? 'webhookTrigger' : 'crmEventTrigger',
-            position: { x: 100, y: 150 },
-            data: { label: template.name, config: {} },
-          },
-        ],
-        edges: [],
-      });
+      const created = await createMutation.mutateAsync(buildTemplateGraph(id, { aiEmailToCustomers }));
       toast.success('Created new automation workflow');
       router.push(`/automations/${created.id}`);
     } catch {
@@ -139,18 +103,18 @@ export default function AutomationsListPage() {
         <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-subtle">
           Start from a template
         </h2>
-        <div className="grid gap-4 md:grid-cols-3">
-          {TEMPLATES.map((template) => (
+        <div className="grid gap-4 md:grid-cols-2">
+          {AUTOMATION_TEMPLATES.map((template) => (
             <Card
-              key={template.name}
+              key={template.id}
               role="button"
               tabIndex={0}
               aria-label={`Create ${template.name}`}
-              onClick={() => void createFromTemplate(template)}
+              onClick={() => void createFromTemplate(template.id)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault();
-                  void createFromTemplate(template);
+                  void createFromTemplate(template.id);
                 }
               }}
               className="group cursor-pointer transition-colors hover:border-brand/40"
@@ -158,12 +122,17 @@ export default function AutomationsListPage() {
               <CardBody className="space-y-2 px-5 py-4">
                 <div className="flex items-center justify-between">
                   <span className="grid size-7 place-items-center rounded-lg bg-brand-soft text-ink">
-                    {template.icon}
+                    {TEMPLATE_ICONS[template.id]}
                   </span>
                   <Badge tone="neutral">{template.label}</Badge>
                 </div>
                 <h3 className="text-sm font-semibold text-ink">{template.name}</h3>
                 <p className="text-sm text-ink-muted">{template.blurb}</p>
+                {template.id === 'invoice-overdue-reminder' && (
+                  <p className="text-xs font-medium text-ink-subtle">
+                    {overdueRecipientNote(aiEmailToCustomers)}
+                  </p>
+                )}
               </CardBody>
             </Card>
           ))}
