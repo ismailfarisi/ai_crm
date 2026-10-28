@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./automations/ai-output": {
+      "types": "./dist/automations/ai-output.d.ts",
+      "default": "./dist/automations/ai-output.js"
     }
   },
   "files": [

@@ -7,7 +7,7 @@ import {
   sleep,
   workflowInfo,
 } from '@temporalio/workflow';
-import { usesAiOutput } from '@saas/shared';
+import { usesAiOutput } from '@saas/shared/automations/ai-output';
 import type { AiAgentNodeConfig, AutomationEdge, AutomationNode } from '@saas/shared';
 import {
   agentApprovalRequestedSignal,
@@ -15,6 +15,7 @@ import {
   approvalSignal,
 } from '../../channels/workflows/agent-react.workflow';
 import type * as activities from './automation.activities';
+import type { createAutomationActions } from './automation-actions';
 import {
   evaluateExpression,
   ExpressionContext,
@@ -43,7 +44,9 @@ const {
   executeCodeTransformActivity,
   executeCrmMutationActivity,
   recordNodeResultActivity,
-} = proxyActivities<typeof activities>({
+} = proxyActivities<
+  typeof activities & ReturnType<typeof createAutomationActions>
+>({
   startToCloseTimeout: '5 minutes',
   retry: {
     maximumAttempts: 3,

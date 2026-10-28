@@ -1,8 +1,5 @@
 import {
-  executeAiPromptActivity,
   executeCodeTransformActivity,
-  executeCrmMutationActivity,
-  executeEmailActivity,
   executeHttpActivity,
   recordNodeResultActivity,
 } from './automation.activities';
@@ -65,38 +62,6 @@ describe('AutomationActivities', () => {
           }),
         }),
       );
-    });
-  });
-
-  const ctx = {
-    tenantId: 't1',
-    workflowId: 'w1',
-    workflowName: 'Flow',
-    executionId: 'x1',
-    nodeId: 'n1',
-    aiWritten: false,
-  };
-
-  describe('executeAiPromptActivity', () => {
-    it('is a stub that returns the new result shape', async () => {
-      const result = await executeAiPromptActivity({ prompt: 'Draft email to lead' }, ctx);
-
-      expect(result).toEqual({
-        text: '',
-        model: 'stub',
-        usage: { inputTokens: 0, outputTokens: 0 },
-      });
-    });
-  });
-
-  describe('executeEmailActivity', () => {
-    it('is a stub that returns the new result shape', async () => {
-      const result = await executeEmailActivity(
-        { to: 'customer@example.com', subject: 'Your Quote is Ready', body: 'Hi' },
-        ctx,
-      );
-
-      expect(result).toEqual({ sent: [], provider: 'stub' });
     });
   });
 
@@ -183,17 +148,6 @@ describe('AutomationActivities', () => {
           input: {},
         }),
       ).rejects.toThrow('Code transform execution failed');
-    });
-  });
-
-  describe('executeCrmMutationActivity', () => {
-    it('is a stub that echoes entity, action and record id', async () => {
-      const result = await executeCrmMutationActivity(
-        { entity: 'contact', action: 'update', recordId: 'c1', fields: { name: 'Sarah' } },
-        ctx,
-      );
-
-      expect(result).toEqual({ entity: 'contact', action: 'update', recordId: 'c1', record: {} });
     });
   });
 

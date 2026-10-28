@@ -20,6 +20,10 @@ import { CustomObjectToolFactoryService } from './modules/custom-objects/service
 import { CustomObjectsService } from './modules/custom-objects/services/custom-objects.service';
 import { AssistantEventsService } from './modules/assistant/assistant-events.service';
 import { createAssistantActivities } from './modules/assistant/assistant.activities';
+import { createAutomationActions } from './modules/automations/workflows/automation-actions';
+import { MailService } from './modules/mail/mail.service';
+import { ContactsService } from './modules/contacts/contacts.service';
+import { UsersService } from './modules/users/users.service';
 import { CustomRecordsService } from './modules/custom-objects/services/custom-records.service';
 
 /**
@@ -59,6 +63,17 @@ async function run(): Promise<void> {
       tenantContext: appContext.get(TenantContextService),
       idempotency: appContext.get(ChannelIdempotencyService),
     });
+    const automationActions = createAutomationActions({
+      mail: appContext.get(MailService),
+      ai: appContext.get(AiService),
+      contacts: appContext.get(ContactsService),
+      quotes: appContext.get(QuotesService),
+      users: appContext.get(UsersService),
+      rbac: appContext.get(RbacService),
+      audit: appContext.get(AuditService),
+      tenantContext: appContext.get(TenantContextService),
+      idempotency: appContext.get(ChannelIdempotencyService),
+    });
     const assistantActivities = createAssistantActivities({
       events: appContext.get(AssistantEventsService),
       tenantContext: appContext.get(TenantContextService),
@@ -84,7 +99,11 @@ async function run(): Promise<void> {
         taskQueue: 'automations-queue',
         workflowsPath:
           require.resolve('./modules/automations/workflows/dynamic-dag.workflow'),
-        activities: { ...automationActivities, ...agentReactActivities },
+        activities: {
+          ...automationActivities,
+          ...automationActions,
+          ...agentReactActivities,
+        },
       }),
       Worker.create({
         connection,

@@ -258,6 +258,15 @@ export class UsersService {
     return user;
   }
 
+  /** Lower-cased emails of the organization's active members. */
+  async findActiveEmails(organizationId: string): Promise<string[]> {
+    const rows = await this.users.find({
+      where: { tenantId: organizationId, isActive: true },
+      select: { id: true, email: true },
+    });
+    return rows.map((u) => u.email.toLowerCase());
+  }
+
   /** Move a member into a team, or clear their team with null. */
   async assignTeam(
     organizationId: string,

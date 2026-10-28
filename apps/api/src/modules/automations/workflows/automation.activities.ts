@@ -6,15 +6,8 @@ import {
   type QuickJSWASMModule,
 } from 'quickjs-emscripten-core';
 import {
-  AiPromptActivityConfig,
-  AutomationActionContext,
-  AiPromptActivityResult,
   CodeTransformActivityConfig,
   CodeTransformActivityResult,
-  CrmMutationActivityConfig,
-  CrmMutationActivityResult,
-  EmailActivityConfig,
-  EmailActivityResult,
   HttpActivityConfig,
   HttpActivityResult,
   RecordNodeResultParams,
@@ -105,26 +98,6 @@ export async function executeHttpActivity(
   }
 }
 
-/** Stub until the real implementation lands; the workflow already passes `ctx`. */
-export async function executeAiPromptActivity(
-  config: AiPromptActivityConfig,
-  ctx: AutomationActionContext,
-): Promise<AiPromptActivityResult> {
-  void config;
-  void ctx;
-  return { text: '', model: 'stub', usage: { inputTokens: 0, outputTokens: 0 } };
-}
-
-/** Stub until the real implementation lands. */
-export async function executeEmailActivity(
-  config: EmailActivityConfig,
-  ctx: AutomationActionContext,
-): Promise<EmailActivityResult> {
-  void config;
-  void ctx;
-  return { sent: [], provider: 'stub' };
-}
-
 const TRANSFORM_TIMEOUT_MS = 1_000;
 const TRANSFORM_MEMORY_LIMIT_BYTES = 32 * 1024 * 1024;
 const TRANSFORM_STACK_LIMIT_BYTES = 512 * 1024;
@@ -185,20 +158,6 @@ export async function executeCodeTransformActivity(
     vm.dispose();
     runtime.dispose();
   }
-}
-
-/** Stub until the real implementation lands. */
-export async function executeCrmMutationActivity(
-  config: CrmMutationActivityConfig,
-  ctx: AutomationActionContext,
-): Promise<CrmMutationActivityResult> {
-  void ctx;
-  return {
-    entity: config.entity,
-    action: config.action,
-    recordId: config.recordId ?? '',
-    record: {},
-  };
 }
 
 /**
