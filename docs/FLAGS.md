@@ -862,6 +862,36 @@ permissions.
 `recordNodeResultActivity` is a stub, so execution rows are not updated
 with per-node results as the run proceeds. Left for the run-history round.
 
+### Schedules are hourly at the finest — by design
+
+A schedule trigger runs at a chosen minute of every hour at the most
+frequent setting. Anything finer (every few minutes) is deliberately not
+offered, to keep a mistaken schedule from flooding a mailbox or the AI budget.
+
+### Webhook URLs are shown persistently to editors — by design
+
+The secret address of a webhook automation is visible to anyone who can edit
+the automation, every time they open it, not just once at creation. If a URL
+leaks, use Regenerate; the old address stops working immediately.
+
+### The per-webhook rate limit fails open without Redis — by design
+
+The per-webhook limit counts in Redis. If Redis is unavailable the check is
+skipped and the request is accepted; the global per-IP throttling still
+applies.
+
+### The API's Temporal connection is made once at boot — open
+
+If Temporal is down when the API starts, saving a schedule automation answers
+"Couldn't update the automation's schedule…" until the API is restarted, and
+boot reconciliation of schedules does not retry.
+
+### Deleting an automation needs Temporal reachable — by design
+
+Its Temporal schedule is removed first, so a delete fails while Temporal is
+unreachable rather than leaving a schedule that fires for a deleted
+automation.
+
 ### `PATCH /contacts/:id` can reset status and source — open
 
 `updateContactSchema` is a zod 4 `.partial()`, which keeps defaults: parsing
