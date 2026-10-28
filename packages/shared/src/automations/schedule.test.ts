@@ -91,6 +91,23 @@ describe('nextScheduleRuns', () => {
     ]);
   });
 
+  it('daily 09:10 Dubai (a minute off the quarter-hour grid)', () => {
+    const s: AutomationSchedule = { frequency: 'daily', time: '09:10', timezone: 'Asia/Dubai' };
+    expect(iso(nextScheduleRuns(s, new Date('2026-10-29T06:00:00Z'), 2))).toEqual([
+      '2026-10-30T05:10:00.000Z',
+      '2026-10-31T05:10:00.000Z',
+    ]);
+  });
+
+  it('hourly at :07', () => {
+    const s: AutomationSchedule = { frequency: 'hourly', minute: 7, timezone: 'Asia/Dubai' };
+    expect(iso(nextScheduleRuns(s, new Date('2026-10-29T06:07:00Z'), 3))).toEqual([
+      '2026-10-29T07:07:00.000Z',
+      '2026-10-29T08:07:00.000Z',
+      '2026-10-29T09:07:00.000Z',
+    ]);
+  });
+
   it('excludes from itself', () => {
     expect(iso(nextScheduleRuns(hourly, new Date('2026-10-29T07:15:00Z'), 1))).toEqual([
       '2026-10-29T08:15:00.000Z',

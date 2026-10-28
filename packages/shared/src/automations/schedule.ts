@@ -122,8 +122,9 @@ const WINDOW_MS = 32 * 24 * 60 * 60 * 1000;
  * 32 days pass without a match, measured from `from` and then from each match
  * (a monthly gap is at most 31 days, so valid schedules never hit it).
  *
- * Candidates are the 15-minute grid points after `from`; every real-world
- * UTC offset is a multiple of 15 minutes, so wall-clock minutes land on the grid.
+ * Candidates are the points of a 15-minute grid shifted to the schedule's minute
+ * (`minute % 15`), after `from`; every real-world UTC offset is a multiple of
+ * 15 minutes, so the wall-clock minute always lands on that grid.
  * DST: for daily/weekly/monthly schedules, a wall-clock time that occurs twice
  * (fall-back) runs only at its first occurrence that day; one that does not exist
  * (spring-forward) never matches, so that day is skipped. Hourly schedules run at
@@ -134,7 +135,9 @@ export function nextScheduleRuns(s: AutomationSchedule, from: Date, count: numbe
   const [hh, mm] = s.time ? s.time.split(':').map(Number) : [0, 0];
   const seenDates = new Set<string>();
   let anchor = from.getTime();
-  const first = Math.floor(anchor / STEP_MS) * STEP_MS + STEP_MS;
+  const targetMinute = s.frequency === 'hourly' ? (s.minute ?? 0) : mm;
+  const phase = (targetMinute % 15) * 60 * 1000;
+  const first = Math.floor((anchor - phase) / STEP_MS) * STEP_MS + STEP_MS + phase;
   for (let t = first; t - anchor <= WINDOW_MS && out.length < count; t += STEP_MS) {
     const instant = new Date(t);
     const w = wallClock(instant, s.timezone);
