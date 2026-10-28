@@ -67,6 +67,14 @@ export class AutomationWorkflow {
   })
   webhookSlug: string | null;
 
+  /**
+   * The user whose permissions this automation's action steps run with:
+   * whoever activated it, or whoever last saved graph changes to it while
+   * active. Null when the user has since been deleted.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  activatedByUserId: string | null;
+
   @Column({ type: 'int', default: 1 })
   version: number;
 

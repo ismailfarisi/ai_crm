@@ -60,6 +60,7 @@ export interface AutomationWorkflowDto {
   nodes: AutomationNode[];
   edges: AutomationEdge[];
   webhookSlug?: string | null;
+  activatedByUserId?: string | null;
   version: number;
   createdAt: string;
   updatedAt: string;

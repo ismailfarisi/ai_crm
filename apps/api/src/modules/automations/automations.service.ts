@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { WorkflowExecutionAlreadyStartedError } from '@temporalio/client';
 import type {
+  AutomationNode,
   CreateAutomationWorkflowPayload,
   UpdateAutomationWorkflowPayload,
 } from '@saas/shared';
@@ -38,6 +39,23 @@ function isSourceEventConflict(err: unknown): boolean {
   const code = e?.code ?? e?.driverError?.code;
   const constraint = e?.constraint ?? e?.driverError?.constraint;
   return code === '23505' && constraint === SOURCE_EVENT_UNIQUE;
+}
+
+/**
+ * The web editor keeps a CRM trigger's event on the trigger node, while the
+ * event bridge matches on `triggerConfig.event`. Copy it across on every save.
+ */
+function syncTriggerConfig(wf: {
+  triggerType: string;
+  triggerConfig: Record<string, any>;
+  nodes: AutomationNode[];
+}): void {
+  if (wf.triggerType !== 'CRM_EVENT') return;
+  const trigger = (wf.nodes || []).find((n) => n.type === 'crmEventTrigger');
+  const event = trigger?.data?.config?.event;
+  if (typeof event === 'string' && event) {
+    wf.triggerConfig = { ...(wf.triggerConfig || {}), event };
+  }
 }
 
 @Injectable()
@@ -72,9 +90,11 @@ export class AutomationsService {
       nodes: payload.nodes || [],
       edges: payload.edges || [],
       webhookSlug,
+      activatedByUserId: null,
       status: 'DRAFT',
       version: 1,
     });
+    syncTriggerConfig(wf);
 
     return this.workflowRepo.save(wf);
   }
@@ -103,8 +123,10 @@ export class AutomationsService {
     tenantId: string,
     id: string,
     payload: UpdateAutomationWorkflowPayload,
+    actorUserId: string,
   ): Promise<AutomationWorkflow> {
     const wf = await this.findWorkflowById(tenantId, id);
+    const wasActive = wf.status === 'ACTIVE';
 
     if (payload.name !== undefined) wf.name = payload.name;
     if (payload.description !== undefined) wf.description = payload.description;
@@ -114,6 +136,23 @@ export class AutomationsService {
       wf.triggerConfig = payload.triggerConfig;
     if (payload.nodes !== undefined) wf.nodes = payload.nodes;
     if (payload.edges !== undefined) wf.edges = payload.edges;
+
+    syncTriggerConfig(wf);
+
+    if (wf.status === 'ACTIVE') {
+      if (wf.triggerType === 'CRM_EVENT' && !wf.triggerConfig?.event) {
+        throw new BadRequestException(
+          'Choose the CRM event that starts this automation',
+        );
+      }
+      const graphChanged =
+        payload.nodes !== undefined ||
+        payload.edges !== undefined ||
+        payload.triggerConfig !== undefined;
+      // Action steps run as the owner: whoever switches it on, or whoever
+      // later changes what it does.
+      if (!wasActive || graphChanged) wf.activatedByUserId = actorUserId;
+    }
 
     if (wf.triggerType === 'WEBHOOK' && !wf.webhookSlug) {
       wf.webhookSlug = this.generateWebhookSlug();
@@ -169,6 +208,12 @@ export class AutomationsService {
             workflowId: wf.id,
             tenantId,
             ...(actorUserId ? { actorUserId } : {}),
+            // A test run acts as the person who clicked; every other path
+            // acts as the user who activated the automation.
+            ...(actorUserId || wf.activatedByUserId
+              ? { ownerUserId: actorUserId ?? wf.activatedByUserId! }
+              : {}),
+            workflowName: wf.name,
             nodes: wf.nodes || [],
             edges: wf.edges || [],
             triggerPayload,
@@ -239,6 +284,10 @@ export class AutomationsService {
             workflowId: wf.id,
             tenantId: wf.tenantId,
             ...(actorUserId ? { actorUserId } : {}),
+            ...(wf.activatedByUserId
+              ? { ownerUserId: wf.activatedByUserId }
+              : {}),
+            workflowName: wf.name,
             nodes: wf.nodes || [],
             edges: wf.edges || [],
             triggerPayload: exec.triggerPayload,

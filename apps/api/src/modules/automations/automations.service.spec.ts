@@ -43,6 +43,7 @@ describe('AutomationsService', () => {
     ],
     edges: [],
     webhookSlug: null,
+    activatedByUserId: null,
     version: 1,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -216,7 +217,7 @@ describe('AutomationsService', () => {
         name: 'Updated Name',
         description: 'New Description',
         status: 'ACTIVE',
-      });
+      }, 'u1');
 
       expect(result.name).toBe('Updated Name');
       expect(result.description).toBe('New Description');
@@ -235,7 +236,7 @@ describe('AutomationsService', () => {
 
       const result = await service.updateWorkflow(mockTenantId, 'wf-uuid-1', {
         triggerType: 'WEBHOOK',
-      });
+      }, 'u1');
 
       expect(result.webhookSlug).toMatch(/^wh_\d+_[a-z0-9]+$/);
     });
@@ -243,8 +244,149 @@ describe('AutomationsService', () => {
     it('throws NotFoundException if workflow does not exist', async () => {
       workflowRepo.findOne.mockResolvedValueOnce(null);
       await expect(
-        service.updateWorkflow(mockTenantId, 'non-existent', { name: 'Test' }),
+        service.updateWorkflow(mockTenantId, 'non-existent', { name: 'Test' }, 'u1'),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('ownership and trigger-event sync', () => {
+    const crmNode = (event: string) => ({
+      id: 'trg',
+      type: 'crmEventTrigger' as const,
+      position: { x: 0, y: 0 },
+      data: { label: 'CRM', config: { event } },
+    });
+
+    it('sets activatedByUserId when status changes to ACTIVE', async () => {
+      workflowRepo.findOne.mockResolvedValueOnce({ ...mockWorkflow });
+      const result = await service.updateWorkflow(
+        mockTenantId,
+        'wf-uuid-1',
+        { status: 'ACTIVE' },
+        'u1',
+      );
+      expect(result.activatedByUserId).toBe('u1');
+    });
+
+    it('saving nodes on an ACTIVE workflow makes the saver the owner', async () => {
+      workflowRepo.findOne.mockResolvedValueOnce({
+        ...mockWorkflow,
+        status: 'ACTIVE',
+        activatedByUserId: 'u1',
+      });
+      const result = await service.updateWorkflow(
+        mockTenantId,
+        'wf-uuid-1',
+        { nodes: [...mockWorkflow.nodes] },
+        'u2',
+      );
+      expect(result.activatedByUserId).toBe('u2');
+    });
+
+    it('saving only name on an ACTIVE workflow keeps the owner', async () => {
+      workflowRepo.findOne.mockResolvedValueOnce({
+        ...mockWorkflow,
+        status: 'ACTIVE',
+        activatedByUserId: 'u1',
+      });
+      const result = await service.updateWorkflow(
+        mockTenantId,
+        'wf-uuid-1',
+        { name: 'Renamed' },
+        'u2',
+      );
+      expect(result.activatedByUserId).toBe('u1');
+    });
+
+    it("copies the CRM trigger node's event into triggerConfig on save", async () => {
+      workflowRepo.findOne.mockResolvedValueOnce({
+        ...mockWorkflow,
+        triggerType: 'CRM_EVENT',
+        triggerConfig: {},
+      });
+      const result = await service.updateWorkflow(
+        mockTenantId,
+        'wf-uuid-1',
+        { nodes: [crmNode('invoice.overdue')] },
+        'u1',
+      );
+      expect(result.triggerConfig.event).toBe('invoice.overdue');
+    });
+
+    it("copies the CRM trigger node's event into triggerConfig on create", async () => {
+      const result = await service.createWorkflow(mockTenantId, {
+        name: 'x',
+        triggerType: 'CRM_EVENT',
+        nodes: [crmNode('invoice.overdue')],
+        edges: [],
+      } as any);
+      expect(result.triggerConfig.event).toBe('invoice.overdue');
+    });
+
+    it('rejects activating a CRM_EVENT workflow without an event', async () => {
+      const run = () => {
+        workflowRepo.findOne.mockResolvedValueOnce({
+          ...mockWorkflow,
+          triggerType: 'CRM_EVENT',
+          triggerConfig: {},
+        });
+        return service.updateWorkflow(
+          mockTenantId,
+          'wf-uuid-1',
+          { status: 'ACTIVE' },
+          'u1',
+        );
+      };
+      await expect(run()).rejects.toThrow(BadRequestException);
+      await expect(run()).rejects.toThrow(
+        'Choose the CRM event that starts this automation',
+      );
+    });
+
+    it('test run passes the clicking user as owner', async () => {
+      workflowRepo.findOne.mockResolvedValueOnce({
+        ...mockWorkflow,
+        activatedByUserId: 'owner-1',
+      });
+      await service.triggerExecution(mockTenantId, 'wf-uuid-1', {}, 'clicker');
+      expect(mockTemporalClient.workflow.start).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          args: [
+            expect.objectContaining({
+              ownerUserId: 'clicker',
+              workflowName: 'Sample Workflow',
+            }),
+          ],
+        }),
+      );
+    });
+
+    it('event-triggered run passes activatedByUserId as owner', async () => {
+      workflowRepo.findOne.mockResolvedValueOnce({
+        ...mockWorkflow,
+        activatedByUserId: 'owner-1',
+      });
+      executionRepo.findOne.mockResolvedValueOnce(null);
+      await service.triggerExecution(
+        mockTenantId,
+        'wf-uuid-1',
+        {},
+        'event-actor',
+        { sourceEventId: '7d1f0b2a-4c1e-4f7a-9a51-2f6f3c1d9e01' },
+      );
+      expect(mockTemporalClient.workflow.start).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          args: [
+            expect.objectContaining({
+              ownerUserId: 'owner-1',
+              actorUserId: 'event-actor',
+              workflowName: 'Sample Workflow',
+            }),
+          ],
+        }),
+      );
     });
   });
 

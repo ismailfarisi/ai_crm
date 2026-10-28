@@ -142,6 +142,7 @@ describe('AutomationsController', () => {
         mockUser.organizationId,
         'wf-123',
         dto,
+        mockUser.id,
       );
     });
   });

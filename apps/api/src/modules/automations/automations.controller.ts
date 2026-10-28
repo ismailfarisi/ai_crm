@@ -123,7 +123,12 @@ export class AutomationsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateAutomationDto,
   ): Promise<AutomationWorkflow> {
-    return this.automationsService.updateWorkflow(user.organizationId, id, dto);
+    return this.automationsService.updateWorkflow(
+      user.organizationId,
+      id,
+      dto,
+      user.id,
+    );
   }
 
   @Delete(':id')
