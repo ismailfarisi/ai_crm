@@ -348,7 +348,9 @@ describe('AutomationsService', () => {
         ...mockWorkflow,
         activatedByUserId: 'owner-1',
       });
-      await service.triggerExecution(mockTenantId, 'wf-uuid-1', {}, 'clicker');
+      await service.triggerExecution(mockTenantId, 'wf-uuid-1', {}, 'clicker', {
+        testRun: true,
+      });
       expect(mockTemporalClient.workflow.start).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({
@@ -358,6 +360,45 @@ describe('AutomationsService', () => {
               workflowName: 'Sample Workflow',
             }),
           ],
+        }),
+      );
+    });
+
+    it('a bridge run with an actor but no event id still acts as the owner', async () => {
+      workflowRepo.findOne.mockResolvedValueOnce({
+        ...mockWorkflow,
+        activatedByUserId: 'owner-1',
+      });
+      await service.triggerExecution(mockTenantId, 'wf-uuid-1', {}, 'event-actor');
+      expect(mockTemporalClient.workflow.start).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          args: [
+            expect.objectContaining({
+              ownerUserId: 'owner-1',
+              actorUserId: 'event-actor',
+            }),
+          ],
+        }),
+      );
+    });
+
+    it('a webhook run acts as the owner', async () => {
+      workflowRepo.findOne.mockResolvedValueOnce({
+        ...mockWorkflow,
+        triggerType: 'WEBHOOK',
+        webhookSlug: 'wh_x',
+        activatedByUserId: 'owner-1',
+      });
+      workflowRepo.findOne.mockResolvedValueOnce({
+        ...mockWorkflow,
+        activatedByUserId: 'owner-1',
+      });
+      await service.triggerWebhook('wh_x', {});
+      expect(mockTemporalClient.workflow.start).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          args: [expect.objectContaining({ ownerUserId: 'owner-1' })],
         }),
       );
     });

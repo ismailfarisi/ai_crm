@@ -161,6 +161,7 @@ export class AutomationsController {
       id,
       body,
       user.id,
+      { testRun: true },
     );
   }
 

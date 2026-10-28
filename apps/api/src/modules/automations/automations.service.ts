@@ -27,6 +27,11 @@ import {
 export interface TriggerExecutionOptions {
   /** Outbox event id: makes the trigger idempotent per (workflow, event). */
   sourceEventId?: string;
+  /**
+   * Set only by the test-run endpoint: the run then acts as `actorUserId`.
+   * Every other run (events, webhooks) acts as the workflow's owner.
+   */
+  testRun?: boolean;
 }
 
 /** `temporalWorkflowId` placeholder until Temporal has accepted the start. */
@@ -186,6 +191,9 @@ export class AutomationsService {
       );
     }
 
+    const ownerUserId =
+      options.testRun && actorUserId ? actorUserId : wf.activatedByUserId;
+
     const exec = this.executionRepo.create({
       tenantId,
       workflowId: wf.id,
@@ -210,9 +218,7 @@ export class AutomationsService {
             ...(actorUserId ? { actorUserId } : {}),
             // A test run acts as the person who clicked; every other path
             // acts as the user who activated the automation.
-            ...(actorUserId || wf.activatedByUserId
-              ? { ownerUserId: actorUserId ?? wf.activatedByUserId! }
-              : {}),
+            ...(ownerUserId ? { ownerUserId } : {}),
             workflowName: wf.name,
             nodes: wf.nodes || [],
             edges: wf.edges || [],

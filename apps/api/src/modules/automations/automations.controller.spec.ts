@@ -171,6 +171,7 @@ describe('AutomationsController', () => {
         'wf-123',
         payload,
         mockUser.id,
+        { testRun: true },
       );
     });
   });
