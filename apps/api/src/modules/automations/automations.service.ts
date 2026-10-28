@@ -6,13 +6,16 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { randomBytes } from 'crypto';
 import { Repository } from 'typeorm';
+import type { ZodError } from 'zod';
 import { WorkflowExecutionAlreadyStartedError } from '@temporalio/client';
 import type {
   AutomationNode,
   CreateAutomationWorkflowPayload,
   UpdateAutomationWorkflowPayload,
 } from '@saas/shared';
+import { automationScheduleSchema, PERMISSIONS } from '@saas/shared';
 import { AutomationWorkflow } from './entities/automation-workflow.entity';
 import { AutomationExecution } from './entities/automation-execution.entity';
 import { TemporalService } from '../temporal/temporal.service';
@@ -69,6 +72,87 @@ function syncTriggerConfig(wf: {
   wf.triggerConfig = triggerConfig;
 }
 
+const WEBHOOK_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
+
+/** 32 random bytes, base64url: the unguessable address of a webhook. */
+export function generateWebhookToken(): string {
+  return randomBytes(32).toString('base64url');
+}
+
+/**
+ * The webhook address and signature secret are credentials: only people who
+ * can edit the automation may see them. Returns a copy; the entity itself may
+ * be saved later and must not lose them.
+ */
+export function redactForReader<
+  T extends { webhookSlug: string | null; triggerConfig: Record<string, any> },
+>(wf: T, permissions: readonly string[]): T {
+  if (permissions.includes(PERMISSIONS.AUTOMATION_UPDATE)) return wf;
+  const triggerConfig = { ...(wf.triggerConfig || {}) };
+  delete triggerConfig.signatureSecret;
+  return { ...wf, webhookSlug: null, triggerConfig };
+}
+
+function zodMessage(err: ZodError): string {
+  return err.issues
+    .map((i) => (i.path.length ? `${i.path.join('.')}: ${i.message}` : i.message))
+    .join('; ');
+}
+
+/**
+ * Normalise and validate the trigger-specific parts of `triggerConfig`:
+ * a schedule's shape, a webhook's https-only redirect and its signature secret.
+ * Works on a copy; `previous` supplies the secret to keep when the client
+ * (which may have been sent it) omits it.
+ */
+function applyTriggerConfig(
+  wf: {
+    triggerType: string;
+    status: string;
+    triggerConfig: Record<string, any>;
+  },
+  previous: Record<string, any>,
+  regenerateSignature: boolean,
+): void {
+  const config = { ...(wf.triggerConfig || {}) };
+  if (wf.triggerType === 'SCHEDULE') {
+    if (config.schedule !== undefined && config.schedule !== null) {
+      const parsed = automationScheduleSchema.safeParse(config.schedule);
+      if (!parsed.success) {
+        throw new BadRequestException(zodMessage(parsed.error));
+      }
+      config.schedule = parsed.data;
+    } else {
+      delete config.schedule;
+      if (wf.status === 'ACTIVE') {
+        throw new BadRequestException('Choose when this automation runs');
+      }
+    }
+  } else if (wf.triggerType === 'WEBHOOK') {
+    if (config.redirectUrl) {
+      let ok = false;
+      try {
+        ok = new URL(String(config.redirectUrl)).protocol === 'https:';
+      } catch {
+        ok = false;
+      }
+      if (!ok) {
+        throw new BadRequestException('The redirect URL must start with https://');
+      }
+    } else {
+      delete config.redirectUrl;
+    }
+    if (config.requireSignature === true) {
+      const kept = config.signatureSecret ?? previous.signatureSecret;
+      config.signatureSecret =
+        regenerateSignature || !kept ? generateWebhookToken() : kept;
+    } else {
+      delete config.signatureSecret;
+    }
+  }
+  wf.triggerConfig = config;
+}
+
 @Injectable()
 export class AutomationsService {
   private readonly logger = new Logger(AutomationsService.name);
@@ -81,16 +165,12 @@ export class AutomationsService {
     private readonly temporalService: TemporalService,
   ) {}
 
-  private generateWebhookSlug(): string {
-    return `wh_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-  }
-
   async createWorkflow(
     tenantId: string,
     payload: CreateAutomationWorkflowPayload,
   ): Promise<AutomationWorkflow> {
     const webhookSlug =
-      payload.triggerType === 'WEBHOOK' ? this.generateWebhookSlug() : null;
+      payload.triggerType === 'WEBHOOK' ? generateWebhookToken() : null;
 
     const wf = this.workflowRepo.create({
       tenantId,
@@ -106,6 +186,7 @@ export class AutomationsService {
       version: 1,
     });
     syncTriggerConfig(wf);
+    applyTriggerConfig(wf, {}, false);
 
     return this.workflowRepo.save(wf);
   }
@@ -143,12 +224,18 @@ export class AutomationsService {
     if (payload.description !== undefined) wf.description = payload.description;
     if (payload.status !== undefined) wf.status = payload.status;
     if (payload.triggerType !== undefined) wf.triggerType = payload.triggerType;
+    const previousConfig = wf.triggerConfig || {};
     if (payload.triggerConfig !== undefined)
       wf.triggerConfig = payload.triggerConfig;
     if (payload.nodes !== undefined) wf.nodes = payload.nodes;
     if (payload.edges !== undefined) wf.edges = payload.edges;
 
     syncTriggerConfig(wf);
+    applyTriggerConfig(
+      wf,
+      previousConfig,
+      payload.regenerateSignature === true,
+    );
 
     if (wf.status === 'ACTIVE') {
       if (wf.triggerType === 'CRM_EVENT' && !wf.triggerConfig?.event) {
@@ -160,18 +247,37 @@ export class AutomationsService {
         payload.nodes !== undefined ||
         payload.edges !== undefined ||
         payload.triggerType !== undefined ||
-        payload.triggerConfig !== undefined;
+        payload.triggerConfig !== undefined ||
+        payload.regenerateSignature === true;
       // Action steps run as the owner: whoever switches it on, or whoever
       // later changes what it does.
       if (!wasActive || graphChanged) wf.activatedByUserId = actorUserId;
     }
 
-    if (wf.triggerType === 'WEBHOOK' && !wf.webhookSlug) {
-      wf.webhookSlug = this.generateWebhookSlug();
+    if (
+      wf.triggerType === 'WEBHOOK' &&
+      !WEBHOOK_TOKEN_RE.test(wf.webhookSlug ?? '')
+    ) {
+      wf.webhookSlug = generateWebhookToken();
     }
 
     wf.version = (wf.version || 1) + 1;
 
+    return this.workflowRepo.save(wf);
+  }
+
+  async regenerateWebhookToken(
+    tenantId: string,
+    id: string,
+    actorUserId: string,
+  ): Promise<AutomationWorkflow> {
+    const wf = await this.findWorkflowById(tenantId, id);
+    if (wf.triggerType !== 'WEBHOOK') {
+      throw new BadRequestException('Only webhook automations have a web address');
+    }
+    wf.webhookSlug = generateWebhookToken();
+    wf.version = (wf.version || 1) + 1;
+    this.logger.log(`Webhook address regenerated for ${id} by ${actorUserId}`);
     return this.workflowRepo.save(wf);
   }
 

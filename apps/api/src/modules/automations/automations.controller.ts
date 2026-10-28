@@ -14,7 +14,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@saas/shared';
 import { CurrentUser, Public, RequirePermissions } from '@/common/decorators';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
-import { AutomationsService } from './automations.service';
+import { AutomationsService, redactForReader } from './automations.service';
 import { AiService } from '../ai/ai.service';
 import { CreateAutomationDto } from './dto/create-automation.dto';
 import { UpdateAutomationDto } from './dto/update-automation.dto';
@@ -53,7 +53,10 @@ export class AutomationsController {
   async findAllWorkflows(
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<AutomationWorkflow[]> {
-    return this.automationsService.findAllWorkflows(user.organizationId);
+    const rows = await this.automationsService.findAllWorkflows(
+      user.organizationId,
+    );
+    return rows.map((wf) => redactForReader(wf, user.permissions));
   }
 
   @Post()
@@ -127,7 +130,11 @@ export class AutomationsController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<AutomationWorkflow> {
-    return this.automationsService.findWorkflowById(user.organizationId, id);
+    const wf = await this.automationsService.findWorkflowById(
+      user.organizationId,
+      id,
+    );
+    return redactForReader(wf, user.permissions);
   }
 
   @Patch(':id')
@@ -145,6 +152,25 @@ export class AutomationsController {
       user.organizationId,
       id,
       dto,
+      user.id,
+    );
+  }
+
+  @Post(':id/webhook/regenerate')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PERMISSIONS.AUTOMATION_UPDATE)
+  @ApiOperation({
+    summary: 'Regenerate webhook address',
+    description:
+      'Replace the secret web address of a webhook automation; the old one stops working',
+  })
+  async regenerateWebhookToken(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<AutomationWorkflow> {
+    return this.automationsService.regenerateWebhookToken(
+      user.organizationId,
+      id,
       user.id,
     );
   }

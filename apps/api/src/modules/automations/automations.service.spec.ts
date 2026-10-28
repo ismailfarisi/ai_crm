@@ -6,7 +6,11 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { AutomationsService } from './automations.service';
+import {
+  AutomationsService,
+  generateWebhookToken,
+  redactForReader,
+} from './automations.service';
 import { AutomationWorkflow } from './entities/automation-workflow.entity';
 import { AutomationExecution } from './entities/automation-execution.entity';
 import { TemporalService } from '../temporal/temporal.service';
@@ -174,7 +178,7 @@ describe('AutomationsService', () => {
         expect.objectContaining({
           tenantId: mockTenantId,
           triggerType: 'WEBHOOK',
-          webhookSlug: expect.stringMatching(/^wh_\d+_[a-z0-9]+$/),
+          webhookSlug: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
         }),
       );
     });
@@ -238,7 +242,7 @@ describe('AutomationsService', () => {
         triggerType: 'WEBHOOK',
       }, 'u1');
 
-      expect(result.webhookSlug).toMatch(/^wh_\d+_[a-z0-9]+$/);
+      expect(result.webhookSlug).toMatch(/^[A-Za-z0-9_-]{43}$/);
     });
 
     it('throws NotFoundException if workflow does not exist', async () => {
@@ -425,7 +429,12 @@ describe('AutomationsService', () => {
       const result = await service.updateWorkflow(
         mockTenantId,
         'wf-uuid-1',
-        { triggerType: 'SCHEDULE' },
+        {
+          triggerType: 'SCHEDULE',
+          triggerConfig: {
+            schedule: { frequency: 'hourly', minute: 0, timezone: 'Asia/Dubai' },
+          },
+        },
         'u2',
       );
       expect(result.activatedByUserId).toBe('u2');
@@ -932,6 +941,218 @@ describe('AutomationsService', () => {
           nodeId: 'node-1',
         }),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+});
+
+describe('webhook tokens, signature secrets and schedules', () => {
+  let service: AutomationsService;
+  let workflowRepo: any;
+  const tenantId = 'tenant-uuid-1';
+  const base = (over: Record<string, any> = {}): any => ({
+    id: 'wf-1',
+    tenantId,
+    name: 'W',
+    description: null,
+    status: 'DRAFT',
+    triggerType: 'WEBHOOK',
+    triggerConfig: {},
+    nodes: [],
+    edges: [],
+    webhookSlug: 'a'.repeat(43),
+    activatedByUserId: null,
+    version: 1,
+    ...over,
+  });
+
+  beforeEach(async () => {
+    workflowRepo = {
+      create: jest
+        .fn()
+        .mockImplementation((dto) => ({ ...dto, id: 'wf-1', version: 1 })),
+      save: jest.fn().mockImplementation((e) => Promise.resolve(e)),
+      findOne: jest.fn(),
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AutomationsService,
+        {
+          provide: getRepositoryToken(AutomationWorkflow),
+          useValue: workflowRepo,
+        },
+        { provide: getRepositoryToken(AutomationExecution), useValue: {} },
+        { provide: TemporalService, useValue: { getClient: jest.fn() } },
+      ],
+    }).compile();
+    service = module.get(AutomationsService);
+  });
+
+  const update = (existing: any, payload: any) => {
+    workflowRepo.findOne.mockResolvedValueOnce(existing);
+    return service.updateWorkflow(tenantId, 'wf-1', payload, 'u1');
+  };
+
+  it('generateWebhookToken makes 43-char base64url tokens that differ each time', () => {
+    const a = generateWebhookToken();
+    expect(a).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(generateWebhookToken()).not.toBe(a);
+  });
+
+  it('createWorkflow gives a WEBHOOK workflow a strong token', async () => {
+    const wf = await service.createWorkflow(tenantId, {
+      name: 'W',
+      triggerType: 'WEBHOOK',
+    });
+    expect(wf.webhookSlug).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  });
+
+  it('replaces an old-format slug on the next save but keeps a strong one', async () => {
+    const old = await update(base({ webhookSlug: 'wh_123_abcde' }), {
+      name: 'x',
+    });
+    expect(old.webhookSlug).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const strong = await update(base(), { name: 'x' });
+    expect(strong.webhookSlug).toBe('a'.repeat(43));
+  });
+
+  describe('regenerateWebhookToken', () => {
+    it('changes the token', async () => {
+      workflowRepo.findOne.mockResolvedValueOnce(base());
+      const wf = await service.regenerateWebhookToken(tenantId, 'wf-1', 'u1');
+      expect(wf.webhookSlug).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      expect(wf.webhookSlug).not.toBe('a'.repeat(43));
+      expect(workflowRepo.save).toHaveBeenCalled();
+    });
+
+    it('rejects a non-webhook automation', async () => {
+      workflowRepo.findOne.mockResolvedValueOnce(
+        base({ triggerType: 'MANUAL', webhookSlug: null }),
+      );
+      await expect(
+        service.regenerateWebhookToken(tenantId, 'wf-1', 'u1'),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('schedule validation', () => {
+    const sched = { frequency: 'daily', time: '09:00', timezone: 'Asia/Dubai' };
+    const scheduled = () => base({ triggerType: 'SCHEDULE', webhookSlug: null });
+
+    it('refuses to activate a SCHEDULE automation with no schedule', async () => {
+      await expect(update(scheduled(), { status: 'ACTIVE' })).rejects.toThrow(
+        new BadRequestException('Choose when this automation runs'),
+      );
+    });
+
+    it('allows a draft without a schedule', async () => {
+      const wf = await update(scheduled(), { name: 'x' });
+      expect(wf.name).toBe('x');
+    });
+
+    it('rejects an invalid schedule with the validation message', async () => {
+      await expect(
+        update(scheduled(), {
+          triggerConfig: {
+            schedule: { frequency: 'daily', timezone: 'Asia/Dubai' },
+          },
+        }),
+      ).rejects.toThrow(/time is required/);
+    });
+
+    it('saves a valid schedule and activates', async () => {
+      const wf = await update(scheduled(), {
+        status: 'ACTIVE',
+        triggerConfig: { schedule: sched },
+      });
+      expect(wf.triggerConfig.schedule).toEqual(sched);
+      expect(wf.activatedByUserId).toBe('u1');
+    });
+  });
+
+  describe('webhook trigger config', () => {
+    it('rejects an http or malformed redirect URL and accepts https', async () => {
+      await expect(
+        update(base(), {
+          triggerConfig: { redirectUrl: 'http://example.com/thanks' },
+        }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        update(base(), { triggerConfig: { redirectUrl: 'not a url' } }),
+      ).rejects.toThrow(BadRequestException);
+      const wf = await update(base(), {
+        triggerConfig: { redirectUrl: 'https://example.com/thanks' },
+      });
+      expect(wf.triggerConfig.redirectUrl).toBe('https://example.com/thanks');
+    });
+
+    it('generates a secret when a signature is required, keeping it on later saves', async () => {
+      const wf = await update(base(), {
+        triggerConfig: { requireSignature: true },
+      });
+      const secret = wf.triggerConfig.signatureSecret;
+      expect(secret).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      const again = await update(wf, {
+        triggerConfig: { requireSignature: true },
+      });
+      expect(again.triggerConfig.signatureSecret).toBe(secret);
+    });
+
+    it('rotates the secret on regenerateSignature', async () => {
+      const wf = await update(base(), {
+        triggerConfig: { requireSignature: true },
+      });
+      const secret = wf.triggerConfig.signatureSecret;
+      const rotated = await update(wf, { regenerateSignature: true });
+      expect(rotated.triggerConfig.requireSignature).toBe(true);
+      expect(rotated.triggerConfig.signatureSecret).toMatch(
+        /^[A-Za-z0-9_-]{43}$/,
+      );
+      expect(rotated.triggerConfig.signatureSecret).not.toBe(secret);
+    });
+
+    it('removes the secret when the signature is switched off', async () => {
+      const wf = await update(base(), {
+        triggerConfig: { requireSignature: true },
+      });
+      const off = await update(wf, {
+        triggerConfig: {
+          requireSignature: false,
+          signatureSecret: wf.triggerConfig.signatureSecret,
+        },
+      });
+      expect(off.triggerConfig.signatureSecret).toBeUndefined();
+    });
+
+    it('does not mutate the payload it was given', async () => {
+      const triggerConfig = { requireSignature: true };
+      await update(base(), { triggerConfig });
+      expect(triggerConfig).toEqual({ requireSignature: true });
+    });
+  });
+
+  describe('redactForReader', () => {
+    const wf: any = base({
+      triggerConfig: {
+        requireSignature: true,
+        signatureSecret: 's'.repeat(43),
+        redirectUrl: 'https://x.test',
+      },
+    });
+
+    it('hides the token and secret from users who cannot update, without mutating', () => {
+      const out = redactForReader(wf, ['automation:read']);
+      expect(out.webhookSlug).toBeNull();
+      expect(out.triggerConfig.signatureSecret).toBeUndefined();
+      expect(out.triggerConfig.requireSignature).toBe(true);
+      expect(out.triggerConfig.redirectUrl).toBe('https://x.test');
+      expect(wf.webhookSlug).toBe('a'.repeat(43));
+      expect(wf.triggerConfig.signatureSecret).toBe('s'.repeat(43));
+    });
+
+    it('leaves both for users who can update', () => {
+      const out = redactForReader(wf, ['automation:read', 'automation:update']);
+      expect(out.webhookSlug).toBe('a'.repeat(43));
+      expect(out.triggerConfig.signatureSecret).toBe('s'.repeat(43));
     });
   });
 });

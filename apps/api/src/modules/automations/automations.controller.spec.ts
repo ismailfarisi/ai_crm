@@ -265,3 +265,61 @@ describe('AutomationsController', () => {
     });
   });
 });
+
+describe('AutomationsController secrets', () => {
+  const wf: any = {
+    id: 'wf-1',
+    triggerType: 'WEBHOOK',
+    webhookSlug: 'a'.repeat(43),
+    triggerConfig: { requireSignature: true, signatureSecret: 's'.repeat(43) },
+  };
+  const reader: any = {
+    id: 'u',
+    organizationId: 't',
+    permissions: ['automation:read'],
+  };
+  const editor: any = {
+    id: 'u',
+    organizationId: 't',
+    permissions: ['automation:read', 'automation:update'],
+  };
+  let controller: AutomationsController;
+  let svc: any;
+
+  beforeEach(() => {
+    svc = {
+      findAllWorkflows: jest.fn().mockResolvedValue([wf]),
+      findWorkflowById: jest.fn().mockResolvedValue(wf),
+      regenerateWebhookToken: jest.fn().mockResolvedValue(wf),
+    };
+    controller = new AutomationsController(svc, {} as any);
+  });
+
+  it('hides token and secret from a reader on list and one', async () => {
+    const [listed] = await controller.findAllWorkflows(reader);
+    const one = await controller.findWorkflowById(reader, 'wf-1');
+    for (const w of [listed, one]) {
+      expect(w.webhookSlug).toBeNull();
+      expect(w.triggerConfig.signatureSecret).toBeUndefined();
+    }
+  });
+
+  it('shows both to an editor on list and one', async () => {
+    const [listed] = await controller.findAllWorkflows(editor);
+    const one = await controller.findWorkflowById(editor, 'wf-1');
+    for (const w of [listed, one]) {
+      expect(w.webhookSlug).toBe('a'.repeat(43));
+      expect(w.triggerConfig.signatureSecret).toBe('s'.repeat(43));
+    }
+  });
+
+  it('regenerate route requires automation:update and calls the service', async () => {
+    const perms = Reflect.getMetadata(
+      PERMISSIONS_KEY,
+      AutomationsController.prototype.regenerateWebhookToken,
+    );
+    expect(perms).toContain(PERMISSIONS.AUTOMATION_UPDATE);
+    await controller.regenerateWebhookToken(editor, 'wf-1');
+    expect(svc.regenerateWebhookToken).toHaveBeenCalledWith('t', 'wf-1', 'u');
+  });
+});

@@ -1,3 +1,5 @@
+import type { AutomationSchedule } from './schedule';
+
 export const AUTOMATION_PERMISSIONS = {
   AUTOMATION_READ: 'automation:read',
   AUTOMATION_CREATE: 'automation:create',
@@ -90,6 +92,20 @@ export interface AutomationExecutionDto {
   errorMessage?: string | null;
 }
 
+/** `triggerConfig` of a WEBHOOK automation. */
+export interface WebhookTriggerConfig {
+  requireSignature?: boolean;
+  /** Visible only to users who can edit the automation. */
+  signatureSecret?: string;
+  /** https:// page a form post is sent to afterwards. */
+  redirectUrl?: string;
+}
+
+/** `triggerConfig` of a SCHEDULE automation. */
+export interface ScheduleTriggerConfig {
+  schedule?: AutomationSchedule;
+}
+
 export interface CreateAutomationWorkflowPayload {
   name: string;
   description?: string | null;
@@ -107,6 +123,8 @@ export interface UpdateAutomationWorkflowPayload {
   triggerConfig?: Record<string, any>;
   nodes?: AutomationNode[];
   edges?: AutomationEdge[];
+  /** Transient: rotate the webhook signature secret. Never stored. */
+  regenerateSignature?: boolean;
 }
 
 export interface SignalAutomationExecutionPayload {

@@ -13,4 +13,6 @@ export class UpdateAutomationDto implements UpdateAutomationWorkflowPayload {
   triggerConfig?: Record<string, any>;
   nodes?: AutomationNode[];
   edges?: AutomationEdge[];
+  /** Transient: rotate the webhook signature secret. Never stored. */
+  regenerateSignature?: boolean;
 }
