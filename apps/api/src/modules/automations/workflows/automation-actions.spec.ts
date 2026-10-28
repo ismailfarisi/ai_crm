@@ -97,6 +97,15 @@ describe('resolveOwner', () => {
     expect(err.message).toContain('can no longer send email');
   });
 
+  it('does not convert a transient lookup error into a non-retryable failure', async () => {
+    const deps = makeDeps();
+    const boom = new Error('connection reset');
+    (deps.users.findMember as jest.Mock).mockRejectedValue(boom);
+    const err = await failureOf(resolveOwner(deps, ctx, 'send email'));
+    expect(err).toBe(boom);
+    expect(err).not.toBeInstanceOf(ApplicationFailure);
+  });
+
   it('fails non-retryably when the owner lacks automation:execute', async () => {
     const deps = makeDeps();
     (deps.rbac.resolveAccess as jest.Mock).mockResolvedValue({
@@ -108,7 +117,7 @@ describe('resolveOwner', () => {
     const err = await failureOf(resolveOwner(deps, ctx, 'update CRM records'));
     expect(err.nonRetryable).toBe(true);
     expect(err.message).toBe(
-      'owner@acme.test can no longer update CRM records; reactivate the automation as someone who can',
+      'owner@acme.test can no longer update CRM records (missing automation:execute); reactivate the automation as someone who can',
     );
   });
 

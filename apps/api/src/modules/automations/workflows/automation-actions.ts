@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { ApplicationFailure } from '@temporalio/activity';
 import { AUTOMATION_PERMISSIONS } from '@saas/shared';
 import type { AiService } from '@/modules/ai/ai.service';
@@ -48,12 +49,17 @@ export async function resolveOwner(
     );
   }
 
+  // Only "not found" means the owner is gone; anything else (a dropped
+  // connection, say) propagates so Temporal can retry it.
   const user = await deps.users
     .findMember(ctx.tenantId, ctx.ownerUserId)
-    .catch(() => null);
-  const cannot = (who: string) =>
+    .catch((err: unknown) => {
+      if (err instanceof NotFoundException) return null;
+      throw err;
+    });
+  const cannot = (who: string, missing = '') =>
     ApplicationFailure.nonRetryable(
-      `${who} can no longer ${actionLabel}; reactivate the automation as someone who can`,
+      `${who} can no longer ${actionLabel}${missing}; reactivate the automation as someone who can`,
     );
   if (!user || !user.isActive) {
     throw cannot(user?.email ?? 'The automation owner');
@@ -61,7 +67,10 @@ export async function resolveOwner(
 
   const access = await deps.rbac.resolveAccess(user.id, user.tenantId);
   if (!access.permissions.includes(AUTOMATION_PERMISSIONS.AUTOMATION_EXECUTE)) {
-    throw cannot(user.email);
+    throw cannot(
+      user.email,
+      ` (missing ${AUTOMATION_PERMISSIONS.AUTOMATION_EXECUTE})`,
+    );
   }
 
   return {
