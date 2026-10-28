@@ -292,6 +292,7 @@ export class AiService {
         percentage: null,
         isNearLimit: false,
         isOverBudget: false,
+        automationAiEmailToCustomers: false,
       };
     }
 
@@ -309,6 +310,7 @@ export class AiService {
         monthlyBudgetUsd: budget.monthlyBudgetUsd,
         alertThresholdPercent: budget.alertThresholdPercent,
         isEnabled: budget.isEnabled,
+        automationAiEmailToCustomers: budget.automationAiEmailToCustomers,
         createdAt: budget.createdAt.toISOString(),
         updatedAt: budget.updatedAt.toISOString(),
       },
@@ -318,6 +320,7 @@ export class AiService {
       percentage,
       isNearLimit,
       isOverBudget,
+      automationAiEmailToCustomers: budget.automationAiEmailToCustomers,
     };
   }
 
@@ -335,12 +338,16 @@ export class AiService {
       if (dto.isEnabled !== undefined) {
         budget.isEnabled = dto.isEnabled;
       }
+      if (dto.automationAiEmailToCustomers !== undefined) {
+        budget.automationAiEmailToCustomers = dto.automationAiEmailToCustomers;
+      }
     } else {
       budget = this.budgetRepo.create({
         organizationId,
         monthlyBudgetUsd: dto.monthlyBudgetUsd,
         alertThresholdPercent: dto.alertThresholdPercent ?? 80,
         isEnabled: dto.isEnabled ?? true,
+        automationAiEmailToCustomers: dto.automationAiEmailToCustomers ?? false,
       });
     }
 

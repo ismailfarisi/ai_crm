@@ -575,6 +575,37 @@ describe('AiService', () => {
       expect(status.isOverBudget).toBe(false);
     });
 
+    it('reports automationAiEmailToCustomers false when no row exists', async () => {
+      const { service, budgetRepo, usageLogRepo } = makeService();
+      budgetRepo.findOne = jest.fn().mockResolvedValue(null);
+      usageLogRepo.createQueryBuilder = jest
+        .fn()
+        .mockReturnValue(makeQueryBuilderMock('0'));
+
+      const status = await service.getBudgetStatus(orgId);
+      expect(status.automationAiEmailToCustomers).toBe(false);
+    });
+
+    it('reports the stored automationAiEmailToCustomers flag', async () => {
+      const { service, budgetRepo, usageLogRepo } = makeService();
+      budgetRepo.findOne = jest.fn().mockResolvedValue({
+        organizationId: orgId,
+        monthlyBudgetUsd: 100,
+        alertThresholdPercent: 80,
+        isEnabled: true,
+        automationAiEmailToCustomers: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      usageLogRepo.createQueryBuilder = jest
+        .fn()
+        .mockReturnValue(makeQueryBuilderMock('0'));
+
+      const status = await service.getBudgetStatus(orgId);
+      expect(status.automationAiEmailToCustomers).toBe(true);
+      expect(status.budget?.automationAiEmailToCustomers).toBe(true);
+    });
+
     it('reports isNearLimit once spend crosses the alert threshold but stays under cap', async () => {
       const { service, budgetRepo, usageLogRepo } = makeService();
       budgetRepo.findOne = jest.fn().mockResolvedValue({
@@ -630,9 +661,38 @@ describe('AiService', () => {
           monthlyBudgetUsd: 50,
           alertThresholdPercent: 80,
           isEnabled: true,
+          automationAiEmailToCustomers: false,
         }),
       );
       expect(result.monthlyBudgetUsd).toBe(50);
+    });
+
+    it('persists automationAiEmailToCustomers on create and update, and leaves it alone when omitted', async () => {
+      const { service, budgetRepo } = makeService();
+      budgetRepo.findOne = jest.fn().mockResolvedValue(null);
+      await service.upsertBudget(orgId, {
+        monthlyBudgetUsd: 50,
+        automationAiEmailToCustomers: true,
+      });
+      expect(budgetRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ automationAiEmailToCustomers: true }),
+      );
+
+      const existing = {
+        organizationId: orgId,
+        monthlyBudgetUsd: 50,
+        alertThresholdPercent: 80,
+        isEnabled: true,
+        automationAiEmailToCustomers: true,
+      };
+      budgetRepo.findOne = jest.fn().mockResolvedValue(existing);
+      const kept = await service.upsertBudget(orgId, { monthlyBudgetUsd: 60 });
+      expect(kept.automationAiEmailToCustomers).toBe(true);
+      const off = await service.upsertBudget(orgId, {
+        monthlyBudgetUsd: 60,
+        automationAiEmailToCustomers: false,
+      });
+      expect(off.automationAiEmailToCustomers).toBe(false);
     });
 
     it('updates fields on the existing row, preserving organizationId', async () => {

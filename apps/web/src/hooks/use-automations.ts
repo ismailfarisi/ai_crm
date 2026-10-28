@@ -42,6 +42,13 @@ function describe(error: unknown, fallback: string): string {
   return fallback;
 }
 
+export function useAutomationSettings() {
+  return useQuery({
+    queryKey: queryKeys.automationSettings,
+    queryFn: () => api.automations.settings(),
+  });
+}
+
 export function useInvalidateAutomations() {
   const queryClient = useQueryClient();
   return {

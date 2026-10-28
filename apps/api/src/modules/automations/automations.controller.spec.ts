@@ -1,6 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AutomationsController } from './automations.controller';
 import { AutomationsService } from './automations.service';
+import { AiService } from '../ai/ai.service';
+import { PERMISSIONS } from '@saas/shared';
+import { PERMISSIONS_KEY } from '@/common/decorators';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { CreateAutomationDto } from './dto/create-automation.dto';
 import { UpdateAutomationDto } from './dto/update-automation.dto';
@@ -81,6 +84,14 @@ describe('AutomationsController', () => {
           provide: AutomationsService,
           useValue: mockService,
         },
+        {
+          provide: AiService,
+          useValue: {
+            getBudgetStatus: jest
+              .fn()
+              .mockResolvedValue({ automationAiEmailToCustomers: true }),
+          },
+        },
       ],
     }).compile();
 
@@ -90,6 +101,29 @@ describe('AutomationsController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  describe('getSettings', () => {
+    it('returns the organisation AI-email setting', async () => {
+      const result = await controller.getSettings(mockUser);
+      expect(result).toEqual({ aiEmailToCustomers: true });
+    });
+
+    it('requires automation:read', () => {
+      expect(
+        Reflect.getMetadata(
+          PERMISSIONS_KEY,
+          AutomationsController.prototype.getSettings,
+        ),
+      ).toEqual([PERMISSIONS.AUTOMATION_READ]);
+    });
+
+    it('is declared before the :id route so it is not captured by it', () => {
+      const names = Object.getOwnPropertyNames(AutomationsController.prototype);
+      expect(names.indexOf('getSettings')).toBeLessThan(
+        names.indexOf('findWorkflowById'),
+      );
+    });
   });
 
   describe('findAllWorkflows', () => {

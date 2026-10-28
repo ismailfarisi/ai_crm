@@ -29,6 +29,7 @@ function statusFixture(overrides: Partial<AiBudgetStatusDto> = {}): AiBudgetStat
       monthlyBudgetUsd: 100,
       alertThresholdPercent: 80,
       isEnabled: true,
+      automationAiEmailToCustomers: false,
       createdAt: '2026-08-01T00:00:00Z',
       updatedAt: '2026-08-01T00:00:00Z',
     },
@@ -38,6 +39,7 @@ function statusFixture(overrides: Partial<AiBudgetStatusDto> = {}): AiBudgetStat
     percentage: 0,
     isNearLimit: false,
     isOverBudget: false,
+    automationAiEmailToCustomers: false,
     ...overrides,
   };
 }
@@ -89,6 +91,36 @@ describe('AiBudgetView', () => {
 
     render(<AiBudgetView />);
     expect(screen.getByText(/no ai budget configured/i)).toBeInTheDocument();
+  });
+
+  it('saves the automation AI-email checkbox, defaulting to unchecked', () => {
+    mockUseAiBudgetStatus.mockReturnValue({
+      data: statusFixture(),
+      isPending: false,
+    } as any);
+
+    render(<AiBudgetView />);
+
+    const box = screen.getByLabelText('Allow automations to email AI-written text to customers');
+    expect(box).not.toBeChecked();
+    fireEvent.click(box);
+    fireEvent.click(screen.getByRole('button', { name: /save budget/i }));
+
+    expect(mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ automationAiEmailToCustomers: true }),
+    );
+  });
+
+  it('shows the checkbox checked when the organisation has opted in', () => {
+    mockUseAiBudgetStatus.mockReturnValue({
+      data: statusFixture({ automationAiEmailToCustomers: true }),
+      isPending: false,
+    } as any);
+
+    render(<AiBudgetView />);
+    expect(
+      screen.getByLabelText('Allow automations to email AI-written text to customers'),
+    ).toBeChecked();
   });
 
   it('submits the edit form with the entered budget and threshold', () => {

@@ -19,6 +19,7 @@ export function AiBudgetView() {
   const [monthlyBudgetUsd, setMonthlyBudgetUsd] = useState('');
   const [alertThresholdPercent, setAlertThresholdPercent] = useState(80);
   const [isEnabled, setIsEnabled] = useState(true);
+  const [automationAiEmail, setAutomationAiEmail] = useState(false);
 
   // Sync the form with server data whenever it changes (e.g. after a save).
   // Adjusted during render (React re-renders before committing) rather than
@@ -29,6 +30,7 @@ export function AiBudgetView() {
     setMonthlyBudgetUsd(String(status.budget.monthlyBudgetUsd));
     setAlertThresholdPercent(status.budget.alertThresholdPercent);
     setIsEnabled(status.budget.isEnabled);
+    setAutomationAiEmail(status.automationAiEmailToCustomers);
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -39,6 +41,7 @@ export function AiBudgetView() {
       monthlyBudgetUsd: amount,
       alertThresholdPercent,
       isEnabled,
+      automationAiEmailToCustomers: automationAiEmail,
     });
   };
 
@@ -176,6 +179,19 @@ export function AiBudgetView() {
             />
             <label htmlFor="guard-enabled" className="text-sm font-medium text-ink cursor-pointer">
               Enforce the cap (block AI calls once the budget is exceeded)
+            </label>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              id="automation-ai-email"
+              type="checkbox"
+              className="size-4 rounded border-border accent-brand"
+              checked={automationAiEmail}
+              onChange={(e) => setAutomationAiEmail(e.target.checked)}
+            />
+            <label htmlFor="automation-ai-email" className="text-sm font-medium text-ink cursor-pointer">
+              Allow automations to email AI-written text to customers
             </label>
           </div>
 

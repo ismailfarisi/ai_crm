@@ -15,6 +15,7 @@ import { PERMISSIONS } from '@saas/shared';
 import { CurrentUser, Public, RequirePermissions } from '@/common/decorators';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { AutomationsService } from './automations.service';
+import { AiService } from '../ai/ai.service';
 import { CreateAutomationDto } from './dto/create-automation.dto';
 import { UpdateAutomationDto } from './dto/update-automation.dto';
 import { SignalExecutionDto } from './dto/signal-execution.dto';
@@ -24,7 +25,24 @@ import { AutomationExecution } from './entities/automation-execution.entity';
 @ApiTags('automations')
 @Controller('automations')
 export class AutomationsController {
-  constructor(private readonly automationsService: AutomationsService) {}
+  constructor(
+    private readonly automationsService: AutomationsService,
+    private readonly aiService: AiService,
+  ) {}
+
+  // Static route: must stay above @Get(':id') so it is not captured as an id.
+  @Get('settings')
+  @RequirePermissions(PERMISSIONS.AUTOMATION_READ)
+  @ApiOperation({
+    summary: 'Get automation settings',
+    description: 'Organisation-level automation settings set by an AI admin',
+  })
+  async getSettings(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{ aiEmailToCustomers: boolean }> {
+    const status = await this.aiService.getBudgetStatus(user.organizationId);
+    return { aiEmailToCustomers: status.automationAiEmailToCustomers };
+  }
 
   @Get()
   @RequirePermissions(PERMISSIONS.AUTOMATION_READ)

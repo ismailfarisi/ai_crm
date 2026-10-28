@@ -37,6 +37,10 @@ export class AiBudget {
   @Column({ type: 'boolean', default: true })
   isEnabled: boolean;
 
+  /** Lets automations email AI-written text to customers. Off until an admin opts in. */
+  @Column({ type: 'boolean', default: false })
+  automationAiEmailToCustomers: boolean;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 

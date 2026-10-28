@@ -3,6 +3,7 @@ export interface AiBudgetDto {
   monthlyBudgetUsd: number;
   alertThresholdPercent: number;
   isEnabled: boolean;
+  automationAiEmailToCustomers: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -11,6 +12,7 @@ export interface UpsertAiBudgetPayload {
   monthlyBudgetUsd: number;
   alertThresholdPercent?: number;
   isEnabled?: boolean;
+  automationAiEmailToCustomers?: boolean;
 }
 
 /** Derived, read-only — computed on the fly server-side, never persisted as a counter. */
@@ -24,6 +26,8 @@ export interface AiBudgetStatusDto {
   percentage: number | null;
   isNearLimit: boolean;
   isOverBudget: boolean;
+  /** False when no budget row exists. Automations may email AI-written text to customers only when true. */
+  automationAiEmailToCustomers: boolean;
 }
 
 export interface AiUsageLogDto {

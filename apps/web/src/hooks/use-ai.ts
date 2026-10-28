@@ -32,6 +32,7 @@ export function useUpsertAiBudget() {
     mutationFn: (input: UpsertAiBudgetPayload) => api.ai.upsertBudget(input),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.aiBudget });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.automationSettings });
       toast.success('AI budget updated');
     },
     onError: (error) => toast.error(describe(error, 'Could not update AI budget')),

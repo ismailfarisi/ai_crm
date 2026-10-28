@@ -6,11 +6,13 @@ import { AutomationEventBridgeService } from './services/automation-event-bridge
 import { AutomationWorkflow } from './entities/automation-workflow.entity';
 import { AutomationExecution } from './entities/automation-execution.entity';
 import { TemporalModule } from '../temporal/temporal.module';
+import { AiModule } from '../ai/ai.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([AutomationWorkflow, AutomationExecution]),
     TemporalModule,
+    AiModule,
   ],
   controllers: [AutomationsController],
   providers: [AutomationsService, AutomationEventBridgeService],
