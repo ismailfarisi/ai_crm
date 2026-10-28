@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@saas/shared';
-import { CurrentUser, Public, RequirePermissions } from '@/common/decorators';
+import { CurrentUser, RequirePermissions } from '@/common/decorators';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { AutomationsService, redactForReader } from './automations.service';
 import { AiService } from '../ai/ai.service';
@@ -70,20 +70,6 @@ export class AutomationsController {
     @Body() dto: CreateAutomationDto,
   ): Promise<AutomationWorkflow> {
     return this.automationsService.createWorkflow(user.organizationId, dto);
-  }
-
-  @Post('webhook/:slug')
-  @Public()
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Public webhook ingress',
-    description: 'Trigger workflow execution via public webhook slug',
-  })
-  async handleWebhook(
-    @Param('slug') slug: string,
-    @Body() body: Record<string, any>,
-  ): Promise<AutomationExecution> {
-    return this.automationsService.triggerWebhook(slug, body);
   }
 
   @Get('executions/:executionId')

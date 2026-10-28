@@ -25,6 +25,11 @@ export enum AutomationExecutionStatusEnum {
   unique: true,
   where: '"sourceEventId" IS NOT NULL',
 })
+@Index(
+  'uq_automation_executions_idempotency_key',
+  ['workflowId', 'idempotencyKey'],
+  { unique: true, where: '"idempotencyKey" IS NOT NULL' },
+)
 export class AutomationExecution {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -47,6 +52,14 @@ export class AutomationExecution {
   /** The outbox event that triggered this run; one run per (workflow, event). */
   @Column({ type: 'uuid', nullable: true })
   sourceEventId: string | null;
+
+  /**
+   * The caller's key for "this is the same request again" (a webhook's
+   * `Idempotency-Key`, a schedule tick's time); one run per (workflow, key)
+   * while the key is remembered.
+   */
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  idempotencyKey: string | null;
 
   @Column({ type: 'varchar', length: 150 })
   temporalWorkflowId: string;

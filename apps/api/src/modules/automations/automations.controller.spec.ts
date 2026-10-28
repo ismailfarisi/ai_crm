@@ -71,7 +71,6 @@ describe('AutomationsController', () => {
       updateWorkflow: jest.fn().mockResolvedValue(mockWorkflow),
       deleteWorkflow: jest.fn().mockResolvedValue(undefined),
       triggerExecution: jest.fn().mockResolvedValue(mockExecution),
-      triggerWebhook: jest.fn().mockResolvedValue(mockExecution),
       findExecutionsByWorkflow: jest.fn().mockResolvedValue([mockExecution]),
       findExecutionById: jest.fn().mockResolvedValue(mockExecution),
       signalExecution: jest.fn().mockResolvedValue(mockExecution),
@@ -210,16 +209,11 @@ describe('AutomationsController', () => {
     });
   });
 
-  describe('handleWebhook', () => {
-    it('triggers execution from public webhook slug', async () => {
-      const payload = { event: 'deal_won', amount: 5000 };
-      const result = await controller.handleWebhook('wh_sample_slug', payload);
-      expect(result).toEqual(mockExecution);
-      expect(service.triggerWebhook).toHaveBeenCalledWith(
-        'wh_sample_slug',
-        payload,
-      );
-    });
+  it('no longer serves the public webhook route (AutomationWebhookController does)', () => {
+    expect(
+      (AutomationsController.prototype as unknown as Record<string, unknown>)
+        .handleWebhook,
+    ).toBeUndefined();
   });
 
   describe('findExecutions', () => {

@@ -7,6 +7,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { configureCorsAndWebhookBodies } from './modules/automations/webhooks/webhook-http';
 import type { AppConfig } from './config/configuration';
 
 async function bootstrap(): Promise<void> {
@@ -28,7 +29,9 @@ async function bootstrap(): Promise<void> {
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
   // `credentials: true` is what lets the browser send the httpOnly auth cookies.
-  app.enableCors({
+  // The automation webhook route is the one exception — any origin, no
+  // credentials — and gets its own raw body reader (100 KB).
+  configureCorsAndWebhookBodies(app, prefix, {
     origin: origins,
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],

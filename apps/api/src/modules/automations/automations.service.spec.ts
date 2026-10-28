@@ -57,6 +57,8 @@ describe('AutomationsService', () => {
     id: 'exec-uuid-1',
     tenantId: mockTenantId,
     workflowId: mockWorkflow.id,
+    sourceEventId: null,
+    idempotencyKey: null,
     temporalWorkflowId: 'automation-exec-exec-uuid-1',
     status: 'RUNNING',
     triggerPayload: { key: 'value' },
@@ -480,24 +482,18 @@ describe('AutomationsService', () => {
       );
     });
 
-    it('a webhook run acts as the owner', async () => {
+    it('a run with no actor (webhook, schedule) acts as the owner', async () => {
       workflowRepo.findOne.mockResolvedValueOnce({
         ...mockWorkflow,
         triggerType: 'WEBHOOK',
-        webhookSlug: 'wh_x',
         activatedByUserId: 'owner-1',
       });
-      workflowRepo.findOne.mockResolvedValueOnce({
-        ...mockWorkflow,
-        activatedByUserId: 'owner-1',
+      await service.triggerExecution(mockTenantId, 'wf-uuid-1', {}, undefined, {
+        failOnStartError: true,
       });
-      await service.triggerWebhook('wh_x', {});
-      expect(mockTemporalClient.workflow.start).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          args: [expect.objectContaining({ ownerUserId: 'owner-1' })],
-        }),
-      );
+      const [input] = mockTemporalClient.workflow.start.mock.calls[0][1].args;
+      expect(input.ownerUserId).toBe('owner-1');
+      expect(input).not.toHaveProperty('actorUserId');
     });
 
     it('event-triggered run passes activatedByUserId as owner', async () => {
@@ -726,30 +722,194 @@ describe('AutomationsService', () => {
     });
   });
 
-  describe('triggerWebhook', () => {
-    it('finds workflow by slug and triggers execution', async () => {
-      const webhookWf = {
-        ...mockWorkflow,
-        webhookSlug: 'wh_test_slug',
-        status: 'ACTIVE' as const,
-      };
-      workflowRepo.findOne.mockResolvedValueOnce(webhookWf);
+  describe('failOnStartError', () => {
+    it('rethrows a failed start and marks the execution FAILED', async () => {
+      mockTemporalClient.workflow.start.mockRejectedValueOnce(
+        new Error('Temporal offline'),
+      );
+      executionRepo.save.mockClear();
 
-      const exec = await service.triggerWebhook('wh_test_slug', {
-        event: 'user_created',
+      await expect(
+        service.triggerExecution(mockTenantId, 'wf-uuid-1', {}, undefined, {
+          failOnStartError: true,
+        }),
+      ).rejects.toThrow('Temporal offline');
+
+      const last = executionRepo.save.mock.calls.at(-1)[0];
+      expect(last).toMatchObject({
+        id: 'exec-uuid-1',
+        status: 'FAILED',
+        errorMessage: expect.stringContaining('could not start'),
       });
-      expect(exec).toBeDefined();
-      expect(workflowRepo.findOne).toHaveBeenCalledWith({
-        where: { webhookSlug: 'wh_test_slug' },
+      expect(last.finishedAt).toBeInstanceOf(Date);
+      expect(last.temporalWorkflowId).toMatch(/^exec-/);
+    });
+  });
+
+  describe('with an idempotency key', () => {
+    const key = 'webhook:abc';
+    const DAY = 24 * 60 * 60 * 1000;
+
+    it('records the key and starts a workflow keyed on the execution', async () => {
+      executionRepo.findOne.mockResolvedValueOnce(null);
+
+      const exec = await service.triggerExecution(
+        mockTenantId,
+        'wf-uuid-1',
+        { payload: 1 },
+        undefined,
+        { idempotencyKey: key, failOnStartError: true },
+      );
+
+      expect(executionRepo.findOne).toHaveBeenCalledWith({
+        where: { tenantId: mockTenantId, workflowId: 'wf-uuid-1', idempotencyKey: key },
       });
-      expect(mockTemporalClient.workflow.start).toHaveBeenCalled();
+      expect(executionRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey: key, status: 'RUNNING' }),
+      );
+      expect(mockTemporalClient.workflow.start).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          workflowId: 'automation-exec-exec-uuid-1',
+          workflowIdReusePolicy: 'REJECT_DUPLICATE',
+        }),
+      );
+      expect(exec.temporalWorkflowId).toBe('automation-exec-exec-uuid-1');
     });
 
-    it('throws NotFoundException if webhook slug does not exist', async () => {
-      workflowRepo.findOne.mockResolvedValueOnce(null);
-      await expect(service.triggerWebhook('wh_unknown', {})).rejects.toThrow(
-        NotFoundException,
+    it('returns the run already started with the same key, without starting again', async () => {
+      const started = {
+        ...mockExecution,
+        idempotencyKey: key,
+        startedAt: new Date(Date.now() - DAY + 60_000),
+      };
+      executionRepo.findOne.mockResolvedValueOnce(started);
+      executionRepo.save.mockClear();
+
+      const exec = await service.triggerExecution(
+        mockTenantId,
+        'wf-uuid-1',
+        {},
+        undefined,
+        { idempotencyKey: key, failOnStartError: true },
       );
+
+      expect(exec).toBe(started);
+      expect(mockTemporalClient.workflow.start).not.toHaveBeenCalled();
+      expect(executionRepo.create).not.toHaveBeenCalled();
+      expect(executionRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('resumes the same execution after a failed start, with its original payload', async () => {
+      const failed = {
+        ...mockExecution,
+        idempotencyKey: key,
+        temporalWorkflowId: 'exec-1700000000000',
+        status: 'FAILED' as const,
+        errorMessage: 'The run could not start: Temporal offline',
+        finishedAt: new Date(),
+        triggerPayload: { first: true },
+        startedAt: new Date(),
+      };
+      executionRepo.findOne.mockResolvedValueOnce(failed);
+
+      const exec = await service.triggerExecution(
+        mockTenantId,
+        'wf-uuid-1',
+        { second: true },
+        undefined,
+        { idempotencyKey: key, failOnStartError: true },
+      );
+
+      expect(executionRepo.create).not.toHaveBeenCalled();
+      const [input] = mockTemporalClient.workflow.start.mock.calls[0][1].args;
+      expect(input.executionId).toBe(failed.id);
+      expect(input.triggerPayload).toEqual({ first: true });
+      expect(exec).toMatchObject({
+        id: failed.id,
+        status: 'RUNNING',
+        errorMessage: null,
+        finishedAt: null,
+        temporalWorkflowId: `automation-exec-${failed.id}`,
+      });
+    });
+
+    it('treats an already-started workflow as started', async () => {
+      executionRepo.findOne.mockResolvedValueOnce(null);
+      mockTemporalClient.workflow.start.mockRejectedValueOnce(
+        new WorkflowExecutionAlreadyStartedError(
+          'already started',
+          'automation-exec-exec-uuid-1',
+          'dynamicDagWorkflow',
+        ),
+      );
+
+      const exec = await service.triggerExecution(
+        mockTenantId,
+        'wf-uuid-1',
+        {},
+        undefined,
+        { idempotencyKey: key, failOnStartError: true },
+      );
+
+      expect(exec.status).toBe('RUNNING');
+      expect(exec.temporalWorkflowId).toBe('automation-exec-exec-uuid-1');
+    });
+
+    it('forgets a key after 24 hours and starts a new run', async () => {
+      const old = {
+        ...mockExecution,
+        id: 'exec-old',
+        idempotencyKey: key,
+        startedAt: new Date(Date.now() - DAY - 60_000),
+      };
+      executionRepo.findOne.mockResolvedValueOnce(old);
+      executionRepo.update = jest.fn().mockResolvedValue({ affected: 1 });
+
+      const exec = await service.triggerExecution(
+        mockTenantId,
+        'wf-uuid-1',
+        {},
+        undefined,
+        { idempotencyKey: key, failOnStartError: true },
+      );
+
+      expect(executionRepo.update).toHaveBeenCalledWith(
+        { id: 'exec-old', idempotencyKey: key },
+        { idempotencyKey: null },
+      );
+      expect(executionRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey: key }),
+      );
+      expect(exec.id).toBe('exec-uuid-1');
+    });
+
+    it('falls back to the row a concurrent request inserted first', async () => {
+      const raced = {
+        ...mockExecution,
+        idempotencyKey: key,
+        startedAt: new Date(),
+      };
+      executionRepo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(raced);
+      executionRepo.save.mockRejectedValueOnce(
+        Object.assign(new Error('duplicate key'), {
+          code: '23505',
+          constraint: 'uq_automation_executions_idempotency_key',
+        }),
+      );
+
+      const exec = await service.triggerExecution(
+        mockTenantId,
+        'wf-uuid-1',
+        {},
+        undefined,
+        { idempotencyKey: key, failOnStartError: true },
+      );
+
+      expect(exec).toBe(raced);
+      expect(mockTemporalClient.workflow.start).not.toHaveBeenCalled();
     });
   });
 

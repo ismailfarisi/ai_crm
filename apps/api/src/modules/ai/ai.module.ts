@@ -36,6 +36,7 @@ import {
       },
     },
   ],
-  exports: [AiService],
+  // The Redis client is shared: automations count webhook requests with it.
+  exports: [AiService, REDIS_CLIENT_TOKEN],
 })
 export class AiModule {}

@@ -31,22 +31,39 @@ export interface TriggerExecutionOptions {
   /** Outbox event id: makes the trigger idempotent per (workflow, event). */
   sourceEventId?: string;
   /**
+   * The caller's "same request again" key (a webhook's `Idempotency-Key`, a
+   * schedule tick's time). Within {@link IDEMPOTENCY_WINDOW_MS} the same key
+   * on the same workflow returns the first execution instead of starting
+   * another, and resumes it if its start failed. Ignored with `sourceEventId`.
+   */
+  idempotencyKey?: string;
+  /**
+   * Rethrow when Temporal refuses the start (after marking the execution
+   * FAILED), so the caller can answer "not started" and its sender retry.
+   * Without it the failure is logged and the execution returned.
+   */
+  failOnStartError?: boolean;
+  /**
    * Set only by the test-run endpoint: the run then acts as `actorUserId`.
    * Every other run (events, webhooks) acts as the workflow's owner.
    */
   testRun?: boolean;
 }
 
+/** How long an idempotency key is remembered per workflow. */
+const IDEMPOTENCY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 /** `temporalWorkflowId` placeholder until Temporal has accepted the start. */
 const PENDING_WORKFLOW_ID_PREFIX = 'exec-';
 
 const SOURCE_EVENT_UNIQUE = 'uq_automation_executions_source_event';
+const IDEMPOTENCY_KEY_UNIQUE = 'uq_automation_executions_idempotency_key';
 
-function isSourceEventConflict(err: unknown): boolean {
+function isUniqueConflict(err: unknown, constraintName: string): boolean {
   const e = err as { code?: string; constraint?: string; driverError?: any };
   const code = e?.code ?? e?.driverError?.code;
   const constraint = e?.constraint ?? e?.driverError?.constraint;
-  return code === '23505' && constraint === SOURCE_EVENT_UNIQUE;
+  return code === '23505' && constraint === constraintName;
 }
 
 /**
@@ -72,7 +89,7 @@ function syncTriggerConfig(wf: {
   wf.triggerConfig = triggerConfig;
 }
 
-const WEBHOOK_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
+export const WEBHOOK_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
 
 /** 32 random bytes, base64url: the unguessable address of a webhook. */
 export function generateWebhookToken(): string {
@@ -307,25 +324,41 @@ export class AutomationsService {
     const ownerUserId =
       options.testRun && actorUserId ? actorUserId : wf.activatedByUserId;
 
-    const exec = this.executionRepo.create({
-      tenantId,
-      workflowId: wf.id,
-      temporalWorkflowId: `exec-${Date.now()}`,
-      status: 'RUNNING',
-      triggerPayload,
-      nodeResults: {},
-    });
+    let exec: AutomationExecution;
+    if (options.idempotencyKey) {
+      exec = await this.findOrRecordKeyed(
+        wf,
+        options.idempotencyKey,
+        triggerPayload,
+      );
+      if (!exec.temporalWorkflowId.startsWith(PENDING_WORKFLOW_ID_PREFIX)) {
+        return exec;
+      }
+    } else {
+      exec = await this.executionRepo.save(
+        this.executionRepo.create({
+          tenantId,
+          workflowId: wf.id,
+          temporalWorkflowId: `${PENDING_WORKFLOW_ID_PREFIX}${Date.now()}`,
+          status: 'RUNNING',
+          triggerPayload,
+          nodeResults: {},
+        }),
+      );
+    }
 
-    const savedExec = await this.executionRepo.save(exec);
-
+    // Derived from the execution, so a retry that resumes this row cannot
+    // start a second workflow for it.
+    const temporalWorkflowId = `automation-exec-${exec.id}`;
     try {
       const client = this.temporalService.getClient();
-      const handle = await client.workflow.start(dynamicDagWorkflow, {
+      await client.workflow.start(dynamicDagWorkflow, {
         taskQueue: 'automations-queue',
-        workflowId: `automation-exec-${savedExec.id}`,
+        workflowId: temporalWorkflowId,
+        workflowIdReusePolicy: 'REJECT_DUPLICATE',
         args: [
           {
-            executionId: savedExec.id,
+            executionId: exec.id,
             workflowId: wf.id,
             tenantId,
             ...(actorUserId ? { actorUserId } : {}),
@@ -335,18 +368,80 @@ export class AutomationsService {
             workflowName: wf.name,
             nodes: wf.nodes || [],
             edges: wf.edges || [],
-            triggerPayload,
+            // A resumed execution runs with the payload it was recorded with.
+            triggerPayload: exec.triggerPayload,
           },
         ],
       });
-      savedExec.temporalWorkflowId = handle.workflowId;
-      await this.executionRepo.save(savedExec);
     } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`Temporal start deferred/failed: ${errorMsg}`);
+      if (!(err instanceof WorkflowExecutionAlreadyStartedError)) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        if (!options.failOnStartError) {
+          this.logger.warn(`Temporal start deferred/failed: ${errorMsg}`);
+          return exec;
+        }
+        this.logger.warn(
+          `Temporal start failed for execution ${exec.id}: ${errorMsg}`,
+        );
+        // The placeholder workflow id stays: a retry with the same
+        // idempotency key finds this row and starts it.
+        exec.status = 'FAILED';
+        exec.errorMessage = `The run could not start: ${errorMsg}`;
+        exec.finishedAt = new Date();
+        await this.executionRepo.save(exec);
+        throw err;
+      }
     }
 
-    return savedExec;
+    exec.temporalWorkflowId = temporalWorkflowId;
+    if (exec.status === 'FAILED') {
+      exec.status = 'RUNNING';
+      exec.errorMessage = null;
+      exec.finishedAt = null;
+    }
+    return this.executionRepo.save(exec);
+  }
+
+  /**
+   * The execution already recorded for this key, or a new one. A key older
+   * than {@link IDEMPOTENCY_WINDOW_MS} is released first so it can start a new
+   * run; two requests racing on a fresh key meet at the unique index.
+   */
+  private async findOrRecordKeyed(
+    wf: AutomationWorkflow,
+    idempotencyKey: string,
+    triggerPayload: Record<string, any>,
+  ): Promise<AutomationExecution> {
+    const where = { tenantId: wf.tenantId, workflowId: wf.id, idempotencyKey };
+
+    const existing = await this.executionRepo.findOne({ where });
+    if (existing) {
+      const age = Date.now() - new Date(existing.startedAt).getTime();
+      if (age < IDEMPOTENCY_WINDOW_MS) return existing;
+      await this.executionRepo.update(
+        { id: existing.id, idempotencyKey },
+        { idempotencyKey: null },
+      );
+    }
+
+    try {
+      return await this.executionRepo.save(
+        this.executionRepo.create({
+          tenantId: wf.tenantId,
+          workflowId: wf.id,
+          idempotencyKey,
+          temporalWorkflowId: `${PENDING_WORKFLOW_ID_PREFIX}${Date.now()}`,
+          status: 'RUNNING',
+          triggerPayload,
+          nodeResults: {},
+        }),
+      );
+    } catch (err: unknown) {
+      if (!isUniqueConflict(err, IDEMPOTENCY_KEY_UNIQUE)) throw err;
+      const raced = await this.executionRepo.findOne({ where });
+      if (!raced) throw err;
+      return raced;
+    }
   }
 
   /**
@@ -381,7 +476,7 @@ export class AutomationsService {
           }),
         );
       } catch (err: unknown) {
-        if (!isSourceEventConflict(err)) throw err;
+        if (!isUniqueConflict(err, SOURCE_EVENT_UNIQUE)) throw err;
         exec = await this.executionRepo.findOne({ where });
         if (!exec) throw err;
       }
@@ -425,20 +520,6 @@ export class AutomationsService {
 
     exec.temporalWorkflowId = temporalWorkflowId;
     return this.executionRepo.save(exec);
-  }
-
-  async triggerWebhook(
-    slug: string,
-    triggerPayload: Record<string, any> = {},
-  ): Promise<AutomationExecution> {
-    const wf = await this.workflowRepo.findOne({
-      where: { webhookSlug: slug },
-    });
-    if (!wf) {
-      throw new NotFoundException(`Webhook slug ${slug} not found`);
-    }
-
-    return this.triggerExecution(wf.tenantId, wf.id, triggerPayload);
   }
 
   async findExecutionsByWorkflow(
