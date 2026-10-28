@@ -873,6 +873,64 @@ describe('QuotesService', () => {
         expect(mockWorkflowHandle.signal).not.toHaveBeenCalled();
       });
 
+      describe('margin floor', () => {
+        const actorId = '44444444-4444-4444-4444-444444444444';
+        beforeEach(() => {
+          quoteRepo.findOne = jest.fn().mockResolvedValue(pending());
+          (costingService.recostLines as jest.Mock).mockImplementation(
+            async (_t: string, items: QuoteLineItem[]) => ({
+              items,
+              totals: calculateQuoteTotals(items),
+              violations: [
+                {
+                  code: 'MARGIN_BELOW_FLOOR',
+                  message: 'Margin is 4.0%, below the 20.0% floor',
+                  actual: 0.04,
+                  limit: 0.2,
+                },
+              ],
+              staleLineIds: [],
+            }),
+          );
+          (rbacService.resolveAccess as jest.Mock).mockResolvedValue({
+            permissions: [
+              PERMISSIONS.QUOTE_APPROVE,
+              PERMISSIONS.QUOTE_APPROVE_BELOW_MARGIN,
+            ],
+            roles: ['owner'],
+            level: 0,
+            isOwner: true,
+          });
+        });
+
+        it('lets a human actor holding the override approve below the floor', async () => {
+          const res = await service.sendSignal(
+            tenantId,
+            quoteId,
+            'APPROVE',
+            undefined,
+            actorId,
+          );
+          expect(res.status).toBe(QuoteStatus.APPROVED);
+        });
+
+        it('automated approval refuses a below-floor quote even when the actor may approve below margin', async () => {
+          await expect(
+            service.sendSignal(
+              tenantId,
+              quoteId,
+              'APPROVE',
+              undefined,
+              actorId,
+              { automated: true },
+            ),
+          ).rejects.toThrow('Margin is 4.0%, below the 20.0% floor');
+          expect(quoteRepo.update).not.toHaveBeenCalled();
+          expect(invoicesService.createFromQuote).not.toHaveBeenCalled();
+          expect(mockWorkflowHandle.signal).not.toHaveBeenCalled();
+        });
+      });
+
       it('keeps the approval when Temporal cannot be reached afterwards', async () => {
         quoteRepo.findOne = jest.fn().mockResolvedValue(pending());
         mockWorkflowHandle.signal = jest

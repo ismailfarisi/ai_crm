@@ -118,15 +118,18 @@ export class QuotesService {
     tenantId: string,
     actorUserId: string | undefined,
     violations: GuardrailViolation[],
+    automated = false,
   ): Promise<void> {
     if (!violations.length) return;
 
-    const permissions: Permission[] = actorUserId
-      ? (await this.rbacService.resolveAccess(actorUserId, tenantId))
-          .permissions
-      : // No actor means an automated path. A bot must never be the thing
-        // that waives a margin floor.
-        [];
+    // No actor, or an automation acting as its owner, is an automated path.
+    // A bot must never be the thing that waives a margin floor — not even
+    // one whose owner could.
+    const permissions: Permission[] =
+      actorUserId && !automated
+        ? (await this.rbacService.resolveAccess(actorUserId, tenantId))
+            .permissions
+        : [];
 
     if (permissions.includes(PERMISSIONS.QUOTE_APPROVE_BELOW_MARGIN)) return;
 
@@ -481,6 +484,7 @@ export class QuotesService {
     action: 'APPROVE' | 'REJECT' | 'OVERRIDE',
     payload?: any,
     actorUserId?: string,
+    options: { automated?: boolean } = {},
   ): Promise<Quote> {
     if (action !== 'APPROVE' && action !== 'REJECT' && action !== 'OVERRIDE') {
       throw new BadRequestException(`Invalid signal action: ${action}`);
@@ -548,7 +552,12 @@ export class QuotesService {
           quote.customerId,
         );
         const totals = calculateQuoteTotals(items);
-        await this.assertActorMayApprove(tenantId, actorUserId, violations);
+        await this.assertActorMayApprove(
+          tenantId,
+          actorUserId,
+          violations,
+          options.automated,
+        );
 
         // Checked here, before anything is committed, so a bad schedule is a
         // clear refusal rather than an approved quote with no order behind it.

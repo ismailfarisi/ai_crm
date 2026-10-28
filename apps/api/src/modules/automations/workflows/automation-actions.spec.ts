@@ -1,6 +1,6 @@
 import { ApplicationFailure } from '@temporalio/activity';
-import { AUTOMATION_PERMISSIONS } from '@saas/shared';
-import { NotFoundException } from '@nestjs/common';
+import { AUTOMATION_PERMISSIONS, PERMISSIONS } from '@saas/shared';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import {
   createAutomationActions,
   resolveOwner,
@@ -171,8 +171,8 @@ describe('createAutomationActions', () => {
       'executeEmailActivity',
     ]);
     await expect(
-      actions.executeCrmMutationActivity({} as never, ctx),
-    ).rejects.toThrow('not implemented');
+      actions.executeAiPromptActivity({ prompt: '' }, ctx),
+    ).rejects.toThrow('The AI prompt is empty');
     expect(deps.tenantContext.runAsAutomation).toHaveBeenCalledWith(
       't1',
       'exec-1',
@@ -415,5 +415,447 @@ describe('executeAiPromptActivity', () => {
     expect(f.message).toBe('The AI prompt is empty');
     expect(deps.ai.isConfigured).not.toHaveBeenCalled();
     expect(deps.ai.generateText).not.toHaveBeenCalled();
+  });
+});
+
+describe('executeCrmMutationActivity', () => {
+  const ALL = [
+    AUTOMATION_PERMISSIONS.AUTOMATION_EXECUTE,
+    PERMISSIONS.CONTACT_CREATE,
+    PERMISSIONS.CONTACT_UPDATE,
+    PERMISSIONS.QUOTE_APPROVE,
+  ];
+  const contactBefore = {
+    id: 'c1',
+    firstName: 'Ada',
+    lastName: 'Lovelace',
+    fullName: 'Ada Lovelace',
+    jobTitle: null,
+    status: 'qualified',
+  };
+  const contactAfter = { ...contactBefore, jobTitle: 'CTO' };
+  const quoteRow = (status: string) => ({
+    id: 'q1',
+    quoteNumber: 'QT-2026-0007',
+    status,
+    updatedAt: new Date('2026-10-28T10:00:00.000Z'),
+  });
+
+  function crmDeps(permissions: string[] = ALL) {
+    const done = new Map<string, unknown>();
+    const runOnce = jest.fn(
+      async (_t: string, key: string, fn: () => Promise<unknown>) => {
+        if (done.has(key)) return done.get(key);
+        const r = await fn();
+        done.set(key, r);
+        return r;
+      },
+    );
+    const deps = makeDeps({
+      rbac: {
+        resolveAccess: jest.fn().mockResolvedValue({
+          roles: ['sales'],
+          level: 30,
+          permissions,
+          isOwner: false,
+        }),
+      },
+      contacts: {
+        create: jest.fn().mockResolvedValue({ ...contactBefore, id: 'c9' }),
+        update: jest.fn().mockResolvedValue(contactAfter),
+        findOne: jest.fn().mockResolvedValue(contactBefore),
+      },
+      quotes: {
+        sendSignal: jest.fn().mockResolvedValue(quoteRow('APPROVED')),
+        findQuoteById: jest
+          .fn()
+          .mockResolvedValueOnce(quoteRow('AWAITING_APPROVAL'))
+          .mockResolvedValue(quoteRow('APPROVED')),
+      },
+      idempotency: { runOnce },
+    } as unknown as Partial<AutomationActionDeps>);
+    return { deps, runOnce };
+  }
+  const run = (deps: AutomationActionDeps, config: Record<string, unknown>) =>
+    createAutomationActions(deps).executeCrmMutationActivity(
+      config as never,
+      ctx,
+    );
+  const owner = expect.objectContaining({
+    id: 'u1',
+    email: 'owner@acme.test',
+    permissions: ALL,
+  });
+
+  describe('contacts', () => {
+    it('creates a contact via ContactsService.create(owner, parsed)', async () => {
+      const { deps } = crmDeps();
+      const res = await run(deps, {
+        entity: 'contact',
+        action: 'create',
+        fields: {
+          firstName: ' Ada ',
+          lastName: 'Lovelace',
+          email: 'ADA@X.COM',
+        },
+      });
+      expect(deps.contacts.create).toHaveBeenCalledWith(
+        owner,
+        expect.objectContaining({
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+          email: 'ada@x.com',
+          status: 'lead',
+        }),
+      );
+      expect(res).toEqual({
+        entity: 'contact',
+        action: 'create',
+        recordId: 'c9',
+        record: { ...contactBefore, id: 'c9' },
+      });
+    });
+
+    it('updates a contact via update(owner, recordId, parsed), changing only the named fields', async () => {
+      const { deps } = crmDeps();
+      const res = await run(deps, {
+        entity: 'contact',
+        action: 'update',
+        recordId: 'c1',
+        fields: { jobTitle: ' CTO ' },
+      });
+      // The partial schema would otherwise default status/source back to
+      // lead/other on every update.
+      expect(deps.contacts.update).toHaveBeenCalledWith(owner, 'c1', {
+        jobTitle: 'CTO',
+      });
+      expect(res).toEqual({
+        entity: 'contact',
+        action: 'update',
+        recordId: 'c1',
+        record: contactAfter,
+      });
+    });
+
+    it('unknown field "deal" fails the step', async () => {
+      const { deps } = crmDeps();
+      const f = await failureOf(
+        run(deps, {
+          entity: 'contact',
+          action: 'update',
+          recordId: 'c1',
+          fields: { jobTitle: 'CTO', deal: 'big' },
+        }),
+      );
+      expect(f).toBeInstanceOf(ApplicationFailure);
+      expect(f.nonRetryable).toBe(true);
+      expect(f.message).toContain('"deal"');
+      expect(deps.contacts.update).not.toHaveBeenCalled();
+    });
+
+    it('an invalid value fails the step naming the field', async () => {
+      const { deps } = crmDeps();
+      const f = await failureOf(
+        run(deps, {
+          entity: 'contact',
+          action: 'create',
+          fields: { firstName: 'Ada', lastName: 'L', email: 'nope' },
+        }),
+      );
+      expect(f.nonRetryable).toBe(true);
+      expect(f.message).toContain('email');
+      expect(deps.contacts.create).not.toHaveBeenCalled();
+    });
+
+    it('an update with no fields fails the step', async () => {
+      const { deps } = crmDeps();
+      const f = await failureOf(
+        run(deps, { entity: 'contact', action: 'update', recordId: 'c1' }),
+      );
+      expect(f.nonRetryable).toBe(true);
+      expect(deps.contacts.update).not.toHaveBeenCalled();
+    });
+
+    it("rep cannot update another rep's contact", async () => {
+      const { deps } = crmDeps();
+      const notFound = new NotFoundException('Contact c2 not found');
+      (deps.contacts.findOne as jest.Mock).mockRejectedValue(notFound);
+      (deps.contacts.update as jest.Mock).mockRejectedValue(notFound);
+      const f = await failureOf(
+        run(deps, {
+          entity: 'contact',
+          action: 'update',
+          recordId: 'c2',
+          fields: { jobTitle: 'CTO' },
+        }),
+      );
+      expect(f).toBeInstanceOf(ApplicationFailure);
+      expect(f.nonRetryable).toBe(true);
+      expect(f.message).toBe('Contact c2 not found');
+      expect(deps.audit.record).not.toHaveBeenCalled();
+    });
+
+    it("hands ownerId to the service's own reassignment rules", async () => {
+      const { deps } = crmDeps();
+      (deps.contacts.update as jest.Mock).mockRejectedValue(
+        new ForbiddenException('You cannot reassign contacts'),
+      );
+      const other = '55555555-5555-4555-8555-555555555555';
+      const f = await failureOf(
+        run(deps, {
+          entity: 'contact',
+          action: 'update',
+          recordId: 'c1',
+          fields: { ownerId: other },
+        }),
+      );
+      expect(deps.contacts.update).toHaveBeenCalledWith(owner, 'c1', {
+        ownerId: other,
+      });
+      expect(f.nonRetryable).toBe(true);
+      expect(f.message).toBe('You cannot reassign contacts');
+      expect(deps.audit.record).not.toHaveBeenCalled();
+    });
+
+    it('missing permission fails with the permission name', async () => {
+      const { deps } = crmDeps([
+        AUTOMATION_PERMISSIONS.AUTOMATION_EXECUTE,
+        PERMISSIONS.CONTACT_CREATE,
+      ]);
+      const f = await failureOf(
+        run(deps, {
+          entity: 'contact',
+          action: 'update',
+          recordId: 'c1',
+          fields: { jobTitle: 'CTO' },
+        }),
+      );
+      expect(f.nonRetryable).toBe(true);
+      expect(f.message).toBe(
+        `owner@acme.test can no longer update contacts (missing ${PERMISSIONS.CONTACT_UPDATE}); reactivate the automation as someone who can`,
+      );
+      expect(f.message).toContain('contact:update');
+      expect(deps.contacts.findOne).not.toHaveBeenCalled();
+      expect(deps.contacts.update).not.toHaveBeenCalled();
+    });
+
+    it('rethrows transient service errors so Temporal retries them', async () => {
+      const { deps } = crmDeps();
+      const boom = new Error('connection reset');
+      (deps.contacts.update as jest.Mock).mockRejectedValue(boom);
+      const err = await failureOf(
+        run(deps, {
+          entity: 'contact',
+          action: 'update',
+          recordId: 'c1',
+          fields: { jobTitle: 'CTO' },
+        }),
+      );
+      expect(err).toBe(boom);
+    });
+  });
+
+  describe('quotes', () => {
+    it('approves a quote as automated', async () => {
+      const { deps } = crmDeps();
+      const res = await run(deps, {
+        entity: 'quote',
+        action: 'approve',
+        recordId: 'q1',
+      });
+      expect(deps.quotes.sendSignal).toHaveBeenCalledWith(
+        't1',
+        'q1',
+        'APPROVE',
+        undefined,
+        'u1',
+        { automated: true },
+      );
+      // JSON-safe: Temporal payloads and idempotency storage.
+      expect(res).toEqual({
+        entity: 'quote',
+        action: 'approve',
+        recordId: 'q1',
+        record: {
+          id: 'q1',
+          quoteNumber: 'QT-2026-0007',
+          status: 'APPROVED',
+          updatedAt: '2026-10-28T10:00:00.000Z',
+        },
+      });
+    });
+
+    it('rejects with reason', async () => {
+      const { deps } = crmDeps();
+      await run(deps, {
+        entity: 'quote',
+        action: 'reject',
+        recordId: 'q1',
+        reason: 'Too thin',
+      });
+      expect(deps.quotes.sendSignal).toHaveBeenCalledWith(
+        't1',
+        'q1',
+        'REJECT',
+        { reason: 'Too thin' },
+        'u1',
+        { automated: true },
+      );
+    });
+
+    it('fails non-retryably when the margin floor refuses the approval', async () => {
+      const { deps } = crmDeps();
+      (deps.quotes.sendSignal as jest.Mock).mockRejectedValue(
+        new ForbiddenException({
+          statusCode: 403,
+          error: 'Forbidden',
+          message: 'Margin is 4.0%, below the 20.0% floor',
+          violations: [],
+        }),
+      );
+      const f = await failureOf(
+        run(deps, { entity: 'quote', action: 'approve', recordId: 'q1' }),
+      );
+      expect(f.nonRetryable).toBe(true);
+      expect(f.message).toBe('Margin is 4.0%, below the 20.0% floor');
+      expect(deps.audit.record).not.toHaveBeenCalled();
+    });
+
+    it('missing permission fails with the permission name', async () => {
+      const { deps } = crmDeps([AUTOMATION_PERMISSIONS.AUTOMATION_EXECUTE]);
+      const f = await failureOf(
+        run(deps, { entity: 'quote', action: 'reject', recordId: 'q1' }),
+      );
+      expect(f.nonRetryable).toBe(true);
+      expect(f.message).toBe(
+        `owner@acme.test can no longer reject quotes (missing ${PERMISSIONS.QUOTE_APPROVE}); reactivate the automation as someone who can`,
+      );
+      expect(deps.quotes.sendSignal).not.toHaveBeenCalled();
+    });
+  });
+
+  it.each([
+    ['contact', 'update'],
+    ['quote', 'approve'],
+    ['quote', 'reject'],
+  ])('missing recordId for %s %s fails', async (entity, action) => {
+    const { deps } = crmDeps();
+    const f = await failureOf(
+      run(deps, { entity, action, fields: { jobTitle: 'CTO' } }),
+    );
+    expect(f.nonRetryable).toBe(true);
+    expect(f.message).toContain('record');
+    expect(deps.contacts.update).not.toHaveBeenCalled();
+    expect(deps.quotes.sendSignal).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['contact', 'approve'],
+    ['quote', 'create'],
+    ['deal', 'update'],
+  ])('unsupported entity/action pair %s %s fails', async (entity, action) => {
+    const { deps } = crmDeps();
+    const f = await failureOf(
+      run(deps, { entity, action, recordId: 'x1', fields: {} }),
+    );
+    expect(f.nonRetryable).toBe(true);
+    expect(f.message).toContain(entity);
+    expect(f.message).toContain(action);
+    expect(deps.contacts.create).not.toHaveBeenCalled();
+    expect(deps.contacts.update).not.toHaveBeenCalled();
+    expect(deps.quotes.sendSignal).not.toHaveBeenCalled();
+  });
+
+  it('fails with the owner message before checking the step', async () => {
+    const { deps } = crmDeps();
+    (deps.users.findMember as jest.Mock).mockResolvedValue({
+      id: 'u1',
+      email: 'owner@acme.test',
+      isActive: false,
+    });
+    const f = await failureOf(
+      run(deps, { entity: 'quote', action: 'approve', recordId: 'q1' }),
+    );
+    expect(f.message).toBe(
+      'owner@acme.test can no longer approve quotes; reactivate the automation as someone who can',
+    );
+  });
+
+  it('writes one audit row', async () => {
+    const { deps } = crmDeps();
+    await run(deps, {
+      entity: 'contact',
+      action: 'update',
+      recordId: 'c1',
+      fields: { jobTitle: 'CTO' },
+    });
+    expect(deps.audit.record).toHaveBeenCalledTimes(1);
+    expect(deps.audit.record).toHaveBeenCalledWith({
+      tenantId: 't1',
+      action: 'automation.contact.update',
+      subjectType: 'CONTACT',
+      subjectId: 'c1',
+      actorId: 'u1',
+      actorName: 'Olive Owner',
+      origin: 'HUMAN',
+      channel: 'SYSTEM',
+      messageId: 'automation:exec-1:n1',
+      summary: 'Automation "Flow" updated contact Ada Lovelace',
+      before: contactBefore,
+      after: contactAfter,
+    });
+  });
+
+  it('audits a created contact with no before snapshot', async () => {
+    const { deps } = crmDeps();
+    await run(deps, {
+      entity: 'contact',
+      action: 'create',
+      fields: { firstName: 'Ada', lastName: 'Lovelace' },
+    });
+    expect(deps.audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'automation.contact.create',
+        subjectId: 'c9',
+        summary: 'Automation "Flow" created contact Ada Lovelace',
+        before: null,
+      }),
+    );
+  });
+
+  it('audits a quote decision with before and after snapshots', async () => {
+    const { deps } = crmDeps();
+    await run(deps, { entity: 'quote', action: 'approve', recordId: 'q1' });
+    expect(deps.audit.record).toHaveBeenCalledTimes(1);
+    expect(deps.audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'automation.quote.approve',
+        subjectType: 'QUOTE',
+        subjectId: 'q1',
+        summary: 'Automation "Flow" approved quote QT-2026-0007',
+        before: expect.objectContaining({ status: 'AWAITING_APPROVAL' }),
+        after: expect.objectContaining({ status: 'APPROVED' }),
+      }),
+    );
+  });
+
+  it('runs once per (executionId, nodeId)', async () => {
+    const { deps, runOnce } = crmDeps();
+    const config = {
+      entity: 'contact',
+      action: 'update',
+      recordId: 'c1',
+      fields: { jobTitle: 'CTO' },
+    };
+    const first = await run(deps, config);
+    const second = await run(deps, config);
+    expect(runOnce).toHaveBeenCalledWith(
+      't1',
+      'automation:exec-1:n1:crm',
+      expect.any(Function),
+    );
+    expect(deps.contacts.update).toHaveBeenCalledTimes(1);
+    expect(deps.audit.record).toHaveBeenCalledTimes(1);
+    expect(second).toEqual(first);
   });
 });
