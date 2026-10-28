@@ -1,8 +1,15 @@
 import React, { Suspense } from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { AutomationWorkflowDto } from '@saas/shared';
 import AutomationStudioPage from './page';
+
+const mutateAsync = vi.fn();
+const regenerateMutateAsync = vi.fn();
+
+vi.mock('@/lib/session-context', () => ({
+  useSession: () => ({ can: () => true }),
+}));
 
 const automationState: { current: { data: AutomationWorkflowDto | null; isLoading: boolean } } = {
   current: { data: null, isLoading: true },
@@ -15,16 +22,25 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/hooks/use-automations', () => ({
   useAutomation: () => ({ ...automationState.current, error: null, refresh: vi.fn() }),
-  useUpdateAutomationWorkflow: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateAutomationWorkflow: () => ({ mutateAsync, isPending: false }),
+  useRegenerateAutomationWebhook: () => ({ mutateAsync: regenerateMutateAsync }),
   useTestRunAutomation: () => ({ mutateAsync: vi.fn(), getExecution: vi.fn() }),
   useAutomationSettings: () => ({ data: { aiEmailToCustomers: false } }),
 }));
 
 vi.mock('@/components/automations/canvas/automation-canvas', () => ({
-  AutomationCanvas: ({ nodes }: { nodes: { id: string; data: { label: string } }[] }) => (
+  AutomationCanvas: ({
+    nodes,
+    onSelectNode,
+  }: {
+    nodes: { id: string; data: { label: string } }[];
+    onSelectNode: (n: { id: string }) => void;
+  }) => (
     <ul data-testid="canvas">
       {nodes.map((n) => (
-        <li key={n.id}>{n.data.label}</li>
+        <li key={n.id} onClick={() => onSelectNode(n)}>
+          {n.data.label}
+        </li>
       ))}
     </ul>
   ),
@@ -66,5 +82,59 @@ describe('AutomationStudioPage', () => {
     const canvas = await screen.findByTestId('canvas');
     expect(canvas).toHaveTextContent('Start');
     expect(canvas).toHaveTextContent('Email owner');
+  });
+
+  describe('trigger settings in the save payload', () => {
+    const scheduleWorkflow: AutomationWorkflowDto = {
+      ...savedWorkflow,
+      triggerType: 'SCHEDULE',
+      triggerConfig: { schedule: { frequency: 'daily', time: '09:00', timezone: 'Asia/Dubai' } },
+      nodes: [
+        { id: 't', type: 'scheduleTrigger', position: { x: 0, y: 0 }, data: { label: 'Tick', config: {} } },
+      ],
+      edges: [],
+    };
+
+    const open = async () => {
+      mutateAsync.mockReset();
+      mutateAsync.mockResolvedValue(scheduleWorkflow);
+      automationState.current = { data: scheduleWorkflow, isLoading: false };
+      const params = Promise.resolve({ id: 'wf-1' });
+      await act(async () =>
+        render(
+          <Suspense fallback={null}>
+            <AutomationStudioPage params={params} />
+          </Suspense>,
+        ),
+      );
+      await screen.findByTestId('canvas');
+    };
+
+    it('omits triggerConfig when only the name changed', async () => {
+      await open();
+      fireEvent.change(screen.getByTestId('workflow-name-input'), { target: { value: 'Renamed' } });
+      fireEvent.click(screen.getByTestId('save-workflow-btn'));
+      await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
+      const input = mutateAsync.mock.calls[0][0].input;
+      expect(input.name).toBe('Renamed');
+      expect(input).not.toHaveProperty('triggerConfig');
+    });
+
+    it('sends triggerConfig after a schedule edit, marks the canvas dirty, then resets', async () => {
+      await open();
+      fireEvent.click(screen.getByText('Tick'));
+      fireEvent.change(await screen.findByTestId('schedule-frequency'), { target: { value: 'hourly' } });
+      expect(screen.getByTestId('save-workflow-btn')).toHaveTextContent('Save Changes*');
+      expect(screen.getByTestId('owner-warning')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('save-workflow-btn'));
+      await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
+      expect(mutateAsync.mock.calls[0][0].input.triggerConfig).toEqual({
+        schedule: { frequency: 'hourly', minute: 0, timezone: 'Asia/Dubai' },
+      });
+      await waitFor(() => expect(screen.getByTestId('save-workflow-btn')).toHaveTextContent('Saved'));
+      fireEvent.click(screen.getByTestId('save-workflow-btn'));
+      await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(2));
+      expect(mutateAsync.mock.calls[1][0].input).not.toHaveProperty('triggerConfig');
+    });
   });
 });

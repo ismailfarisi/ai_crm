@@ -93,6 +93,19 @@ export function useUpdateAutomationWorkflow() {
   });
 }
 
+export function useRegenerateAutomationWebhook() {
+  const { invalidateWorkflow } = useInvalidateAutomations();
+
+  return useMutation({
+    mutationFn: (id: string) => api.automations.regenerateWebhook(id),
+    onSuccess: async (workflow) => {
+      await invalidateWorkflow(workflow.id);
+      toast.success('Webhook address replaced');
+    },
+    onError: (error) => toast.error(describe(error, 'Could not replace the webhook address')),
+  });
+}
+
 export function useDeleteAutomationWorkflow() {
   const { invalidateWorkflow } = useInvalidateAutomations();
 

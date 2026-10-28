@@ -8,6 +8,7 @@ import {
   useUpdateAutomationWorkflow,
   useTestRunAutomation,
   useAutomationSettings,
+  useRegenerateAutomationWebhook,
 } from '@/hooks/use-automations';
 import { useAutomationCanvas, toAutomationEdges } from '@/hooks/use-automation-canvas';
 import { AutomationCanvas } from '@/components/automations/canvas/automation-canvas';
@@ -15,6 +16,8 @@ import { CanvasHeader } from '@/components/automations/canvas/canvas-header';
 import { NodePaletteDrawer } from '@/components/automations/drawers/node-palette-drawer';
 import { NodeInspectorDrawer } from '@/components/automations/drawers/node-inspector-drawer';
 import { TestRunDrawer } from '@/components/automations/drawers/test-run-drawer';
+import { useSession } from '@/lib/session-context';
+import { AUTOMATION_PERMISSIONS } from '@saas/shared';
 import type { AutomationNodeType, AutomationNode, AutomationWorkflowDto } from '@saas/shared';
 
 interface PageProps {
@@ -61,6 +64,12 @@ export default function AutomationStudioPage({ params }: PageProps) {
   return <AutomationStudio key={workflow.id} workflow={workflow} refresh={refresh} />;
 }
 
+// The server keeps the secret it already has; never echo it back.
+function withoutSecret(config: Record<string, any>): Record<string, any> {
+  const { signatureSecret: _secret, ...rest } = config;
+  return rest;
+}
+
 interface AutomationStudioProps {
   workflow: AutomationWorkflowDto;
   refresh?: () => unknown;
@@ -69,10 +78,19 @@ interface AutomationStudioProps {
 function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
   const updateWorkflowMutation = useUpdateAutomationWorkflow();
   const testRunMutation = useTestRunAutomation();
+  const regenerateWebhook = useRegenerateAutomationWebhook();
+  const { can } = useSession();
+  const canEditTrigger = can(AUTOMATION_PERMISSIONS.AUTOMATION_UPDATE);
   const { data: settings } = useAutomationSettings();
 
   const [workflowName, setWorkflowName] = useState<string>(workflow.name);
   const [workflowStatus, setWorkflowStatus] = useState<'DRAFT' | 'ACTIVE' | 'PAUSED'>(workflow.status);
+
+  // Workflow-level trigger settings edited since the last save. Null means untouched, and
+  // an untouched trigger is never sent: the API treats any triggerConfig on an ACTIVE
+  // automation as a graph change and makes the saver the owner.
+  const [editedTriggerConfig, setEditedTriggerConfig] = useState<Record<string, any> | null>(null);
+  const triggerConfig = editedTriggerConfig ?? workflow.triggerConfig ?? {};
 
   // Drawers visibility states
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
@@ -112,9 +130,13 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
           status: workflowStatus,
           nodes: graphPayload.nodes,
           edges: graphPayload.edges,
+          ...(editedTriggerConfig
+            ? { triggerConfig: withoutSecret(editedTriggerConfig) }
+            : {}),
         },
       });
       markClean();
+      setEditedTriggerConfig(null);
       toast.success('Automation workflow saved successfully');
       refresh?.();
     } catch (err: any) {
@@ -155,7 +177,7 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
         onNameChange={setWorkflowName}
         status={workflowStatus}
         onStatusToggle={handleStatusToggle}
-        isDirty={isDirty}
+        isDirty={isDirty || editedTriggerConfig !== null}
         isSaving={updateWorkflowMutation.isPending}
         onSave={handleSave}
         onOpenTestRun={() => setIsTestRunOpen(true)}
@@ -193,6 +215,11 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
             allNodes={nodes as unknown as AutomationNode[]}
             edges={toAutomationEdges(edges)}
             aiEmailToCustomers={settings?.aiEmailToCustomers}
+            workflow={workflow}
+            triggerConfig={triggerConfig}
+            canEditTrigger={canEditTrigger}
+            onTriggerConfigChange={setEditedTriggerConfig}
+            onRegenerateWebhook={() => regenerateWebhook.mutateAsync(workflow.id)}
             onUpdate={(id, data) => updateNodeData(id, data)}
             onDelete={(id) => deleteNode(id)}
             onClose={() => setSelectedNode(null)}

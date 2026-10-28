@@ -23,7 +23,15 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { usesAiOutput } from '@saas/shared';
-import type { AutomationEdge, AutomationNode } from '@saas/shared';
+import type {
+  AutomationEdge,
+  AutomationNode,
+  AutomationWorkflowDto,
+  ScheduleTriggerConfig,
+  WebhookTriggerConfig,
+} from '@saas/shared';
+import { WebhookTriggerFields } from './webhook-trigger-fields';
+import { ScheduleTriggerFields } from './schedule-trigger-fields';
 import { ExpressionHelper } from './expression-helper';
 import { CrmStepFields } from './crm-step-fields';
 
@@ -48,6 +56,12 @@ export interface NodeInspectorDrawerProps {
   onClose: () => void;
   samplePayload?: Record<string, any>;
   className?: string;
+  /** Workflow-level trigger settings; the trigger editors write here, not to node config. */
+  workflow?: Pick<AutomationWorkflowDto, 'status' | 'webhookSlug'>;
+  triggerConfig?: WebhookTriggerConfig & ScheduleTriggerConfig;
+  canEditTrigger?: boolean;
+  onTriggerConfigChange?: (config: Record<string, any>) => void;
+  onRegenerateWebhook?: () => void | Promise<unknown>;
 }
 
 export function NodeInspectorDrawer({
@@ -60,6 +74,11 @@ export function NodeInspectorDrawer({
   onClose,
   samplePayload,
   className,
+  workflow,
+  triggerConfig,
+  canEditTrigger,
+  onTriggerConfigChange,
+  onRegenerateWebhook,
 }: NodeInspectorDrawerProps) {
   const [showHelper, setShowHelper] = useState(false);
   const [activeTab, setActiveTab] = useState<'params' | 'settings'>('params');
@@ -423,30 +442,27 @@ export function NodeInspectorDrawer({
             )}
 
             {/* Trigger Nodes (Webhook / Schedule / CRM Event) */}
-            {node.type === 'webhookTrigger' && (
-              <div className="space-y-2 pt-2 border-t border-border/40">
-                <label className="text-[11px] font-medium text-ink">Webhook Path / Slug</label>
-                <input
-                  type="text"
-                  readOnly
-                  value={config.slug ? `/api/automations/webhook/${config.slug}` : '/api/automations/webhook/[slug]'}
-                  className="w-full rounded-lg bg-surface-muted border border-border px-3 py-1.5 text-xs font-mono text-ink-muted"
+            {node.type === 'webhookTrigger' && workflow && (
+              <>
+                <p className="text-[11px] font-semibold text-ink">Choose when this automation runs</p>
+                <WebhookTriggerFields
+                  workflow={workflow}
+                  config={triggerConfig ?? {}}
+                  onChange={(next) => onTriggerConfigChange?.(next)}
+                  onRegenerate={canEditTrigger ? onRegenerateWebhook : undefined}
                 />
-              </div>
+              </>
             )}
 
             {node.type === 'scheduleTrigger' && (
-              <div className="space-y-2 pt-2 border-t border-border/40">
-                <label className="text-[11px] font-medium text-ink">Cron Schedule</label>
-                <input
-                  type="text"
-                  data-testid="schedule-cron-input"
-                  value={config.cron || '0 9 * * 1-5'}
-                  onChange={(e) => handleConfigChange('cron', e.target.value)}
-                  placeholder="0 9 * * 1-5 (Weekdays at 9am)"
-                  className="w-full rounded-lg border border-border px-3 py-1.5 text-xs font-mono text-ink"
+              <>
+                <p className="text-[11px] font-semibold text-ink">Choose when this automation runs</p>
+                <ScheduleTriggerFields
+                  key={node.id}
+                  schedule={(triggerConfig as ScheduleTriggerConfig | undefined)?.schedule}
+                  onChange={(schedule) => onTriggerConfigChange?.({ ...(triggerConfig ?? {}), schedule })}
                 />
-              </div>
+              </>
             )}
 
             {node.type === 'crmEventTrigger' && (

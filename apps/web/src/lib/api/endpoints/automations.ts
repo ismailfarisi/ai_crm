@@ -24,6 +24,8 @@ export const automationsEndpoints = {
     update: (id: string, payload: UpdateAutomationWorkflowPayload) =>
       apiFetch<AutomationWorkflowDto>(`/automations/${id}`, { method: 'PATCH', body: payload }),
     delete: (id: string) => apiFetch<void>(`/automations/${id}`, { method: 'DELETE' }),
+    regenerateWebhook: (id: string) =>
+      apiFetch<AutomationWorkflowDto>(`/automations/${id}/webhook/regenerate`, { method: 'POST' }),
     testRun: (id: string, payload?: Record<string, any>) =>
       apiFetch<AutomationExecutionDto>(`/automations/${id}/test-run`, {
         method: 'POST',
