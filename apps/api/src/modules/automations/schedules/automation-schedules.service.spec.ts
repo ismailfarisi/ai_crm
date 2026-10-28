@@ -152,7 +152,11 @@ describe('AutomationSchedulesService', () => {
         lookups.push({ system: tenantContext.isSystem() });
         return [];
       }),
-      findOne: jest.fn(),
+      // The re-check before deleting an orphan: gone unless a test says so.
+      findOne: jest.fn().mockImplementation(async () => {
+        lookups.push({ system: tenantContext.isSystem() });
+        return null;
+      }),
     };
     const moduleRef = await Test.createTestingModule({
       imports: [ClsModule.forRoot({ global: true })],
@@ -311,9 +315,12 @@ describe('AutomationSchedulesService', () => {
       );
     });
 
-    it('leaves Temporal alone for other trigger types', async () => {
+    it('also removes a stray schedule of an automation on another trigger type', async () => {
       await service.deleteFor(workflow({ triggerType: 'MANUAL' }));
-      expect(temporal.getClient).not.toHaveBeenCalled();
+      expect(client.schedule.getHandle).toHaveBeenCalledWith(
+        'automation-schedule-wf-1',
+      );
+      expect(handle.delete).toHaveBeenCalledTimes(1);
     });
 
     it('refuses on a Temporal error', async () => {
@@ -325,6 +332,53 @@ describe('AutomationSchedulesService', () => {
   });
 
   describe('reconcile', () => {
+    it('keeps the schedule of an automation activated while reconciling', async () => {
+      // Read once at the start: nothing active yet.
+      workflows.find.mockResolvedValue([]);
+      // Meanwhile another instance activated wf-x and created its schedule.
+      client.schedule.list.mockImplementation(() =>
+        listOf(['automation-schedule-wf-x']),
+      );
+      workflows.findOne.mockImplementation(async (opts: any) => {
+        lookups.push({ system: tenantContext.isSystem() });
+        expect(opts).toEqual({ where: { id: 'wf-x' } });
+        return workflow({ id: 'wf-x' });
+      });
+
+      await service.reconcile();
+
+      expect(workflows.findOne).toHaveBeenCalledTimes(1);
+      expect(lookups).toEqual([{ system: true }]);
+      expect(handle.delete).not.toHaveBeenCalled();
+    });
+
+    it('re-checks an orphan and still deletes it when its automation is no longer active on a schedule', async () => {
+      workflows.find.mockResolvedValue([]);
+      client.schedule.list.mockImplementation(() =>
+        listOf(['automation-schedule-wf-p', 'automation-schedule-wf-w']),
+      );
+      workflows.findOne
+        .mockResolvedValueOnce(workflow({ id: 'wf-p', status: 'PAUSED' }))
+        .mockResolvedValueOnce(
+          workflow({ id: 'wf-w', triggerType: 'WEBHOOK' }),
+        );
+
+      await service.reconcile();
+
+      expect(handle.delete).toHaveBeenCalledTimes(2);
+    });
+
+    it('leaves an orphan alone when the re-check itself fails', async () => {
+      workflows.find.mockResolvedValue([]);
+      client.schedule.list.mockImplementation(() =>
+        listOf(['automation-schedule-wf-q']),
+      );
+      workflows.findOne.mockRejectedValueOnce(new Error('db blip'));
+
+      await expect(service.reconcile()).resolves.toBeUndefined();
+      expect(handle.delete).not.toHaveBeenCalled();
+    });
+
     it('creates missing schedules, updates existing ones and deletes orphans', async () => {
       const missing = workflow({ id: 'wf-new' });
       const existing = workflow({ id: 'wf-old' });
@@ -362,7 +416,12 @@ describe('AutomationSchedulesService', () => {
 
       await service.reconcile();
 
-      expect(lookups).toEqual([{ system: true }]);
+      // The active list, then one re-check for the orphan, both as system.
+      expect(lookups).toEqual([{ system: true }, { system: true }]);
+      expect(workflows.findOne).toHaveBeenCalledTimes(1);
+      expect(workflows.findOne).toHaveBeenCalledWith({
+        where: { id: 'wf-deleted' },
+      });
       expect(client.schedule.create).toHaveBeenCalledTimes(2);
       expect(
         handles.get('automation-schedule-wf-old')?.update,

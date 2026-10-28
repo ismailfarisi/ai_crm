@@ -148,9 +148,11 @@ export class AutomationSchedulesService {
     }
   }
 
-  /** Remove the schedule of an automation about to be deleted. */
+  /**
+   * Remove the schedule of an automation about to be deleted, whatever its
+   * trigger: a stray schedule (left by a save whose DB write failed) goes too.
+   */
   async deleteFor(wf: AutomationWorkflow): Promise<void> {
-    if (wf.triggerType !== 'SCHEDULE') return;
     try {
       await this.deleteIfPresent(this.temporal.getClient(), wf.id);
     } catch (err: unknown) {
@@ -209,11 +211,13 @@ export class AutomationSchedulesService {
       for await (const summary of client.schedule.list()) {
         const id = summary.scheduleId;
         if (!id.startsWith(SCHEDULE_ID_PREFIX) || keep.has(id)) continue;
+        const workflowId = id.slice(SCHEDULE_ID_PREFIX.length);
         try {
-          await this.deleteIfPresent(
-            client,
-            id.slice(SCHEDULE_ID_PREFIX.length),
-          );
+          // `keep` was read before listing: an automation activated since
+          // (by another API instance, say) has a fresh schedule that must
+          // not be taken for an orphan. A failed re-check skips the delete.
+          if (await this.isActiveOnSchedule(workflowId)) continue;
+          await this.deleteIfPresent(client, workflowId);
           deleted++;
         } catch (err: unknown) {
           this.logger.warn(
@@ -269,6 +273,17 @@ export class AutomationSchedulesService {
         state: { ...previous.state, paused: false },
       }));
     }
+  }
+
+  /**
+   * Same rule as the first pass, which keeps (and leaves alone) every ACTIVE
+   * SCHEDULE automation, including one whose schedule is invalid.
+   */
+  private async isActiveOnSchedule(workflowId: string): Promise<boolean> {
+    const wf = await this.tenantContext.runAsSystem(() =>
+      this.workflows.findOne({ where: { id: workflowId } }),
+    );
+    return !!wf && wantsSchedule(wf);
   }
 
   private async deleteIfPresent(client: Client, workflowId: string) {
