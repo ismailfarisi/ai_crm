@@ -284,6 +284,7 @@ describe('AutomationsController secrets', () => {
     svc = {
       findAllWorkflows: jest.fn().mockResolvedValue([wf]),
       findWorkflowById: jest.fn().mockResolvedValue(wf),
+      createWorkflow: jest.fn().mockResolvedValue(wf),
       regenerateWebhookToken: jest.fn().mockResolvedValue(wf),
     };
     controller = new AutomationsController(svc, {} as any);
@@ -305,6 +306,25 @@ describe('AutomationsController secrets', () => {
       expect(w.webhookSlug).toBe('a'.repeat(43));
       expect(w.triggerConfig.signatureSecret).toBe('s'.repeat(43));
     }
+  });
+
+  it('create answers with the token and secret only for a caller who can update', async () => {
+    const creator: any = {
+      id: 'u',
+      organizationId: 't',
+      permissions: ['automation:read', 'automation:create'],
+    };
+    const dto: any = { name: 'Hook', triggerType: 'WEBHOOK' };
+    const made = await controller.createWorkflow(creator, dto);
+    expect(made.webhookSlug).toBeNull();
+    expect(made.triggerConfig.signatureSecret).toBeUndefined();
+
+    const madeByEditor = await controller.createWorkflow(
+      { ...editor, permissions: [...editor.permissions, 'automation:create'] },
+      dto,
+    );
+    expect(madeByEditor.webhookSlug).toBe('a'.repeat(43));
+    expect(madeByEditor.triggerConfig.signatureSecret).toBe('s'.repeat(43));
   });
 
   it('regenerate route requires automation:update and calls the service', async () => {

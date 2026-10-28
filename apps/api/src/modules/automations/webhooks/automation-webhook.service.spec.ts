@@ -10,7 +10,7 @@ import {
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ClsModule } from 'nestjs-cls';
-import { createHmac } from 'crypto';
+import { createHash, createHmac } from 'crypto';
 import { TenantContextService } from '@/common/context/tenant-context.service';
 import { BillingService } from '../../billing/billing.service';
 import { REDIS_CLIENT_TOKEN } from '../../ai/services/redis-budget-guard.service';
@@ -434,12 +434,15 @@ describe('AutomationWebhookService', () => {
     it('counts per token in a 60-second window and refuses the 61st with 429', async () => {
       redis!.eval.mockResolvedValueOnce(60);
       await service.receive(TOKEN, json({}));
+      // Keyed on a hash of the token: the token itself never sits in Redis.
+      const hashed = createHash('sha256').update(TOKEN).digest('hex');
       expect(redis!.eval).toHaveBeenCalledWith(
         expect.stringContaining('INCR'),
         1,
-        `automation:webhook:rl:${TOKEN}`,
+        `automation:webhook:rl:${hashed}`,
         '60',
       );
+      expect(JSON.stringify(redis!.eval.mock.calls)).not.toContain(TOKEN);
 
       redis!.eval.mockResolvedValueOnce(61);
       const err = await service

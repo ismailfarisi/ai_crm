@@ -134,6 +134,8 @@ export const AUDIT_REDACTED_BODY_KEYS = new Set(
     'refreshToken',
     'currentPassword',
     'newPassword',
+    // An automation webhook's HMAC secret (`triggerConfig.signatureSecret`).
+    'signatureSecret',
   ].map((k) => k.toLowerCase()),
 );
 

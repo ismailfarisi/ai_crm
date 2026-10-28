@@ -120,8 +120,8 @@ function zodMessage(err: ZodError): string {
 /**
  * Normalise and validate the trigger-specific parts of `triggerConfig`:
  * a schedule's shape, a webhook's https-only redirect and its signature secret.
- * Works on a copy; `previous` supplies the secret to keep when the client
- * (which may have been sent it) omits it.
+ * Works on a copy. The server owns the signature secret: one sent by the
+ * client is ignored, and `previous` supplies the secret to keep.
  */
 function applyTriggerConfig(
   wf: {
@@ -161,7 +161,7 @@ function applyTriggerConfig(
       delete config.redirectUrl;
     }
     if (config.requireSignature === true) {
-      const kept = config.signatureSecret ?? previous.signatureSecret;
+      const kept = previous.signatureSecret;
       config.signatureSecret =
         regenerateSignature || !kept ? generateWebhookToken() : kept;
     } else {

@@ -1408,6 +1408,36 @@ describe('webhook tokens, signature secrets and schedules', () => {
       expect(again.triggerConfig.signatureSecret).toBe(secret);
     });
 
+    it('ignores a secret sent by the client: the server owns it', async () => {
+      const chosen = 'c'.repeat(43);
+      const fresh = await update(base(), {
+        triggerConfig: { requireSignature: true, signatureSecret: chosen },
+      });
+      expect(fresh.triggerConfig.signatureSecret).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      expect(fresh.triggerConfig.signatureSecret).not.toBe(chosen);
+
+      const kept = fresh.triggerConfig.signatureSecret;
+      const again = await update(fresh, {
+        triggerConfig: { requireSignature: true, signatureSecret: chosen },
+      });
+      expect(again.triggerConfig.signatureSecret).toBe(kept);
+    });
+
+    it('ignores a client-sent secret on create too', async () => {
+      const chosen = 'c'.repeat(43);
+      const created = await service.createWorkflow('tenant-1', {
+        name: 'Hook',
+        triggerType: 'WEBHOOK',
+        triggerConfig: { requireSignature: true, signatureSecret: chosen },
+        nodes: [],
+        edges: [],
+      } as any);
+      expect(created.triggerConfig.signatureSecret).toMatch(
+        /^[A-Za-z0-9_-]{43}$/,
+      );
+      expect(created.triggerConfig.signatureSecret).not.toBe(chosen);
+    });
+
     it('rotates the secret on regenerateSignature', async () => {
       const wf = await update(base(), {
         triggerConfig: { requireSignature: true },

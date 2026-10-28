@@ -69,7 +69,11 @@ export class AutomationsController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateAutomationDto,
   ): Promise<AutomationWorkflow> {
-    return this.automationsService.createWorkflow(user.organizationId, dto);
+    const wf = await this.automationsService.createWorkflow(
+      user.organizationId,
+      dto,
+    );
+    return redactForReader(wf, user.permissions);
   }
 
   @Get('executions/:executionId')

@@ -12,7 +12,7 @@ import {
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
 import type Redis from 'ioredis';
 import { Repository } from 'typeorm';
 import { TenantContextService } from '@/common/context/tenant-context.service';
@@ -178,7 +178,8 @@ export class AutomationWebhookService {
         await this.redis.eval(
           RATE_LIMIT_LUA,
           1,
-          `automation:webhook:rl:${token}`,
+          // Hashed: the token itself never sits in Redis.
+          `automation:webhook:rl:${createHash('sha256').update(token).digest('hex')}`,
           String(RATE_WINDOW_SECONDS),
         ),
       );

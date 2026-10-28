@@ -10,6 +10,14 @@ import { QueryFailedError } from 'typeorm';
 import type { Request, Response } from 'express';
 import { PERIOD_LOCKED_SQLSTATE, type ApiErrorBody } from '@saas/shared';
 
+/** An automation webhook's token is its only credential: never log it. */
+const WEBHOOK_TOKEN_IN_URL =
+  /(\/automations\/webhook\/)[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/g;
+
+export function maskSecretsInUrl(url: string): string {
+  return url.replace(WEBHOOK_TOKEN_IN_URL, '$1***');
+}
+
 /**
  * One error shape for the whole API. Unexpected errors are logged with a stack
  * but answered with a generic message — no internals leak to the client.
@@ -27,7 +35,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     if (body.statusCode >= 500) {
       this.logger.error(
-        `${request.method} ${request.url} → ${body.statusCode}`,
+        `${request.method} ${maskSecretsInUrl(request.url)} → ${body.statusCode}`,
         exception instanceof Error ? exception.stack : String(exception),
       );
     }
