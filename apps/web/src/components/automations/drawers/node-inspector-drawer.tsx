@@ -26,6 +26,7 @@ import { usesAiOutput } from '@saas/shared';
 import type {
   AutomationEdge,
   AutomationNode,
+  AutomationTriggerType,
   AutomationWorkflowDto,
   ScheduleTriggerConfig,
   WebhookTriggerConfig,
@@ -45,6 +46,31 @@ const CRM_EVENTS = [
   { value: 'invoice.overdue', label: 'Invoice overdue' },
 ];
 
+/** The trigger node that belongs to each automation trigger type. */
+const TRIGGER_NODE_TYPE: Record<AutomationTriggerType, string> = {
+  WEBHOOK: 'webhookTrigger',
+  SCHEDULE: 'scheduleTrigger',
+  CRM_EVENT: 'crmEventTrigger',
+  MANUAL: 'manualTrigger',
+};
+
+/**
+ * Which trigger editor a node gets. The automation's trigger type decides
+ * (its trigger settings are workflow-level); a trigger node of another type
+ * gets a note instead. Without the workflow, the node's own type decides.
+ */
+function triggerEditorFor(
+  nodeType: string,
+  workflowTriggerType: AutomationTriggerType | undefined,
+): AutomationTriggerType | 'mismatch' | null {
+  const own = (Object.keys(TRIGGER_NODE_TYPE) as AutomationTriggerType[]).find(
+    (t) => TRIGGER_NODE_TYPE[t] === nodeType,
+  );
+  if (!own) return null;
+  if (!workflowTriggerType) return own;
+  return own === workflowTriggerType ? workflowTriggerType : 'mismatch';
+}
+
 export interface NodeInspectorDrawerProps {
   node: AutomationNode | null;
   allNodes?: AutomationNode[];
@@ -57,7 +83,8 @@ export interface NodeInspectorDrawerProps {
   samplePayload?: Record<string, any>;
   className?: string;
   /** Workflow-level trigger settings; the trigger editors write here, not to node config. */
-  workflow?: Pick<AutomationWorkflowDto, 'status' | 'webhookSlug'>;
+  workflow?: Pick<AutomationWorkflowDto, 'status' | 'webhookSlug'> &
+    Partial<Pick<AutomationWorkflowDto, 'triggerType'>>;
   triggerConfig?: WebhookTriggerConfig & ScheduleTriggerConfig;
   canEditTrigger?: boolean;
   onTriggerConfigChange?: (config: Record<string, any>) => void;
@@ -88,6 +115,7 @@ export function NodeInspectorDrawer({
   if (!node) return null;
 
   const config = node.data?.config || {};
+  const triggerEditor = triggerEditorFor(node.type, workflow?.triggerType);
 
   const aiHint =
     node.type === 'sendEmailNode' &&
@@ -443,8 +471,14 @@ export function NodeInspectorDrawer({
               />
             )}
 
-            {/* Trigger Nodes (Webhook / Schedule / CRM Event) */}
-            {node.type === 'webhookTrigger' && workflow && (
+            {/* Trigger Nodes (Webhook / Schedule / CRM Event), by the automation's trigger type */}
+            {triggerEditor === 'mismatch' && (
+              <p data-testid="trigger-type-mismatch" className="pt-2 border-t border-border/40 text-[11px] text-ink-muted">
+                This trigger doesn&apos;t match the automation&apos;s trigger type.
+              </p>
+            )}
+
+            {triggerEditor === 'WEBHOOK' && workflow && (
               <>
                 <WebhookTriggerFields
                   workflow={workflow}
@@ -455,7 +489,7 @@ export function NodeInspectorDrawer({
               </>
             )}
 
-            {node.type === 'scheduleTrigger' && (
+            {triggerEditor === 'SCHEDULE' && (
               <>
                 <ScheduleTriggerFields
                   key={node.id}
@@ -467,7 +501,7 @@ export function NodeInspectorDrawer({
               </>
             )}
 
-            {node.type === 'crmEventTrigger' && (
+            {triggerEditor === 'CRM_EVENT' && (
               <div className="space-y-2 pt-2 border-t border-border/40">
                 <label className="text-[11px] font-medium text-ink">CRM Event Trigger</label>
                 <select

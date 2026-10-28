@@ -39,7 +39,7 @@ describe('WebhookTriggerFields', () => {
 
   it('hints to switch the automation on when it is not active', () => {
     render(<WebhookTriggerFields workflow={{ status: 'DRAFT', webhookSlug: TOKEN }} config={{}} onChange={vi.fn()} />);
-    expect(screen.getByTestId('webhook-inactive-hint')).toHaveTextContent('Switch the automation on to start receiving');
+    expect(screen.getByTestId('webhook-inactive-hint').textContent).toBe('Switch the automation on to start receiving');
   });
 
   it('asks before regenerating', () => {
@@ -206,7 +206,7 @@ describe('NodeInspectorDrawer trigger sections', () => {
     render(
       <NodeInspectorDrawer
         node={{ ...base, id: 'w', type: 'webhookTrigger', data: { label: 'Hook', config: {} } }}
-        workflow={{ status: 'ACTIVE', webhookSlug: TOKEN }}
+        workflow={{ status: 'ACTIVE', webhookSlug: TOKEN, triggerType: 'WEBHOOK' }}
         triggerConfig={{}}
         canEditTrigger
         onTriggerConfigChange={onTriggerConfigChange}
@@ -223,7 +223,7 @@ describe('NodeInspectorDrawer trigger sections', () => {
     render(
       <NodeInspectorDrawer
         node={{ ...base, id: 's', type: 'scheduleTrigger', data: { label: 'Tick', config: {} } }}
-        workflow={{ status: 'ACTIVE', webhookSlug: null }}
+        workflow={{ status: 'ACTIVE', webhookSlug: null, triggerType: 'SCHEDULE' }}
         triggerConfig={{}}
         canEditTrigger
         onTriggerConfigChange={onTriggerConfigChange}
@@ -236,5 +236,46 @@ describe('NodeInspectorDrawer trigger sections', () => {
     expect(onTriggerConfigChange).toHaveBeenCalledWith({
       schedule: { frequency: 'hourly', minute: 0, timezone: 'Asia/Dubai' },
     });
+  });
+
+  it.each([
+    ['webhookTrigger', 'SCHEDULE'],
+    ['scheduleTrigger', 'WEBHOOK'],
+    ['crmEventTrigger', 'WEBHOOK'],
+    ['webhookTrigger', 'MANUAL'],
+  ] as const)(
+    'a %s node on a %s automation shows a note instead of an editor',
+    (type, triggerType) => {
+      render(
+        <NodeInspectorDrawer
+          node={{ ...base, id: 't', type, data: { label: 'T', config: {} } }}
+          workflow={{ status: 'ACTIVE', webhookSlug: TOKEN, triggerType }}
+          triggerConfig={{}}
+          canEditTrigger
+          onTriggerConfigChange={vi.fn()}
+          onUpdate={vi.fn()}
+          onClose={vi.fn()}
+        />,
+      );
+      expect(screen.getByTestId('trigger-type-mismatch').textContent).toBe(
+        "This trigger doesn't match the automation's trigger type.",
+      );
+      expect(screen.queryByTestId('webhook-url')).toBeNull();
+      expect(screen.queryByTestId('schedule-frequency')).toBeNull();
+      expect(screen.queryByTestId('crm-event-select')).toBeNull();
+    },
+  );
+
+  it('picks the CRM event editor for a CRM_EVENT automation', () => {
+    render(
+      <NodeInspectorDrawer
+        node={{ ...base, id: 'c', type: 'crmEventTrigger', data: { label: 'C', config: {} } }}
+        workflow={{ status: 'ACTIVE', webhookSlug: null, triggerType: 'CRM_EVENT' }}
+        onUpdate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('crm-event-select')).toBeInTheDocument();
+    expect(screen.queryByTestId('trigger-type-mismatch')).toBeNull();
   });
 });

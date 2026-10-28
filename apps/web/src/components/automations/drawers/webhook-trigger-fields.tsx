@@ -80,7 +80,7 @@ export function WebhookTriggerFields({ workflow, config, onChange, onRegenerate 
       </div>
       {workflow.status !== 'ACTIVE' && (
         <p data-testid="webhook-inactive-hint" className="text-[10px] text-ink-muted">
-          Switch the automation on to start receiving requests.
+          Switch the automation on to start receiving
         </p>
       )}
 
