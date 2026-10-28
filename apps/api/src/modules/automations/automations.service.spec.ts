@@ -504,6 +504,35 @@ describe('AutomationsService', () => {
       expect(input).not.toHaveProperty('actorUserId');
     });
 
+    it.each(['WEBHOOK', 'SCHEDULE', 'MANUAL', 'CRM_EVENT'] as const)(
+      'passes the automation trigger type (%s) to the run',
+      async (triggerType) => {
+        workflowRepo.findOne.mockResolvedValueOnce({
+          ...mockWorkflow,
+          triggerType,
+        });
+        await service.triggerExecution(mockTenantId, 'wf-uuid-1', {
+          // The payload never decides it.
+          triggerType: 'MANUAL',
+        });
+        const [input] = mockTemporalClient.workflow.start.mock.calls[0][1].args;
+        expect(input.triggerType).toBe(triggerType);
+      },
+    );
+
+    it('an outbox (event) run also passes the trigger type', async () => {
+      workflowRepo.findOne.mockResolvedValueOnce({
+        ...mockWorkflow,
+        triggerType: 'CRM_EVENT',
+      });
+      executionRepo.findOne.mockResolvedValueOnce(null);
+      await service.triggerExecution(mockTenantId, 'wf-uuid-1', {}, 'event-actor', {
+        sourceEventId: '7d1f0b2a-4c1e-4f7a-9a51-2f6f3c1d9e01',
+      });
+      const [input] = mockTemporalClient.workflow.start.mock.calls[0][1].args;
+      expect(input.triggerType).toBe('CRM_EVENT');
+    });
+
     it('event-triggered run passes activatedByUserId as owner', async () => {
       workflowRepo.findOne.mockResolvedValueOnce({
         ...mockWorkflow,

@@ -385,6 +385,9 @@ export class AutomationsService {
             edges: wf.edges || [],
             // A resumed execution runs with the payload it was recorded with.
             triggerPayload: exec.triggerPayload,
+            // From the automation, never the payload: webhook runs never
+            // auto-approve agent tools.
+            triggerType: wf.triggerType,
           },
         ],
       });
@@ -520,6 +523,7 @@ export class AutomationsService {
             nodes: wf.nodes || [],
             edges: wf.edges || [],
             triggerPayload: exec.triggerPayload,
+            triggerType: wf.triggerType,
           },
         ],
       });

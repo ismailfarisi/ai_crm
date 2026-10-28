@@ -693,6 +693,59 @@ describe('DynamicDagWorkflow', () => {
     });
   });
 
+  describe('aiAgentNode auto-approve', () => {
+    const autoApproveFor = async (
+      triggerType: DynamicWorkflowInput['triggerType'],
+      nodeAutoApprove: boolean,
+    ) => {
+      mockExecuteChild.mockResolvedValueOnce({
+        status: 'COMPLETED',
+        finalResponse: 'done',
+        stepsExecuted: 1,
+      });
+      await dynamicDagWorkflow({
+        executionId: 'exec-auto',
+        workflowId: 'wf-auto',
+        tenantId: 'tenant-1',
+        ownerUserId: 'owner',
+        triggerPayload: {},
+        ...(triggerType ? { triggerType } : {}),
+        nodes: [
+          {
+            id: 'trigger',
+            type: 'webhookTrigger',
+            position: { x: 0, y: 0 },
+            data: { label: 'T', config: {} },
+          },
+          {
+            id: 'agent',
+            type: 'aiAgentNode',
+            position: { x: 100, y: 0 },
+            data: {
+              label: 'A',
+              config: { goal: 'do it', autoApprove: nodeAutoApprove },
+            },
+          },
+        ],
+        edges: [{ id: 'e1', source: 'trigger', target: 'agent' }],
+      } as DynamicWorkflowInput);
+      const calls = mockExecuteChild.mock.calls;
+      return calls[calls.length - 1][1].args[0].autoApprove;
+    };
+
+    it('a webhook run never auto-approves, whatever the step says', async () => {
+      expect(await autoApproveFor('WEBHOOK', true)).toBe(false);
+    });
+
+    it.each(['MANUAL', 'CRM_EVENT', 'SCHEDULE', undefined] as const)(
+      'a %s run keeps the step setting',
+      async (triggerType) => {
+        expect(await autoApproveFor(triggerType, true)).toBe(true);
+        expect(await autoApproveFor(triggerType, false)).toBe(false);
+      },
+    );
+  });
+
   it('should execute agentReActWorkflow child workflow for aiAgentNode and pass result to downstream nodes via $json', async () => {
     mockActivities.executeEmailActivity.mockResolvedValue({
       success: true,

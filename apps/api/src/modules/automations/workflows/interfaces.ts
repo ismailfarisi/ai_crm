@@ -1,5 +1,9 @@
 import { defineQuery, defineSignal } from '@temporalio/workflow';
-import type { AutomationEdge, AutomationNode } from '@saas/shared';
+import type {
+  AutomationEdge,
+  AutomationNode,
+  AutomationTriggerType,
+} from '@saas/shared';
 
 export interface DynamicWorkflowInput {
   executionId: string;
@@ -12,6 +16,12 @@ export interface DynamicWorkflowInput {
   edges: AutomationEdge[];
   triggerPayload: Record<string, any>;
   triggerNodeId?: string;
+  /**
+   * How this run was triggered, set by AutomationsService from the
+   * automation (never read from the payload). Webhook runs never
+   * auto-approve agent tools.
+   */
+  triggerType?: AutomationTriggerType;
 }
 
 export interface NodeExecutionResult {

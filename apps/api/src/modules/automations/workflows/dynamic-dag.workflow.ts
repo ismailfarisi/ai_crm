@@ -445,9 +445,11 @@ export async function dynamicDagWorkflow(
           const rawGoal = aiConfig.goal || '';
           const interpolatedGoal =
             interpolateObject({ goal: rawGoal }, context).goal || rawGoal;
-          const autoApprove = Boolean(
-            aiConfig.autoApprove ?? node.data?.autoApprove ?? false,
-          );
+          // Anyone holding a webhook's address can start its runs, so an
+          // agent step there always waits for a person to approve its tools.
+          const autoApprove =
+            input.triggerType !== 'WEBHOOK' &&
+            Boolean(aiConfig.autoApprove ?? node.data?.autoApprove ?? false);
           const timeoutDuration =
             node.data?.timeoutDuration ||
             aiConfig.timeoutDuration ||
