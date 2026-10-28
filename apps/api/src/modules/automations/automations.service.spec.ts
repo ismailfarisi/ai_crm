@@ -14,6 +14,7 @@ import {
 import { AutomationWorkflow } from './entities/automation-workflow.entity';
 import { AutomationExecution } from './entities/automation-execution.entity';
 import { TemporalService } from '../temporal/temporal.service';
+import { AutomationSchedulesService } from './schedules/automation-schedules.service';
 import {
   approveNodeSignal,
   getExecutionStateQuery,
@@ -136,6 +137,13 @@ describe('AutomationsService', () => {
         {
           provide: TemporalService,
           useValue: temporalService,
+        },
+        {
+          provide: AutomationSchedulesService,
+          useValue: {
+            sync: jest.fn().mockResolvedValue(undefined),
+            deleteFor: jest.fn().mockResolvedValue(undefined),
+          },
         },
       ],
     }).compile();
@@ -1108,6 +1116,7 @@ describe('AutomationsService', () => {
 describe('webhook tokens, signature secrets and schedules', () => {
   let service: AutomationsService;
   let workflowRepo: any;
+  let schedules: { sync: jest.Mock; deleteFor: jest.Mock };
   const tenantId = 'tenant-uuid-1';
   const base = (over: Record<string, any> = {}): any => ({
     id: 'wf-1',
@@ -1126,12 +1135,17 @@ describe('webhook tokens, signature secrets and schedules', () => {
   });
 
   beforeEach(async () => {
+    schedules = {
+      sync: jest.fn().mockResolvedValue(undefined),
+      deleteFor: jest.fn().mockResolvedValue(undefined),
+    };
     workflowRepo = {
       create: jest
         .fn()
         .mockImplementation((dto) => ({ ...dto, id: 'wf-1', version: 1 })),
       save: jest.fn().mockImplementation((e) => Promise.resolve(e)),
       findOne: jest.fn(),
+      remove: jest.fn().mockResolvedValue(undefined),
     };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -1142,6 +1156,7 @@ describe('webhook tokens, signature secrets and schedules', () => {
         },
         { provide: getRepositoryToken(AutomationExecution), useValue: {} },
         { provide: TemporalService, useValue: { getClient: jest.fn() } },
+        { provide: AutomationSchedulesService, useValue: schedules },
       ],
     }).compile();
     service = module.get(AutomationsService);
@@ -1226,6 +1241,113 @@ describe('webhook tokens, signature secrets and schedules', () => {
       });
       expect(wf.triggerConfig.schedule).toEqual(sched);
       expect(wf.activatedByUserId).toBe('u1');
+    });
+  });
+
+  describe('schedule lifecycle', () => {
+    const sched = { frequency: 'daily', time: '09:00', timezone: 'Asia/Dubai' };
+    const scheduled = (over: Record<string, any> = {}) =>
+      base({
+        triggerType: 'SCHEDULE',
+        webhookSlug: null,
+        triggerConfig: { schedule: sched },
+        ...over,
+      });
+    const unavailable = () =>
+      new ServiceUnavailableException(
+        "Couldn't update the automation's schedule. Try again in a minute.",
+      );
+
+    it('syncs the schedule after validation and before saving', async () => {
+      const order: string[] = [];
+      schedules.sync.mockImplementation(async (wf: any) => {
+        order.push(`sync:${wf.status}`);
+      });
+      workflowRepo.save.mockImplementation(async (e: any) => {
+        order.push('save');
+        return e;
+      });
+
+      await update(scheduled(), { status: 'ACTIVE' });
+
+      expect(order).toEqual(['sync:ACTIVE', 'save']);
+      expect(schedules.sync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'wf-1',
+          status: 'ACTIVE',
+          triggerType: 'SCHEDULE',
+          triggerConfig: { schedule: sched },
+        }),
+        { hadSchedule: false },
+      );
+    });
+
+    it('tells sync the automation had a schedule when it was active on a schedule', async () => {
+      await update(scheduled({ status: 'ACTIVE' }), { status: 'PAUSED' });
+      expect(schedules.sync).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'PAUSED' }),
+        { hadSchedule: true },
+      );
+    });
+
+    it('does not sync when validation fails', async () => {
+      await expect(
+        update(scheduled({ triggerConfig: {} }), { status: 'ACTIVE' }),
+      ).rejects.toThrow(BadRequestException);
+      expect(schedules.sync).not.toHaveBeenCalled();
+    });
+
+    it('Temporal down while saving an active schedule: the save fails and nothing is stored', async () => {
+      schedules.sync.mockRejectedValueOnce(unavailable());
+
+      await expect(
+        update(scheduled({ status: 'ACTIVE' }), {
+          triggerConfig: {
+            schedule: { frequency: 'hourly', minute: 5, timezone: 'UTC' },
+          },
+        }),
+      ).rejects.toThrow(unavailable());
+
+      // The stored row is only ever changed by save(), which never ran.
+      expect(workflowRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('a new automation is a draft, so create asks for no schedule', async () => {
+      await service.createWorkflow(tenantId, {
+        name: 'S',
+        triggerType: 'SCHEDULE',
+        triggerConfig: { schedule: sched },
+      } as any);
+      expect(schedules.sync).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'DRAFT' }),
+        { hadSchedule: false },
+      );
+      expect(workflowRepo.save).toHaveBeenCalled();
+    });
+
+    it('deleting removes the schedule before the row', async () => {
+      const order: string[] = [];
+      schedules.deleteFor.mockImplementation(async () => {
+        order.push('schedule');
+      });
+      workflowRepo.remove.mockImplementation(async () => {
+        order.push('row');
+      });
+      workflowRepo.findOne.mockResolvedValueOnce(scheduled({ status: 'ACTIVE' }));
+
+      await service.deleteWorkflow(tenantId, 'wf-1');
+
+      expect(order).toEqual(['schedule', 'row']);
+    });
+
+    it('deleting keeps the row when the schedule cannot be removed', async () => {
+      schedules.deleteFor.mockRejectedValueOnce(unavailable());
+      workflowRepo.findOne.mockResolvedValueOnce(scheduled({ status: 'ACTIVE' }));
+
+      await expect(service.deleteWorkflow(tenantId, 'wf-1')).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+      expect(workflowRepo.remove).not.toHaveBeenCalled();
     });
   });
 

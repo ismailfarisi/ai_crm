@@ -25,6 +25,11 @@ import { MailService } from './modules/mail/mail.service';
 import { ContactsService } from './modules/contacts/contacts.service';
 import { UsersService } from './modules/users/users.service';
 import { CustomRecordsService } from './modules/custom-objects/services/custom-records.service';
+import { createScheduledTickActivities } from './modules/automations/workflows/scheduled-tick.activities';
+import { AutomationsService } from './modules/automations/automations.service';
+import { AutomationWorkflow } from './modules/automations/entities/automation-workflow.entity';
+import { BillingService } from './modules/billing/billing.service';
+import { getRepositoryToken } from '@nestjs/typeorm';
 
 /**
  * Standalone Temporal worker process — separate from the NestJS API server.
@@ -74,6 +79,14 @@ async function run(): Promise<void> {
       tenantContext: appContext.get(TenantContextService),
       idempotency: appContext.get(ChannelIdempotencyService),
     });
+    // Schedule ticks start real runs through AutomationsService (reachable
+    // here through QuotesModule -> AutomationsModule).
+    const scheduledTickActivities = createScheduledTickActivities({
+      workflows: appContext.get(getRepositoryToken(AutomationWorkflow)),
+      automations: appContext.get(AutomationsService),
+      billing: appContext.get(BillingService),
+      tenantContext: appContext.get(TenantContextService),
+    });
     const assistantActivities = createAssistantActivities({
       events: appContext.get(AssistantEventsService),
       tenantContext: appContext.get(TenantContextService),
@@ -97,12 +110,16 @@ async function run(): Promise<void> {
       Worker.create({
         connection,
         taskQueue: 'automations-queue',
-        workflowsPath:
-          require.resolve('./modules/automations/workflows/dynamic-dag.workflow'),
+        // Workflow code only (dynamicDagWorkflow, scheduledTickWorkflow): it
+        // is bundled into Temporal's sandbox.
+        workflowsPath: require.resolve(
+          './modules/automations/workflows/automations-queue.workflows',
+        ),
         activities: {
           ...automationActivities,
           ...automationActions,
           ...agentReactActivities,
+          ...scheduledTickActivities,
         },
       }),
       Worker.create({

@@ -19,6 +19,7 @@ import { automationScheduleSchema, PERMISSIONS } from '@saas/shared';
 import { AutomationWorkflow } from './entities/automation-workflow.entity';
 import { AutomationExecution } from './entities/automation-execution.entity';
 import { TemporalService } from '../temporal/temporal.service';
+import { AutomationSchedulesService } from './schedules/automation-schedules.service';
 import { dynamicDagWorkflow } from './workflows/dynamic-dag.workflow';
 import {
   approveNodeSignal,
@@ -180,6 +181,7 @@ export class AutomationsService {
     @InjectRepository(AutomationExecution)
     private readonly executionRepo: Repository<AutomationExecution>,
     private readonly temporalService: TemporalService,
+    private readonly schedules: AutomationSchedulesService,
   ) {}
 
   async createWorkflow(
@@ -204,6 +206,9 @@ export class AutomationsService {
     });
     syncTriggerConfig(wf);
     applyTriggerConfig(wf, {}, false);
+    // Always a draft, so this asks Temporal for nothing; kept so that a
+    // future "create as active" cannot skip its schedule.
+    await this.schedules.sync(wf, { hadSchedule: false });
 
     return this.workflowRepo.save(wf);
   }
@@ -236,6 +241,7 @@ export class AutomationsService {
   ): Promise<AutomationWorkflow> {
     const wf = await this.findWorkflowById(tenantId, id);
     const wasActive = wf.status === 'ACTIVE';
+    const hadSchedule = wasActive && wf.triggerType === 'SCHEDULE';
 
     if (payload.name !== undefined) wf.name = payload.name;
     if (payload.description !== undefined) wf.description = payload.description;
@@ -280,6 +286,12 @@ export class AutomationsService {
 
     wf.version = (wf.version || 1) + 1;
 
+    // Temporal first: if it refuses, nothing is saved and the stored
+    // automation still matches its schedule. If the save below fails after
+    // the schedule changed, the two drift until the next API boot, whose
+    // reconciliation rewrites every schedule from the database.
+    await this.schedules.sync(wf, { hadSchedule });
+
     return this.workflowRepo.save(wf);
   }
 
@@ -300,6 +312,9 @@ export class AutomationsService {
 
   async deleteWorkflow(tenantId: string, id: string): Promise<void> {
     const wf = await this.findWorkflowById(tenantId, id);
+    // Schedule first, so a failure leaves the automation (and its schedule)
+    // in place rather than a schedule ticking for a row that is gone.
+    await this.schedules.deleteFor(wf);
     await this.workflowRepo.remove(wf);
   }
 

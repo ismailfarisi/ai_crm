@@ -1,6 +1,7 @@
 import { AiModule } from '@/modules/ai/ai.module';
 import { AuthModule } from '@/modules/auth/auth.module';
 import { AutomationsModule } from '@/modules/automations/automations.module';
+import { AutomationScheduleReconcileModule } from '@/modules/automations/schedules/automation-schedule-reconcile.module';
 import { CatalogModule } from '@/modules/catalog/catalog.module';
 import { ChannelsModule } from '@/modules/channels/channels.module';
 import { ContactsModule } from '@/modules/contacts/contacts.module';
@@ -63,6 +64,8 @@ export const FEATURE_MODULES = [
   CatalogModule,
   ChannelsModule,
   AutomationsModule,
+  // Rewrites automations' Temporal Schedules at boot: API process only.
+  AutomationScheduleReconcileModule,
   FinanceModule,
   PurchasingModule,
   InventoryModule,
