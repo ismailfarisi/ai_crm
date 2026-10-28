@@ -11,6 +11,9 @@ import type {
   OutboxMessage,
 } from './event-outbox.service';
 import type { CrmDomainEvent } from '@saas/shared';
+import { Test } from '@nestjs/testing';
+import { ClsModule } from 'nestjs-cls';
+import { TenantContextService } from '../context/tenant-context.service';
 
 const sampleEvent = (): CrmDomainEvent => ({
   tenantId: '11111111-1111-4111-8111-111111111111',
@@ -44,6 +47,45 @@ describe('CrmEventBusService', () => {
 
   beforeEach(() => {
     service = new CrmEventBusService();
+  });
+
+  describe('automation-caused events', () => {
+    async function setup() {
+      const moduleRef = await Test.createTestingModule({
+        imports: [ClsModule.forRoot({ global: true })],
+        providers: [TenantContextService],
+      }).compile();
+      const tenantContext = moduleRef.get(TenantContextService);
+      const { outbox, enqueue } = fakeOutbox();
+      const bus = new CrmEventBusService(outbox, tenantContext);
+      return { tenantContext, bus, enqueue };
+    }
+
+    it('stamps causedByAutomation when published inside runAsAutomation', async () => {
+      const { tenantContext, bus, enqueue } = await setup();
+      const event = sampleEvent();
+
+      await tenantContext.runAsAutomation(event.tenantId, 'exec-1', () =>
+        bus.publish(event),
+      );
+
+      expect(enqueue.mock.calls[0][0].payload).toEqual({
+        ...event,
+        causedByAutomation: true,
+      });
+      expect(event).not.toHaveProperty('causedByAutomation');
+    });
+
+    it('does not stamp events published outside an automation', async () => {
+      const { tenantContext, bus, enqueue } = await setup();
+      const event = sampleEvent();
+
+      await tenantContext.runWithTenant(event.tenantId, () =>
+        bus.publish(event),
+      );
+
+      expect(enqueue.mock.calls[0][0].payload).toEqual(event);
+    });
   });
 
   describe('with the durable outbox', () => {

@@ -11,6 +11,7 @@ import { AutomationWorkflow } from '../entities/automation-workflow.entity';
 import { AutomationsService } from '../automations.service';
 import type { AutomationExecution } from '../entities/automation-execution.entity';
 import { CrmEventBusService } from '@/common/events';
+import { TenantContextService } from '@/common/context/tenant-context.service';
 import type { CrmDomainEvent } from '@saas/shared';
 
 export interface CrmEventPayload {
@@ -33,6 +34,8 @@ export class AutomationEventBridgeService
     private readonly automationsService: AutomationsService,
     @Optional()
     private readonly crmEventBusService?: CrmEventBusService,
+    @Optional()
+    private readonly tenantContext?: TenantContextService,
   ) {}
 
   onModuleInit(): void {
@@ -55,7 +58,6 @@ export class AutomationEventBridgeService
   /**
    * Matches the workflow's configured event against the incoming domain event.
    * Supports:
-   * - Wildcard '*'
    * - Exact eventType (e.g. 'record.created')
    * - Target event with entity name prefix (e.g. 'contact.created' or 'CONTACT_CREATED')
    */
@@ -64,8 +66,9 @@ export class AutomationEventBridgeService
     event: CrmDomainEvent,
   ): boolean {
     const targetEvent = triggerConfig?.event || triggerConfig?.eventType;
+    // A workflow with no event (or the old '*') matches nothing.
     if (!targetEvent || targetEvent === '*') {
-      return true;
+      return false;
     }
 
     const t = String(targetEvent).toLowerCase().trim();
@@ -247,6 +250,11 @@ export class AutomationEventBridgeService
   async handleDomainEvent(
     event: CrmDomainEvent & { eventId?: string },
   ): Promise<AutomationExecution[]> {
+    // Changes made by an automation step never start automations.
+    if (event.causedByAutomation) {
+      return [];
+    }
+
     const workflows = await this.workflowRepo.find({
       where: {
         tenantId: event.tenantId,
@@ -344,6 +352,11 @@ export class AutomationEventBridgeService
   async handleCrmEvent(event: CrmEventPayload): Promise<AutomationExecution[]> {
     const { tenantId, eventType, entityId, data } = event;
 
+    // Changes made by an automation step never start automations.
+    if (this.tenantContext?.getAutomationExecutionId()) {
+      return [];
+    }
+
     // Find all ACTIVE workflows with CRM_EVENT trigger for this tenant
     const workflows = await this.workflowRepo.find({
       where: {
@@ -359,7 +372,7 @@ export class AutomationEventBridgeService
       // Check if workflow trigger configuration matches this event type
       const targetEvent =
         wf.triggerConfig?.event || wf.triggerConfig?.eventType;
-      if (!targetEvent || targetEvent === eventType || targetEvent === '*') {
+      if (targetEvent && targetEvent !== '*' && targetEvent === eventType) {
         this.logger.log(
           `Triggering Automation "${wf.name}" (${wf.id}) for event ${eventType}`,
         );

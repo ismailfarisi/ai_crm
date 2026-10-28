@@ -1,4 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ClsModule } from 'nestjs-cls';
+import { TenantContextService } from '@/common/context/tenant-context.service';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { AutomationEventBridgeService } from './automation-event-bridge.service';
 import { AutomationWorkflow } from '../entities/automation-workflow.entity';
@@ -11,6 +13,7 @@ describe('AutomationEventBridgeService', () => {
   let workflowRepo: any;
   let automationsService: any;
   let crmEventBusService: CrmEventBusService;
+  let tenantContext: TenantContextService;
 
   beforeEach(async () => {
     workflowRepo = {
@@ -24,7 +27,9 @@ describe('AutomationEventBridgeService', () => {
     crmEventBusService = new CrmEventBusService();
 
     const module: TestingModule = await Test.createTestingModule({
+      imports: [ClsModule.forRoot({ global: true })],
       providers: [
+        TenantContextService,
         AutomationEventBridgeService,
         {
           provide: getRepositoryToken(AutomationWorkflow),
@@ -44,6 +49,7 @@ describe('AutomationEventBridgeService', () => {
     service = module.get<AutomationEventBridgeService>(
       AutomationEventBridgeService,
     );
+    tenantContext = module.get(TenantContextService);
     service.onModuleInit();
   });
 
@@ -108,6 +114,49 @@ describe('AutomationEventBridgeService', () => {
 
       expect(result).toHaveLength(0);
       expect(automationsService.triggerExecution).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('handleCrmEvent guards', () => {
+    const wf = (event?: string) => ({
+      id: 'wf-x',
+      name: 'X',
+      tenantId: 'tenant-1',
+      status: 'ACTIVE',
+      triggerType: 'CRM_EVENT',
+      triggerConfig: event === undefined ? {} : { event },
+    });
+    const crmEvent = {
+      tenantId: 'tenant-1',
+      eventType: 'invoice.issued',
+      entityId: 'inv-1',
+      data: {},
+    };
+
+    it('a workflow with no configured event matches nothing', async () => {
+      workflowRepo.find.mockResolvedValue([wf()]);
+      expect(await service.handleCrmEvent(crmEvent)).toHaveLength(0);
+      expect(automationsService.triggerExecution).not.toHaveBeenCalled();
+    });
+
+    it('"*" matches nothing', async () => {
+      workflowRepo.find.mockResolvedValue([wf('*')]);
+      expect(await service.handleCrmEvent(crmEvent)).toHaveLength(0);
+      expect(automationsService.triggerExecution).not.toHaveBeenCalled();
+    });
+
+    it('inside runAsAutomation starts no runs', async () => {
+      workflowRepo.find.mockResolvedValue([wf('invoice.issued')]);
+      const result = await tenantContext.runAsAutomation(
+        'tenant-1',
+        'exec-1',
+        () => service.handleCrmEvent(crmEvent),
+      );
+      expect(result).toHaveLength(0);
+      expect(automationsService.triggerExecution).not.toHaveBeenCalled();
+
+      automationsService.triggerExecution.mockResolvedValue({ id: 'e' });
+      expect(await service.handleCrmEvent(crmEvent)).toHaveLength(1);
     });
   });
 
@@ -293,7 +342,7 @@ describe('AutomationEventBridgeService', () => {
       );
     });
 
-    it('matches wildcard event type "*"', async () => {
+    it('no longer treats "*" as match-all', async () => {
       const mockWorkflow = {
         id: 'wf-wildcard',
         name: 'Global Auditor',
@@ -313,8 +362,47 @@ describe('AutomationEventBridgeService', () => {
 
       const executions = await service.handleDomainEvent(baseEvent);
 
-      expect(executions).toHaveLength(1);
-      expect(automationsService.triggerExecution).toHaveBeenCalled();
+      expect(executions).toHaveLength(0);
+      expect(automationsService.triggerExecution).not.toHaveBeenCalled();
+    });
+
+    it('a workflow with no configured event matches nothing', async () => {
+      workflowRepo.find.mockResolvedValue([
+        {
+          id: 'wf-empty',
+          name: 'No event',
+          tenantId: 'tenant-1',
+          status: 'ACTIVE',
+          triggerType: 'CRM_EVENT',
+          triggerConfig: {},
+        },
+      ]);
+
+      const executions = await service.handleDomainEvent(baseEvent);
+
+      expect(executions).toHaveLength(0);
+      expect(automationsService.triggerExecution).not.toHaveBeenCalled();
+    });
+
+    it('skips domain events caused by an automation', async () => {
+      workflowRepo.find.mockResolvedValue([
+        {
+          id: 'wf-loop',
+          name: 'Loop',
+          tenantId: 'tenant-1',
+          status: 'ACTIVE',
+          triggerType: 'CRM_EVENT',
+          triggerConfig: { event: 'record.updated' },
+        },
+      ]);
+
+      const executions = await service.handleDomainEvent({
+        ...baseEvent,
+        causedByAutomation: true,
+      });
+
+      expect(executions).toHaveLength(0);
+      expect(automationsService.triggerExecution).not.toHaveBeenCalled();
     });
 
     it('matches legacy/action event syntax like "contact.updated" or "CONTACT_UPDATED"', async () => {
@@ -401,7 +489,7 @@ describe('AutomationEventBridgeService', () => {
         tenantId: 'tenant-1',
         status: 'ACTIVE',
         triggerType: 'CRM_EVENT',
-        triggerConfig: { event: '*' },
+        triggerConfig: { event: 'record.updated' },
       };
       const wf2 = {
         id: 'wf-success',
@@ -409,7 +497,7 @@ describe('AutomationEventBridgeService', () => {
         tenantId: 'tenant-1',
         status: 'ACTIVE',
         triggerType: 'CRM_EVENT',
-        triggerConfig: { event: '*' },
+        triggerConfig: { event: 'record.updated' },
       };
 
       workflowRepo.find.mockResolvedValue([wf1, wf2]);
@@ -431,7 +519,7 @@ describe('AutomationEventBridgeService', () => {
           tenantId: 'tenant-1',
           status: 'ACTIVE',
           triggerType: 'CRM_EVENT',
-          triggerConfig: { event: '*' },
+          triggerConfig: { event: 'record.updated' },
         },
       ]);
       automationsService.triggerExecution.mockResolvedValue({ id: 'exec-1' });
@@ -449,8 +537,8 @@ describe('AutomationEventBridgeService', () => {
 
     it('still tries every workflow, then fails an outbox delivery so the event is retried', async () => {
       workflowRepo.find.mockResolvedValue([
-        { id: 'wf-fail', name: 'A', tenantId: 'tenant-1', status: 'ACTIVE', triggerType: 'CRM_EVENT', triggerConfig: { event: '*' } },
-        { id: 'wf-ok', name: 'B', tenantId: 'tenant-1', status: 'ACTIVE', triggerType: 'CRM_EVENT', triggerConfig: { event: '*' } },
+        { id: 'wf-fail', name: 'A', tenantId: 'tenant-1', status: 'ACTIVE', triggerType: 'CRM_EVENT', triggerConfig: { event: 'record.updated' } },
+        { id: 'wf-ok', name: 'B', tenantId: 'tenant-1', status: 'ACTIVE', triggerType: 'CRM_EVENT', triggerConfig: { event: 'record.updated' } },
       ]);
       automationsService.triggerExecution
         .mockRejectedValueOnce(new Error('Temporal engine unavailable'))

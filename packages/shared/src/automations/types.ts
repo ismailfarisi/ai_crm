@@ -165,6 +165,8 @@ export interface CrmDomainEvent<T = any> {
   actorUserId?: string | null;
   timestamp: string;
   snapshot: CrmDomainEventSnapshot<T>;
+  /** Set when an automation step made the change; such events start no runs. */
+  causedByAutomation?: boolean;
 }
 
 // ---------------------------------------------------------------------------

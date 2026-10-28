@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { EntityManager } from 'typeorm';
 import type { CrmDomainEvent } from '@saas/shared';
 import { EventOutboxService, type OutboxMessage } from './event-outbox.service';
+import { TenantContextService } from '../context/tenant-context.service';
 
 const ISO_DATE_REGEX =
   /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
@@ -155,7 +156,10 @@ export class CrmEventBusService {
   private readonly logger = new Logger(CrmEventBusService.name);
   private readonly subscribers: CrmEventSubscriber[] = [];
 
-  constructor(@Optional() private readonly outbox?: EventOutboxService) {
+  constructor(
+    @Optional() private readonly outbox?: EventOutboxService,
+    @Optional() private readonly tenantContext?: TenantContextService,
+  ) {
     this.outbox?.registerHandler(CRM_EVENT_OUTBOX_KIND, (message) =>
       this.deliverFromOutbox(message),
     );
@@ -197,6 +201,12 @@ export class CrmEventBusService {
     event: CrmDomainEvent,
     options: PublishOptions = {},
   ): Promise<void> {
+    // Subscribers run later in another async context, so the marker has to
+    // travel in the payload: a change made by an automation step must never
+    // start another run.
+    if (this.tenantContext?.getAutomationExecutionId()) {
+      event = { ...event, causedByAutomation: true };
+    }
     if (!this.outbox) {
       await this.deliverInProcess({ ...event, eventId: randomUUID() });
       return;

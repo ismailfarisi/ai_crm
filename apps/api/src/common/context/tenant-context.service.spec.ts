@@ -47,6 +47,17 @@ describe('TenantContextService', () => {
     });
   });
 
+  it('marks the automation execution inside runAsAutomation only', async () => {
+    await service.runAsAutomation('tenant-9', 'exec-9', async () => {
+      expect(service.getTenantId()).toBe('tenant-9');
+      expect(service.isSystem()).toBe(false);
+      expect(service.getAutomationExecutionId()).toBe('exec-9');
+    });
+    await service.runWithTenant('tenant-9', async () => {
+      expect(service.getAutomationExecutionId()).toBeNull();
+    });
+  });
+
   it('allows setting tenantId manually within an active context', async () => {
     await cls.run(async () => {
       service.setTenantId('tenant-123');

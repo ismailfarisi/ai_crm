@@ -3,10 +3,12 @@ import { ClsService, ClsStore } from 'nestjs-cls';
 
 export const CLS_TENANT_ID_KEY = 'tenantId' as const;
 export const CLS_IS_SYSTEM_KEY = 'isSystem' as const;
+export const CLS_AUTOMATION_EXECUTION_KEY = 'automationExecutionId' as const;
 
 export interface TenantClsStore extends ClsStore {
   [CLS_TENANT_ID_KEY]?: string | null;
   [CLS_IS_SYSTEM_KEY]?: boolean;
+  [CLS_AUTOMATION_EXECUTION_KEY]?: string | null;
 }
 
 declare module 'nestjs-cls' {
@@ -35,6 +37,30 @@ export class TenantContextService {
   async runWithTenant<T>(tenantId: string, fn: () => Promise<T>): Promise<T> {
     return this.cls.runWith(
       { [CLS_TENANT_ID_KEY]: tenantId, [CLS_IS_SYSTEM_KEY]: false },
+      fn,
+    );
+  }
+
+  /** The automation execution this code is running on behalf of, if any. */
+  getAutomationExecutionId(): string | null {
+    return this.cls.get(CLS_AUTOMATION_EXECUTION_KEY) ?? null;
+  }
+
+  /**
+   * Runs `fn` as a tenant-scoped automation step. Anything it publishes is
+   * marked as caused by automation, so it cannot start further runs.
+   */
+  async runAsAutomation<T>(
+    tenantId: string,
+    executionId: string,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    return this.cls.runWith(
+      {
+        [CLS_TENANT_ID_KEY]: tenantId,
+        [CLS_IS_SYSTEM_KEY]: false,
+        [CLS_AUTOMATION_EXECUTION_KEY]: executionId,
+      },
       fn,
     );
   }
