@@ -146,6 +146,9 @@ export function NodeInspectorDrawer({
     } else if (node.type === 'conditionNode') {
       const current = config.condition || '';
       handleConfigChange('condition', `${current} ${variableCode}`.trim());
+    } else if (node.type === 'approvalNode') {
+      const current = config.message || '';
+      handleConfigChange('message', `${current} ${variableCode}`.trim());
     } else if (node.type === 'sendEmailNode') {
       const current = config.body || '';
       handleConfigChange('body', `${current} ${variableCode}`.trim());
@@ -349,10 +352,33 @@ export function NodeInspectorDrawer({
                     Human-in-the-Loop Approval Gate
                   </div>
                   <p className="text-[11px] text-ink/90 leading-relaxed">
-                    Workflow pauses in Temporal awaiting manager decision. Exposes 3 outbound branch handles:
+                    Workflow pauses awaiting a decision from anyone who can approve automations. Exposes 3 outbound branch handles:
                     <span className="font-semibold text-success"> Approved</span>,
                     <span className="font-semibold text-danger"> Rejected</span>, and
                     <span className="font-semibold text-ink"> Timeout</span>.
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-medium text-ink">Message for the approver</label>
+                    <button
+                      type="button"
+                      onClick={() => setShowHelper(!showHelper)}
+                      className="text-[10px] text-ink font-semibold hover:underline cursor-pointer"
+                    >
+                      {showHelper ? 'Hide Variables' : 'Show Variables'}
+                    </button>
+                  </div>
+                  <textarea
+                    rows={3}
+                    data-testid="approval-message-input"
+                    value={config.message || ''}
+                    onChange={(e) => handleConfigChange('message', e.target.value)}
+                    className="w-full rounded-lg border border-border p-2 text-xs text-ink focus:border-brand focus:outline-none resize-none"
+                  />
+                  <p className="text-[10px] text-ink-subtle">
+                    Shown in the Approvals inbox. You can use {'{{ }}'} expressions, e.g. {'{{ $trigger.payload.name }}'}.
                   </p>
                 </div>
 

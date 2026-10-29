@@ -860,10 +860,29 @@ automation's owner, the user who switched it on. Webhook runs never
 auto-approve agent tools, whatever the step's setting: anyone holding the
 address can start one, so a person approves each tool call.
 
-### Automation executions stay RUNNING with empty node results — open
+### Runs stopped from outside the workflow stay Running — open
 
-`recordNodeResultActivity` is a stub, so execution rows are not updated
-with per-node results as the run proceeds. Left for the run-history round.
+A run that is terminated, that times out, or that is stuck on a workflow-task
+error never records its end, so its row stays Running. There is no cleanup job
+yet to close such rows.
+
+### Run contents are visible only to automation editors — by design
+
+A run's step inputs, outputs and trigger payload can hold customer data, so
+the run list and run detail require the edit-automations permission. Viewers
+see the automation, not what it processed.
+
+### A scheduled run waiting on approval holds later ticks — by design
+
+While a scheduled run is paused on an approval step, later ticks of the same
+schedule wait behind it rather than starting alongside it. Decide the pending
+item in the Approvals inbox to let the schedule move on.
+
+### Approvals can be decided by anyone with Approve automations — by design
+
+The Approvals inbox is not scoped to a named approver or role. Anyone holding
+the Approve automations permission can approve or reject any pending item in
+the tenant.
 
 ### Schedules are hourly at the finest — by design
 

@@ -114,6 +114,23 @@ describe('Automation Drawers', () => {
     expect(screen.getByDisplayValue('48 hours')).toBeDefined();
   });
 
+  it('edits the approval message without clobbering sibling config', () => {
+    const onUpdate = vi.fn();
+    const node: AutomationNode = {
+      ...sampleApprovalNode,
+      data: { ...sampleApprovalNode.data, config: { other: 'keep' } },
+    };
+    render(<NodeInspectorDrawer node={node} onUpdate={onUpdate} onClose={vi.fn()} />);
+
+    fireEvent.change(screen.getByTestId('approval-message-input'), {
+      target: { value: 'Approve {{ $trigger.payload.name }}' },
+    });
+    expect(onUpdate).toHaveBeenCalledWith('node-2', {
+      config: { other: 'keep', message: 'Approve {{ $trigger.payload.name }}' },
+    });
+    expect(screen.getByText(/awaiting a decision from anyone who can approve automations/)).toBeDefined();
+  });
+
   it('renders TestRunDrawer and triggers execution', async () => {
     const onExecute = vi.fn().mockResolvedValue(sampleExecution);
     const onClose = vi.fn();

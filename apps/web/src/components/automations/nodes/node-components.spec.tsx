@@ -249,13 +249,14 @@ describe('Automation Node Components', () => {
         <ApprovalNode
           data={{
             label: 'VP Finance Approval',
-            config: { approverRole: 'executive', timeoutDuration: '24 hours' },
+            config: { message: 'Approve the Acme quote', timeoutDuration: '24 hours' },
           }}
         />,
       );
 
       expect(screen.getByText('VP Finance Approval')).toBeInTheDocument();
-      expect(screen.getByText('executive')).toBeInTheDocument();
+      expect(screen.queryByText('Approver:')).toBeNull();
+      expect(screen.getByText('Approve the Acme quote')).toBeInTheDocument();
       expect(screen.getByText('24 hours')).toBeInTheDocument();
       expect(screen.getByText('Approved')).toBeInTheDocument();
       expect(screen.getByText('Rejected')).toBeInTheDocument();

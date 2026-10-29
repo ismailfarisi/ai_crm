@@ -56,7 +56,7 @@ export const DEFAULT_NODE_CONFIGS: Record<AutomationNodeType, Record<string, any
   },
   sendEmailNode: { to: '', subject: '', body: '' },
   crmMutateNode: { action: 'CREATE_CONTACT', payload: {} },
-  approvalNode: { approverRole: 'admin', timeoutDuration: '3 days' },
+  approvalNode: { message: '', timeoutDuration: '3 days' },
 };
 
 export function toReactFlowNodes(nodes: AutomationNode[] = []): Node<AutomationNodeData>[] {

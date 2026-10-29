@@ -8,7 +8,7 @@ import { BaseNode } from './base-node';
 
 export interface ApprovalNodeData extends AutomationNodeData {
   config: {
-    approverRole?: string;
+    message?: string;
     timeoutDuration?: string;
     [key: string]: any;
   };
@@ -21,7 +21,6 @@ export function ApprovalNode({
   const nodeData = data || { label: 'Human Approval', config: {} };
   const config = nodeData.config || {};
   const status = (nodeData as any).status || (nodeData as any).executionStatus;
-  const approverRole = config.approverRole || 'admin';
   const timeoutDuration = config.timeoutDuration || '3 days';
 
   return (
@@ -40,10 +39,9 @@ export function ApprovalNode({
       <div className="space-y-2.5">
         {/* Approver role and timeout info */}
         <div className="rounded-md bg-surface-muted p-2 border border-border/80 text-[11px] text-ink-muted space-y-1">
-          <div className="flex items-center justify-between">
-            <span className="text-ink-muted">Approver:</span>
-            <span className="font-semibold text-ink capitalize">{approverRole}</span>
-          </div>
+          {config.message ? (
+            <p className="line-clamp-2 text-ink">{config.message}</p>
+          ) : null}
           <div className="flex items-center justify-between">
             <span className="text-ink-muted">Timeout:</span>
             <span className="font-semibold text-ink">{timeoutDuration}</span>
