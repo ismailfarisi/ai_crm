@@ -580,4 +580,104 @@ describe('Channel Drivers', () => {
       });
     });
   });
+
+  describe('MetaWhatsAppDriver media', () => {
+    const driver = new MetaWhatsAppDriver();
+    const payload = (message: Record<string, unknown>) => ({
+      entry: [
+        {
+          changes: [
+            {
+              value: {
+                messages: [{ from: '971500000000', id: 'wamid.1', ...message }],
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    it('reads a document as a file reference, keeping its caption apart', async () => {
+      const parsed = await driver.parseWebhookPayload(
+        {},
+        {},
+        payload({
+          type: 'document',
+          document: {
+            id: 'media-9',
+            mime_type: 'application/pdf',
+            filename: 'INV-7781.pdf',
+            caption: 'for PO 31',
+          },
+        }),
+      );
+      expect(parsed?.media).toEqual({
+        id: 'media-9',
+        mimeType: 'application/pdf',
+        filename: 'INV-7781.pdf',
+        caption: 'for PO 31',
+      });
+      expect(parsed?.body).toBe('for PO 31');
+    });
+
+    it('names a captionless photo in the inbox', async () => {
+      const parsed = await driver.parseWebhookPayload(
+        {},
+        {},
+        payload({
+          type: 'image',
+          image: { id: 'media-3', mime_type: 'image/jpeg; codecs=x' },
+        }),
+      );
+      expect(parsed?.media).toEqual({ id: 'media-3', mimeType: 'image/jpeg' });
+      expect(parsed?.body).toBe('[Image]');
+    });
+
+    it('downloads a file in two calls, with the token on both', async () => {
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            url: 'https://lookaside.example/f',
+            mime_type: 'application/pdf',
+            file_size: 4,
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          headers: { get: () => null },
+          arrayBuffer: async () => new TextEncoder().encode('%PDF').buffer,
+        }) as never;
+
+      const file = await driver.downloadMedia(
+        { accessToken: 'tok' },
+        'media-9',
+        1000,
+      );
+
+      expect(file.mimeType).toBe('application/pdf');
+      expect(file.buffer.toString()).toBe('%PDF');
+      const calls = (global.fetch as jest.Mock).mock.calls;
+      expect(calls[0][0]).toBe('https://graph.facebook.com/v19.0/media-9');
+      expect(calls[1][0]).toBe('https://lookaside.example/f');
+      for (const [, init] of calls)
+        expect(init.headers.Authorization).toBe('Bearer tok');
+    });
+
+    it('refuses a file over the limit before downloading it', async () => {
+      global.fetch = jest.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          url: 'https://lookaside.example/f',
+          mime_type: 'application/pdf',
+          file_size: 5000,
+        }),
+      }) as never;
+      await expect(
+        driver.downloadMedia({ accessToken: 'tok' }, 'media-9', 1000),
+      ).rejects.toThrow('too large');
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+  });
 });

@@ -1,23 +1,32 @@
 'use client';
 
 import { useState } from 'react';
+import { toast } from 'sonner';
 import {
   billTotals,
   summariseMatch,
   type PurchaseOrderDto,
+  type SupplierBillDto,
 } from '@saas/shared';
+import { api } from '@/lib/api/endpoints';
 import { useBillableLines, useCreateBill } from '@/hooks/use-bills';
 import { usePurchasePolicy } from '@/hooks/use-purchase-orders';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/field';
 import { buildExtraLine, ExtraLinesEditor, type ExtraLineDraft } from './bill-extra-lines';
+import type { BillPrefill } from './capture-prefill';
 
 interface EnterBillDialogProps {
   open: boolean;
   onClose: () => void;
   order: PurchaseOrderDto | null;
+  /** Starts the form from a read invoice. Read once, when the dialog mounts. */
+  prefill?: BillPrefill;
+  onCreated?: (bill: SupplierBillDto) => void;
 }
+
+const UNSURE = 'Check this against the invoice — it was hard to read.';
 
 /**
  * Entering a supplier's bill against an order.
@@ -28,16 +37,18 @@ interface EnterBillDialogProps {
  * API uses, so a variance shows up while it can still be queried rather than
  * at approval.
  */
-export function EnterBillDialog({ open, onClose, order }: EnterBillDialogProps) {
+export function EnterBillDialog({ open, onClose, order, prefill, onCreated }: EnterBillDialogProps) {
   const { data: billable = [] } = useBillableLines(order?.id ?? null, open);
   const { data: policy } = usePurchasePolicy();
   const create = useCreateBill();
 
-  const [invoiceNumber, setInvoiceNumber] = useState('');
-  const [billDate, setBillDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [tax, setTax] = useState('');
-  const [extras, setExtras] = useState<ExtraLineDraft[]>([]);
-  const [edits, setEdits] = useState<Record<string, { qty?: string; unitCost?: string }>>({});
+  const [invoiceNumber, setInvoiceNumber] = useState(prefill?.invoiceNumber ?? '');
+  const [billDate, setBillDate] = useState(() => prefill?.billDate ?? new Date().toISOString().slice(0, 10));
+  const [tax, setTax] = useState(prefill?.tax ?? '');
+  const [extras, setExtras] = useState<ExtraLineDraft[]>(prefill?.extras ?? []);
+  const [edits, setEdits] = useState<Record<string, { qty?: string; unitCost?: string }>>(prefill?.edits ?? {});
+  const unsure = new Set(prefill?.uncertain ?? []);
+  const paired = new Set(prefill?.paired ?? []);
 
   const close = () => {
     setInvoiceNumber('');
@@ -81,7 +92,11 @@ export function EnterBillDialog({ open, onClose, order }: EnterBillDialogProps) 
       onClose={close}
       size="lg"
       title={`Enter bill for ${order.poNumber}`}
-      description={`From ${order.supplierName}. Quantities start at what arrived and has not been billed.`}
+      description={
+        prefill
+          ? `From ${order.supplierName}. Filled in from the invoice — check it against the original before saving.`
+          : `From ${order.supplierName}. Quantities start at what arrived and has not been billed.`
+      }
       footer={
         <>
           <Button variant="secondary" onClick={close}>
@@ -91,7 +106,7 @@ export function EnterBillDialog({ open, onClose, order }: EnterBillDialogProps) 
             loading={create.isPending}
             disabled={!invoiceNumber.trim() || included.length + extraLines.length === 0 || extrasInvalid}
             onClick={async () => {
-              await create.mutateAsync({
+              const bill = await create.mutateAsync({
                 supplierId: order.supplierId,
                 purchaseOrderId: order.id,
                 supplierInvoiceNumber: invoiceNumber.trim(),
@@ -114,7 +129,14 @@ export function EnterBillDialog({ open, onClose, order }: EnterBillDialogProps) 
                   ...extraLines,
                 ],
               });
+              if (prefill?.file) {
+                // The bill is saved either way; a failed upload only loses the copy.
+                await api.attachments.upload('BILL', bill.id, prefill.file).catch(() =>
+                  toast.warning(`${bill.billNumber} is saved, but the invoice file could not be attached. Attach it from the bill.`),
+                );
+              }
               close();
+              onCreated?.(bill);
             }}
           >
             Save draft · {totals.total.toFixed(2)} {order.currency}
@@ -123,11 +145,22 @@ export function EnterBillDialog({ open, onClose, order }: EnterBillDialogProps) 
       }
     >
       <div className="space-y-4">
+        {prefill && prefill.warnings.length > 0 && (
+          <div className="rounded border border-warning/40 bg-warning-soft/40 p-3 text-sm">
+            <p className="mb-1 font-medium text-warning">Check before saving</p>
+            <ul className="space-y-1 text-ink-muted">
+              {prefill.warnings.map((w, i) => (
+                <li key={i}>{w.message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
         <div className="grid gap-4 sm:grid-cols-3">
           <Input
             id="bill-invoice-number"
             label="Their invoice number"
             required
+            hint={unsure.has('supplierInvoiceNumber') ? UNSURE : undefined}
             value={invoiceNumber}
             onChange={(e) => setInvoiceNumber(e.target.value)}
           />
@@ -135,6 +168,7 @@ export function EnterBillDialog({ open, onClose, order }: EnterBillDialogProps) 
             id="bill-date"
             label="Invoice date"
             type="date"
+            hint={unsure.has('billDate') ? UNSURE : undefined}
             value={billDate}
             onChange={(e) => setBillDate(e.target.value)}
           />
@@ -142,6 +176,7 @@ export function EnterBillDialog({ open, onClose, order }: EnterBillDialogProps) 
             id="bill-tax"
             label="Tax on the invoice"
             type="number"
+            hint={unsure.has('taxAmount') ? UNSURE : undefined}
             min={0}
             step="0.01"
             value={tax}
@@ -166,6 +201,9 @@ export function EnterBillDialog({ open, onClose, order }: EnterBillDialogProps) 
                     {line.description}
                     {line.qtyBilled > 0 && (
                       <p className="text-xs text-ink-subtle">{line.qtyBilled} already on another bill</p>
+                    )}
+                    {prefill && !paired.has(line.purchaseOrderLineId) && (
+                      <p className="text-xs text-ink-subtle">Not on the invoice</p>
                     )}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-ink-muted">{line.qtyReceived}</td>
@@ -205,6 +243,8 @@ export function EnterBillDialog({ open, onClose, order }: EnterBillDialogProps) 
             </tbody>
           </table>
         </div>
+
+        {unsure.has('lines') && <p className="text-xs text-warning">Some lines were hard to read. {UNSURE}</p>}
 
         <ExtraLinesEditor lines={extras} onChange={setExtras} />
 

@@ -6,6 +6,7 @@ import { ColumnDef } from '@tanstack/react-table';
 import { AlertTriangle, ReceiptText } from 'lucide-react';
 import {
   AGING_BUCKETS,
+  PERMISSIONS,
   type AgingBucket,
   type BillStatus,
   type SupplierBillDto,
@@ -14,6 +15,8 @@ import { useBillAging, useBills } from '@/hooks/use-bills';
 import { EmptyState, PageHeader } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/data-table';
 import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
+import { Can } from '@/components/auth/can';
+import { CaptureBillFlow } from './capture-bill-flow';
 
 const STATUS_STYLES: Record<BillStatus, string> = {
   DRAFT: 'bg-surface-sunk text-ink-muted',
@@ -124,20 +127,25 @@ export function BillsView() {
         title="Supplier bills"
         description="What suppliers say they are owed, checked against what was ordered and received."
         actions={
-          <select
-            id="bill-status-filter"
-            aria-label="Filter by status"
-            value={status}
-            onChange={(e) => setStatus(e.target.value as BillStatus | '')}
-            className="rounded border border-line bg-surface px-3 py-2 text-sm text-ink"
-          >
-            <option value="">All statuses</option>
-            {Object.entries(STATUS_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
+          <div className="flex flex-wrap items-center gap-2">
+            <Can permission={PERMISSIONS.BILL_CREATE}>
+              <CaptureBillFlow />
+            </Can>
+            <select
+              id="bill-status-filter"
+              aria-label="Filter by status"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as BillStatus | '')}
+              className="rounded border border-line bg-surface px-3 py-2 text-sm text-ink"
+            >
+              <option value="">All statuses</option>
+              {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
         }
       />
 

@@ -25,6 +25,10 @@ import { CHANNEL_SENDER } from './channel-sender.token';
 import { SkillActorService } from '../services/skill-actor.service';
 import { ChannelThreadReadSkill } from './channel-thread-read.skill';
 import { ChannelMessageSendSkill } from './channel-message-send.skill';
+import { BillFromDocumentSkill } from './bill-from-document.skill';
+import { BillCaptureService } from '../../payables/bill-capture.service';
+import { PayablesService } from '../../payables/payables.service';
+import { AttachmentsService } from '../../storage/attachments.service';
 
 /**
  * The one file to touch when adding a staff chat capability.
@@ -49,6 +53,9 @@ export class SkillRegistry {
     actors: SkillActorService,
     @InjectRepository(ChannelMessage) channelMessages: Repository<ChannelMessage>,
     moduleRef: ModuleRef,
+    billCapture: BillCaptureService,
+    payables: PayablesService,
+    attachments: AttachmentsService,
   ) {
     // ChannelsService depends (via ChannelCommandService) on this registry, so
     // it is looked up when a send executes, never at construction.
@@ -77,6 +84,13 @@ export class SkillRegistry {
       ) as unknown as ChannelSkill<never>,
       new ChannelThreadReadSkill(contacts, actors, channelMessages) as unknown as ChannelSkill<never>,
       new ChannelMessageSendSkill(contacts, actors, channelMessages, channels) as unknown as ChannelSkill<never>,
+      new BillFromDocumentSkill(
+        billCapture,
+        payables,
+        attachments,
+        actors,
+        channels,
+      ) as unknown as ChannelSkill<never>,
     ];
   }
 

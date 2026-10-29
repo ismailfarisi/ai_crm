@@ -18,6 +18,7 @@ import {
   SkillRouterService,
 } from '../skills/skill-router.service';
 import type { ChannelSkill, SkillContext } from '../skills/skill.types';
+import type { InboundMedia } from '../interfaces/channel-driver.interface';
 
 export interface ChannelCommandResult {
   handled: boolean;
@@ -146,15 +147,18 @@ export class ChannelCommandService {
     provider: ChannelProviderType,
     senderIdentifier: string,
     body: string,
+    attachment?: InboundMedia,
   ): Promise<ChannelCommandResult> {
     const message = (body || '').trim();
 
-    const linked = await this.tryConsumeLinkCode(
-      organizationId,
-      provider,
-      senderIdentifier,
-      message,
-    );
+    const linked = attachment
+      ? null
+      : await this.tryConsumeLinkCode(
+          organizationId,
+          provider,
+          senderIdentifier,
+          message,
+        );
     if (linked) return linked;
 
     const identity = await this.identityRepository.findOne({
@@ -173,9 +177,14 @@ export class ChannelCommandService {
       senderIdentifier,
       permissions: access.permissions,
       message,
+      ...(attachment ? { attachment } : {}),
     };
 
     await this.expireStale(organizationId, provider, senderIdentifier);
+
+    // A file is always a new command. It cannot be a YES, and answering an
+    // open question with a photo means the person has moved on.
+    if (attachment) return this.startWithAttachment(ctx);
     const live = await this.findLiveConversation(
       organizationId,
       provider,
@@ -384,7 +393,7 @@ export class ChannelCommandService {
           slots: {
             ...conversation.slots,
             _lastError: msg.slice(0, 500),
-          } as never,
+          },
         },
       );
       return this.reply(
@@ -447,6 +456,13 @@ export class ChannelCommandService {
 
     const prior = { ...conversation.slots };
     delete prior[RESOLVED_KEY];
+    // Underscored slots are a skill's own working state — a document it has
+    // already read, say. They are kept, but never put in front of the
+    // extractor: they can be large, and they can hold text from a document
+    // nobody on the staff wrote.
+    const visible = Object.fromEntries(
+      Object.entries(prior).filter(([key]) => !key.startsWith('_')),
+    );
 
     // A pending choice is answered in code, so no model call is needed and no
     // model gets the chance to invent an id.
@@ -457,7 +473,7 @@ export class ChannelCommandService {
         const extracted = await this.router.extract(
           ctx.message,
           skill,
-          prior,
+          visible,
           ctx,
         );
         merged = this.mergeSlots(prior, extracted.slots);
@@ -474,12 +490,16 @@ export class ChannelCommandService {
   private async startFresh(ctx: SkillContext): Promise<ChannelCommandResult> {
     if (!ctx.message) return this.reply(ctx, this.helpMessage(ctx));
 
-    const candidates = this.registry.permittedFor(ctx.permissions, 'channel');
+    // A skill that needs a file has nothing to do with text alone; offering
+    // it would only give the router another way to be wrong. It still shows
+    // in the help message, which is how people learn to send the file.
+    const candidates = this.registry
+      .permittedFor(ctx.permissions, 'channel')
+      .filter((skill) => skill.attachment !== 'required');
     if (candidates.length === 0) {
-      return this.reply(
-        ctx,
-        "You don't have permission to run any commands here.",
-      );
+      // Either nothing is permitted, or only file skills are — the help
+      // message says which.
+      return this.reply(ctx, this.helpMessage(ctx));
     }
 
     let route;
@@ -520,6 +540,72 @@ export class ChannelCommandService {
       extracted.model,
       route.confidence,
     );
+  }
+
+  /**
+   * A message that carries a file goes only to skills that take one. With a
+   * single such skill there is nothing to route, so no model call is spent
+   * on it; the caption, if any, is still read for slots.
+   */
+  private async startWithAttachment(
+    ctx: SkillContext,
+  ): Promise<ChannelCommandResult> {
+    const candidates = this.registry
+      .permittedFor(ctx.permissions, 'channel')
+      .filter((skill) => skill.attachment);
+    if (candidates.length === 0) {
+      return this.reply(
+        ctx,
+        "I can't do anything with files here. Send the instruction as text.",
+      );
+    }
+
+    let skill = candidates[0];
+    let confidence: number | undefined;
+    if (candidates.length > 1) {
+      if (!ctx.message) {
+        return this.reply(
+          ctx,
+          `What should I do with this file? Send it again with a note, e.g.\n${candidates
+            .map((s) => `• ${s.examples[0]}`)
+            .join('\n')}`,
+        );
+      }
+      let route;
+      try {
+        route = await this.router.route(ctx.message, candidates, ctx);
+      } catch (err) {
+        if (!(err instanceof AiUnavailableError)) throw err;
+        return this.reply(ctx, this.degradedMessage());
+      }
+      const routed = route.skill
+        ? this.registry.byName(route.skill)
+        : undefined;
+      if (!routed || route.confidence < this.router.minConfidence) {
+        return this.reply(ctx, "I'm not sure what to do with this file.");
+      }
+      skill = routed;
+      confidence = route.confidence;
+    }
+
+    let slots: Record<string, unknown> = {};
+    let model: string | null = null;
+    if (ctx.message) {
+      try {
+        const extracted = await this.router.extract(
+          ctx.message,
+          skill,
+          {},
+          ctx,
+        );
+        slots = extracted.slots;
+        model = extracted.model;
+      } catch (err) {
+        if (!(err instanceof AiUnavailableError)) throw err;
+        return this.reply(ctx, this.degradedMessage());
+      }
+    }
+    return this.advance(skill, slots, ctx, null, model, confidence);
   }
 
   /** Resolve, then either ask, refuse, or propose. The single place that writes conversation state. */

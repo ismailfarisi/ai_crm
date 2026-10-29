@@ -13,6 +13,8 @@ import { ChannelIdempotencyRecord } from './entities/channel-idempotency-record.
 import { PurchasingModule } from '../purchasing/purchasing.module';
 import { ProductionModule } from '../production/production.module';
 import { OrdersModule } from '../orders/orders.module';
+import { PayablesModule } from '../payables/payables.module';
+import { StorageModule } from '../storage/storage.module';
 import { SkillRegistry } from './skills/skill.registry';
 import { SkillRouterService } from './skills/skill-router.service';
 import { AiAgent } from './entities/ai-agent.entity';
@@ -48,6 +50,8 @@ import { ChannelsWebhookController } from './channels-webhook.controller';
     PurchasingModule,
     ProductionModule,
     OrdersModule,
+    PayablesModule,
+    StorageModule,
   ],
   controllers: [ChannelsController, ChannelsWebhookController],
   providers: [

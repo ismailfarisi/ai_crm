@@ -14,6 +14,16 @@ export interface AiImageContent {
   url?: string;
 }
 
+/** A PDF the model reads whole — text and page images both. */
+export interface AiDocumentContent {
+  type: 'document';
+  mimeType: 'application/pdf';
+  /** Base64-encoded file bytes, no data-URL prefix. */
+  data: string;
+  /** Some providers want a name for the file; it is not shown to the model as content. */
+  filename?: string;
+}
+
 /** A tool call the model made, on an assistant message. */
 export interface AiToolUseContent {
   type: 'tool_use';
@@ -33,6 +43,7 @@ export interface AiToolResultContent {
 export type AiContentBlock =
   | AiTextContent
   | AiImageContent
+  | AiDocumentContent
   | AiToolUseContent
   | AiToolResultContent;
 

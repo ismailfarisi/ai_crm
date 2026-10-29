@@ -126,6 +126,42 @@ describe('OpenAiCompatibleProvider', () => {
       });
     });
 
+    it('maps a PDF document block to a chat-completions file part', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({
+          choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 1, completion_tokens: 1 },
+          model: 'gpt-4o',
+        }),
+      );
+
+      const provider = makeProvider('openai');
+      await provider.generateText({
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'document',
+                mimeType: 'application/pdf',
+                data: 'PDFDATA',
+                filename: 'inv.pdf',
+              },
+            ],
+          },
+        ],
+      });
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body.messages[0].content[0]).toEqual({
+        type: 'file',
+        file: {
+          filename: 'inv.pdf',
+          file_data: 'data:application/pdf;base64,PDFDATA',
+        },
+      });
+    });
+
     it('throws AiProviderError on a non-2xx response', async () => {
       fetchMock.mockResolvedValue(
         jsonResponse({ error: 'bad key' }, false, 401),

@@ -95,6 +95,35 @@ export class ChannelsService {
     }
   }
 
+  /**
+   * The bytes of a file that arrived on a channel, by the provider's id for
+   * it. Skills hold only that id between turns, so the confirmation step can
+   * fetch the same file the proposal was made from.
+   */
+  async downloadMedia(
+    orgId: string,
+    provider: ChannelProviderType,
+    mediaId: string,
+    maxBytes: number,
+  ): Promise<{ buffer: Buffer; mimeType: string }> {
+    const config = await this.configRepo.findOne({
+      where: { organizationId: orgId, provider },
+    });
+    if (!config || !config.isEnabled || !config.encryptedCredentials) {
+      throw new BadRequestException(
+        `Channel ${provider} is not configured or is disabled`,
+      );
+    }
+    const driver = this.getDriver(provider);
+    if (!driver.downloadMedia) {
+      throw new BadRequestException(
+        `Files from ${provider} cannot be read yet`,
+      );
+    }
+    const credentials = this.cryptoService.decrypt(config.encryptedCredentials);
+    return driver.downloadMedia(credentials, mediaId, maxBytes);
+  }
+
   private maskCredentials(
     credentials: Record<string, any>,
   ): Record<string, any> {
@@ -571,11 +600,14 @@ export class ChannelsService {
       // the ordinary customer path exactly as before.
       let commandResult: ChannelCommandResult;
       try {
+        // A file's `body` is a placeholder for the inbox; the command layer
+        // gets only what the person actually typed with it.
         commandResult = await this.channelCommandService.handleInboundMessage(
           orgId,
           provider,
           parsed.senderIdentifier,
-          parsed.body,
+          parsed.media ? (parsed.media.caption ?? '') : parsed.body,
+          parsed.media,
         );
       } catch (err) {
         // Nothing was done for this message: release the claim so the

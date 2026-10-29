@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -6,14 +7,19 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
+  BILL_CAPTURE_MAX_BYTES,
   billQuerySchema,
   billReasonSchema,
   createBillSchema,
   PERMISSIONS,
   recordBillPaymentSchema,
+  type BillCaptureResult,
   type BillQueryPayload,
   type BillReasonPayload,
   type CreateBillPayload,
@@ -23,6 +29,8 @@ import {
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
 import { zodBody, zodQuery } from '@/common/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
+import type { UploadedFileLike } from '../storage/storage.types';
+import { BillCaptureService } from './bill-capture.service';
 import { BillPayment, SupplierBill } from './entities/supplier-bill.entity';
 import {
   PayablesService,
@@ -33,7 +41,10 @@ import {
 @ApiTags('payables')
 @Controller()
 export class PayablesController {
-  constructor(private readonly payables: PayablesService) {}
+  constructor(
+    private readonly payables: PayablesService,
+    private readonly capture: BillCaptureService,
+  ) {}
 
   @Get('bills')
   @RequirePermissions(PERMISSIONS.BILL_READ)
@@ -106,6 +117,29 @@ export class PayablesController {
     @Body(zodBody(createBillSchema)) body: CreateBillPayload,
   ): Promise<SupplierBill> {
     return this.payables.create(user.organizationId, user.id, body);
+  }
+
+  @Post('bills/capture')
+  @RequirePermissions(PERMISSIONS.BILL_CREATE)
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Read a supplier invoice into a proposed bill',
+    description:
+      'Saves nothing. Returns what the document says, the supplier, order and order lines it appears to be for, and what to check. Enter the bill with POST /bills.',
+  })
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: BILL_CAPTURE_MAX_BYTES } }),
+  )
+  async captureInvoice(
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() file: UploadedFileLike | undefined,
+  ): Promise<BillCaptureResult> {
+    if (!file) throw new BadRequestException('Attach the invoice as "file".');
+    return this.capture.capture(user.organizationId, user.id, {
+      buffer: file.buffer,
+      mimeType: file.mimetype,
+      filename: file.originalname,
+    });
   }
 
   @Post('bills/:id/approve')

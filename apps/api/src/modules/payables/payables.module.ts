@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { FinanceModule } from '../finance/finance.module';
 import { TaxModule } from '../tax/tax.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { AiModule } from '../ai/ai.module';
 import { FinanceAccount } from '../finance/entities/finance-account.entity';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
 import { PurchaseOrder } from '../purchasing/entities/purchase-order.entity';
@@ -20,6 +21,7 @@ import {
 } from './entities/prepaid-schedule.entity';
 import { PayablesController } from './payables.controller';
 import { PayablesService } from './payables.service';
+import { BillCaptureService } from './bill-capture.service';
 
 @Module({
   imports: [
@@ -39,9 +41,10 @@ import { PayablesService } from './payables.service';
     FinanceModule,
     TaxModule,
     NotificationsModule,
+    AiModule,
   ],
   controllers: [PayablesController],
-  providers: [PayablesService],
-  exports: [PayablesService],
+  providers: [PayablesService, BillCaptureService],
+  exports: [PayablesService, BillCaptureService],
 })
 export class PayablesModule {}

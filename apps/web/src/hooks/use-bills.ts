@@ -78,6 +78,14 @@ export function useCreateBill() {
   });
 }
 
+/** Reads an invoice. Nothing is saved, so nothing is invalidated. */
+export function useCaptureBill() {
+  return useMutation({
+    mutationFn: (file: File) => api.bills.capture(file),
+    onError: (error) => toast.error(describe(error, 'Could not read the invoice')),
+  });
+}
+
 export function useBillAction() {
   const invalidate = useInvalidateBills();
   return useMutation({

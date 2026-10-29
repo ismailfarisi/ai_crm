@@ -24,13 +24,16 @@ describe('SkillRegistry', () => {
       {} as any, // actors
       {} as any, // channelMessages
       {} as any, // moduleRef
+      {} as any, // billCapture
+      {} as any, // payables
+      {} as any, // attachments
     );
   });
 
   describe('all', () => {
-    it('contains all 10 skills', () => {
+    it('contains all 11 skills', () => {
       const skills = registry.all();
-      expect(skills).toHaveLength(10);
+      expect(skills).toHaveLength(11);
       expect(skills.map((s) => s.name)).toEqual([
         CHANNEL_SKILLS.QUOTE_APPROVE,
         CHANNEL_SKILLS.QUOTE_CREATE,
@@ -42,6 +45,7 @@ describe('SkillRegistry', () => {
         CHANNEL_SKILLS.SALES_ORDER_FROM_DOCUMENT,
         CHANNEL_SKILLS.CHANNEL_THREAD_READ,
         CHANNEL_SKILLS.CHANNEL_MESSAGE_SEND,
+        CHANNEL_SKILLS.BILL_FROM_DOCUMENT,
       ]);
     });
   });

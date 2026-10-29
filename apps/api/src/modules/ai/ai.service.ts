@@ -54,6 +54,20 @@ const DEFAULT_PRICING = { input: 3, output: 15 };
 const CACHE_READ_MULTIPLIER = 0.1;
 const CACHE_WRITE_MULTIPLIER = 1.25;
 
+/** A page's extracted text plus its image, generously — reservation should overshoot, not under. */
+const PDF_TOKENS_PER_PAGE = 4096;
+
+/**
+ * Pages in a base64 PDF, by counting page objects. Crude, but only feeds the
+ * budget reservation, which reconciliation corrects to the real usage; a file
+ * it cannot read counts as one page.
+ */
+export function estimatePdfPages(base64: string): number {
+  const text = Buffer.from(base64, 'base64').toString('latin1');
+  const pages = text.match(/\/Type\s*\/Page(?!s)/g)?.length ?? 0;
+  return Math.max(1, pages);
+}
+
 /** What budget reservation needs to know about any kind of call. */
 type BudgetedOptions = AiGenerateOptions & {
   jsonSchema?: Record<string, unknown>;
@@ -196,6 +210,7 @@ export class AiService {
       (options.jsonSchema ? JSON.stringify(options.jsonSchema).length : 0) +
       (options.tools ? JSON.stringify(options.tools).length : 0);
     let imageCount = 0;
+    let documentPages = 0;
     for (const message of options.messages) {
       if (typeof message.content === 'string') {
         inputCharacters += message.content.length;
@@ -206,6 +221,9 @@ export class AiService {
           inputCharacters += block.text.length;
         } else if (block.type === 'image') {
           imageCount++;
+        } else if (block.type === 'document') {
+          // Each PDF page is sent as its text and as an image.
+          documentPages += estimatePdfPages(block.data);
         } else if (block.type === 'tool_result') {
           inputCharacters += block.content.length;
         } else {
@@ -215,7 +233,9 @@ export class AiService {
     }
     const inputTokens = Math.max(
       1,
-      Math.ceil(inputCharacters / 4) + imageCount * 4096,
+      Math.ceil(inputCharacters / 4) +
+        imageCount * 4096 +
+        documentPages * PDF_TOKENS_PER_PAGE,
     );
     const outputTokens = Math.max(1, options.maxTokens ?? providerDefaultMaxTokens);
     // Reserved as if nothing were cached, at the rate of the model that will

@@ -104,6 +104,36 @@ describe('AnthropicProvider', () => {
       });
     });
 
+    it('maps a PDF document block to a base64 document source', async () => {
+      mockCreate.mockResolvedValue({
+        content: [{ type: 'text', text: 'ok' }],
+        usage: { input_tokens: 1, output_tokens: 1 },
+        model: 'claude-sonnet-5',
+        stop_reason: 'end_turn',
+      });
+
+      await provider.generateText({
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'document', mimeType: 'application/pdf', data: 'PDFDATA' },
+            ],
+          },
+        ],
+      });
+
+      const sentMessages = mockCreate.mock.calls[0][0].messages;
+      expect(sentMessages[0].content[0]).toEqual({
+        type: 'document',
+        source: {
+          type: 'base64',
+          media_type: 'application/pdf',
+          data: 'PDFDATA',
+        },
+      });
+    });
+
     it('normalizes SDK errors into AiProviderError', async () => {
       mockCreate.mockRejectedValue(
         new APIError(429, {}, 'Rate limited', undefined),

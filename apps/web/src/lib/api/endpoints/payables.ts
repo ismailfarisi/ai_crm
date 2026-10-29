@@ -1,6 +1,7 @@
 /* One slice of the browser's API surface. Composed in ./index.ts. */
 import type {
   AgingReportDto,
+  BillCaptureResult,
   BillPaymentDto,
   BillableOrderLineDto,
   BillReasonPayload,
@@ -10,7 +11,7 @@ import type {
   RecordBillPaymentPayload,
   SupplierBillDto,
 } from '@saas/shared';
-import { apiFetch } from '../client';
+import { apiFetch, apiUpload } from '../client';
 
 export interface BillListParams {
   page?: number;
@@ -37,6 +38,8 @@ export const payablesEndpoints = {
       apiFetch<BillableOrderLineDto[]>(`/purchase-orders/${purchaseOrderId}/billable`),
     create: (input: CreateBillPayload) =>
       apiFetch<SupplierBillDto>('/bills', { method: 'POST', body: input }),
+    /** Reads an invoice into a proposed bill. Saves nothing. */
+    capture: (file: File) => apiUpload<BillCaptureResult>('/bills/capture', file),
     approve: (id: string) => apiFetch<SupplierBillDto>(`/bills/${id}/approve`, { method: 'POST' }),
     dispute: (id: string, input: BillReasonPayload) =>
       apiFetch<SupplierBillDto>(`/bills/${id}/dispute`, { method: 'POST', body: input }),

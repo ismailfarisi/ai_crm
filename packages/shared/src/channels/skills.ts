@@ -28,6 +28,7 @@ export type ChannelResultType =
   | 'WORK_ORDER'
   | 'DELIVERY_NOTE'
   | 'SALES_ORDER'
+  | 'BILL'
   | 'CONTACT';
 
 /**
@@ -46,6 +47,7 @@ export const CHANNEL_SKILLS = {
   WORK_ORDER_QUERY: 'work_order.query',
   DELIVERY_DISPATCH: 'delivery.dispatch',
   SALES_ORDER_FROM_DOCUMENT: 'sales_order.from_document',
+  BILL_FROM_DOCUMENT: 'bill.from_document',
   CHANNEL_THREAD_READ: 'channel_thread.read',
   CHANNEL_MESSAGE_SEND: 'channel_message.send',
 } as const;

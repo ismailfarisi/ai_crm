@@ -299,6 +299,17 @@ export class OpenAiCompatibleProvider implements AiProvider {
         block.url ?? `data:${block.mimeType};base64,${block.data ?? ''}`;
       return { type: 'image_url', image_url: { url } };
     }
+    if (block.type === 'document') {
+      // The chat-completions file part. OpenAI and OpenRouter read PDFs this
+      // way; a server that does not will reject the request, not misread it.
+      return {
+        type: 'file',
+        file: {
+          filename: block.filename ?? 'document.pdf',
+          file_data: `data:${block.mimeType};base64,${block.data}`,
+        },
+      };
+    }
     throw new AiProviderError(`Unexpected ${block.type} block in a ${this.name} message`);
   }
 

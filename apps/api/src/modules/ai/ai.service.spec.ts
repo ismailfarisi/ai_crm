@@ -1,4 +1,4 @@
-import { AiService } from './ai.service';
+import { AiService, estimatePdfPages } from './ai.service';
 import {
   AiNotConfiguredException,
   AiProviderError,
@@ -716,5 +716,20 @@ describe('AiService', () => {
       expect(result.alertThresholdPercent).toBe(90);
       expect(result.isEnabled).toBe(false);
     });
+  });
+});
+
+describe('estimatePdfPages', () => {
+  const b64 = (s: string) => Buffer.from(s, 'latin1').toString('base64');
+
+  it('counts page objects and not the page tree', () => {
+    const pdf =
+      '%PDF-1.7\n1 0 obj << /Type /Pages /Count 2 >>\n' +
+      '2 0 obj << /Type /Page >>\n3 0 obj << /Type/Page >>\n';
+    expect(estimatePdfPages(b64(pdf))).toBe(2);
+  });
+
+  it('counts an unreadable file as one page', () => {
+    expect(estimatePdfPages(b64('not a pdf'))).toBe(1);
   });
 });

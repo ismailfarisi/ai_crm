@@ -6,6 +6,7 @@ import type {
   SkillResolution,
 } from '@saas/shared';
 import type { ChannelProviderType } from '../entities/channel-config.entity';
+import type { InboundMedia } from '../interfaces/channel-driver.interface';
 
 /**
  * Everything a skill is allowed to know about who is talking to it.
@@ -23,6 +24,11 @@ export interface SkillContext {
   permissions: Permission[];
   /** The raw inbound message, for skills that want to pattern-match it directly. */
   message: string;
+  /**
+   * A file sent with this message. Present on the turn it arrived only; a
+   * skill that needs it on later turns keeps the reference in its slots.
+   */
+  attachment?: InboundMedia;
 }
 
 /**
@@ -91,6 +97,14 @@ export interface ChannelSkill<
 
   /** False for read-only capabilities. Mutating tools require approval by default. */
   isMutating?: boolean;
+
+  /**
+   * Whether this skill takes a file. A message carrying one is offered only
+   * to skills that set this, so a photo is never routed to a command that
+   * would silently ignore it. `required` skills are not offered plain text:
+   * there is nothing they could do with it.
+   */
+  attachment?: 'required' | 'optional';
 
   /**
    * Where this skill may be offered. Absent means every surface. A skill

@@ -34,6 +34,8 @@ export * from './ai/types';
 export * from './costing';
 export * from './inventory/valuation';
 export * from './payables/matching';
+export * from './payables/capture';
+export * from './payables/capture-matching';
 export * from './schemas/bill';
 export * from './schemas/inventory';
 export * from './purchasing/types';

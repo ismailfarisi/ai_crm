@@ -205,6 +205,15 @@ export class AnthropicProvider implements AiProvider {
             data: block.data ?? '',
           },
         };
+      case 'document':
+        return {
+          type: 'document',
+          source: {
+            type: 'base64',
+            media_type: block.mimeType,
+            data: block.data,
+          },
+        };
     }
   }
 
