@@ -1,12 +1,16 @@
 import {
   ActivityFailure,
+  CancellationScope,
   ChildWorkflowFailure,
   condition,
   executeChild,
   getExternalWorkflowHandle,
+  isCancellation,
+  patched,
   proxyActivities,
   setHandler,
   sleep,
+  uuid4,
   workflowInfo,
 } from '@temporalio/workflow';
 import { usesAiOutput } from '@saas/shared/automations/ai-output';
@@ -19,6 +23,7 @@ import {
 import type * as activities from './automation.activities';
 import type { createAutomationActions } from './automation-actions';
 import type { createRunRecordActivities } from './run-record.activities';
+import { durationToMs } from './duration';
 import {
   evaluateExpression,
   ExpressionContext,
@@ -47,6 +52,7 @@ const {
   executeCodeTransformActivity,
   executeCrmMutationActivity,
   recordNodeResultActivity,
+  recordRunFinishedActivity,
 } = proxyActivities<
   typeof activities &
     ReturnType<typeof createAutomationActions> &
@@ -71,6 +77,15 @@ function failureReason(err: any): string {
     return reason.message;
   }
   return err?.message || String(err);
+}
+
+/** When a wait that started at `requestedAtMs` times out; null if the timeout can't be read. */
+function approvalExpiresAt(
+  requestedAtMs: number,
+  timeoutDuration: string | undefined,
+): string | null {
+  const ms = durationToMs(timeoutDuration);
+  return ms === null ? null : new Date(requestedAtMs + ms).toISOString();
 }
 
 export async function dynamicDagWorkflow(
@@ -138,10 +153,12 @@ export async function dynamicDagWorkflow(
 
   setHandler(agentApprovalRequestedSignal, async (request) => {
     const node = input.nodes.find((candidate) => candidate.id === request.nodeId);
+    const requestedAtMs = Date.now();
+    const requestedAt = new Date(requestedAtMs).toISOString();
     executionState.pendingApprovals[request.nodeId] = {
       nodeId: request.nodeId,
       nodeLabel: node?.data?.label ?? 'AI Agent Node',
-      requestedAt: new Date().toISOString(),
+      requestedAt,
       timeoutDuration:
         node?.data?.timeoutDuration ?? node?.data?.config?.timeoutDuration,
       context: { tool: request.tool, preview: request.preview },
@@ -163,488 +180,551 @@ export async function dynamicDagWorkflow(
       tenantId: input.tenantId,
       nodeId: request.nodeId,
       nodeType: node?.type,
+      label: node?.data?.label,
       status: 'WAITING',
       input: node?.data?.config,
       output: { pendingAction },
       startedAt: executionState.nodeResults[request.nodeId].startedAt,
+      approval: {
+        id: uuid4(),
+        kind: 'agent_action',
+        title: node?.data?.label ?? 'AI Agent',
+        details: { tool: request.tool, preview: request.preview },
+        requestedAt,
+        // The agent step waits as long as its own timeout, 3 days by default.
+        expiresAt: approvalExpiresAt(
+          requestedAtMs,
+          node?.data?.timeoutDuration ||
+            node?.data?.config?.timeoutDuration ||
+            '3 days',
+        ),
+      },
     });
   });
 
   // Query handler
   setHandler(getExecutionStateQuery, () => executionState);
 
-  const nodesById = new Map<string, AutomationNode>(
-    input.nodes.map((n) => [n.id, n]),
-  );
-  const outgoingEdges = new Map<string, AutomationEdge[]>();
-
-  for (const edge of input.edges) {
-    const list = outgoingEdges.get(edge.source) || [];
-    list.push(edge);
-    outgoingEdges.set(edge.source, list);
-  }
-
-  // Determine starting trigger node
-  let startNodeId = input.triggerNodeId;
-  if (!startNodeId) {
-    const triggerNode = input.nodes.find((n) =>
-      [
-        'webhookTrigger',
-        'scheduleTrigger',
-        'crmEventTrigger',
-        'manualTrigger',
-      ].includes(n.type),
+  async function runDag(): Promise<WorkflowExecutionState> {
+    const nodesById = new Map<string, AutomationNode>(
+      input.nodes.map((n) => [n.id, n]),
     );
-    if (triggerNode) {
-      startNodeId = triggerNode.id;
-    } else {
-      // Find node with no incoming edges
-      const targetIds = new Set(input.edges.map((e) => e.target));
-      const rootNode = input.nodes.find((n) => !targetIds.has(n.id));
-      startNodeId = rootNode ? rootNode.id : input.nodes[0]?.id;
-    }
-  }
+    const outgoingEdges = new Map<string, AutomationEdge[]>();
 
-  if (!startNodeId || !nodesById.has(startNodeId)) {
+    for (const edge of input.edges) {
+      const list = outgoingEdges.get(edge.source) || [];
+      list.push(edge);
+      outgoingEdges.set(edge.source, list);
+    }
+
+    // Determine starting trigger node
+    let startNodeId = input.triggerNodeId;
+    if (!startNodeId) {
+      const triggerNode = input.nodes.find((n) =>
+        [
+          'webhookTrigger',
+          'scheduleTrigger',
+          'crmEventTrigger',
+          'manualTrigger',
+        ].includes(n.type),
+      );
+      if (triggerNode) {
+        startNodeId = triggerNode.id;
+      } else {
+        // Find node with no incoming edges
+        const targetIds = new Set(input.edges.map((e) => e.target));
+        const rootNode = input.nodes.find((n) => !targetIds.has(n.id));
+        startNodeId = rootNode ? rootNode.id : input.nodes[0]?.id;
+      }
+    }
+
+    if (!startNodeId || !nodesById.has(startNodeId)) {
+      executionState.status = 'COMPLETED';
+      executionState.finishedAt = new Date().toISOString();
+      return executionState;
+    }
+
+    // Queue holds { nodeId, previousOutput }
+    const queue: Array<{ nodeId: string; previousOutput: any }> = [
+      { nodeId: startNodeId, previousOutput: input.triggerPayload },
+    ];
+
+    const processedNodeIds = new Set<string>();
+
+    while (queue.length > 0) {
+      const { nodeId, previousOutput } = queue.shift()!;
+      const node = nodesById.get(nodeId);
+
+      if (!node) continue;
+
+      executionState.currentNodeId = nodeId;
+      const nodeStartTime = Date.now();
+      const nodeStartedAtIso = new Date(nodeStartTime).toISOString();
+
+      // Build execution context for expression interpolation
+      const nodeContextMap: Record<
+        string,
+        { json?: any; data?: any; output?: any; [key: string]: any }
+      > = {};
+
+      for (const [id, res] of Object.entries(executionState.nodeResults)) {
+        const nodeMeta = nodesById.get(id);
+        const outputData = res.output ?? {};
+        const jsonPayload =
+          outputData &&
+          typeof outputData === 'object' &&
+          'data' in outputData &&
+          outputData.data &&
+          typeof outputData.data === 'object'
+            ? { ...outputData.data, ...outputData }
+            : outputData;
+
+        const nodeEntry = {
+          json: jsonPayload,
+          data: outputData,
+          output: outputData,
+          response: outputData,
+          result: outputData,
+        };
+
+        nodeContextMap[id] = nodeEntry;
+        if (nodeMeta?.data?.label) {
+          nodeContextMap[nodeMeta.data.label] = nodeEntry;
+        }
+      }
+
+      const prevJson =
+        previousOutput &&
+        typeof previousOutput === 'object' &&
+        'data' in previousOutput &&
+        previousOutput.data &&
+        typeof previousOutput.data === 'object'
+          ? { ...previousOutput.data, ...previousOutput }
+          : (previousOutput ?? {});
+
+      const context: ExpressionContext = {
+        $json: prevJson,
+        $trigger: input.triggerPayload ?? {},
+        $node: nodeContextMap,
+      };
+
+      let nodeOutput: any = null;
+      let branchHandle: string | null = null;
+      let nodeError: string | undefined;
+
+      try {
+        // Interpolate node configuration
+        const rawConfig = node.data?.config || {};
+        const config = interpolateObject(rawConfig, context);
+        const actionContext: AutomationActionContext = {
+          tenantId: input.tenantId,
+          workflowId: input.workflowId,
+          workflowName: input.workflowName ?? '',
+          executionId: input.executionId,
+          nodeId: node.id,
+          ownerUserId: input.ownerUserId,
+          aiWritten: usesAiOutput(node, input.nodes, input.edges),
+        };
+
+        switch (node.type) {
+          case 'webhookTrigger':
+          case 'scheduleTrigger':
+          case 'crmEventTrigger':
+          case 'manualTrigger':
+            nodeOutput = input.triggerPayload;
+            break;
+
+          case 'httpRequestNode':
+            nodeOutput = await executeHttpActivity(
+              config as unknown as HttpActivityConfig,
+            );
+            break;
+
+          case 'aiPromptNode':
+            nodeOutput = await executeAiPromptActivity(
+              config as unknown as AiPromptActivityConfig,
+              actionContext,
+            );
+            break;
+
+          case 'sendEmailNode':
+            nodeOutput = await executeEmailActivity(
+              config as unknown as EmailActivityConfig,
+              actionContext,
+            );
+            break;
+
+          case 'transformNode':
+            nodeOutput = await executeCodeTransformActivity({
+              code: config.code || '',
+              input: context.$json,
+              context: config.context || context,
+            });
+            break;
+
+          case 'crmMutateNode':
+            nodeOutput = await executeCrmMutationActivity(
+              config as unknown as CrmMutationActivityConfig,
+              actionContext,
+            );
+            break;
+
+          case 'delayNode': {
+            // An emptied field in the editor is unset, not a zero-length wait.
+            const raw =
+              [config.durationMs, config.duration, config.delay].find(
+                (v) => v != null && !(typeof v === 'string' && v.trim() === ''),
+              ) ?? '1s';
+            // A bare number (or numeric string) is milliseconds; "5s" style strings pass through.
+            const duration =
+              typeof raw === 'string' && /^\s*\d+(\.\d+)?\s*$/.test(raw)
+                ? Number(raw)
+                : raw;
+            await sleep(duration);
+            nodeOutput = { delayed: true, duration };
+            break;
+          }
+
+          case 'conditionNode': {
+            let conditionValue = false;
+            if (config.expression !== undefined) {
+              conditionValue = Boolean(
+                evaluateExpression(config.expression, context),
+              );
+            } else if (config.condition !== undefined) {
+              conditionValue = Boolean(
+                typeof config.condition === 'string'
+                  ? evaluateExpression(config.condition, context)
+                  : config.condition,
+              );
+            } else if (config.rules && Array.isArray(config.rules)) {
+              conditionValue = config.rules.every((rule: any) =>
+                Boolean(
+                  evaluateExpression(rule.expression || rule.condition, context),
+                ),
+              );
+            }
+
+            nodeOutput = { result: conditionValue };
+            branchHandle = conditionValue ? 'true' : 'false';
+            break;
+          }
+
+          case 'approvalNode': {
+            const timeoutDuration =
+              node.data.timeoutDuration || config.timeoutDuration || '3 days';
+
+            const requestedAtMs = Date.now();
+            const pendingApproval: PendingApprovalState = {
+              nodeId: node.id,
+              nodeLabel: node.data.label || 'Approval Node',
+              requestedAt: new Date(requestedAtMs).toISOString(),
+              timeoutDuration,
+              context: config,
+            };
+
+            executionState.status = 'WAITING_APPROVAL';
+            executionState.pendingApprovals[node.id] = pendingApproval;
+            executionState.nodeResults[node.id] = {
+              status: 'WAITING',
+              input: config,
+              startedAt: nodeStartedAtIso,
+            };
+
+            await recordNodeResultActivity({
+              executionId: input.executionId,
+              workflowId: input.workflowId,
+              tenantId: input.tenantId,
+              nodeId: node.id,
+              nodeType: node.type,
+              label: node.data?.label,
+              status: 'WAITING',
+              input: config,
+              startedAt: nodeStartedAtIso,
+              approval: {
+                id: uuid4(),
+                kind: 'step',
+                title: node.data.label || 'Approval',
+                // config is interpolated, so {{ }} in the message is resolved.
+                details: { message: config.message ?? null },
+                requestedAt: pendingApproval.requestedAt,
+                expiresAt: approvalExpiresAt(requestedAtMs, timeoutDuration),
+              },
+            });
+
+            // Wait for approval signal, rejection signal, or SLA timeout
+            const conditionMet = await condition(
+              () => approvedNodes.has(node.id) || rejectedNodes.has(node.id),
+              timeoutDuration,
+            );
+
+            delete executionState.pendingApprovals[node.id];
+            executionState.status = 'RUNNING';
+
+            if (approvedNodes.has(node.id)) {
+              const approvalData = approvedNodes.get(node.id)!;
+              branchHandle = 'approved';
+              nodeOutput = {
+                decision: 'APPROVED',
+                approvedBy: approvalData.approvedBy,
+                comment: approvalData.comment,
+              };
+            } else if (rejectedNodes.has(node.id)) {
+              const rejectionData = rejectedNodes.get(node.id)!;
+              branchHandle = 'rejected';
+              nodeOutput = {
+                decision: 'REJECTED',
+                rejectedBy: rejectionData.rejectedBy,
+                reason: rejectionData.reason,
+              };
+            } else if (!conditionMet) {
+              branchHandle = 'timeout';
+              nodeOutput = {
+                decision: 'TIMEOUT',
+                reason: `Approval timed out after ${timeoutDuration}`,
+              };
+            }
+            break;
+          }
+
+          case 'aiAgentNode': {
+            const aiConfig = config as Partial<AiAgentNodeConfig>;
+            const rawGoal = aiConfig.goal || '';
+            const interpolatedGoal =
+              interpolateObject({ goal: rawGoal }, context).goal || rawGoal;
+            // Anyone holding a webhook's address can start its runs, so an
+            // agent step there always waits for a person to approve its tools.
+            const autoApprove =
+              input.triggerType !== 'WEBHOOK' &&
+              Boolean(aiConfig.autoApprove ?? node.data?.autoApprove ?? false);
+            const timeoutDuration =
+              node.data?.timeoutDuration ||
+              aiConfig.timeoutDuration ||
+              '3 days';
+
+            const childWorkflowId = `ai-agent-${input.executionId}-${node.id}`;
+            const childConversationId = `auto-${input.executionId}-${node.id}`;
+
+            activeAgentNodeId = node.id;
+            activeAgentWorkflowId = childWorkflowId;
+            const childResult = await executeChild(agentReActWorkflow, {
+              workflowId: childWorkflowId,
+              args: [
+                {
+                  organizationId: input.tenantId,
+                  // Webhook and schedule runs have no actor; they act as the
+                  // user who activated the automation.
+                  userId: input.actorUserId ?? input.ownerUserId ?? '',
+                  conversationId: childConversationId,
+                  prompt: interpolatedGoal,
+                  parentWorkflowId: workflowInfo().workflowId,
+                  automationNodeId: node.id,
+                  autoApprove,
+                  allowedDomains: aiConfig.allowedDomains,
+                  approvalTimeout: timeoutDuration,
+                  maxTurns: 10,
+                },
+              ],
+            });
+            activeAgentNodeId = undefined;
+            activeAgentWorkflowId = undefined;
+            delete executionState.pendingApprovals[node.id];
+            executionState.status = 'RUNNING';
+
+            if (childResult.status === 'AWAITING_APPROVAL') {
+              branchHandle = 'approved';
+              nodeOutput = {
+                success: false,
+                status: childResult.status,
+                pendingAction: childResult.pendingAction,
+                solution: childResult.finalResponse,
+                stepsTaken: childResult.stepsExecuted,
+                output: childResult,
+              };
+            } else if (childResult.status === 'REJECTED') {
+              branchHandle = 'rejected';
+              const rejectionData = rejectedNodes.get(node.id);
+              nodeOutput = {
+                success: false,
+                approved: false,
+                status: 'REJECTED',
+                error: childResult.finalResponse,
+                reason: childResult.finalResponse,
+                ...(rejectionData?.rejectedBy
+                  ? { rejectedBy: rejectionData.rejectedBy }
+                  : {}),
+                output: childResult,
+              };
+            } else if (childResult.status === 'TIMED_OUT') {
+              branchHandle = 'timeout';
+              nodeOutput = {
+                success: false,
+                approved: false,
+                status: 'TIMEOUT',
+                error: childResult.finalResponse,
+                output: childResult,
+              };
+            } else if (childResult.status === 'FAILED') {
+              branchHandle = 'rejected';
+              nodeOutput = {
+                success: false,
+                status: childResult.status,
+                error: childResult.finalResponse,
+                output: childResult,
+              };
+            } else {
+              const approvalData = approvedNodes.get(node.id);
+              if (approvalData) branchHandle = 'approved';
+              nodeOutput = {
+                success: childResult.status === 'COMPLETED',
+                ...(approvalData
+                  ? {
+                      approved: true,
+                      approvedBy: approvalData.approvedBy,
+                      comment: approvalData.comment,
+                    }
+                  : {}),
+                status: childResult.status,
+                solution: childResult.finalResponse,
+                stepsTaken: childResult.stepsExecuted,
+                output: childResult,
+              };
+            }
+            break;
+          }
+
+          default:
+            nodeOutput = { skipped: true, type: node.type };
+        }
+
+        const nodeEndTime = Date.now();
+        const durationMs = nodeEndTime - nodeStartTime;
+
+        executionState.nodeResults[node.id] = {
+          status: 'SUCCESS',
+          input: config,
+          output: nodeOutput,
+          startedAt: nodeStartedAtIso,
+          finishedAt: new Date(nodeEndTime).toISOString(),
+          durationMs,
+        };
+
+        await recordNodeResultActivity({
+          executionId: input.executionId,
+          workflowId: input.workflowId,
+          tenantId: input.tenantId,
+          nodeId: node.id,
+          nodeType: node.type,
+          label: node.data?.label,
+          status: 'SUCCESS',
+          input: config,
+          output: nodeOutput,
+          startedAt: nodeStartedAtIso,
+          finishedAt: new Date(nodeEndTime).toISOString(),
+          durationMs,
+        });
+
+        processedNodeIds.add(node.id);
+      } catch (err: any) {
+        const nodeEndTime = Date.now();
+        const durationMs = nodeEndTime - nodeStartTime;
+        nodeError = failureReason(err);
+
+        executionState.nodeResults[node.id] = {
+          status: 'FAILED',
+          input: node.data?.config,
+          error: nodeError,
+          startedAt: nodeStartedAtIso,
+          finishedAt: new Date(nodeEndTime).toISOString(),
+          durationMs,
+        };
+
+        await recordNodeResultActivity({
+          executionId: input.executionId,
+          workflowId: input.workflowId,
+          tenantId: input.tenantId,
+          nodeId: node.id,
+          nodeType: node.type,
+          label: node.data?.label,
+          status: 'FAILED',
+          input: node.data?.config,
+          error: nodeError,
+          startedAt: nodeStartedAtIso,
+          finishedAt: new Date(nodeEndTime).toISOString(),
+          durationMs,
+        });
+
+        processedNodeIds.add(node.id);
+
+        if (!node.data?.continueOnFail) {
+          executionState.status = 'FAILED';
+          executionState.finishedAt = new Date().toISOString();
+          executionState.errorMessage = nodeError;
+          return executionState;
+        }
+      }
+
+      // Determine downstream targets based on branch handle
+      const edgesFromNode = outgoingEdges.get(node.id) || [];
+      let nextEdges: AutomationEdge[] = [];
+
+      if (branchHandle) {
+        nextEdges = edgesFromNode.filter(
+          (e) =>
+            e.sourceHandle === branchHandle ||
+            (!e.sourceHandle && branchHandle === 'approved'),
+        );
+      } else {
+        nextEdges = edgesFromNode;
+      }
+
+      for (const edge of nextEdges) {
+        if (nodesById.has(edge.target)) {
+          queue.push({
+            nodeId: edge.target,
+            previousOutput: nodeOutput,
+          });
+        }
+      }
+    }
+
     executionState.status = 'COMPLETED';
     executionState.finishedAt = new Date().toISOString();
+    executionState.currentNodeId = null;
+
     return executionState;
   }
 
-  // Queue holds { nodeId, previousOutput }
-  const queue: Array<{ nodeId: string; previousOutput: any }> = [
-    { nodeId: startNodeId, previousOutput: input.triggerPayload },
-  ];
-
-  const processedNodeIds = new Set<string>();
-
-  while (queue.length > 0) {
-    const { nodeId, previousOutput } = queue.shift()!;
-    const node = nodesById.get(nodeId);
-
-    if (!node) continue;
-
-    executionState.currentNodeId = nodeId;
-    const nodeStartTime = Date.now();
-    const nodeStartedAtIso = new Date(nodeStartTime).toISOString();
-
-    // Build execution context for expression interpolation
-    const nodeContextMap: Record<
-      string,
-      { json?: any; data?: any; output?: any; [key: string]: any }
-    > = {};
-
-    for (const [id, res] of Object.entries(executionState.nodeResults)) {
-      const nodeMeta = nodesById.get(id);
-      const outputData = res.output ?? {};
-      const jsonPayload =
-        outputData &&
-        typeof outputData === 'object' &&
-        'data' in outputData &&
-        outputData.data &&
-        typeof outputData.data === 'object'
-          ? { ...outputData.data, ...outputData }
-          : outputData;
-
-      const nodeEntry = {
-        json: jsonPayload,
-        data: outputData,
-        output: outputData,
-        response: outputData,
-        result: outputData,
-      };
-
-      nodeContextMap[id] = nodeEntry;
-      if (nodeMeta?.data?.label) {
-        nodeContextMap[nodeMeta.data.label] = nodeEntry;
-      }
-    }
-
-    const prevJson =
-      previousOutput &&
-      typeof previousOutput === 'object' &&
-      'data' in previousOutput &&
-      previousOutput.data &&
-      typeof previousOutput.data === 'object'
-        ? { ...previousOutput.data, ...previousOutput }
-        : (previousOutput ?? {});
-
-    const context: ExpressionContext = {
-      $json: prevJson,
-      $trigger: input.triggerPayload ?? {},
-      $node: nodeContextMap,
-    };
-
-    let nodeOutput: any = null;
-    let branchHandle: string | null = null;
-    let nodeError: string | undefined;
-
-    try {
-      // Interpolate node configuration
-      const rawConfig = node.data?.config || {};
-      const config = interpolateObject(rawConfig, context);
-      const actionContext: AutomationActionContext = {
-        tenantId: input.tenantId,
-        workflowId: input.workflowId,
-        workflowName: input.workflowName ?? '',
+  // The run's final status is recorded here, so a run that throws out of
+  // the DAG (or is cancelled) still closes its history row.
+  try {
+    const state = await runDag();
+    if (patched('run-history-v1')) {
+      await recordRunFinishedActivity({
         executionId: input.executionId,
-        nodeId: node.id,
-        ownerUserId: input.ownerUserId,
-        aiWritten: usesAiOutput(node, input.nodes, input.edges),
-      };
-
-      switch (node.type) {
-        case 'webhookTrigger':
-        case 'scheduleTrigger':
-        case 'crmEventTrigger':
-        case 'manualTrigger':
-          nodeOutput = input.triggerPayload;
-          break;
-
-        case 'httpRequestNode':
-          nodeOutput = await executeHttpActivity(
-            config as unknown as HttpActivityConfig,
-          );
-          break;
-
-        case 'aiPromptNode':
-          nodeOutput = await executeAiPromptActivity(
-            config as unknown as AiPromptActivityConfig,
-            actionContext,
-          );
-          break;
-
-        case 'sendEmailNode':
-          nodeOutput = await executeEmailActivity(
-            config as unknown as EmailActivityConfig,
-            actionContext,
-          );
-          break;
-
-        case 'transformNode':
-          nodeOutput = await executeCodeTransformActivity({
-            code: config.code || '',
-            input: context.$json,
-            context: config.context || context,
-          });
-          break;
-
-        case 'crmMutateNode':
-          nodeOutput = await executeCrmMutationActivity(
-            config as unknown as CrmMutationActivityConfig,
-            actionContext,
-          );
-          break;
-
-        case 'delayNode': {
-          // An emptied field in the editor is unset, not a zero-length wait.
-          const raw =
-            [config.durationMs, config.duration, config.delay].find(
-              (v) => v != null && !(typeof v === 'string' && v.trim() === ''),
-            ) ?? '1s';
-          // A bare number (or numeric string) is milliseconds; "5s" style strings pass through.
-          const duration =
-            typeof raw === 'string' && /^\s*\d+(\.\d+)?\s*$/.test(raw)
-              ? Number(raw)
-              : raw;
-          await sleep(duration);
-          nodeOutput = { delayed: true, duration };
-          break;
-        }
-
-        case 'conditionNode': {
-          let conditionValue = false;
-          if (config.expression !== undefined) {
-            conditionValue = Boolean(
-              evaluateExpression(config.expression, context),
-            );
-          } else if (config.condition !== undefined) {
-            conditionValue = Boolean(
-              typeof config.condition === 'string'
-                ? evaluateExpression(config.condition, context)
-                : config.condition,
-            );
-          } else if (config.rules && Array.isArray(config.rules)) {
-            conditionValue = config.rules.every((rule: any) =>
-              Boolean(
-                evaluateExpression(rule.expression || rule.condition, context),
-              ),
-            );
-          }
-
-          nodeOutput = { result: conditionValue };
-          branchHandle = conditionValue ? 'true' : 'false';
-          break;
-        }
-
-        case 'approvalNode': {
-          const timeoutDuration =
-            node.data.timeoutDuration || config.timeoutDuration || '3 days';
-
-          const pendingApproval: PendingApprovalState = {
-            nodeId: node.id,
-            nodeLabel: node.data.label || 'Approval Node',
-            requestedAt: new Date().toISOString(),
-            timeoutDuration,
-            context: config,
-          };
-
-          executionState.status = 'WAITING_APPROVAL';
-          executionState.pendingApprovals[node.id] = pendingApproval;
-          executionState.nodeResults[node.id] = {
-            status: 'WAITING',
-            input: config,
-            startedAt: nodeStartedAtIso,
-          };
-
-          await recordNodeResultActivity({
-            executionId: input.executionId,
-            workflowId: input.workflowId,
-            tenantId: input.tenantId,
-            nodeId: node.id,
-            nodeType: node.type,
-            status: 'WAITING',
-            input: config,
-            startedAt: nodeStartedAtIso,
-          });
-
-          // Wait for approval signal, rejection signal, or SLA timeout
-          const conditionMet = await condition(
-            () => approvedNodes.has(node.id) || rejectedNodes.has(node.id),
-            timeoutDuration,
-          );
-
-          delete executionState.pendingApprovals[node.id];
-          executionState.status = 'RUNNING';
-
-          if (approvedNodes.has(node.id)) {
-            const approvalData = approvedNodes.get(node.id)!;
-            branchHandle = 'approved';
-            nodeOutput = {
-              decision: 'APPROVED',
-              approvedBy: approvalData.approvedBy,
-              comment: approvalData.comment,
-            };
-          } else if (rejectedNodes.has(node.id)) {
-            const rejectionData = rejectedNodes.get(node.id)!;
-            branchHandle = 'rejected';
-            nodeOutput = {
-              decision: 'REJECTED',
-              rejectedBy: rejectionData.rejectedBy,
-              reason: rejectionData.reason,
-            };
-          } else if (!conditionMet) {
-            branchHandle = 'timeout';
-            nodeOutput = {
-              decision: 'TIMEOUT',
-              reason: `Approval timed out after ${timeoutDuration}`,
-            };
-          }
-          break;
-        }
-
-        case 'aiAgentNode': {
-          const aiConfig = config as Partial<AiAgentNodeConfig>;
-          const rawGoal = aiConfig.goal || '';
-          const interpolatedGoal =
-            interpolateObject({ goal: rawGoal }, context).goal || rawGoal;
-          // Anyone holding a webhook's address can start its runs, so an
-          // agent step there always waits for a person to approve its tools.
-          const autoApprove =
-            input.triggerType !== 'WEBHOOK' &&
-            Boolean(aiConfig.autoApprove ?? node.data?.autoApprove ?? false);
-          const timeoutDuration =
-            node.data?.timeoutDuration ||
-            aiConfig.timeoutDuration ||
-            '3 days';
-
-          const childWorkflowId = `ai-agent-${input.executionId}-${node.id}`;
-          const childConversationId = `auto-${input.executionId}-${node.id}`;
-
-          activeAgentNodeId = node.id;
-          activeAgentWorkflowId = childWorkflowId;
-          const childResult = await executeChild(agentReActWorkflow, {
-            workflowId: childWorkflowId,
-            args: [
-              {
-                organizationId: input.tenantId,
-                // Webhook and schedule runs have no actor; they act as the
-                // user who activated the automation.
-                userId: input.actorUserId ?? input.ownerUserId ?? '',
-                conversationId: childConversationId,
-                prompt: interpolatedGoal,
-                parentWorkflowId: workflowInfo().workflowId,
-                automationNodeId: node.id,
-                autoApprove,
-                allowedDomains: aiConfig.allowedDomains,
-                approvalTimeout: timeoutDuration,
-                maxTurns: 10,
-              },
-            ],
-          });
-          activeAgentNodeId = undefined;
-          activeAgentWorkflowId = undefined;
-          delete executionState.pendingApprovals[node.id];
-          executionState.status = 'RUNNING';
-
-          if (childResult.status === 'AWAITING_APPROVAL') {
-            branchHandle = 'approved';
-            nodeOutput = {
-              success: false,
-              status: childResult.status,
-              pendingAction: childResult.pendingAction,
-              solution: childResult.finalResponse,
-              stepsTaken: childResult.stepsExecuted,
-              output: childResult,
-            };
-          } else if (childResult.status === 'REJECTED') {
-            branchHandle = 'rejected';
-            const rejectionData = rejectedNodes.get(node.id);
-            nodeOutput = {
-              success: false,
-              approved: false,
-              status: 'REJECTED',
-              error: childResult.finalResponse,
-              reason: childResult.finalResponse,
-              ...(rejectionData?.rejectedBy
-                ? { rejectedBy: rejectionData.rejectedBy }
-                : {}),
-              output: childResult,
-            };
-          } else if (childResult.status === 'TIMED_OUT') {
-            branchHandle = 'timeout';
-            nodeOutput = {
-              success: false,
-              approved: false,
-              status: 'TIMEOUT',
-              error: childResult.finalResponse,
-              output: childResult,
-            };
-          } else if (childResult.status === 'FAILED') {
-            branchHandle = 'rejected';
-            nodeOutput = {
-              success: false,
-              status: childResult.status,
-              error: childResult.finalResponse,
-              output: childResult,
-            };
-          } else {
-            const approvalData = approvedNodes.get(node.id);
-            if (approvalData) branchHandle = 'approved';
-            nodeOutput = {
-              success: childResult.status === 'COMPLETED',
-              ...(approvalData
-                ? {
-                    approved: true,
-                    approvedBy: approvalData.approvedBy,
-                    comment: approvalData.comment,
-                  }
-                : {}),
-              status: childResult.status,
-              solution: childResult.finalResponse,
-              stepsTaken: childResult.stepsExecuted,
-              output: childResult,
-            };
-          }
-          break;
-        }
-
-        default:
-          nodeOutput = { skipped: true, type: node.type };
-      }
-
-      const nodeEndTime = Date.now();
-      const durationMs = nodeEndTime - nodeStartTime;
-
-      executionState.nodeResults[node.id] = {
-        status: 'SUCCESS',
-        input: config,
-        output: nodeOutput,
-        startedAt: nodeStartedAtIso,
-        finishedAt: new Date(nodeEndTime).toISOString(),
-        durationMs,
-      };
-
-      await recordNodeResultActivity({
-        executionId: input.executionId,
-        workflowId: input.workflowId,
         tenantId: input.tenantId,
-        nodeId: node.id,
-        nodeType: node.type,
-        status: 'SUCCESS',
-        input: config,
-        output: nodeOutput,
-        startedAt: nodeStartedAtIso,
-        finishedAt: new Date(nodeEndTime).toISOString(),
-        durationMs,
+        status: state.status === 'FAILED' ? 'FAILED' : 'COMPLETED',
+        errorMessage: state.errorMessage ?? null,
+        finishedAt: state.finishedAt ?? new Date().toISOString(),
       });
-
-      processedNodeIds.add(node.id);
-    } catch (err: any) {
-      const nodeEndTime = Date.now();
-      const durationMs = nodeEndTime - nodeStartTime;
-      nodeError = failureReason(err);
-
-      executionState.nodeResults[node.id] = {
-        status: 'FAILED',
-        input: node.data?.config,
-        error: nodeError,
-        startedAt: nodeStartedAtIso,
-        finishedAt: new Date(nodeEndTime).toISOString(),
-        durationMs,
-      };
-
-      await recordNodeResultActivity({
-        executionId: input.executionId,
-        workflowId: input.workflowId,
-        tenantId: input.tenantId,
-        nodeId: node.id,
-        nodeType: node.type,
-        status: 'FAILED',
-        input: node.data?.config,
-        error: nodeError,
-        startedAt: nodeStartedAtIso,
-        finishedAt: new Date(nodeEndTime).toISOString(),
-        durationMs,
-      });
-
-      processedNodeIds.add(node.id);
-
-      if (!node.data?.continueOnFail) {
-        executionState.status = 'FAILED';
-        executionState.finishedAt = new Date().toISOString();
-        executionState.errorMessage = nodeError;
-        return executionState;
-      }
     }
-
-    // Determine downstream targets based on branch handle
-    const edgesFromNode = outgoingEdges.get(node.id) || [];
-    let nextEdges: AutomationEdge[] = [];
-
-    if (branchHandle) {
-      nextEdges = edgesFromNode.filter(
-        (e) =>
-          e.sourceHandle === branchHandle ||
-          (!e.sourceHandle && branchHandle === 'approved'),
-      );
-    } else {
-      nextEdges = edgesFromNode;
-    }
-
-    for (const edge of nextEdges) {
-      if (nodesById.has(edge.target)) {
-        queue.push({
-          nodeId: edge.target,
-          previousOutput: nodeOutput,
+    return state;
+  } catch (err) {
+    if (patched('run-history-v1')) {
+      const cancelled = isCancellation(err);
+      const recordFinished = () =>
+        recordRunFinishedActivity({
+          executionId: input.executionId,
+          tenantId: input.tenantId,
+          status: cancelled ? 'CANCELLED' : 'FAILED',
+          errorMessage: cancelled ? null : failureReason(err),
+          finishedAt: new Date().toISOString(),
         });
-      }
+      // A cancelled scope refuses new activities, so record outside it.
+      await (cancelled
+        ? CancellationScope.nonCancellable(recordFinished)
+        : recordFinished());
     }
+    throw err;
   }
-
-  executionState.status = 'COMPLETED';
-  executionState.finishedAt = new Date().toISOString();
-  executionState.currentNodeId = null;
-
-  return executionState;
 }

@@ -7,6 +7,7 @@ const mockActivities = {
   executeCodeTransformActivity: jest.fn(),
   executeCrmMutationActivity: jest.fn(),
   recordNodeResultActivity: jest.fn().mockResolvedValue({ recorded: true }),
+  recordRunFinishedActivity: jest.fn().mockResolvedValue(undefined),
 };
 const mockExecuteChild = jest.fn();
 
@@ -16,7 +17,14 @@ jest.mock('@temporalio/workflow', () => {
   return {
     ActivityFailure: actual.ActivityFailure,
     ApplicationFailure: actual.ApplicationFailure,
+    CancelledFailure: actual.CancelledFailure,
     ChildWorkflowFailure: actual.ChildWorkflowFailure,
+    isCancellation: actual.isCancellation,
+    CancellationScope: {
+      nonCancellable: (fn: () => Promise<unknown>) => fn(),
+    },
+    patched: () => true,
+    uuid4: () => 'approval-uuid',
     proxyActivities: () => ({
       executeHttpActivity: (...args: any[]) =>
         (global as any).__mockActivities.executeHttpActivity(...args),
@@ -30,6 +38,8 @@ jest.mock('@temporalio/workflow', () => {
         (global as any).__mockActivities.executeCrmMutationActivity(...args),
       recordNodeResultActivity: (...args: any[]) =>
         (global as any).__mockActivities.recordNodeResultActivity(...args),
+      recordRunFinishedActivity: (...args: any[]) =>
+        (global as any).__mockActivities.recordRunFinishedActivity(...args),
     }),
     setHandler: (def: any, handler: Function) => {
       (global as any).__mockHandlers.set(def, handler);
@@ -56,6 +66,7 @@ jest.mock('@temporalio/workflow', () => {
 import {
   ActivityFailure,
   ApplicationFailure,
+  CancelledFailure,
   ChildWorkflowFailure,
 } from '@temporalio/workflow';
 import { dynamicDagWorkflow } from './dynamic-dag.workflow';
@@ -1328,5 +1339,310 @@ describe('DynamicDagWorkflow', () => {
     });
 
     expect(result.errorMessage).toBe('outer');
+  });
+
+  describe('run history', () => {
+    const DAY_MS = 86_400_000;
+    const trigger = {
+      id: 'trigger',
+      type: 'manualTrigger' as const,
+      position: { x: 0, y: 0 },
+      data: { label: 'Start', config: {} },
+    };
+
+    const recordsFor = (nodeId: string) =>
+      mockActivities.recordNodeResultActivity.mock.calls
+        .map(([params]) => params)
+        .filter((params) => params.nodeId === nodeId);
+
+    it('records COMPLETED once when a two-step run finishes', async () => {
+      mockActivities.executeHttpActivity.mockResolvedValue({ status: 200 });
+
+      const result = await dynamicDagWorkflow({
+        executionId: 'exec-done',
+        workflowId: 'wf-1',
+        tenantId: 'tenant-1',
+        triggerPayload: {},
+        nodes: [
+          trigger,
+          { id: 'http', type: 'httpRequestNode', position: { x: 0, y: 0 }, data: { label: 'Call', config: { url: 'https://x.test' } } },
+        ],
+        edges: [{ id: 'e1', source: 'trigger', target: 'http' }],
+      });
+
+      expect(mockActivities.recordRunFinishedActivity).toHaveBeenCalledTimes(1);
+      expect(mockActivities.recordRunFinishedActivity).toHaveBeenCalledWith({
+        executionId: 'exec-done',
+        tenantId: 'tenant-1',
+        status: 'COMPLETED',
+        errorMessage: null,
+        finishedAt: result.finishedAt,
+      });
+    });
+
+    it("records FAILED with the step's message when a step fails", async () => {
+      mockActivities.executeHttpActivity.mockRejectedValue(
+        new Error('500 Internal Server Error'),
+      );
+
+      await dynamicDagWorkflow({
+        executionId: 'exec-failed',
+        workflowId: 'wf-1',
+        tenantId: 'tenant-1',
+        triggerPayload: {},
+        nodes: [
+          trigger,
+          { id: 'http', type: 'httpRequestNode', position: { x: 0, y: 0 }, data: { label: 'Call', config: { url: 'https://x.test' } } },
+        ],
+        edges: [{ id: 'e1', source: 'trigger', target: 'http' }],
+      });
+
+      expect(mockActivities.recordRunFinishedActivity).toHaveBeenCalledTimes(1);
+      expect(mockActivities.recordRunFinishedActivity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          executionId: 'exec-failed',
+          tenantId: 'tenant-1',
+          status: 'FAILED',
+          errorMessage: '500 Internal Server Error',
+        }),
+      );
+    });
+
+    it('records CANCELLED and rethrows when the run is cancelled', async () => {
+      const cancelled = new CancelledFailure('Workflow cancelled');
+      mockActivities.executeHttpActivity.mockRejectedValue(cancelled);
+      // In a cancelled scope the step's FAILED record cannot be scheduled either.
+      mockActivities.recordNodeResultActivity.mockImplementation(
+        async (params: any) => {
+          if (params.status === 'FAILED') throw cancelled;
+          return { recorded: true };
+        },
+      );
+
+      try {
+        await expect(
+          dynamicDagWorkflow({
+            executionId: 'exec-cancelled',
+            workflowId: 'wf-1',
+            tenantId: 'tenant-1',
+            triggerPayload: {},
+            nodes: [
+              trigger,
+              { id: 'http', type: 'httpRequestNode', position: { x: 0, y: 0 }, data: { label: 'Call', config: { url: 'https://x.test' } } },
+            ],
+            edges: [{ id: 'e1', source: 'trigger', target: 'http' }],
+          }),
+        ).rejects.toBe(cancelled);
+      } finally {
+        mockActivities.recordNodeResultActivity.mockReset();
+        mockActivities.recordNodeResultActivity.mockResolvedValue({ recorded: true });
+      }
+
+      expect(mockActivities.recordRunFinishedActivity).toHaveBeenCalledTimes(1);
+      expect(mockActivities.recordRunFinishedActivity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          executionId: 'exec-cancelled',
+          status: 'CANCELLED',
+          errorMessage: null,
+        }),
+      );
+    });
+
+    it("labels every step record with the step's label", async () => {
+      mockActivities.executeHttpActivity.mockRejectedValue(new Error('boom'));
+      mockActivities.executeEmailActivity.mockResolvedValue({ success: true });
+
+      await dynamicDagWorkflow({
+        executionId: 'exec-labels',
+        workflowId: 'wf-1',
+        tenantId: 'tenant-1',
+        triggerPayload: {},
+        nodes: [
+          trigger,
+          { id: 'http', type: 'httpRequestNode', position: { x: 0, y: 0 }, data: { label: 'Call', config: { url: 'https://x.test' }, continueOnFail: true } },
+          { id: 'email', type: 'sendEmailNode', position: { x: 0, y: 0 }, data: { label: 'Notify', config: { to: 'a@b.co' } } },
+        ],
+        edges: [
+          { id: 'e1', source: 'trigger', target: 'http' },
+          { id: 'e2', source: 'trigger', target: 'email' },
+        ],
+      });
+
+      const labels = mockActivities.recordNodeResultActivity.mock.calls.map(
+        ([params]) => [params.nodeId, params.status, params.label],
+      );
+      expect(labels).toEqual([
+        ['trigger', 'SUCCESS', 'Start'],
+        ['http', 'FAILED', 'Call'],
+        ['email', 'SUCCESS', 'Notify'],
+      ]);
+    });
+
+    it("records an approval step's wait as a step approval with its message and a 3-day expiry", async () => {
+      const { condition } = require('@temporalio/workflow');
+      (condition as jest.Mock).mockResolvedValueOnce(false);
+
+      await dynamicDagWorkflow({
+        executionId: 'exec-approval',
+        workflowId: 'wf-approval',
+        tenantId: 'tenant-1',
+        triggerPayload: { payload: { name: 'Acme Ltd' } },
+        nodes: [
+          trigger,
+          {
+            id: 'approval-node',
+            type: 'approvalNode',
+            position: { x: 0, y: 0 },
+            data: {
+              label: 'Manager sign-off',
+              config: { message: 'Approve the deal for {{ $trigger.payload.name }}' },
+            },
+          },
+        ],
+        edges: [{ id: 'e1', source: 'trigger', target: 'approval-node' }],
+      });
+
+      const [waiting] = recordsFor('approval-node').filter(
+        (params) => params.status === 'WAITING',
+      );
+      expect(waiting).toEqual(
+        expect.objectContaining({
+          workflowId: 'wf-approval',
+          tenantId: 'tenant-1',
+          label: 'Manager sign-off',
+          approval: {
+            id: 'approval-uuid',
+            kind: 'step',
+            title: 'Manager sign-off',
+            details: { message: 'Approve the deal for Acme Ltd' },
+            requestedAt: expect.any(String),
+            expiresAt: expect.any(String),
+          },
+        }),
+      );
+      expect(
+        Date.parse(waiting.approval.expiresAt) -
+          Date.parse(waiting.approval.requestedAt),
+      ).toBe(3 * DAY_MS);
+    });
+
+    it('records a step approval without a message as a null message', async () => {
+      const { condition } = require('@temporalio/workflow');
+      (condition as jest.Mock).mockResolvedValueOnce(false);
+
+      await dynamicDagWorkflow({
+        executionId: 'exec-approval-plain',
+        workflowId: 'wf-approval',
+        tenantId: 'tenant-1',
+        triggerPayload: {},
+        nodes: [
+          trigger,
+          {
+            id: 'approval-node',
+            type: 'approvalNode',
+            position: { x: 0, y: 0 },
+            data: { label: '', config: {}, timeoutDuration: '1 day' },
+          },
+        ],
+        edges: [{ id: 'e1', source: 'trigger', target: 'approval-node' }],
+      });
+
+      const [waiting] = recordsFor('approval-node').filter(
+        (params) => params.status === 'WAITING',
+      );
+      expect(waiting.approval).toEqual(
+        expect.objectContaining({ title: 'Approval', details: { message: null } }),
+      );
+      expect(
+        Date.parse(waiting.approval.expiresAt) -
+          Date.parse(waiting.approval.requestedAt),
+      ).toBe(DAY_MS);
+    });
+
+    it("records an agent's approval request as an agent action with the tool and preview", async () => {
+      const tool = { id: 'call-1', name: 'payoutBatch', args: { amount: 10000 } };
+      const preview = { summary: 'Prepared batch payout of $10,000.' };
+      mockExecuteChild.mockImplementationOnce(async () => {
+        await mockHandlers.get(agentApprovalRequestedSignal)!({
+          nodeId: 'agent',
+          tool,
+          preview,
+        });
+        return { status: 'COMPLETED', finalResponse: 'done', stepsExecuted: 1 };
+      });
+
+      await dynamicDagWorkflow({
+        executionId: 'exec-agent',
+        workflowId: 'wf-agent',
+        tenantId: 'tenant-1',
+        triggerPayload: {},
+        nodes: [
+          trigger,
+          {
+            id: 'agent',
+            type: 'aiAgentNode',
+            position: { x: 0, y: 0 },
+            data: { label: 'Finance Agent', config: { goal: 'Pay out', timeoutDuration: '2 days' } },
+          },
+        ],
+        edges: [{ id: 'e1', source: 'trigger', target: 'agent' }],
+      });
+
+      const [waiting] = recordsFor('agent').filter(
+        (params) => params.status === 'WAITING',
+      );
+      expect(waiting).toEqual(
+        expect.objectContaining({
+          workflowId: 'wf-agent',
+          tenantId: 'tenant-1',
+          label: 'Finance Agent',
+          approval: {
+            id: 'approval-uuid',
+            kind: 'agent_action',
+            title: 'Finance Agent',
+            details: { tool, preview },
+            requestedAt: expect.any(String),
+            expiresAt: expect.any(String),
+          },
+        }),
+      );
+      expect(
+        Date.parse(waiting.approval.expiresAt) -
+          Date.parse(waiting.approval.requestedAt),
+      ).toBe(2 * DAY_MS);
+    });
+
+    it('records who rejected an approval step in its output', async () => {
+      const { condition } = require('@temporalio/workflow');
+      (condition as jest.Mock).mockImplementationOnce(async (predicate) => {
+        mockHandlers.get(rejectNodeSignal)!({
+          nodeId: 'approval-node',
+          rejectedBy: 'user-42',
+          reason: 'Too expensive',
+        });
+        return predicate();
+      });
+
+      await dynamicDagWorkflow({
+        executionId: 'exec-reject',
+        workflowId: 'wf-1',
+        tenantId: 'tenant-1',
+        triggerPayload: {},
+        nodes: [
+          trigger,
+          { id: 'approval-node', type: 'approvalNode', position: { x: 0, y: 0 }, data: { label: 'Sign-off', config: {} } },
+        ],
+        edges: [{ id: 'e1', source: 'trigger', target: 'approval-node' }],
+      });
+
+      const [done] = recordsFor('approval-node').filter(
+        (params) => params.status === 'SUCCESS',
+      );
+      expect(done.output).toEqual({
+        decision: 'REJECTED',
+        rejectedBy: 'user-42',
+        reason: 'Too expensive',
+      });
+    });
   });
 });
