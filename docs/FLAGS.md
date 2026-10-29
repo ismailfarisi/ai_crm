@@ -884,8 +884,29 @@ Anyone with the read-automations permission sees the run list and each run's
 steps: label, type, status, timing and error. A run's trigger payload, step
 inputs and outputs, and the details of its pending approvals can hold
 customer data, so the run view shows them only to holders of the
-edit-automations permission. Approvers also see a pending approval's details
-in the run view, because they can't decide without them.
+edit-automations permission. The API also returns a pending approval's
+details to approvers, but the run view's approval card shows only the step
+name — approvers read the details (the step's message, or the AI action and
+its preview) in the Approvals inbox. Showing them in the run view is pending.
+
+### Nobody is told when something needs approval — pending
+
+Approval steps and AI actions awaiting sign-off appear in the Approvals inbox
+and its nav count, but no notification is sent: no bell entry, email or chat
+message. Deferred on 2026-10-29. Building blocks already exist:
+`NotificationsService.notifyHolders` (the bell, addressed by permission, so
+`automation:approve` holders), mail (still console-only on staging until SES),
+and the WhatsApp/Telegram channel drivers. Not decided yet: which channels,
+and whether to remind as the timeout nears.
+
+### An event run whose start reply is lost can show the wrong status — open
+
+If Temporal accepts an event-triggered run's start but the API never gets the
+reply (a client timeout), the run is marked Failed ("Couldn't start the run")
+while it actually runs. That save can overwrite steps the run already
+recorded, and once marked Failed the worker cannot move its status. A later
+outbox retry then sets it back to Running, and nothing closes it. Rare; the
+manual-run path has the same behaviour.
 
 ### A scheduled run waiting on approval holds later ticks — by design
 
