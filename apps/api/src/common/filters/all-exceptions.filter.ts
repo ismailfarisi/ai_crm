@@ -52,8 +52,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
         return { statusCode: status, message: payload, error: exception.name };
       }
 
-      const record = payload as Record<string, unknown>;
-      const message = record.message;
+      const { message, error, details, ...extra } = payload as Record<
+        string,
+        unknown
+      >;
+      delete extra.statusCode;
 
       return {
         statusCode: status,
@@ -62,8 +65,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
           : typeof message === 'string'
             ? message
             : exception.message,
-        error: typeof record.error === 'string' ? record.error : exception.name,
-        details: record.details as Record<string, string[]> | undefined,
+        error: typeof error === 'string' ? error : exception.name,
+        details: details as Record<string, string[]> | undefined,
+        // A 4xx may carry what the client needs to explain it (who decided an
+        // approval first, which rules a quote breaks). A 5xx never does.
+        ...(status < 500 ? extra : {}),
       };
     }
 

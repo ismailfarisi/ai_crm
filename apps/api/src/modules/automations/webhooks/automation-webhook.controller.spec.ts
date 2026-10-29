@@ -15,6 +15,7 @@ import { REDIS_CLIENT_TOKEN } from '../../ai/services/redis-budget-guard.service
 import { TemporalService } from '../../temporal/temporal.service';
 import { AutomationsService } from '../automations.service';
 import { AutomationSchedulesService } from '../schedules/automation-schedules.service';
+import { AutomationApprovalsService } from '../approvals/automation-approvals.service';
 import { AutomationWorkflow } from '../entities/automation-workflow.entity';
 import { AutomationExecution } from '../entities/automation-execution.entity';
 import { AutomationWebhookController } from './automation-webhook.controller';
@@ -168,6 +169,8 @@ describe('AutomationWebhookController (HTTP)', () => {
         },
         // Webhook runs never touch schedules.
         { provide: AutomationSchedulesService, useValue: {} },
+        // Nor approvals.
+        { provide: AutomationApprovalsService, useValue: {} },
         {
           provide: BillingService,
           useValue: {

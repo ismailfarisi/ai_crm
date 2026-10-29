@@ -12,6 +12,9 @@ import { BillingModule } from '../billing/billing.module';
 import { AutomationWebhookController } from './webhooks/automation-webhook.controller';
 import { AutomationWebhookService } from './webhooks/automation-webhook.service';
 import { AutomationSchedulesService } from './schedules/automation-schedules.service';
+import { AutomationApprovalsController } from './approvals/automation-approvals.controller';
+import { AutomationApprovalsService } from './approvals/automation-approvals.service';
+import { User } from '../users/entities/user.entity';
 
 @Module({
   imports: [
@@ -19,6 +22,8 @@ import { AutomationSchedulesService } from './schedules/automation-schedules.ser
       AutomationWorkflow,
       AutomationExecution,
       AutomationApproval,
+      // Read-only, for the names of whoever decided an approval.
+      User,
     ]),
     TemporalModule,
     AiModule,
@@ -26,12 +31,17 @@ import { AutomationSchedulesService } from './schedules/automation-schedules.ser
     // depends only on notifications and its own tables).
     BillingModule,
   ],
-  controllers: [AutomationsController, AutomationWebhookController],
+  controllers: [
+    AutomationsController,
+    AutomationWebhookController,
+    AutomationApprovalsController,
+  ],
   providers: [
     AutomationsService,
     AutomationEventBridgeService,
     AutomationWebhookService,
     AutomationSchedulesService,
+    AutomationApprovalsService,
   ],
   exports: [
     AutomationsService,

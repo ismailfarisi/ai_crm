@@ -15,11 +15,8 @@ import { AutomationWorkflow } from './entities/automation-workflow.entity';
 import { AutomationExecution } from './entities/automation-execution.entity';
 import { TemporalService } from '../temporal/temporal.service';
 import { AutomationSchedulesService } from './schedules/automation-schedules.service';
-import {
-  approveNodeSignal,
-  getExecutionStateQuery,
-  rejectNodeSignal,
-} from './workflows/interfaces';
+import { AutomationApprovalsService } from './approvals/automation-approvals.service';
+import { getExecutionStateQuery } from './workflows/interfaces';
 
 describe('AutomationsService', () => {
   let service: AutomationsService;
@@ -28,6 +25,7 @@ describe('AutomationsService', () => {
   let temporalService: any;
   let mockTemporalClient: any;
   let mockWorkflowHandle: any;
+  let approvals: { decideByNode: jest.Mock };
 
   const mockTenantId = 'tenant-uuid-1';
   const mockWorkflow: AutomationWorkflow = {
@@ -71,6 +69,9 @@ describe('AutomationsService', () => {
   };
 
   beforeEach(async () => {
+    approvals = {
+      decideByNode: jest.fn().mockResolvedValue({ id: 'appr-1' }),
+    };
     mockWorkflowHandle = {
       signal: jest.fn().mockResolvedValue(undefined),
       query: jest.fn().mockResolvedValue({
@@ -146,6 +147,7 @@ describe('AutomationsService', () => {
             deleteFor: jest.fn().mockResolvedValue(undefined),
           },
         },
+        { provide: AutomationApprovalsService, useValue: approvals },
       ],
     }).compile();
 
@@ -1028,17 +1030,9 @@ describe('AutomationsService', () => {
   });
 
   describe('signalExecution', () => {
-    it('signals APPROVE to temporal workflow', async () => {
-      mockWorkflowHandle.query.mockResolvedValueOnce({
-        status: 'WAITING_APPROVAL',
-        nodeResults: {},
-        pendingApprovals: {
-          'approval-node-1': { nodeId: 'approval-node-1' },
-        },
-        startedAt: '2026-10-08T12:00:00.000Z',
-        finishedAt: null,
-        errorMessage: null,
-      });
+    const user = { id: 'user-ana' };
+
+    it('decides through the approvals claim, as the user, and returns the run', async () => {
       const result = await service.signalExecution(
         mockTenantId,
         'exec-uuid-1',
@@ -1047,36 +1041,25 @@ describe('AutomationsService', () => {
           nodeId: 'approval-node-1',
           comment: 'Approved by manager',
         },
+        user,
       );
 
-      expect(result).toEqual({
-        ...mockExecution,
-        status: 'WAITING_APPROVAL',
+      expect(approvals.decideByNode).toHaveBeenCalledWith(
+        mockTenantId,
+        'exec-uuid-1',
+        'approval-node-1',
+        user,
+        { action: 'APPROVE', comment: 'Approved by manager' },
+      );
+      expect(result).toEqual(mockExecution);
+      expect(executionRepo.findOne).toHaveBeenCalledWith({
+        where: { id: 'exec-uuid-1', tenantId: mockTenantId },
       });
-      expect(mockTemporalClient.workflow.getHandle).toHaveBeenCalledWith(
-        mockExecution.temporalWorkflowId,
-      );
-      expect(mockWorkflowHandle.signal).toHaveBeenCalledWith(
-        approveNodeSignal,
-        expect.objectContaining({
-          nodeId: 'approval-node-1',
-          comment: 'Approved by manager',
-        }),
-      );
+      expect(mockWorkflowHandle.signal).not.toHaveBeenCalled();
     });
 
-    it('signals REJECT to temporal workflow', async () => {
-      mockWorkflowHandle.query.mockResolvedValueOnce({
-        status: 'WAITING_APPROVAL',
-        nodeResults: {},
-        pendingApprovals: {
-          'approval-node-1': { nodeId: 'approval-node-1' },
-        },
-        startedAt: '2026-10-08T12:00:00.000Z',
-        finishedAt: null,
-        errorMessage: null,
-      });
-      const result = await service.signalExecution(
+    it('passes a rejection reason as the comment', async () => {
+      await service.signalExecution(
         mockTenantId,
         'exec-uuid-1',
         {
@@ -1084,60 +1067,54 @@ describe('AutomationsService', () => {
           nodeId: 'approval-node-1',
           reason: 'Budget exceeded',
         },
+        user,
       );
-
-      expect(result).toEqual({
-        ...mockExecution,
-        status: 'WAITING_APPROVAL',
-      });
-      expect(mockWorkflowHandle.signal).toHaveBeenCalledWith(
-        rejectNodeSignal,
-        expect.objectContaining({
-          nodeId: 'approval-node-1',
-          reason: 'Budget exceeded',
-        }),
+      expect(approvals.decideByNode).toHaveBeenCalledWith(
+        mockTenantId,
+        'exec-uuid-1',
+        'approval-node-1',
+        user,
+        { action: 'REJECT', comment: 'Budget exceeded' },
       );
     });
 
-    it('surfaces when Temporal cannot deliver a signal', async () => {
-      mockWorkflowHandle.query.mockResolvedValueOnce({
-        status: 'WAITING_APPROVAL',
-        nodeResults: {},
-        pendingApprovals: {
-          'node-1': { nodeId: 'node-1' },
-        },
-        startedAt: '2026-10-08T12:00:00.000Z',
-        finishedAt: null,
-        errorMessage: null,
-      });
-      mockWorkflowHandle.signal.mockRejectedValueOnce(
-        new Error('Connection lost'),
+    it("surfaces the claim's errors unchanged", async () => {
+      approvals.decideByNode.mockRejectedValueOnce(
+        new ServiceUnavailableException(
+          'Unable to deliver the approval decision to the workflow',
+        ),
       );
-
       await expect(
-        service.signalExecution(mockTenantId, 'exec-uuid-1', {
-          action: 'APPROVE',
-          nodeId: 'node-1',
-        }),
+        service.signalExecution(
+          mockTenantId,
+          'exec-uuid-1',
+          { action: 'APPROVE', nodeId: 'node-1' },
+          user,
+        ),
       ).rejects.toThrow(ServiceUnavailableException);
-    });
 
-    it('rejects decisions for nodes without a pending approval', async () => {
+      approvals.decideByNode.mockRejectedValueOnce(
+        new BadRequestException("Node 'future-node' has no pending approval"),
+      );
       await expect(
-        service.signalExecution(mockTenantId, 'exec-uuid-1', {
-          action: 'APPROVE',
-          nodeId: 'future-node',
-        }),
+        service.signalExecution(
+          mockTenantId,
+          'exec-uuid-1',
+          { action: 'APPROVE', nodeId: 'future-node' },
+          user,
+        ),
       ).rejects.toThrow(BadRequestException);
-    });
 
-    it('throws NotFoundException if execution not found', async () => {
-      executionRepo.findOne.mockResolvedValueOnce(null);
+      approvals.decideByNode.mockRejectedValueOnce(
+        new NotFoundException('Execution exec-missing not found'),
+      );
       await expect(
-        service.signalExecution(mockTenantId, 'exec-missing', {
-          action: 'APPROVE',
-          nodeId: 'node-1',
-        }),
+        service.signalExecution(
+          mockTenantId,
+          'exec-missing',
+          { action: 'APPROVE', nodeId: 'node-1' },
+          user,
+        ),
       ).rejects.toThrow(NotFoundException);
     });
   });
@@ -1187,6 +1164,7 @@ describe('webhook tokens, signature secrets and schedules', () => {
         { provide: getRepositoryToken(AutomationExecution), useValue: {} },
         { provide: TemporalService, useValue: { getClient: jest.fn() } },
         { provide: AutomationSchedulesService, useValue: schedules },
+        { provide: AutomationApprovalsService, useValue: {} },
       ],
     }).compile();
     service = module.get(AutomationsService);

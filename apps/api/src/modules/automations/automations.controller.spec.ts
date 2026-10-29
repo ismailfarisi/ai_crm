@@ -239,7 +239,7 @@ describe('AutomationsController', () => {
   });
 
   describe('signalExecution', () => {
-    it('sends approval or rejection signal', async () => {
+    it('decides as the current user', async () => {
       const dto: SignalExecutionDto = {
         action: 'APPROVE',
         nodeId: 'node-approval-1',
@@ -255,6 +255,7 @@ describe('AutomationsController', () => {
         mockUser.organizationId,
         'exec-123',
         dto,
+        mockUser,
       );
     });
   });

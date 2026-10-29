@@ -107,6 +107,7 @@ export class AutomationsController {
       user.organizationId,
       executionId,
       dto,
+      user,
     );
   }
 

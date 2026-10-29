@@ -1,4 +1,9 @@
-import { Logger, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import type { ArgumentsHost } from '@nestjs/common';
 import { AllExceptionsFilter } from './all-exceptions.filter';
 
@@ -53,5 +58,39 @@ describe('AllExceptionsFilter', () => {
     new AllExceptionsFilter().catch(new NotFoundException(), host);
     expect(response.status).toHaveBeenCalledWith(404);
     expect(error).not.toHaveBeenCalled();
+  });
+
+  it('keeps the extra fields a 4xx was thrown with, e.g. who decided an approval first', () => {
+    const { host, response } = hostFor(
+      'POST',
+      '/api/v1/automation-approvals/a/decision',
+    );
+    new AllExceptionsFilter().catch(
+      new ConflictException({
+        message: 'Already decided',
+        status: 'APPROVED',
+        decidedBy: { id: 'u1', name: 'Ana Silva' },
+        decidedAt: '2026-10-29T10:00:00.000Z',
+      }),
+      host,
+    );
+    expect(response.status).toHaveBeenCalledWith(409);
+    expect(response.json).toHaveBeenCalledWith({
+      statusCode: 409,
+      message: 'Already decided',
+      error: 'ConflictException',
+      status: 'APPROVED',
+      decidedBy: { id: 'u1', name: 'Ana Silva' },
+      decidedAt: '2026-10-29T10:00:00.000Z',
+    });
+  });
+
+  it('never passes extra fields through on a 5xx', () => {
+    const { host, response } = hostFor('GET', '/api/v1/x');
+    new AllExceptionsFilter().catch(
+      new ServiceUnavailableException({ message: 'Down', internal: 'secret' }),
+      host,
+    );
+    expect(response.json.mock.calls[0][0]).not.toHaveProperty('internal');
   });
 });

@@ -20,11 +20,10 @@ import { AutomationWorkflow } from './entities/automation-workflow.entity';
 import { AutomationExecution } from './entities/automation-execution.entity';
 import { TemporalService } from '../temporal/temporal.service';
 import { AutomationSchedulesService } from './schedules/automation-schedules.service';
+import { AutomationApprovalsService } from './approvals/automation-approvals.service';
 import { dynamicDagWorkflow } from './workflows/dynamic-dag.workflow';
 import {
-  approveNodeSignal,
   getExecutionStateQuery,
-  rejectNodeSignal,
   WorkflowExecutionState,
 } from './workflows/interfaces';
 
@@ -182,6 +181,7 @@ export class AutomationsService {
     private readonly executionRepo: Repository<AutomationExecution>,
     private readonly temporalService: TemporalService,
     private readonly schedules: AutomationSchedulesService,
+    private readonly approvals: AutomationApprovalsService,
   ) {}
 
   async createWorkflow(
@@ -561,6 +561,10 @@ export class AutomationsService {
     return this.withLiveExecutionState(execution, state);
   }
 
+  /**
+   * The older per-node decision route. It goes through the same claim as the
+   * approvals inbox, so the two paths can never disagree.
+   */
   async signalExecution(
     tenantId: string,
     executionId: string,
@@ -570,38 +574,23 @@ export class AutomationsService {
       reason?: string;
       comment?: string;
     },
+    user: { id: string },
   ): Promise<AutomationExecution> {
-    const exec = await this.findExecutionRecord(tenantId, executionId);
-    const state = await this.getLiveExecutionState(exec);
-    if (!state.pendingApprovals[payload.nodeId]) {
-      throw new BadRequestException(
-        `Node '${payload.nodeId}' has no pending approval`,
-      );
-    }
-
-    try {
-      const client = await this.temporalService.getClient();
-      const handle = client.workflow.getHandle(exec.temporalWorkflowId);
-      if (payload.action === 'APPROVE') {
-        await handle.signal(approveNodeSignal, {
-          nodeId: payload.nodeId,
-          comment: payload.comment,
-        });
-      } else {
-        await handle.signal(rejectNodeSignal, {
-          nodeId: payload.nodeId,
-          reason: payload.reason,
-        });
-      }
-    } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`Temporal signal dispatch failed: ${errorMsg}`);
-      throw new ServiceUnavailableException(
-        'Unable to deliver the approval decision to the workflow',
-      );
-    }
-
-    return this.withLiveExecutionState(exec, state);
+    const comment =
+      payload.action === 'REJECT'
+        ? (payload.reason ?? payload.comment)
+        : payload.comment;
+    await this.approvals.decideByNode(
+      tenantId,
+      executionId,
+      payload.nodeId,
+      user,
+      {
+        action: payload.action,
+        ...(comment !== undefined ? { comment } : {}),
+      },
+    );
+    return this.findExecutionRecord(tenantId, executionId);
   }
 
   private async findExecutionRecord(
