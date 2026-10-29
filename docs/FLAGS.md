@@ -254,13 +254,32 @@ A journal posted by an invoice, a bill or payroll is undone through that
 document, or the document and the ledger disagree. Each journal is reversed at
 most once (`uq_journal_entries_reverses`).
 
-### Reconciliation matches one statement line to one entry — open
+### Reconciliation matched one statement line to one entry — resolved (2026-10-29)
 
-A deposit of three cheques, or one payment covering two bills, cannot be matched
-yet: it needs splitting on one side or the other. For an account not in base
-currency the amounts are not compared, because the ledger side is in base.
-The statement balance is the sum of every line imported, so it is only a real
-closing balance when imports start from the account's first day.
+A match is now a group (`bank_matches`): any number of statement lines against
+any number of entries, whose totals must agree in base currency. A deposit of
+three cheques is one line and three entries; a payroll paid out per person is
+many lines and one entry. Unmatching any line of a group reopens all of it.
+Existing matches were carried over as groups of one and one by migration
+1790900000000-BankMatchGroups.
+
+### Match suggestions are exact-amount only — by design
+
+`suggestReconciliation` (in `@saas/shared`, so the screen and the API agree)
+proposes one-to-one pairings, one line made of up to four entries, and up to
+four lines making one entry, within ten days. It never proposes a near amount:
+a difference is a question for a person. Only a pairing that is the only one
+either side could make, within five days, is marked certain, and "Match N
+certain" applies those and nothing else. Combinations are never certain. An
+account not in base currency gets no suggestions, since its amounts cannot be
+compared with a base-currency ledger.
+
+### Reconciliation on foreign-currency accounts, and the statement balance — open
+
+For an account not in base currency the amounts are not compared, because the
+ledger side is in base; a group only has to move money the same way on both
+sides. The statement balance is the sum of every line imported, so it is only
+a real closing balance when imports start from the account's first day.
 
 ### No fixed-asset register — open
 
@@ -388,6 +407,90 @@ regression cases. Both are registered in `SkillRegistry`.
 Recorded answers gate CI. The live run is nightly and off the critical path,
 because a model's behaviour drifting is something to know about, not something
 that should block a merge.
+
+### A file is read inside the webhook request — open
+
+`bill.from_document` downloads the WhatsApp file and reads it with the model
+before the webhook answers, as every staff command already does its routing and
+extraction. A multi-page PDF can take tens of seconds. Meta redelivers a webhook
+it thinks failed; the inbound row's unique message id stops the redelivery from
+reading the file twice, but a slow read still holds the request open. Moving
+staff commands onto a Temporal workflow, as the customer path is, would fix
+both.
+
+### Only WhatsApp files are read — open
+
+`ChannelDriver.downloadMedia` is implemented for Meta WhatsApp. Telegram and
+email deliver files differently (Telegram by `file_id`, email as MIME parts)
+and still arrive as text only.
+
+### Underscored slots are hidden from the extractor — by design
+
+A skill can keep working state between turns in slots whose key starts with
+`_` (the bill skill keeps the invoice it already read). The command layer
+passes those back to the skill but never puts them in the extraction prompt:
+they can be large, and they hold text from a document nobody on the staff
+wrote. Slot schemas strip unknown keys, so a model cannot set them either.
+
+---
+
+## Bill capture
+
+### Capture proposes; it never saves — by design
+
+`POST /bills/capture` and the chat skill read an invoice and return a proposed
+bill. The bill is entered through `POST /bills` / `PayablesService.create`, so
+the duplicate check and the three-way match are the same ones a typed bill gets,
+and approval stays a person's decision. The read itself is audited as
+`bill.capture` with no subject, because nothing was created.
+
+### Bills from capture need a purchase order — open
+
+The web form and the chat skill only enter bills against an order. An invoice
+for a service with no order (rent, a repair) is read, but has to be entered by
+hand. The API already accepts bills without an order; the screen that would use
+it does not exist yet.
+
+### Supplier matching is deliberately conservative — by design
+
+A supplier is chosen only on an exact tax number or a name that matches once
+legal suffixes ("LLC", "FZE", "Trading") are ignored. A near name is offered as
+a candidate, never picked, because a pre-filled form is trusted. Two suppliers
+whose names differ only by those suffixes are always offered as candidates.
+
+### Attaching the invoice needs `bill:update` — by design
+
+The original file is attached after the bill is saved, through the ordinary
+attachments route, which asks for the owner record's update permission. Someone
+holding only `bill:create` gets the bill but not the attachment, and is told so.
+
+### The expense receipt scan could not read PDFs — resolved (2026-10-29)
+
+The form sent the browser's data URL as `imageUrl`, which a provider cannot
+fetch, and every file was labelled an image. The form now uploads the picked
+file to `POST /finance/expenses/scan-receipt` as multipart (as base64 in JSON
+it would hit the 100 KB body limit), the API sends a PDF as a document block,
+and a data URL is unpacked rather than passed on as a link. The sample receipt
+is an SVG, which no model reads as an image, so it is sent as its text.
+
+### Submitting an expense with a large receipt failed — resolved (2026-10-29)
+
+The form saved the receipt on the claim as a data URL, through the JSON body,
+so any receipt over roughly 75 KB failed at the 100 KB body limit and smaller
+ones were stored inline in the row. The claim is now filed first and the
+receipt uploaded to `POST /finance/expenses/:id/receipt`, which stores it as an
+`EXPENSE_CLAIM` attachment and sets `receiptUrl` to `attachment:<id>`. Screens
+show it through a short-lived signed link. The API refuses a new data URL, and
+a reference to a file that is not attached to that claim.
+
+Attaching to a claim now needs `expense:submit`, the claim's own update
+permission, rather than `finance:manage`, which the person filing the claim
+usually does not hold.
+
+### Older expense receipts are still inline — open
+
+Claims saved before the fix keep their data URL in `receiptUrl` and still
+display. Moving them into attachments is a one-off backfill nobody has run.
 
 ---
 
@@ -824,6 +927,50 @@ costed from payroll and timesheets; machine time and overhead are not posted.
   rounding — by design.** Entries store hours to two decimal places, so the
   minutes a clock session recorded do not always convert back exactly. The
   residue is below the precision of anything that reads it.
+
+### Costing accuracy (self-correcting costing)
+
+`GET /catalog/costing-review` compares completed jobs' estimates with their
+actuals and proposes catalog corrections; the Catalog screen's "Costing
+accuracy" tab shows them. Built on `reviewCosting` in `@saas/shared`.
+
+- **It proposes; a person applies — by design.** Each proposal names one
+  field, and applying it is the ordinary catalog update, permissioned and
+  audited like any edit. Quotes already made and jobs already planned keep
+  the figures they were made with.
+- **Three rates are reviewed: material cost, material waste, and a work
+  centre's time allowance (`scrapPct`) — by design.** Those are what a job
+  measures. Hourly machine and labour rates are not: machine time has no
+  actual cost to compare with, and labour reaches jobs from payroll per
+  person, not per work centre. Template run-time formulas are not edited
+  either; when a work centre with no allowance runs faster than its
+  templates, the review says so as a note.
+- **Waste and time are measured against what each job was planned with —
+  by design.** Work orders record the waste and time allowances in their plan
+  (`planned_waste_pct`, `planned_scrap_pct`, migration
+  1791000000000-CostingPlanBaseline). Measuring against today's catalog would
+  make an applied correction propose itself again.
+- **Jobs planned before the baseline was recorded only count for prices —
+  open.** Their allowances are unknown, so the waste and time review starts
+  with work orders created after the migration.
+- **Evidence thresholds — by design.** A proposal needs three distinct jobs,
+  and a gap of 3% on price, 2 points on waste or 5 points on time. Proposals
+  are capped at what the catalog accepts (waste below 95%, time allowance up
+  to 100%) and say when they were. Sheet materials are planned in whole
+  sheets, so their measured waste reads a little low.
+
+### Partial updates wrote schema defaults over saved values — resolved for the catalog, open elsewhere
+
+Found while building costing accuracy. In zod 4 a field with `.default()`
+still produces its default inside `.partial()`, and services apply patches
+with `Object.assign`, so `PATCH /catalog/work-centers/:id { scrapPct }` reset
+the centre's hourly rates to 0. The catalog's update schemas (materials, work
+centres, tooling, products) now use `patchOf`, which drops defaults. The
+screens send every field, which is why nobody saw it.
+
+The same pattern is still in `updateContactSchema`, `updateSavedViewSchema`,
+the custom-object, AI-agent and payroll update schemas. Each needs checking
+for defaulted fields and moving to `patchOf`.
 
 ---
 
