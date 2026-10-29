@@ -10,8 +10,6 @@ import {
   CodeTransformActivityResult,
   HttpActivityConfig,
   HttpActivityResult,
-  RecordNodeResultParams,
-  RecordNodeResultResult,
 } from './interfaces';
 
 /**
@@ -158,21 +156,4 @@ export async function executeCodeTransformActivity(
     vm.dispose();
     runtime.dispose();
   }
-}
-
-/**
- * Records execution result of a single node in audit logs and execution state.
- */
-export async function recordNodeResultActivity(
-  params: RecordNodeResultParams,
-): Promise<RecordNodeResultResult> {
-  console.log(
-    `[AutomationActivity] recordNodeResult: executionId=${params.executionId}, nodeId=${params.nodeId}, status=${params.status}`,
-  );
-
-  return {
-    recorded: true,
-    executionId: params.executionId,
-    nodeId: params.nodeId,
-  };
 }

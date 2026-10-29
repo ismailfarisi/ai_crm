@@ -1,5 +1,6 @@
 import { defineQuery, defineSignal } from '@temporalio/workflow';
 import type {
+  AutomationApprovalKind,
   AutomationEdge,
   AutomationNode,
   AutomationTriggerType,
@@ -155,6 +156,7 @@ export interface RecordNodeResultParams {
   tenantId?: string;
   nodeId: string;
   nodeType?: string;
+  label?: string;
   status: 'SUCCESS' | 'FAILED' | 'SKIPPED' | 'WAITING';
   input?: any;
   output?: any;
@@ -162,6 +164,23 @@ export interface RecordNodeResultParams {
   startedAt?: string;
   finishedAt?: string;
   durationMs?: number;
+  /** Sent only with status WAITING: the inbox row for this wait. */
+  approval?: {
+    id: string;
+    kind: AutomationApprovalKind;
+    title: string;
+    details: Record<string, unknown>;
+    requestedAt: string;
+    expiresAt: string | null;
+  };
+}
+
+export interface RecordRunFinishedParams {
+  executionId: string;
+  tenantId: string;
+  status: 'COMPLETED' | 'FAILED' | 'CANCELLED';
+  errorMessage?: string | null;
+  finishedAt: string;
 }
 
 export interface RecordNodeResultResult {

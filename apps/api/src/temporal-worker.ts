@@ -28,6 +28,8 @@ import { CustomRecordsService } from './modules/custom-objects/services/custom-r
 import { createScheduledTickActivities } from './modules/automations/workflows/scheduled-tick.activities';
 import { AutomationsService } from './modules/automations/automations.service';
 import { AutomationWorkflow } from './modules/automations/entities/automation-workflow.entity';
+import { createRunRecordActivities } from './modules/automations/workflows/run-record.activities';
+import { AutomationApproval } from './modules/automations/entities/automation-approval.entity';
 import { AutomationExecution } from './modules/automations/entities/automation-execution.entity';
 import { TemporalService } from './modules/temporal/temporal.service';
 import { BillingService } from './modules/billing/billing.service';
@@ -91,6 +93,12 @@ async function run(): Promise<void> {
       tenantContext: appContext.get(TenantContextService),
       // Asks whether the previous scheduled run is still going.
       temporal: appContext.get(TemporalService),
+    });
+    // Every step and approval of a run is written to the run record.
+    const runRecordActivities = createRunRecordActivities({
+      executions: appContext.get(getRepositoryToken(AutomationExecution)),
+      approvals: appContext.get(getRepositoryToken(AutomationApproval)),
+      tenantContext: appContext.get(TenantContextService),
     });
     const assistantActivities = createAssistantActivities({
       events: appContext.get(AssistantEventsService),

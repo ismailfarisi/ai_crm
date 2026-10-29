@@ -18,6 +18,7 @@ import {
 } from '../../channels/workflows/agent-react.workflow';
 import type * as activities from './automation.activities';
 import type { createAutomationActions } from './automation-actions';
+import type { createRunRecordActivities } from './run-record.activities';
 import {
   evaluateExpression,
   ExpressionContext,
@@ -47,7 +48,9 @@ const {
   executeCrmMutationActivity,
   recordNodeResultActivity,
 } = proxyActivities<
-  typeof activities & ReturnType<typeof createAutomationActions>
+  typeof activities &
+    ReturnType<typeof createAutomationActions> &
+    ReturnType<typeof createRunRecordActivities>
 >({
   startToCloseTimeout: '5 minutes',
   retry: {

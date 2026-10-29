@@ -1,7 +1,6 @@
 import {
   executeCodeTransformActivity,
   executeHttpActivity,
-  recordNodeResultActivity,
 } from './automation.activities';
 
 describe('AutomationActivities', () => {
@@ -148,21 +147,6 @@ describe('AutomationActivities', () => {
           input: {},
         }),
       ).rejects.toThrow('Code transform execution failed');
-    });
-  });
-
-  describe('recordNodeResultActivity', () => {
-    it('should record node result status', async () => {
-      const result = await recordNodeResultActivity({
-        executionId: 'exec-123',
-        nodeId: 'node-456',
-        status: 'SUCCESS',
-        output: { test: true },
-      });
-
-      expect(result.recorded).toBe(true);
-      expect(result.executionId).toBe('exec-123');
-      expect(result.nodeId).toBe('node-456');
     });
   });
 });
