@@ -7,10 +7,16 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
+import type { ExecutionTriggerSource } from '@saas/shared';
 import { AutomationWorkflow } from './automation-workflow.entity';
 
 export type AutomationExecutionStatus =
-  'RUNNING' | 'WAITING_APPROVAL' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+  | 'RUNNING'
+  | 'WAITING_APPROVAL'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'CANCELLED'
+  | 'UNKNOWN';
 
 export enum AutomationExecutionStatusEnum {
   RUNNING = 'RUNNING',
@@ -18,6 +24,7 @@ export enum AutomationExecutionStatusEnum {
   COMPLETED = 'COMPLETED',
   FAILED = 'FAILED',
   CANCELLED = 'CANCELLED',
+  UNKNOWN = 'UNKNOWN',
 }
 
 @Entity('automation_executions')
@@ -66,11 +73,15 @@ export class AutomationExecution {
 
   @Column({
     type: 'enum',
-    enum: ['RUNNING', 'WAITING_APPROVAL', 'COMPLETED', 'FAILED', 'CANCELLED'],
+    enum: ['RUNNING', 'WAITING_APPROVAL', 'COMPLETED', 'FAILED', 'CANCELLED', 'UNKNOWN'],
     enumName: 'automation_executions_status_enum',
     default: 'RUNNING',
   })
   status: AutomationExecutionStatus;
+
+  /** What started the run; null for runs recorded before this was kept. */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  triggerSource: ExecutionTriggerSource | null;
 
   @Column({ type: 'jsonb', default: {} })
   triggerPayload: Record<string, any>;

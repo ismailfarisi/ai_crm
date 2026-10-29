@@ -25,6 +25,12 @@ export interface TestRunDrawerProps {
   className?: string;
 }
 
+/** The agent action a WAITING step is paused on, if any. */
+function pendingActionOf(step: { output?: unknown }): unknown {
+  const output = step.output as { pendingAction?: unknown } | null | undefined;
+  return output?.pendingAction;
+}
+
 export function TestRunDrawer({
   workflow,
   onExecuteTest,
@@ -212,7 +218,7 @@ export function TestRunDrawer({
               Object.values(executionResult.nodeResults).some(
                 (result) =>
                   result.status === 'WAITING' &&
-                  result.output?.pendingAction,
+                  pendingActionOf(result),
               ) && (
                 <div
                   data-testid="pending-agent-approval"
@@ -223,11 +229,12 @@ export function TestRunDrawer({
                   </p>
                   <pre className="text-[11px] text-ink-muted font-mono whitespace-pre-wrap break-words">
                     {JSON.stringify(
-                      Object.values(executionResult.nodeResults).find(
-                        (result) =>
-                          result.status === 'WAITING' &&
-                          result.output?.pendingAction,
-                      )?.output.pendingAction,
+                      pendingActionOf(
+                        Object.values(executionResult.nodeResults).find(
+                          (result) =>
+                            result.status === 'WAITING' && pendingActionOf(result),
+                        )!,
+                      ),
                       null,
                       2,
                     )}

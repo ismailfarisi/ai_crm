@@ -32,6 +32,7 @@ import { VatSettings } from '../tax/entities/vat-settings.entity';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
 import { LedgerAccount } from '../finance/entities/ledger-account.entity';
 import { BankStatementLine } from '../finance/entities/bank-statement-line.entity';
+import { AutomationApproval } from '../automations/entities/automation-approval.entity';
 
 /**
  * The one file to touch when a sprint adds a document type worth auditing.
@@ -104,6 +105,10 @@ export const AUDIT_SUBJECTS: Record<string, AuditSubject> = {
   'finance/ledger-accounts': {
     subject: 'LEDGER_ACCOUNT',
     entity: LedgerAccount,
+  },
+  'automation-approvals': {
+    subject: 'AUTOMATION_APPROVAL',
+    entity: AutomationApproval,
   },
   'finance/bank-statement-lines': {
     subject: 'BANK_STATEMENT_LINE',

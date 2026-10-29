@@ -68,28 +68,120 @@ export interface AutomationWorkflowDto {
   updatedAt: string;
 }
 
+export type AutomationExecutionStatus =
+  | 'RUNNING'
+  | 'WAITING_APPROVAL'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'CANCELLED'
+  /** A run whose record predates step history, so its outcome is not known. */
+  | 'UNKNOWN';
+
+export type ExecutionTriggerSource = 'event' | 'webhook' | 'schedule' | 'test';
+
+export type AutomationApprovalStatus =
+  'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' | 'CANCELLED';
+
+export type AutomationApprovalKind = 'step' | 'agent_action';
+
+export interface ExecutionStepResultDto {
+  status: 'SUCCESS' | 'FAILED' | 'SKIPPED' | 'WAITING';
+  label?: string;
+  type?: string;
+  input?: unknown;
+  output?: unknown;
+  error?: string;
+  startedAt: string;
+  finishedAt?: string;
+  durationMs?: number;
+}
+
+export interface AutomationApprovalDto {
+  id: string;
+  executionId: string;
+  workflowId: string;
+  nodeId: string;
+  kind: AutomationApprovalKind;
+  title: string;
+  details: Record<string, unknown>;
+  status: AutomationApprovalStatus;
+  requestedAt: string;
+  expiresAt: string | null;
+  decidedBy: { id: string; name: string } | null;
+  decidedAt: string | null;
+  comment: string | null;
+  workflowName: string;
+  triggerSource: ExecutionTriggerSource | null;
+  triggerSummary: string;
+}
+
 export interface AutomationExecutionDto {
   id: string;
   tenantId: string;
   workflowId: string;
   temporalWorkflowId: string;
-  status: 'RUNNING' | 'WAITING_APPROVAL' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+  status: AutomationExecutionStatus;
+  triggerSource: ExecutionTriggerSource | null;
   triggerPayload: Record<string, any>;
-  nodeResults: Record<
-    string,
-    {
-      status: 'SUCCESS' | 'FAILED' | 'SKIPPED' | 'WAITING';
-      input?: any;
-      output?: any;
-      error?: string;
-      startedAt: string;
-      finishedAt?: string;
-      durationMs?: number;
-    }
-  >;
+  nodeResults: Record<string, ExecutionStepResultDto>;
+  /** True when the caller may not see the run's data (payload and step input/output). */
+  dataHidden: boolean;
+  pendingApprovals: AutomationApprovalDto[];
   startedAt: string;
   finishedAt?: string | null;
   errorMessage?: string | null;
+}
+
+export interface AutomationExecutionSummaryDto {
+  id: string;
+  workflowId: string;
+  status: AutomationExecutionStatus;
+  triggerSource: ExecutionTriggerSource | null;
+  startedAt: string;
+  finishedAt: string | null;
+  errorMessage: string | null;
+}
+
+export interface AutomationExecutionPageDto {
+  items: AutomationExecutionSummaryDto[];
+  nextCursor: string | null;
+}
+
+export interface ApprovalDecisionPayload {
+  action: 'APPROVE' | 'REJECT';
+  comment?: string;
+}
+
+/** Body of the 409 answered when someone else decided the approval first. */
+export interface ApprovalAlreadyDecidedBody {
+  message: string;
+  status: AutomationApprovalStatus;
+  decidedBy: { id: string; name: string } | null;
+  decidedAt: string | null;
+}
+
+const EXECUTION_STATUS_LABELS: Record<AutomationExecutionStatus, string> = {
+  RUNNING: 'Running',
+  WAITING_APPROVAL: 'Waiting for approval',
+  COMPLETED: 'Completed',
+  FAILED: 'Failed',
+  CANCELLED: 'Cancelled',
+  UNKNOWN: 'Unknown',
+};
+
+const TRIGGER_SOURCE_LABELS: Record<ExecutionTriggerSource, string> = {
+  event: 'Event',
+  webhook: 'Webhook',
+  schedule: 'Schedule',
+  test: 'Test',
+};
+
+export function executionStatusLabel(s: AutomationExecutionStatus): string {
+  return EXECUTION_STATUS_LABELS[s];
+}
+
+export function triggerSourceLabel(s: ExecutionTriggerSource | null): string {
+  return s ? TRIGGER_SOURCE_LABELS[s] : '—';
 }
 
 /** `triggerConfig` of a WEBHOOK automation. */

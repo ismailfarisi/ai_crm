@@ -62,7 +62,7 @@
   "CREATE INDEX \"idx_automation_workflows_tenant_id\" ON \"automation_workflows\" (\"tenantId\")",
   "CREATE INDEX \"idx_channel_conversations_lookup\" ON \"channel_conversations\" (\"organization_id\", \"provider\", \"sender_identifier\", \"status\")",
   "CREATE TYPE \"public\".\"ai_agents_actiontype_enum\" AS ENUM('AUTO_ACK', 'CREATE_DRAFT_QUOTE')",
-  "CREATE TYPE \"public\".\"automation_executions_status_enum\" AS ENUM('RUNNING', 'WAITING_APPROVAL', 'COMPLETED', 'FAILED', 'CANCELLED')",
+  "CREATE TYPE \"public\".\"automation_executions_status_enum\" AS ENUM('RUNNING', 'WAITING_APPROVAL', 'COMPLETED', 'FAILED', 'CANCELLED', 'UNKNOWN')",
   "CREATE TYPE \"public\".\"automation_workflows_status_enum\" AS ENUM('DRAFT', 'ACTIVE', 'PAUSED')",
   "CREATE TYPE \"public\".\"category_budgets_period_enum\" AS ENUM('MONTHLY', 'QUARTERLY', 'ANNUAL')",
   "CREATE TYPE \"public\".\"channel_conversations_provider_enum\" AS ENUM('WHATSAPP_META', 'TELEGRAM', 'EMAIL_SMTP', 'EMAIL_RESEND')",

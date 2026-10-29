@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   AUTOMATION_PERMISSIONS,
   validateWorkflowGraph,
+  executionStatusLabel,
+  triggerSourceLabel,
   type AutomationNode,
   type AutomationEdge,
   type AutomationWorkflowDto,
@@ -174,5 +176,17 @@ describe('Automation Types & Helpers', () => {
     expect(result.usage?.estimatedCostUsd).toBe(0.0084);
     expect(result.estimatedCostUsd).toBe(0.0084);
     expect(result.error).toBeNull();
+  });
+});
+
+describe('run history labels', () => {
+  it('labels execution statuses', () => {
+    expect(executionStatusLabel('UNKNOWN')).toBe('Unknown');
+    expect(executionStatusLabel('WAITING_APPROVAL')).toBe('Waiting for approval');
+  });
+
+  it('labels trigger sources', () => {
+    expect(triggerSourceLabel(null)).toBe('—');
+    expect(triggerSourceLabel('schedule')).toBe('Schedule');
   });
 });

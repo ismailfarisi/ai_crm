@@ -60,6 +60,7 @@ describe('AutomationsService', () => {
     workflowId: mockWorkflow.id,
     sourceEventId: null,
     idempotencyKey: null,
+    triggerSource: null,
     temporalWorkflowId: 'automation-exec-exec-uuid-1',
     status: 'RUNNING',
     triggerPayload: { key: 'value' },

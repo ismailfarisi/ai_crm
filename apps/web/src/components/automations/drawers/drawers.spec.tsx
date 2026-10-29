@@ -51,6 +51,9 @@ describe('Automation Drawers', () => {
     workflowId: 'wf-1',
     temporalWorkflowId: 'temp-1',
     status: 'COMPLETED',
+    triggerSource: null,
+    dataHidden: false,
+    pendingApprovals: [],
     triggerPayload: { amount: 5000 },
     nodeResults: {
       'node-1': {

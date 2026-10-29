@@ -5,6 +5,7 @@ import { AutomationsService } from './automations.service';
 import { AutomationEventBridgeService } from './services/automation-event-bridge.service';
 import { AutomationWorkflow } from './entities/automation-workflow.entity';
 import { AutomationExecution } from './entities/automation-execution.entity';
+import { AutomationApproval } from './entities/automation-approval.entity';
 import { TemporalModule } from '../temporal/temporal.module';
 import { AiModule } from '../ai/ai.module';
 import { BillingModule } from '../billing/billing.module';
@@ -14,7 +15,11 @@ import { AutomationSchedulesService } from './schedules/automation-schedules.ser
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([AutomationWorkflow, AutomationExecution]),
+    TypeOrmModule.forFeature([
+      AutomationWorkflow,
+      AutomationExecution,
+      AutomationApproval,
+    ]),
     TemporalModule,
     AiModule,
     // Webhook runs check the organisation's subscription (no cycle: billing
