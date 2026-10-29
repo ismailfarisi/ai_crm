@@ -129,6 +129,18 @@ Without the origin being Cloudflare-only, trusting `CF-Connecting-IP` lets
 anyone who can reach nginx directly claim any address, which is why this is not
 done in application code.
 
+### Quote links and file downloads found nothing in production — resolved (2026-10-29)
+
+`GET /public/quotes/:token`, its accept route and `GET /attachments/:id/download`
+take no session, so the request has no tenant, and with the app role enforcing
+row-level security the lookup saw no rows: every quote link said "not valid"
+and every signed download said "File not found". Tests and local runs did not
+show it because they did not exercise these routes as the NOBYPASSRLS role.
+The token (or signature) now names the row and is looked up outside any tenant;
+everything after runs as that row's tenant. `test/public-links.e2e-spec.ts`
+covers both as the app role. Any new public route that finds a row by token
+needs the same treatment.
+
 ### The S3 storage driver has never talked to a bucket — open
 
 `STORAGE_PROVIDER=s3` is written and typechecked but untested; every environment

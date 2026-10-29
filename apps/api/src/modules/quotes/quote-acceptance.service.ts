@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -19,6 +20,7 @@ import {
   type PublicQuoteDto,
 } from '@saas/shared';
 import type { AppConfig } from '@/config/configuration';
+import { TenantContextService } from '@/common/context/tenant-context.service';
 import { Organization } from '../organizations/entities/organization.entity';
 import { AutomationEventBridgeService } from '../automations/services/automation-event-bridge.service';
 import { MailService } from '../mail/mail.service';
@@ -69,7 +71,28 @@ export class QuoteAcceptanceService {
     private readonly config: ConfigService<AppConfig, true>,
     private readonly events: AutomationEventBridgeService,
     private readonly mail: MailService,
+    @Optional() private readonly tenantContext?: TenantContextService,
   ) {}
+
+  /**
+   * The quote a link names, and the rest of the request run as its tenant.
+   *
+   * A customer has no session, so no tenant, and row-level security would
+   * show them nothing. The token is the authority: it is looked up outside
+   * any tenant, and everything after — reading the seller, recording the
+   * acceptance, raising `quote.accepted` — runs as the quote's own tenant,
+   * exactly as it would for someone signed in to it.
+   */
+  private async withQuoteFor<T>(
+    token: string,
+    fn: (quote: Quote | null) => Promise<T>,
+  ): Promise<T> {
+    const quote = await (this.tenantContext
+      ? this.tenantContext.runAsSystem(() => this.findByToken(token))
+      : this.findByToken(token));
+    if (!quote || !this.tenantContext) return fn(quote);
+    return this.tenantContext.runWithTenant(quote.tenantId, () => fn(quote));
+  }
 
   /**
    * Issues a fresh link. Any earlier link for the quote stops working: only
@@ -195,10 +218,11 @@ export class QuoteAcceptanceService {
   }
 
   async view(token: string): Promise<PublicQuoteDto> {
-    const quote = await this.findByToken(token);
-    const refusal = this.refusalFor(quote, { allowAccepted: true });
-    if (refusal) this.refuse(refusal);
-    return this.toPublic(quote!);
+    return this.withQuoteFor(token, async (quote) => {
+      const refusal = this.refusalFor(quote, { allowAccepted: true });
+      if (refusal) this.refuse(refusal);
+      return this.toPublic(quote!);
+    });
   }
 
   async accept(
@@ -213,7 +237,17 @@ export class QuoteAcceptanceService {
       throw new BadRequestException('Type your full name to accept');
     }
 
-    const quote = await this.findByToken(token);
+    return this.withQuoteFor(token, (quote) =>
+      this.recordAcceptance(quote, token, name, ipAddress),
+    );
+  }
+
+  private async recordAcceptance(
+    quote: Quote | null,
+    token: string,
+    name: string,
+    ipAddress: string | undefined,
+  ): Promise<PublicQuoteDto> {
     const refusal = this.refusalFor(quote, { allowAccepted: false });
     if (refusal) this.refuse(refusal);
 

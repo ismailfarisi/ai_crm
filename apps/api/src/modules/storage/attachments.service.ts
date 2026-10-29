@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, type ObjectLiteral } from 'typeorm';
@@ -17,6 +18,7 @@ import {
   type AttachmentOwnerType,
 } from '@saas/shared';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
+import { TenantContextService } from '@/common/context/tenant-context.service';
 import { User } from '../users/entities/user.entity';
 import { ATTACHMENT_OWNERS } from './attachment-owners';
 import { Attachment } from './entities/attachment.entity';
@@ -31,6 +33,7 @@ export class AttachmentsService {
     @InjectRepository(User) private readonly users: Repository<User>,
     private readonly storage: StorageService,
     private readonly dataSource: DataSource,
+    @Optional() private readonly tenantContext?: TenantContextService,
   ) {}
 
   /**
@@ -149,9 +152,17 @@ export class AttachmentsService {
     expires: number,
     token: string,
   ): Promise<{ filename: string; contentType: string; body: Buffer }> {
-    const row = await this.attachments.findOne({ where: { id } });
-    if (!row) throw new NotFoundException('File not found');
+    // The signature first: a forged or expired link learns nothing, not
+    // even whether the file exists.
     this.storage.verifyLink(id, expires, token);
+    // There is no session, so no tenant, and row-level security would show
+    // nothing. The signature names this one row, so it is read outside any
+    // tenant — the same authority an <img> tag has.
+    const find = () => this.attachments.findOne({ where: { id } });
+    const row = await (this.tenantContext
+      ? this.tenantContext.runAsSystem(find)
+      : find());
+    if (!row) throw new NotFoundException('File not found');
     const object = await this.storage.get(row.storageKey);
     return {
       filename: row.filename,
