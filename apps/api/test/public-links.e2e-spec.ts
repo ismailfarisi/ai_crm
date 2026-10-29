@@ -115,7 +115,12 @@ describe('Public links (e2e)', () => {
   it(
     'downloads a file through its signed link with no session, and not with a bad signature',
     async () => {
-      const body = Buffer.from('%PDF-1.4\n% artwork proof\n%%EOF');
+      // Large enough that a response written twice is cut off part-way.
+      const body = Buffer.concat([
+        Buffer.from('%PDF-1.4\n% artwork proof\n'),
+        Buffer.alloc(300_000, 0x41),
+        Buffer.from('\n%%EOF'),
+      ]);
       const uploaded = await request(app.getHttpServer())
         .post(`${api}/attachments`)
         .query({ ownerType: 'QUOTE', ownerId: quoteId })
@@ -127,6 +132,8 @@ describe('Public links (e2e)', () => {
 
       const file = await request(app.getHttpServer()).get(`${signed.pathname}${signed.search}`).expect(200);
       expect(Buffer.from(file.body as Buffer).equals(body)).toBe(true);
+      expect(file.headers['content-type']).toMatch(/^application\/pdf/);
+      expect(file.headers['content-disposition']).toMatch(/^attachment/);
 
       signed.searchParams.set('token', 'forged');
       await request(app.getHttpServer()).get(`${signed.pathname}${signed.search}`).expect(401);

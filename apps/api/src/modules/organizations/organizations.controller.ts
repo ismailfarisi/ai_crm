@@ -10,6 +10,7 @@ import {
   Res,
   UploadedFile,
   UseInterceptors,
+  StreamableFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -114,6 +115,6 @@ export class OrganizationsController {
       // logo changes the URL rather than waiting for a cache to expire.
       'Cache-Control': 'public, max-age=86400',
     });
-    return res.send(logo.body);
+    return new StreamableFile(logo.body);
   }
 }

@@ -11,6 +11,7 @@ import {
   Res,
   UploadedFile,
   UseInterceptors,
+  StreamableFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -93,7 +94,9 @@ export class AttachmentsController {
       'Content-Disposition': `attachment; filename="${file.filename.replace(/"/g, '')}"`,
       'Cache-Control': 'private, no-store',
     });
-    return res.send(file.body);
+    // Sent once, by Nest. Returning `res.send()` from a passthrough handler
+    // made Nest send the response object again, cutting files off part-way.
+    return new StreamableFile(file.body);
   }
 
   @Delete(':id')
