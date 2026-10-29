@@ -6,7 +6,8 @@ import clsx from 'clsx';
 import { executionStatusLabel, triggerSourceLabel } from '@saas/shared';
 import type { AutomationExecutionStatus } from '@saas/shared';
 import { useAutomationExecutionsPage } from '@/hooks/use-automations';
-import { RunDetail, StatusChip, formatTime } from './run-detail';
+import { formatRelative } from '@/lib/utils';
+import { RunDetail, StatusChip, formatDuration, formatTime } from './run-detail';
 
 const FILTERS: { label: string; status: AutomationExecutionStatus | null }[] = [
   { label: 'All', status: null },
@@ -99,9 +100,19 @@ export function RunsDrawer({ workflowId, onClose, className }: RunsDrawerProps) 
                     className="w-full flex items-center justify-between gap-2 p-2 rounded-lg border border-border bg-surface-muted hover:bg-surface text-left text-xs cursor-pointer"
                   >
                     <span className="flex flex-col gap-0.5 min-w-0">
-                      <span className="text-ink">{formatTime(run.startedAt)}</span>
+                      <span className="text-ink" title={formatTime(run.startedAt)}>
+                        {formatRelative(run.startedAt)}
+                      </span>
                       <span className="text-[10px] text-ink-muted">
                         {triggerSourceLabel(run.triggerSource)}
+                        {run.finishedAt && (
+                          <span data-testid="run-duration">
+                            {' · '}
+                            {formatDuration(
+                              Date.parse(run.finishedAt) - Date.parse(run.startedAt),
+                            )}
+                          </span>
+                        )}
                       </span>
                       {run.errorMessage && (
                         <span className="text-[10px] text-danger truncate">{run.errorMessage}</span>

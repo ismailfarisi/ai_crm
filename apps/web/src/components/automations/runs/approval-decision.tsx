@@ -74,6 +74,7 @@ export function ApprovalDecision({ approval, onDecided }: ApprovalDecisionProps)
         <textarea
           id={`approval-comment-${approval.id}`}
           rows={2}
+          maxLength={1000}
           value={comment}
           onChange={(e) => setComment(e.target.value)}
           className="w-full rounded-lg border border-border p-2 text-xs text-ink bg-surface focus:border-brand focus:outline-none resize-none"

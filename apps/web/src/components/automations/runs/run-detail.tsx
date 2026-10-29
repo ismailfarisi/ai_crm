@@ -3,6 +3,7 @@
 import React from 'react';
 import { ArrowLeft } from 'lucide-react';
 import clsx from 'clsx';
+import { toast } from 'sonner';
 import { executionStatusLabel, triggerSourceLabel } from '@saas/shared';
 import type { AutomationExecutionStatus } from '@saas/shared';
 import { useAutomationExecution } from '@/hooks/use-automations';
@@ -30,6 +31,23 @@ export function formatTime(value: string | null | undefined): string {
   return value ? new Date(value).toLocaleString() : '—';
 }
 
+/** A run's length for people: "450 ms", "1.2 s", "3 min 4 s", "1 h 5 min". */
+export function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.max(0, Math.round(ms))} ms`;
+  const tenths = Math.round(ms / 100);
+  if (tenths < 600) return `${(tenths / 10).toFixed(1).replace(/\.0$/, '')} s`;
+  const totalSeconds = Math.round(ms / 1000);
+  if (totalSeconds < 3600) {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return seconds ? `${minutes} min ${seconds} s` : `${minutes} min`;
+  }
+  const totalMinutes = Math.round(totalSeconds / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes ? `${hours} h ${minutes} min` : `${hours} h`;
+}
+
 function JsonBlock({ value }: { value: unknown }) {
   return (
     <pre className="p-2 rounded-lg bg-brand-dark text-success font-mono text-[11px] overflow-x-auto max-h-56 border border-border-strong">
@@ -46,7 +64,7 @@ export interface RunDetailProps {
 }
 
 export function RunDetail({ executionId, onBack }: RunDetailProps) {
-  const { execution, isLoading, error } = useAutomationExecution(executionId);
+  const { execution, isLoading } = useAutomationExecution(executionId);
 
   const back = (
     <button
@@ -69,7 +87,8 @@ export function RunDetail({ executionId, onBack }: RunDetailProps) {
     );
   }
 
-  if (error || !execution) {
+  // A failed background poll keeps the run already on screen.
+  if (!execution) {
     return (
       <div className="space-y-3">
         {back}
@@ -104,7 +123,15 @@ export function RunDetail({ executionId, onBack }: RunDetailProps) {
       </div>
 
       {(execution.pendingApprovals ?? []).map((approval) => (
-        <ApprovalDecision key={approval.id} approval={approval} />
+        <ApprovalDecision
+          key={approval.id}
+          approval={approval}
+          // The run refetches once decided and the card goes with it, so a
+          // lost race is told in a toast that outlives the card.
+          onDecided={(result) => {
+            if (result.conflict) toast.info(result.conflict);
+          }}
+        />
       ))}
 
       <div className="space-y-1.5">

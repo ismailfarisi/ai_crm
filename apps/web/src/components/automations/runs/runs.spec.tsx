@@ -1,5 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { toast } from 'sonner';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { AutomationApprovalDto, AutomationExecutionDto } from '@saas/shared';
@@ -7,8 +8,10 @@ import { api } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/client';
 import { runsRefetchInterval } from '@/hooks/use-automations';
 import { RunsDrawer } from './runs-drawer';
-import { RunDetail } from './run-detail';
+import { RunDetail, formatDuration } from './run-detail';
 import { ApprovalDecision } from './approval-decision';
+
+vi.mock('sonner', () => ({ toast: { info: vi.fn(), error: vi.fn(), success: vi.fn() } }));
 
 const session = { canApprove: true };
 vi.mock('@/lib/session-context', () => ({
@@ -103,6 +106,30 @@ describe('RunsDrawer', () => {
     await waitFor(() => expect(screen.queryByText('Load more')).toBeNull());
   });
 
+  it('shows when a run started as relative time, the exact time on hover, and its duration once finished', async () => {
+    const startedAt = new Date(Date.now() - 5 * 60_000).toISOString();
+    vi.mocked(api.automations.listExecutions).mockResolvedValueOnce({
+      items: [
+        {
+          ...summary('e1', 'COMPLETED', 'webhook'),
+          startedAt,
+          finishedAt: new Date(Date.parse(startedAt) + 1200).toISOString(),
+        },
+        { ...summary('e2', 'COMPLETED', 'event'), startedAt, finishedAt: null, status: 'RUNNING' as never },
+      ],
+      nextCursor: null,
+    });
+
+    wrapper(<RunsDrawer workflowId="wf-1" onClose={vi.fn()} />);
+
+    const rows = await screen.findAllByTestId('run-row');
+    const started = screen.getAllByText('5 minutes ago');
+    expect(started).toHaveLength(2);
+    expect(started[0].getAttribute('title')).toBe(new Date(startedAt).toLocaleString());
+    expect(rows[0].textContent).toContain('1.2 s');
+    expect(rows[1].querySelector('[data-testid="run-duration"]')).toBeNull();
+  });
+
   it('sends status=FAILED when the Failed filter is chosen', async () => {
     vi.mocked(api.automations.listExecutions).mockResolvedValue({ items: [], nextCursor: null });
     wrapper(<RunsDrawer workflowId="wf-1" onClose={vi.fn()} />);
@@ -162,6 +189,66 @@ describe('RunDetail', () => {
     wrapper(<RunDetail executionId="exec-1" onBack={vi.fn()} />);
     expect(await screen.findByText("Details weren't recorded for this run.")).toBeDefined();
   });
+
+  it('keeps showing a loaded run when a background refresh fails', async () => {
+    vi.mocked(api.automations.getExecution)
+      .mockResolvedValueOnce(detail({ status: 'RUNNING' }))
+      .mockRejectedValueOnce(new Error('network down'));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <RunDetail executionId="exec-1" onBack={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    await screen.findByTestId('run-detail');
+
+    await client.refetchQueries();
+    await waitFor(() => expect(api.automations.getExecution).toHaveBeenCalledTimes(2));
+
+    expect(screen.getByTestId('run-detail')).toBeDefined();
+    expect(screen.queryByText("Couldn't load this run.")).toBeNull();
+  });
+
+  it('says the run could not be loaded when the first fetch fails', async () => {
+    vi.mocked(api.automations.getExecution).mockRejectedValue(new Error('network down'));
+    wrapper(<RunDetail executionId="exec-1" onBack={vi.fn()} />);
+    expect(await screen.findByText("Couldn't load this run.")).toBeDefined();
+  });
+
+  it('toasts who decided first when an approval in the run was already decided', async () => {
+    vi.mocked(api.automations.getExecution).mockResolvedValue(
+      detail({ status: 'WAITING_APPROVAL', pendingApprovals: [approval] }),
+    );
+    vi.mocked(api.automations.decideApproval).mockRejectedValue(
+      Object.assign(new ApiError(409, 'Conflict'), {
+        body: {
+          message: 'Conflict',
+          status: 'APPROVED',
+          decidedBy: { id: 'u2', name: 'Dana' },
+          decidedAt: new Date(Date.now() - 60_000).toISOString(),
+        },
+      }),
+    );
+    wrapper(<RunDetail executionId="exec-1" onBack={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve' }));
+    await waitFor(() =>
+      expect(toast.info).toHaveBeenCalledWith(expect.stringMatching(/^Already approved by Dana, /)),
+    );
+  });
+});
+
+describe('formatDuration', () => {
+  it.each([
+    [450, '450 ms'],
+    [1200, '1.2 s'],
+    [5000, '5 s'],
+    [59_960, '1 min'],
+    [184_000, '3 min 4 s'],
+    [3_600_000 + 5 * 60_000, '1 h 5 min'],
+  ])('%i ms reads %s', (ms, text) => {
+    expect(formatDuration(ms)).toBe(text);
+  });
 });
 
 describe('ApprovalDecision', () => {
@@ -198,6 +285,11 @@ describe('ApprovalDecision', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
     expect(await screen.findByText(/Already approved by Ana, /)).toBeDefined();
     expect(onDecided).toHaveBeenCalled();
+  });
+
+  it('caps the comment at 1000 characters', () => {
+    wrapper(<ApprovalDecision approval={approval} />);
+    expect(screen.getByLabelText('Comment').getAttribute('maxLength')).toBe('1000');
   });
 
   it('is hidden without automation:approve', () => {
