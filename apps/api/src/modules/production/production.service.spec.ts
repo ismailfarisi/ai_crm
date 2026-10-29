@@ -142,7 +142,7 @@ function makeWorld() {
       },
       catalog: {
         workCenters: {
-          press: { machineCostPerHour: 40, laborCostPerHour: 20 },
+          press: { machineCostPerHour: 40, laborCostPerHour: 20, scrapPct: 0.1 },
           wrap: { machineCostPerHour: 0, laborCostPerHour: 18 },
         },
       },
@@ -182,6 +182,7 @@ function makeWorld() {
             materialName: 'Greyboard',
             uom: 'SHEET',
             purchaseUnits: 60,
+            wastePct: 0.05,
             unitCost: 0.5,
           },
           {
@@ -189,6 +190,7 @@ function makeWorld() {
             materialName: 'Greyboard',
             uom: 'SHEET',
             purchaseUnits: 40,
+            wastePct: 0.1,
             unitCost: 0.5,
           },
         ],
@@ -370,6 +372,15 @@ describe('ProductionService.createFromSalesOrder', () => {
     expect(w.tables.WorkOrderMaterial).toEqual([
       expect.objectContaining({ materialId: 'board', qtyPlanned: 100 }),
     ]);
+  });
+
+  it('records the allowances each plan was made with, for the costing review', async () => {
+    const w = makeWorld();
+    await planned(w);
+    // The press has a 10% time allowance; the bench has none set.
+    expect(w.tables.WorkOrderOperation.map((o) => o.plannedScrapPct)).toEqual([0.1, 0]);
+    // 60 sheets at 5% and 40 at 10%: 100 planned over 93.51 needed.
+    expect(w.tables.WorkOrderMaterial[0].plannedWastePct).toBe(0.0694);
   });
 
   it('does not plan a line twice', async () => {

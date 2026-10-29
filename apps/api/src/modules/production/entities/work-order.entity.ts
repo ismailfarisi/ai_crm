@@ -205,6 +205,20 @@ export class WorkOrderOperation extends BaseEntity {
   @Column(numeric('labor_cost_per_hour', 12, 4))
   laborCostPerHour: number;
 
+  /**
+   * The work centre's time allowance the plan's run minutes include. Null
+   * for jobs planned before it was recorded (1791000000000-CostingPlanBaseline).
+   */
+  @Column({
+    name: 'planned_scrap_pct',
+    type: 'numeric',
+    precision: 5,
+    scale: 4,
+    nullable: true,
+    transformer: nullableNumericTransformer,
+  })
+  plannedScrapPct: number | null;
+
   @Column({ name: 'running_since', type: 'timestamptz', nullable: true })
   runningSince: Date | null;
 
@@ -255,6 +269,20 @@ export class WorkOrderMaterial extends BaseEntity {
 
   @Column(numeric('estimated_unit_cost', 14, 4))
   estimatedUnitCost: number;
+
+  /**
+   * The waste allowance `qtyPlanned` includes. Null for jobs planned before
+   * it was recorded (1791000000000-CostingPlanBaseline).
+   */
+  @Column({
+    name: 'planned_waste_pct',
+    type: 'numeric',
+    precision: 5,
+    scale: 4,
+    nullable: true,
+    transformer: nullableNumericTransformer,
+  })
+  plannedWastePct: number | null;
 
   @Column({ name: 'last_stock_movement_id', type: 'uuid', nullable: true })
   lastStockMovementId: string | null;

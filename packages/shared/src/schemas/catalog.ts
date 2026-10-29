@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { patchOf } from './patch';
 
 /**
  * Validation for the costing catalog and the quote-line resolver.
@@ -88,8 +89,7 @@ export const createMaterialSchema = materialFields.refine(
  * SHEET. Patching just the name of an existing sheet material must not be
  * rejected for omitting dimensions it already has.
  */
-export const updateMaterialSchema = materialFields
-  .partial()
+export const updateMaterialSchema = patchOf(materialFields)
   .refine(
     (value) =>
       value.uom !== 'SHEET' || (value.sheetWidthMm != null && value.sheetHeightMm != null),
@@ -111,7 +111,7 @@ export const createWorkCenterSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
-export const updateWorkCenterSchema = createWorkCenterSchema.partial();
+export const updateWorkCenterSchema = patchOf(createWorkCenterSchema);
 
 /* ------------------------------------------------------------------ *
  * Tooling
@@ -125,7 +125,7 @@ export const createToolingSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
-export const updateToolingSchema = createToolingSchema.partial();
+export const updateToolingSchema = patchOf(createToolingSchema);
 
 /* ------------------------------------------------------------------ *
  * Catalog items — the flat, non-parametric case
@@ -143,7 +143,7 @@ export const createCatalogItemSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
-export const updateCatalogItemSchema = createCatalogItemSchema.partial();
+export const updateCatalogItemSchema = patchOf(createCatalogItemSchema);
 
 /* ------------------------------------------------------------------ *
  * Product templates

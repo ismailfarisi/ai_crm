@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type {
   CatalogItemDto,
+  CostingProposal,
   CreateCatalogItemPayload,
   UpdateCatalogItemPayload,
   MaterialDto,
@@ -264,5 +265,37 @@ export function useDeleteTemplate() {
       toast.success('Template removed');
     },
     onError: (error) => toast.error(describe(error, 'Could not remove the template')),
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Costing accuracy
+ * ------------------------------------------------------------------ */
+
+/** What completed jobs say about the catalog's rates, over the last `days`. */
+export function useCostingReview(days: number) {
+  return useQuery({
+    // Under ['catalog'], so applying a proposal refreshes the review with it.
+    queryKey: ['catalog', 'costing-review', days] as const,
+    queryFn: () => api.catalog.costingReview(days),
+  });
+}
+
+/**
+ * Applies one proposal: only the field it names, through the ordinary
+ * catalog update, so it is permissioned and audited like any other edit.
+ */
+export function useApplyCostingProposal() {
+  const invalidate = useInvalidateCatalog();
+  return useMutation({
+    mutationFn: (proposal: CostingProposal): Promise<MaterialDto | WorkCenterDto> =>
+      proposal.target.type === 'MATERIAL'
+        ? api.catalog.updateMaterial(proposal.target.id, { [proposal.field]: proposal.proposed } as UpdateMaterialPayload)
+        : api.catalog.updateWorkCenter(proposal.target.id, { [proposal.field]: proposal.proposed } as UpdateWorkCenterPayload),
+    onSuccess: async (_saved, proposal) => {
+      await invalidate();
+      toast.success(`${proposal.target.name} updated. New quotes use it from now on.`);
+    },
+    onError: (error) => toast.error(describe(error, 'Could not apply the change')),
   });
 }

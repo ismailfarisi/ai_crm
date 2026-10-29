@@ -400,15 +400,23 @@ export class ProductionService {
             estimatedChargedMinutes: op.chargedMinutes,
             machineCostPerHour: center?.machineCostPerHour ?? 0,
             laborCostPerHour: center?.laborCostPerHour ?? 0,
+            // The engine applied this to the run minutes above; the costing
+            // review measures actual time against it.
+            plannedScrapPct: center ? (center.scrapPct ?? 0) : null,
           });
         }),
     );
 
     // The unique index is per material, and two template lines can draw on
-    // the same board.
+    // the same board. Their allowances can differ, so the combined one is
+    // planned over net: what the job was planned to draw against what it
+    // needed before waste.
     const byMaterial = new Map<string, WorkOrderMaterial>();
+    const netNeed = new Map<string, number>();
     const matRepo = manager.getRepository(WorkOrderMaterial);
     for (const m of breakdown.materials) {
+      const net = m.purchaseUnits / (1 + (m.wastePct ?? 0));
+      netNeed.set(m.materialId, (netNeed.get(m.materialId) ?? 0) + net);
       const existing = byMaterial.get(m.materialId);
       if (existing) {
         existing.qtyPlanned = round4(existing.qtyPlanned + m.purchaseUnits);
@@ -426,6 +434,13 @@ export class ProductionService {
           estimatedUnitCost: m.unitCost,
         }),
       );
+    }
+    for (const [materialId, row] of byMaterial) {
+      const net = netNeed.get(materialId) ?? 0;
+      row.plannedWastePct =
+        net > 0
+          ? Math.round((row.qtyPlanned / net - 1) * 10_000) / 10_000
+          : null;
     }
     if (byMaterial.size) await matRepo.save([...byMaterial.values()]);
 

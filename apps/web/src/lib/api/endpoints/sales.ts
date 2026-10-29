@@ -21,6 +21,7 @@ import type {
   UpdateProductTemplatePayload,
   ProductTemplateDto,
   CostingPolicy,
+  CostingReviewDto,
   UpdateCostingPolicyPayload,
   ResolveLinesPayload,
   ResolvedLinesDto,
@@ -95,6 +96,10 @@ export const salesEndpoints = {
       apiFetch<WorkCenterDto>(`/catalog/work-centers/${id}`, { method: 'PATCH', body: payload }),
     deleteWorkCenter: (id: string) =>
       apiFetch<{ success: true }>(`/catalog/work-centers/${id}`, { method: 'DELETE' }),
+
+    /** What completed jobs say about the catalog's rates. Reads only. */
+    costingReview: (days: number) =>
+      apiFetch<CostingReviewDto>('/catalog/costing-review', { query: { days } }),
 
     listTooling: (includeInactive = true) =>
       apiFetch<ToolingDto[]>('/catalog/tooling', {

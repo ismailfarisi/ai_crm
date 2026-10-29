@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
-import { Boxes, Package, Pencil, Plus, Ruler, Trash2, Wrench, Factory } from 'lucide-react';
+import { Boxes, Factory, Gauge, Package, Pencil, Plus, Ruler, Trash2, Wrench } from 'lucide-react';
 import {
   PERMISSIONS,
   type CatalogItemDto,
@@ -36,8 +36,9 @@ import { CatalogItemFormDialog } from './catalog-item-form-dialog';
 import { MaterialFormDialog } from './material-form-dialog';
 import { WorkCenterFormDialog } from './work-center-form-dialog';
 import { ToolingFormDialog } from './tooling-form-dialog';
+import { CostingReviewPanel } from './costing-review-panel';
 
-type Tab = 'products' | 'templates' | 'materials' | 'work-centers' | 'tooling';
+type Tab = 'products' | 'templates' | 'materials' | 'work-centers' | 'tooling' | 'accuracy';
 
 const TABS: Array<{ id: Tab; label: string; icon: typeof Package }> = [
   { id: 'products', label: 'Products', icon: Package },
@@ -45,6 +46,7 @@ const TABS: Array<{ id: Tab; label: string; icon: typeof Package }> = [
   { id: 'materials', label: 'Materials', icon: Boxes },
   { id: 'work-centers', label: 'Work centres', icon: Factory },
   { id: 'tooling', label: 'Tooling', icon: Wrench },
+  { id: 'accuracy', label: 'Costing accuracy', icon: Gauge },
 ];
 
 const UOM_LABELS: Record<string, string> = {
@@ -454,7 +456,7 @@ export function CatalogView() {
         actions={
           <Can permission={PERMISSIONS.CATALOG_MANAGE}>
             {/* A template is too big for a dialog, so it has a page of its own. */}
-            {tab === 'templates' ? (
+            {tab === 'accuracy' ? null : tab === 'templates' ? (
               <Link href="/catalog/templates/new">
                 <Button>
                   <Plus className="size-4" />
@@ -493,7 +495,9 @@ export function CatalogView() {
         })}
       </div>
 
-      {query.isError ? (
+      {tab === 'accuracy' ? (
+        <CostingReviewPanel currency={currency} />
+      ) : query.isError ? (
         <EmptyState
           title={`Couldn't load ${active.label.toLowerCase()}`}
           description={
