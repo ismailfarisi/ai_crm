@@ -7,6 +7,9 @@ import type {
   CreateAutomationWorkflowPayload,
   UpdateAutomationWorkflowPayload,
   SignalAutomationExecutionPayload,
+  AutomationExecutionPageDto,
+  AutomationApprovalDto,
+  ApprovalDecisionPayload,
 } from '@saas/shared';
 import { apiFetch } from '../client';
 
@@ -31,8 +34,8 @@ export const automationsEndpoints = {
         method: 'POST',
         body: payload ?? {},
       }),
-    listExecutions: (id: string) =>
-      apiFetch<AutomationExecutionDto[]>(`/automations/${id}/executions`),
+    listExecutions: (id: string, q: { cursor?: string; status?: string } = {}) =>
+      apiFetch<AutomationExecutionPageDto>(`/automations/${id}/executions`, { query: q }),
     getExecution: (execId: string) =>
       apiFetch<AutomationExecutionDto>(`/automations/executions/${execId}`),
     signalExecution: (execId: string, payload: SignalAutomationExecutionPayload) =>
@@ -40,8 +43,22 @@ export const automationsEndpoints = {
         method: 'POST',
         body: payload,
       }),
+    listApprovals: () => apiFetch<AutomationApprovalDto[]>('/automation-approvals'),
+    countApprovals: () => apiFetch<{ count: number }>('/automation-approvals/count'),
+    decideApproval: (approvalId: string, payload: ApprovalDecisionPayload) =>
+      apiFetch<AutomationApprovalDto>(`/automation-approvals/${approvalId}/decision`, {
+        method: 'POST',
+        body: payload,
+      }),
   },
 };
 
 export const automationsKeys = {
-  automations: ['automations'] as const,  automationSettings: ['automations', 'settings'] as const,  automation: (id: string) => ['automations', id] as const,  automationExecutions: (id: string) => ['automations', id, 'executions'] as const,  automationExecution: (execId: string) => ['automations', 'executions', execId] as const,};
+  automations: ['automations'] as const,
+  automationSettings: ['automations', 'settings'] as const,
+  automation: (id: string) => ['automations', id] as const,
+  automationExecutions: (id: string) => ['automations', id, 'executions'] as const,
+  automationExecution: (execId: string) => ['automations', 'executions', execId] as const,
+  automationApprovals: ['automations', 'approvals'] as const,
+  automationApprovalCount: ['automations', 'approvals', 'count'] as const,
+};

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type {
   AutomationWorkflowDto,
@@ -13,6 +13,8 @@ import type {
   AutomationNodeType,
   AutomationNodeData,
   AutomationTriggerType,
+  AutomationExecutionStatus,
+  ApprovalDecisionPayload,
 } from '@saas/shared';
 import { validateWorkflowGraph } from '@saas/shared';
 import { api, queryKeys } from '@/lib/api/endpoints';
@@ -163,11 +165,67 @@ export function useSignalAutomationExecution() {
   });
 }
 
-export function useAutomationExecutions(workflowId: string | null | undefined) {
-  return useQuery({
-    queryKey: workflowId ? queryKeys.automationExecutions(workflowId) : ['automations', 'none', 'executions'],
-    queryFn: () => (workflowId ? api.automations.listExecutions(workflowId) : Promise.resolve([])),
+const ACTIVE_RUN_STATUSES: readonly AutomationExecutionStatus[] = ['RUNNING', 'WAITING_APPROVAL'];
+
+/** Poll every 5s while a run is still moving, so the list catches its transitions. */
+export function runsRefetchInterval(statuses: readonly AutomationExecutionStatus[]): number | false {
+  return statuses.some((s) => ACTIVE_RUN_STATUSES.includes(s)) ? 5000 : false;
+}
+
+export function useAutomationExecutionsPage(
+  workflowId: string | null | undefined,
+  status: AutomationExecutionStatus | null,
+) {
+  return useInfiniteQuery({
+    queryKey: [...queryKeys.automationExecutions(workflowId ?? 'none'), { status }],
+    queryFn: ({ pageParam }) =>
+      api.automations.listExecutions(workflowId as string, {
+        ...(pageParam ? { cursor: pageParam } : {}),
+        ...(status ? { status } : {}),
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: Boolean(workflowId),
+    refetchInterval: (query) =>
+      runsRefetchInterval(
+        (query.state.data?.pages ?? []).flatMap((page) => page.items.map((item) => item.status)),
+      ),
+  });
+}
+
+export function useAutomationApprovals() {
+  return useQuery({
+    queryKey: queryKeys.automationApprovals,
+    queryFn: () => api.automations.listApprovals(),
+  });
+}
+
+export function useAutomationApprovalCount() {
+  return useQuery({
+    queryKey: queryKeys.automationApprovalCount,
+    queryFn: () => api.automations.countApprovals(),
+    refetchInterval: 60000,
+  });
+}
+
+export function useDecideApproval() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      approvalId,
+      payload,
+    }: {
+      approvalId: string;
+      payload: ApprovalDecisionPayload;
+      executionId: string;
+      workflowId: string;
+    }) => api.automations.decideApproval(approvalId, payload),
+    onSettled: (_data, _error, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.automationApprovals });
+      queryClient.invalidateQueries({ queryKey: queryKeys.automationApprovalCount });
+      queryClient.invalidateQueries({ queryKey: queryKeys.automationExecution(variables.executionId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.automationExecutions(variables.workflowId) });
+    },
   });
 }
 
@@ -176,6 +234,7 @@ export function useAutomationExecution(executionId: string | null | undefined) {
     queryKey: executionId ? queryKeys.automationExecution(executionId) : ['automations', 'executions', 'none'],
     queryFn: () => (executionId ? api.automations.getExecution(executionId) : Promise.resolve(null)),
     enabled: Boolean(executionId),
+    refetchInterval: (q) => runsRefetchInterval(q.state.data ? [q.state.data.status] : []),
   });
 
   const signalMutation = useSignalAutomationExecution();
@@ -244,7 +303,6 @@ export function useAutomation(id: string | null | undefined) {
     enabled: Boolean(id),
   });
 
-  const executionsQuery = useAutomationExecutions(id);
   const updateMutation = useUpdateAutomationWorkflow();
   const deleteMutation = useDeleteAutomationWorkflow();
   const testRunMutation = useTestRunAutomation();
@@ -275,10 +333,6 @@ export function useAutomation(id: string | null | undefined) {
     isLoading: query.isLoading,
     error: query.error,
     refresh: query.refetch,
-    executions: executionsQuery.data ?? [],
-    executionsLoading: executionsQuery.isLoading,
-    executionsError: executionsQuery.error,
-    refreshExecutions: executionsQuery.refetch,
     updateWorkflow,
     deleteWorkflow,
     testRun,

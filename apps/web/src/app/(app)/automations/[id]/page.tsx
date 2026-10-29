@@ -16,6 +16,7 @@ import { CanvasHeader } from '@/components/automations/canvas/canvas-header';
 import { NodePaletteDrawer } from '@/components/automations/drawers/node-palette-drawer';
 import { NodeInspectorDrawer } from '@/components/automations/drawers/node-inspector-drawer';
 import { TestRunDrawer } from '@/components/automations/drawers/test-run-drawer';
+import { RunsDrawer } from '@/components/automations/runs/runs-drawer';
 import { useSession } from '@/lib/session-context';
 import { AUTOMATION_PERMISSIONS } from '@saas/shared';
 import type { AutomationNodeType, AutomationNode, AutomationWorkflowDto } from '@saas/shared';
@@ -97,6 +98,7 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
   // Drawers visibility states
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
   const [isTestRunOpen, setIsTestRunOpen] = useState(false);
+  const [isRunsOpen, setIsRunsOpen] = useState(false);
 
   // React Flow canvas state management
   const {
@@ -182,7 +184,14 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
         isSaving={updateWorkflowMutation.isPending}
         saveBlockedReason={triggerInvalid ? 'Fix the schedule before saving' : null}
         onSave={handleSave}
-        onOpenTestRun={() => setIsTestRunOpen(true)}
+        onOpenTestRun={() => {
+          setIsRunsOpen(false);
+          setIsTestRunOpen(true);
+        }}
+        onOpenRuns={() => {
+          setIsTestRunOpen(false);
+          setIsRunsOpen(true);
+        }}
         onOpenPalette={() => setIsPaletteOpen(true)}
         canUndo={canUndo}
         canRedo={canRedo}
@@ -238,6 +247,9 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
             onClose={() => setIsTestRunOpen(false)}
           />
         )}
+
+        {/* Runs Drawer */}
+        {isRunsOpen && <RunsDrawer workflowId={workflow.id} onClose={() => setIsRunsOpen(false)} />}
       </div>
     </div>
   );

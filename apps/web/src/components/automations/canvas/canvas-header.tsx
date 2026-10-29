@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   Save,
   Play,
+  History,
   Activity,
   Plus,
   Undo2,
@@ -29,6 +30,7 @@ export interface CanvasHeaderProps {
   saveBlockedReason?: string | null;
   onSave: () => void;
   onOpenTestRun: () => void;
+  onOpenRuns?: () => void;
   onOpenPalette: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
@@ -48,6 +50,7 @@ export function CanvasHeader({
   saveBlockedReason,
   onSave,
   onOpenTestRun,
+  onOpenRuns,
   onOpenPalette,
   canUndo = false,
   canRedo = false,
@@ -167,6 +170,17 @@ export function CanvasHeader({
             )}
           />
           {status === 'ACTIVE' ? 'Active' : 'Inactive'}
+        </button>
+
+        {/* Runs Drawer Button */}
+        <button
+          type="button"
+          data-testid="open-runs-btn"
+          onClick={onOpenRuns}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-surface hover:bg-surface-muted text-xs font-semibold text-ink shadow-xs transition-colors cursor-pointer"
+        >
+          <History className="h-3.5 w-3.5 text-brand" />
+          Runs
         </button>
 
         {/* Test Run Drawer Button */}

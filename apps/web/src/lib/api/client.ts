@@ -8,6 +8,19 @@ interface RequestOptions extends Omit<RequestInit, 'body'> {
   _retried?: boolean;
 }
 
+/** An `ApiError` that also keeps the parsed JSON body, for routes whose errors carry data (e.g. a 409). */
+export type ApiErrorWithBody = ApiError & { body?: unknown };
+
+async function toApiErrorWithBody(response: Response): Promise<ApiErrorWithBody> {
+  const error: ApiErrorWithBody = await toApiError(response.clone());
+  try {
+    error.body = await response.json();
+  } catch {
+    // Non-JSON body: nothing more to keep.
+  }
+  return error;
+}
+
 /**
  * Browser-side API client.
  *
@@ -45,7 +58,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   }
 
   if (!response.ok) {
-    throw await toApiError(response);
+    throw await toApiErrorWithBody(response);
   }
 
   if (response.status === 204) {

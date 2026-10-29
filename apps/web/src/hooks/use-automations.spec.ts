@@ -137,7 +137,6 @@ describe('useAutomations Hook', () => {
     vi.mocked(api.automations.update).mockResolvedValue(mockWorkflow);
     vi.mocked(api.automations.delete).mockResolvedValue(undefined);
     vi.mocked(api.automations.testRun).mockResolvedValue(mockExecution);
-    vi.mocked(api.automations.listExecutions).mockResolvedValue([mockExecution]);
     vi.mocked(api.automations.getExecution).mockResolvedValue(mockExecution);
     vi.mocked(api.automations.signalExecution).mockResolvedValue(mockExecution);
   });
@@ -197,12 +196,11 @@ describe('useAutomation Hook', () => {
     vi.mocked(api.automations.update).mockResolvedValue(mockWorkflow);
     vi.mocked(api.automations.delete).mockResolvedValue(undefined);
     vi.mocked(api.automations.testRun).mockResolvedValue(mockExecution);
-    vi.mocked(api.automations.listExecutions).mockResolvedValue([mockExecution]);
     vi.mocked(api.automations.getExecution).mockResolvedValue(mockExecution);
     vi.mocked(api.automations.signalExecution).mockResolvedValue(mockExecution);
   });
 
-  it('fetches single workflow and executions', async () => {
+  it('fetches single workflow', async () => {
     const { result } = renderHook(() => useAutomation('wf-123'), {
       wrapper: createWrapper(),
     });
@@ -210,9 +208,7 @@ describe('useAutomation Hook', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.workflow).toEqual(mockWorkflow);
-    expect(result.current.executions).toEqual([mockExecution]);
     expect(api.automations.get).toHaveBeenCalledWith('wf-123');
-    expect(api.automations.listExecutions).toHaveBeenCalledWith('wf-123');
   });
 
   it('updates workflow and triggers test run', async () => {
