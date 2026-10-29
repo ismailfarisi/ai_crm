@@ -25,7 +25,7 @@ import type {
   ExpenseListParams,
   UpdateFinanceAccountPayload,
 } from '@saas/shared';
-import { apiFetch } from '../client';
+import { apiFetch, apiUpload } from '../client';
 
 export const financeEndpoints = {
   finance: {
@@ -74,6 +74,12 @@ export const financeEndpoints = {
         method: 'POST',
         body: payload,
       }),
+    /** Stores the file on the claim as its receipt. */
+    uploadReceipt: (id: string, file: File) =>
+      apiUpload<ExpenseClaimDto>(`/finance/expenses/${id}/receipt`, file),
+    /** The same scan, from the file itself — PDF or photo. */
+    scanReceiptFile: (file: File) =>
+      apiUpload<ScannedReceiptResult>('/finance/expenses/scan-receipt', file),
     signal: (id: string, payload: SignalExpenseClaimPayload) =>
       apiFetch<ExpenseClaimDto>(`/finance/expenses/${id}/signal`, {
         method: 'POST',

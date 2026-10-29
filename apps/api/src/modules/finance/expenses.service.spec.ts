@@ -713,6 +713,79 @@ describe('ExpensesService', () => {
       );
     });
 
+    it('sends a PDF data URL as a document, unpacked', async () => {
+      (aiService.generateStructured as jest.Mock).mockResolvedValue({
+        data: validAiResult,
+        usage: { inputTokens: 200, outputTokens: 50 },
+        model: 'claude-sonnet-5',
+      });
+
+      // What the browser form sends: the data URL in both fields.
+      const dataUrl = 'data:application/pdf;base64,JVBERi0xLjc=';
+      await service.scanReceipt(
+        { base64: dataUrl, imageUrl: dataUrl, mimeType: 'image/jpeg' },
+        actor,
+      );
+
+      const content = (aiService.generateStructured as jest.Mock).mock
+        .calls[0][1].messages[0].content;
+      expect(content[0]).toEqual({
+        type: 'document',
+        mimeType: 'application/pdf',
+        data: 'JVBERi0xLjc=',
+      });
+    });
+
+    it('sends an image data URL as base64 bytes, never as a URL', async () => {
+      (aiService.generateStructured as jest.Mock).mockResolvedValue({
+        data: validAiResult,
+        usage: { inputTokens: 200, outputTokens: 50 },
+        model: 'claude-sonnet-5',
+      });
+
+      await service.scanReceipt(
+        { imageUrl: 'data:image/png;base64,iVBORw0KGgo=' },
+        actor,
+      );
+
+      const content = (aiService.generateStructured as jest.Mock).mock
+        .calls[0][1].messages[0].content;
+      expect(content[0]).toEqual({
+        type: 'image',
+        mimeType: 'image/png',
+        data: 'iVBORw0KGgo=',
+      });
+    });
+
+    it('sends raw base64 with a PDF mime type as a document', async () => {
+      (aiService.generateStructured as jest.Mock).mockResolvedValue({
+        data: validAiResult,
+        usage: { inputTokens: 200, outputTokens: 50 },
+        model: 'claude-sonnet-5',
+      });
+
+      await service.scanReceipt(
+        { base64: 'JVBERi0xLjc=', mimeType: 'application/pdf' },
+        actor,
+      );
+
+      const content = (aiService.generateStructured as jest.Mock).mock
+        .calls[0][1].messages[0].content;
+      expect(content[0]).toMatchObject({
+        type: 'document',
+        data: 'JVBERi0xLjc=',
+      });
+    });
+
+    it('does not call the model with a file it cannot read', async () => {
+      const scanResult = await service.scanReceipt(
+        { imageUrl: 'data:image/svg+xml;utf8,<svg></svg>' },
+        actor,
+      );
+      expect(aiService.generateStructured).not.toHaveBeenCalled();
+      expect(scanResult.confidence).toBe(0);
+    });
+
     it('throws BadRequestException when the AI response fails schema validation', async () => {
       (aiService.generateStructured as jest.Mock).mockResolvedValue({
         data: { merchantName: 'X' }, // missing required fields

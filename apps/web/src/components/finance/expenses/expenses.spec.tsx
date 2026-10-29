@@ -41,6 +41,7 @@ vi.mock('@/hooks/use-organization', () => ({
 
 // Mock hook useScanReceipt
 vi.mock('@/hooks/use-expenses', () => ({
+  useReceiptSource: (url?: string | null) => ({ src: url ?? null, isPdf: /\.pdf$/i.test(url ?? ''), isLoading: false }),
   useScanReceipt: () => ({
     mutateAsync: vi.fn().mockResolvedValue({
       merchantName: 'Acme Cloud Corp',
@@ -336,6 +337,18 @@ describe('ReceiptPreviewCard Component', () => {
     fireEvent.click(uploadBtn);
     expect(handleUpload).toHaveBeenCalledTimes(1);
   });
+
+  it('offers a PDF receipt as a link to open, not as an image', () => {
+    render(<ReceiptPreviewCard receiptUrl="https://files.example/dewa-october.pdf" />);
+
+    expect(screen.getByTestId('receipt-pdf')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Open PDF/ })).toHaveAttribute(
+      'href',
+      'https://files.example/dewa-october.pdf',
+    );
+    expect(screen.queryByTestId('receipt-image')).not.toBeInTheDocument();
+    expect(screen.getByText('PDF')).toBeInTheDocument();
+  });
 });
 
 describe('SubmitExpenseModal Component', () => {
@@ -398,6 +411,60 @@ describe('SubmitExpenseModal Component', () => {
     expect(screen.getByTestId('input-amount')).toHaveValue(285);
     expect(screen.getByTestId('input-expense-date')).toHaveValue('2026-08-15');
     expect(screen.getByTestId('ai-scan-success-banner')).toBeInTheDocument();
+    // The sample is an SVG: it goes as the words on it, which a model can read.
+    expect(mockScan).toHaveBeenCalledWith({ rawText: expect.stringContaining('ACME CLOUD CORP') });
+  });
+
+  it('submits a picked receipt as a file, never inline in the claim', async () => {
+    const handleSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<SubmitExpenseModal open={true} onClose={vi.fn()} onSubmit={handleSubmit} />);
+
+    const pdf = new File(['%PDF-1.7'], 'dewa-october.pdf', { type: 'application/pdf' });
+    fireEvent.change(screen.getByTestId('receipt-file-input'), { target: { files: [pdf] } });
+    await screen.findByTestId('btn-scan-receipt');
+    fireEvent.change(screen.getByTestId('input-merchant-name'), { target: { value: 'DEWA' } });
+    fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '512.40' } });
+    fireEvent.click(screen.getByTestId('btn-save-draft'));
+
+    await waitFor(() =>
+      expect(handleSubmit).toHaveBeenCalledWith(expect.objectContaining({ receiptUrl: null }), pdf),
+    );
+  });
+
+  it('stores the sample receipt as a file too', async () => {
+    const handleSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<SubmitExpenseModal open={true} onClose={vi.fn()} onSubmit={handleSubmit} />);
+
+    fireEvent.click(screen.getByTestId('btn-load-sample'));
+    fireEvent.change(screen.getByTestId('input-merchant-name'), { target: { value: 'Acme' } });
+    fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '285' } });
+    fireEvent.click(screen.getByTestId('btn-save-draft'));
+
+    await waitFor(() => expect(handleSubmit).toHaveBeenCalled());
+    const [payload, receipt] = handleSubmit.mock.calls[0];
+    expect(payload.receiptUrl).toBeNull();
+    expect(receipt).toBeInstanceOf(File);
+    expect((receipt as File).type).toBe('image/svg+xml');
+  });
+
+  it('scans an uploaded PDF by sending the file itself', async () => {
+    const mockScan = vi.fn().mockResolvedValue({
+      merchantName: 'DEWA',
+      amount: 512.4,
+      currency: 'AED',
+      expenseDate: '2026-10-01',
+      category: 'General Expense',
+      confidence: 0.9,
+      items: [],
+    });
+    render(<SubmitExpenseModal open={true} onClose={vi.fn()} onSubmit={vi.fn()} onScanReceipt={mockScan} />);
+
+    const pdf = new File(['%PDF-1.7'], 'dewa-october.pdf', { type: 'application/pdf' });
+    fireEvent.change(screen.getByTestId('receipt-file-input'), { target: { files: [pdf] } });
+    fireEvent.click(await screen.findByTestId('btn-scan-receipt'));
+
+    await waitFor(() => expect(mockScan).toHaveBeenCalledWith({ file: pdf }));
+    expect(screen.getByTestId('input-merchant-name')).toHaveValue('DEWA');
   });
 
   it('adds and removes line items, calculating dynamic totals', () => {
@@ -456,7 +523,9 @@ describe('SubmitExpenseModal Component', () => {
           merchantName: 'Uber',
           amount: 45.5,
           status: 'DRAFT',
+          receiptUrl: null,
         }),
+        null,
       );
     });
   });

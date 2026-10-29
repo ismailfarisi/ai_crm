@@ -256,6 +256,7 @@ vi.mock('@/hooks/use-suppliers', () => ({
 }));
 
 vi.mock('@/hooks/use-expenses', () => ({
+  useReceiptSource: (url?: string | null) => ({ src: url ?? null, isPdf: /\.pdf$/i.test(url ?? ''), isLoading: false }),
   useExpenses: () => ({
     claims: mockClaims,
     isLoading: false,

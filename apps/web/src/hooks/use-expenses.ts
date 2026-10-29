@@ -13,8 +13,10 @@ import type {
   SignalExpenseClaimPayload,
   ExpenseListParams,
 } from '@saas/shared';
+import { receiptAttachmentId } from '@saas/shared';
 import { api, queryKeys } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/client';
+import { isFileInput, type ReceiptScanInput } from '@/lib/receipt-scan-input';
 
 export type {
   ExpenseClaimDto,
@@ -86,7 +88,8 @@ export function useUpdateExpenseClaim() {
 
 export function useScanReceipt() {
   return useMutation({
-    mutationFn: (payload: ScanReceiptPayload) => api.expenses.scanReceipt(payload),
+    mutationFn: (input: ReceiptScanInput) =>
+      isFileInput(input) ? api.expenses.scanReceiptFile(input.file) : api.expenses.scanReceipt(input),
     onSuccess: (result) => {
       toast.success(`Receipt scanned: ${result.merchantName || 'Extracted'}`);
     },
@@ -125,8 +128,26 @@ export function useExpenses(filters: ExpenseListParams = {}) {
   const updateMutation = useUpdateExpenseClaim();
   const signalMutation = useSignalExpenseClaim();
 
-  const createClaim = async (payload: CreateExpenseClaimPayload) => {
-    return createMutation.mutateAsync(payload);
+  const { invalidateExpense } = useInvalidateExpenses();
+
+  /**
+   * Files the claim, then uploads its receipt onto it. The receipt goes up
+   * as a file after the claim exists: inline in the claim it would hit the
+   * API's body limit. A failed upload leaves the claim filed, and says so.
+   */
+  const createClaim = async (payload: CreateExpenseClaimPayload, receipt?: File | null) => {
+    const claim = await createMutation.mutateAsync(payload);
+    if (!receipt) return claim;
+    try {
+      const withReceipt = await api.expenses.uploadReceipt(claim.id, receipt);
+      invalidateExpense(claim.id);
+      return withReceipt;
+    } catch (error) {
+      toast.warning(
+        `Claim #${claim.claimNumber || claim.id.slice(0, 8)} is filed, but the receipt could not be attached: ${describe(error, 'upload failed')}`,
+      );
+      return claim;
+    }
   };
 
   const updateClaim = async (id: string, payload: UpdateExpenseClaimPayload) => {
@@ -178,5 +199,47 @@ export function useExpense(id: string | null | undefined) {
     signalClaim,
     isUpdating: updateMutation.isPending,
     isSignaling: signalMutation.isPending,
+  };
+}
+
+export interface ReceiptSource {
+  /** What an <img> or a link can point at, or null while a stored file's link loads. */
+  src: string | null;
+  isPdf: boolean;
+  isLoading: boolean;
+}
+
+/**
+ * The receipt on a claim, as something the browser can show.
+ *
+ * A stored receipt is an attachment: it is fetched through a short-lived
+ * signed link, re-requested shortly before that link expires. Older claims
+ * hold a link or an inline data URL, which are shown as they are.
+ */
+export function useReceiptSource(receiptUrl: string | null | undefined): ReceiptSource {
+  const attachmentId = receiptAttachmentId(receiptUrl);
+  const link = useQuery({
+    queryKey: ['attachments', 'link', attachmentId ?? ''],
+    queryFn: () => api.attachments.link(attachmentId as string),
+    enabled: Boolean(attachmentId),
+    // Fresh until fifteen seconds before the signature stops working.
+    staleTime: (query) => {
+      const expiresAt = query.state.data?.expiresAt;
+      return expiresAt ? Math.max(0, new Date(expiresAt).getTime() - Date.now() - 15_000) : 0;
+    },
+  });
+
+  if (!receiptUrl) return { src: null, isPdf: false, isLoading: false };
+  if (!attachmentId) {
+    return {
+      src: receiptUrl,
+      isPdf: receiptUrl.startsWith('data:application/pdf') || /\.pdf(?:$|[?#])/i.test(receiptUrl),
+      isLoading: false,
+    };
+  }
+  return {
+    src: link.data?.url ?? null,
+    isPdf: /\.pdf$/i.test(link.data?.filename ?? ''),
+    isLoading: link.isPending,
   };
 }

@@ -42,6 +42,9 @@ import { ExpensesController } from './expenses.controller';
 import { TemporalModule } from '../temporal/temporal.module';
 import { AiModule } from '../ai/ai.module';
 import { TaxModule } from '../tax/tax.module';
+import { StorageModule } from '../storage/storage.module';
+import { Attachment } from '../storage/entities/attachment.entity';
+import { ExpenseReceiptsService } from './expense-receipts.service';
 
 @Module({
   imports: [
@@ -72,10 +75,13 @@ import { TaxModule } from '../tax/tax.module';
       PayrollRunLine,
       PensionRemittance,
       Settlement,
+      // Receipts are attachments on the claim.
+      Attachment,
     ]),
     TemporalModule,
     AiModule,
     TaxModule,
+    StorageModule,
   ],
   controllers: [
     FinanceController,
@@ -86,6 +92,7 @@ import { TaxModule } from '../tax/tax.module';
   providers: [
     FinanceService,
     ExpensesService,
+    ExpenseReceiptsService,
     LedgerService,
     CurrencyService,
     ReportsService,

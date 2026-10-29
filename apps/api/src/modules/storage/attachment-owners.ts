@@ -56,7 +56,9 @@ export const ATTACHMENT_OWNERS: Record<
   EXPENSE_CLAIM: {
     entity: ExpenseClaim,
     read: PERMISSIONS.FINANCE_READ,
-    write: PERMISSIONS.FINANCE_MANAGE,
+    // The claim's own update permission (PATCH /finance/expenses/:id), so
+    // whoever files a claim can attach its receipt.
+    write: PERMISSIONS.EXPENSE_SUBMIT,
     label: 'expense claim',
   },
   EMPLOYEE: {

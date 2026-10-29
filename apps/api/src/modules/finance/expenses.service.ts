@@ -21,6 +21,8 @@ import { TemporalService } from '../temporal/temporal.service';
 import { AiService } from '../ai/ai.service';
 import {
   AiNotConfiguredException,
+  AiContentBlock,
+  AiDocumentContent,
   AiImageContent,
 } from '../ai/interfaces/ai-provider.interface';
 import { expenseApprovalWorkflow } from './workflows/expense-approval.workflow';
@@ -575,9 +577,9 @@ export class ExpensesService {
     actor: { organizationId: string; userId: string },
   ): Promise<ScannedReceiptResult> {
     const rawText = dto.rawText?.trim() || '';
-    const hasImage = Boolean(dto.base64 || dto.imageUrl);
+    const file = this.receiptBlock(dto);
 
-    if (!rawText && !hasImage) {
+    if (!rawText && !file) {
       return { ...ExpensesService.DEGRADED_RESULT, currency: 'USD' };
     }
 
@@ -586,21 +588,9 @@ export class ExpensesService {
       'Meals & Entertainment, Travel, Software & Subscriptions, Office Supplies, General Expense. ' +
       'If a field is unclear or missing, make your best estimate and lower the confidence score accordingly.';
 
-    const content: (AiImageContent | { type: 'text'; text: string })[] = [];
-    if (hasImage) {
-      content.push(
-        dto.imageUrl
-          ? {
-              type: 'image',
-              mimeType: this.normalizeMimeType(dto.mimeType),
-              url: dto.imageUrl,
-            }
-          : {
-              type: 'image',
-              mimeType: this.normalizeMimeType(dto.mimeType),
-              data: dto.base64,
-            },
-      );
+    const content: AiContentBlock[] = [];
+    if (file) {
+      content.push(file);
       content.push({ type: 'text', text: instruction });
     } else {
       content.push({
@@ -645,6 +635,46 @@ export class ExpensesService {
         rawText: rawText || undefined,
       };
     }
+  }
+
+  /**
+   * The receipt file as the model should see it, or null when there is none
+   * it can read.
+   *
+   * Browsers hand over a data URL, and older callers sent one in `imageUrl`
+   * too; it is unpacked here, because a provider fetches a URL source itself
+   * and cannot fetch `data:`. A link is used as a link only when it is one.
+   */
+  private receiptBlock(
+    dto: ScanReceiptDto,
+  ): AiImageContent | AiDocumentContent | null {
+    const source = dto.base64 || dto.imageUrl || '';
+    const dataUrl = /^data:([^;,]+)((?:;[^;,]+)*),(.*)$/s.exec(source);
+    if (dataUrl) {
+      // A text-encoded data URL (an SVG, say) is not a file a model reads.
+      if (!/;base64/i.test(dataUrl[2])) return null;
+      return this.fileBlock(dataUrl[1], dataUrl[3]);
+    }
+    if (dto.base64) return this.fileBlock(dto.mimeType, dto.base64);
+    if (dto.imageUrl && /^https?:\/\//i.test(dto.imageUrl)) {
+      return {
+        type: 'image',
+        mimeType: this.normalizeMimeType(dto.mimeType),
+        url: dto.imageUrl,
+      };
+    }
+    return null;
+  }
+
+  private fileBlock(
+    mimeType: string | undefined,
+    data: string,
+  ): AiImageContent | AiDocumentContent {
+    const type = (mimeType ?? '').split(';')[0].trim().toLowerCase();
+    if (type === 'application/pdf') {
+      return { type: 'document', mimeType: 'application/pdf', data };
+    }
+    return { type: 'image', mimeType: this.normalizeMimeType(type), data };
   }
 
   private normalizeMimeType(mimeType?: string): AiImageContent['mimeType'] {

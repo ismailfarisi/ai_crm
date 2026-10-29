@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 import { Badge, Card, CardBody, CardHeader, CardTitle } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
+import { useReceiptSource } from '@/hooks/use-expenses';
 
 export interface ReceiptPreviewCardProps {
   receiptUrl?: string | null;
@@ -76,7 +77,16 @@ export function ReceiptPreviewCard({
   const [isFullscreenOpen, setIsFullscreenOpen] = useState(false);
   const [showRawText, setShowRawText] = useState(false);
 
-  const effectiveReceiptUrl = receiptUrl ?? claim?.receiptUrl;
+  const storedReceiptUrl = receiptUrl ?? claim?.receiptUrl;
+  const receipt = useReceiptSource(storedReceiptUrl);
+  // What the browser can load. A stored receipt has none until its signed link arrives.
+  const effectiveReceiptUrl = receipt.src;
+  const hasReceipt = Boolean(storedReceiptUrl);
+  const receiptKind = receipt.isPdf
+    ? 'PDF'
+    : !effectiveReceiptUrl || effectiveReceiptUrl.startsWith('data:') || storedReceiptUrl?.startsWith('attachment:')
+      ? 'Image'
+      : effectiveReceiptUrl.split('?')[0].split('.').pop()?.toUpperCase() || 'Attachment';
   const effectiveMerchant = merchantName ?? ocrData?.merchantName ?? claim?.merchantName ?? 'Unknown Merchant';
   const effectiveAmount = amount ?? ocrData?.amount ?? claim?.amount ?? 0;
   const effectiveCurrency = currency ?? ocrData?.currency ?? claim?.currency ?? 'USD';
@@ -108,14 +118,14 @@ export function ReceiptPreviewCard({
         <div className="flex items-center gap-2">
           <Receipt className="size-4 text-ink-muted" />
           <CardTitle className="text-sm font-semibold text-ink">Receipt Document</CardTitle>
-          {effectiveReceiptUrl && (
+          {hasReceipt && (
             <Badge tone="neutral" className="text-[10px] uppercase font-mono tracking-wider">
-              {effectiveReceiptUrl.startsWith('data:') ? 'Image' : effectiveReceiptUrl.split('.').pop()?.toUpperCase() || 'Attachment'}
+              {receiptKind}
             </Badge>
           )}
         </div>
 
-        {effectiveReceiptUrl && (
+        {effectiveReceiptUrl && !receipt.isPdf && (
           <div className="flex items-center gap-1">
             <button
               type="button"
@@ -188,7 +198,31 @@ export function ReceiptPreviewCard({
       </CardHeader>
 
       <CardBody className="p-0">
-        {effectiveReceiptUrl ? (
+        {hasReceipt && !effectiveReceiptUrl ? (
+          <div
+            data-testid="receipt-loading"
+            className="flex min-h-[240px] items-center justify-center text-sm text-ink-muted"
+          >
+            {receipt.isLoading ? 'Loading receipt…' : 'The receipt could not be loaded.'}
+          </div>
+        ) : effectiveReceiptUrl && receipt.isPdf ? (
+          <div
+            data-testid="receipt-pdf"
+            className="flex min-h-[240px] flex-col items-center justify-center gap-3 p-8 text-center"
+          >
+            <FileText className="size-10 stroke-[1.5] text-ink-subtle" />
+            <p className="text-sm text-ink">PDF receipt</p>
+            <a
+              href={effectiveReceiptUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface-muted"
+            >
+              <ExternalLink className="size-4" />
+              Open PDF
+            </a>
+          </div>
+        ) : effectiveReceiptUrl ? (
           <div
             data-testid="receipt-viewport"
             className="relative flex min-h-[300px] max-h-[480px] w-full items-center justify-center overflow-auto bg-stone-900/5 p-4 scrollbar-thin dark:bg-stone-950/40"
@@ -351,7 +385,7 @@ export function ReceiptPreviewCard({
       </CardBody>
 
       {/* Fullscreen Dialog Modal */}
-      {enableFullscreen && effectiveReceiptUrl && (
+      {enableFullscreen && effectiveReceiptUrl && !receipt.isPdf && (
         <Dialog
           open={isFullscreenOpen}
           onClose={() => setIsFullscreenOpen(false)}

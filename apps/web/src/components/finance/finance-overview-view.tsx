@@ -117,8 +117,8 @@ export function FinanceOverviewView() {
       <SubmitExpenseModal
         open={isSubmitExpenseOpen}
         onClose={() => setIsSubmitExpenseOpen(false)}
-        onSubmit={async (payload) => {
-          await createClaim(payload);
+        onSubmit={async (payload, receipt) => {
+          await createClaim(payload, receipt);
           setIsSubmitExpenseOpen(false);
         }}
       />

@@ -25,10 +25,10 @@ import { Badge } from '@/components/ui/primitives';
 import type {
   CreateExpenseClaimPayload,
   ExpenseItemDto,
-  ScanReceiptPayload,
   ScannedReceiptResult,
 } from '@saas/shared';
 import {
+  BILL_CAPTURE_MAX_BYTES as RECEIPT_SCAN_MAX_BYTES,
   CURRENCY_OPTIONS as SHARED_CURRENCIES,
   EXPENSE_CATEGORIES as SHARED_EXPENSE_CATEGORIES,
   currencyLabel,
@@ -36,12 +36,17 @@ import {
 } from '@saas/shared';
 import { useScanReceipt } from '@/hooks/use-expenses';
 import { useOrganization } from '@/hooks/use-organization';
+import { fileFromDataUrl, receiptScanInput, type ReceiptScanInput } from '@/lib/receipt-scan-input';
 
 export interface SubmitExpenseModalProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (payload: CreateExpenseClaimPayload) => Promise<void> | void;
-  onScanReceipt?: (payload: ScanReceiptPayload) => Promise<ScannedReceiptResult>;
+  /**
+   * `receipt` is the file to store on the claim once it exists. The claim
+   * itself never carries the file, only a link to one already saved.
+   */
+  onSubmit: (payload: CreateExpenseClaimPayload, receipt: File | null) => Promise<unknown> | void;
+  onScanReceipt?: (input: ReceiptScanInput) => Promise<ScannedReceiptResult>;
   initialData?: Partial<CreateExpenseClaimPayload>;
   isLoading?: boolean;
 }
@@ -103,6 +108,8 @@ export function SubmitExpenseModal({
   // Receipt File State
   const [receiptUrl, setReceiptUrl] = useState<string | null>(initialData?.receiptUrl || null);
   const [receiptFileName, setReceiptFileName] = useState<string | null>(null);
+  // The picked file itself, so the scan uploads it rather than its data URL.
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   // OCR Scan State
@@ -128,6 +135,7 @@ export function SubmitExpenseModal({
     setNotes('');
     setReceiptUrl(initialData?.receiptUrl || null);
     setReceiptFileName(null);
+    setReceiptFile(null);
     setIsDragging(false);
     setIsScanning(false);
     setScanResult(null);
@@ -194,6 +202,7 @@ export function SubmitExpenseModal({
   const handleFile = (file: File) => {
     setError(null);
     setReceiptFileName(file.name);
+    setReceiptFile(file);
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -222,7 +231,8 @@ export function SubmitExpenseModal({
 
   const handleLoadSampleReceipt = () => {
     setReceiptUrl(SAMPLE_RECEIPT_IMAGE);
-    setReceiptFileName('sample-enterprise-receipt.png');
+    setReceiptFileName('sample-enterprise-receipt.svg');
+    setReceiptFile(null);
   };
 
   // Trigger AI OCR Scan
@@ -231,25 +241,19 @@ export function SubmitExpenseModal({
       setError('Please upload a receipt file first to scan.');
       return;
     }
+    if (receiptFile && receiptFile.size > RECEIPT_SCAN_MAX_BYTES) {
+      setError('That file is over 20 MB. Upload a smaller scan or a photo of the receipt.');
+      return;
+    }
 
     try {
       setIsScanning(true);
       setError(null);
 
-      let result: ScannedReceiptResult;
-      if (onScanReceipt) {
-        result = await onScanReceipt({
-          base64: receiptUrl,
-          imageUrl: receiptUrl,
-          mimeType: receiptUrl.startsWith('data:image/png') ? 'image/png' : 'image/jpeg',
-        });
-      } else {
-        result = await scanReceiptMutation.mutateAsync({
-          base64: receiptUrl,
-          imageUrl: receiptUrl,
-          mimeType: 'image/jpeg',
-        });
-      }
+      const input = receiptScanInput(receiptUrl, receiptFile);
+      const result: ScannedReceiptResult = onScanReceipt
+        ? await onScanReceipt(input)
+        : await scanReceiptMutation.mutateAsync(input);
 
       setScanResult(result);
 
@@ -300,6 +304,14 @@ export function SubmitExpenseModal({
       return;
     }
 
+    // A receipt that only exists in the page (picked, or the sample) is
+    // uploaded as a file after the claim is created; one already stored is
+    // kept as the link it is.
+    const receipt =
+      receiptFile ??
+      (receiptUrl?.startsWith('data:') ? fileFromDataUrl(receiptUrl, receiptFileName || 'receipt') : null);
+    const keptReceiptUrl = receiptUrl && !receiptUrl.startsWith('data:') ? receiptUrl : null;
+
     const payload: CreateExpenseClaimPayload = {
       employeeName: employeeName.trim() || 'Current User',
       merchantName: merchantName.trim() || null,
@@ -307,7 +319,7 @@ export function SubmitExpenseModal({
       expenseDate,
       currency,
       amount: numericAmount,
-      receiptUrl: receiptUrl || null,
+      receiptUrl: receipt ? null : keptReceiptUrl,
       status,
       items: items
         .filter((it) => it.description.trim() || it.amount > 0)
@@ -315,7 +327,7 @@ export function SubmitExpenseModal({
     };
 
     try {
-      await onSubmit(payload);
+      await onSubmit(payload, receipt);
       handleClose();
     } catch (err: any) {
       setError(err?.message || 'Failed to submit expense claim.');
@@ -418,6 +430,7 @@ export function SubmitExpenseModal({
                     onClick={() => {
                       setReceiptUrl(null);
                       setReceiptFileName(null);
+                      setReceiptFile(null);
                       setScanResult(null);
                     }}
                     aria-label="Remove receipt"

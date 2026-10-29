@@ -156,8 +156,8 @@ export function ExpensesView() {
       <SubmitExpenseModal
         open={isSubmitModalOpen}
         onClose={() => setIsSubmitModalOpen(false)}
-        onSubmit={async (payload) => {
-          await createClaim(payload);
+        onSubmit={async (payload, receipt) => {
+          await createClaim(payload, receipt);
           setIsSubmitModalOpen(false);
         }}
         isLoading={isCreating}
