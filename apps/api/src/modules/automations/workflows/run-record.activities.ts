@@ -1,6 +1,5 @@
 import type { Repository } from 'typeorm';
 import type { TenantContextService } from '@/common/context/tenant-context.service';
-import type { AutomationApproval } from '../entities/automation-approval.entity';
 import type { AutomationExecution } from '../entities/automation-execution.entity';
 import type {
   RecordNodeResultParams,
@@ -15,7 +14,6 @@ const PREVIEW_CHARS = 4096;
 
 export interface RunRecordActivityDeps {
   executions: Repository<AutomationExecution>;
-  approvals: Repository<AutomationApproval>;
   tenantContext: Pick<TenantContextService, 'runWithTenant'>;
 }
 
@@ -44,6 +42,16 @@ export function createRunRecordActivities(deps: RunRecordActivityDeps) {
       const tenantId = p.tenantId;
       if (!tenantId) {
         throw new Error('recordNodeResultActivity requires a tenantId');
+      }
+      if (p.status === 'WAITING' && p.approval && !p.workflowId) {
+        throw new Error(
+          'recordNodeResultActivity requires a workflowId with an approval',
+        );
+      }
+      if (p.status === 'WAITING' && p.approval && !p.workflowId) {
+        throw new Error(
+          'recordNodeResultActivity requires a workflowId with an approval',
+        );
       }
       const result = {
         status: p.status,
@@ -104,10 +112,10 @@ export function createRunRecordActivities(deps: RunRecordActivityDeps) {
 
           await m.query(
             `UPDATE automation_executions
-                SET status = CASE WHEN EXISTS (
+                SET status = (CASE WHEN EXISTS (
                       SELECT 1 FROM automation_approvals
                        WHERE "executionId" = $1 AND "tenantId" = $2 AND status = 'PENDING')
-                    THEN 'WAITING_APPROVAL' ELSE 'RUNNING' END
+                    THEN 'WAITING_APPROVAL' ELSE 'RUNNING' END)::automation_executions_status_enum
               WHERE id = $1 AND "tenantId" = $2
                 AND status IN ('RUNNING', 'WAITING_APPROVAL', 'UNKNOWN')`,
             [p.executionId, tenantId],

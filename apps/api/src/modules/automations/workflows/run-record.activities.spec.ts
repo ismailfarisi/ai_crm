@@ -1,5 +1,4 @@
 import type { Repository } from 'typeorm';
-import type { AutomationApproval } from '../entities/automation-approval.entity';
 import type { AutomationExecution } from '../entities/automation-execution.entity';
 import type { RecordNodeResultParams } from './interfaces';
 import {
@@ -78,7 +77,6 @@ describe('run-record activities', () => {
     };
     activities = createRunRecordActivities({
       executions: { manager } as unknown as Repository<AutomationExecution>,
-      approvals: {} as Repository<AutomationApproval>,
       tenantContext: { runWithTenant },
     });
   });
@@ -112,7 +110,9 @@ describe('run-record activities', () => {
       ...base,
       output: 'x'.repeat(20000),
     });
-    const stored = JSON.parse(find('jsonb_build_object')[0].params[1] as string);
+    const stored = JSON.parse(
+      find('jsonb_build_object')[0].params[1] as string,
+    );
     expect(stored.output.truncated).toBe(true);
   });
 
@@ -146,12 +146,13 @@ describe('run-record activities', () => {
     const inserts = find('INSERT INTO automation_approvals');
     expect(inserts).toHaveLength(2);
     expect(inserts[0].params).toEqual(inserts[1].params);
-    expect(inserts.every((i) => i.sql.includes('ON CONFLICT (id) DO NOTHING')))
-      .toBe(true);
+    expect(
+      inserts.every((i) => i.sql.includes('ON CONFLICT (id) DO NOTHING')),
+    ).toBe(true);
   });
 
   it.each(['SUCCESS', 'FAILED', 'SKIPPED'] as const)(
-    'a %s result closes the node\'s pending approvals (EXPIRED if past due, else CANCELLED)',
+    "a %s result closes the node's pending approvals (EXPIRED if past due, else CANCELLED)",
     async (status) => {
       await activities.recordNodeResultActivity({ ...base, status });
       const [close] = find('CASE WHEN "expiresAt"');
@@ -169,6 +170,17 @@ describe('run-record activities', () => {
     const status = find("THEN 'WAITING_APPROVAL' ELSE 'RUNNING'")[0];
     expect(status.sql).toContain("'UNKNOWN'");
     expect(status.params).toEqual([EXEC, TENANT]);
+  });
+
+  it('refuses an approval without a workflowId', async () => {
+    await expect(
+      activities.recordNodeResultActivity({
+        ...base,
+        workflowId: undefined,
+        status: 'WAITING',
+        approval,
+      }),
+    ).rejects.toThrow('workflowId');
   });
 
   it('refuses a record without a tenant', async () => {
