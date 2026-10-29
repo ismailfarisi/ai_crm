@@ -31,9 +31,8 @@ import { BillingBanner } from './billing-banner';
 
 function pageTitleFor(pathname: string, customObjects?: { slug: string; name: string }[]): string {
   const allItems = [...CORE_ACTION_ITEMS, ...SECONDARY_SECTIONS.flatMap((s) => s.items)];
-  const match = allItems.find(
-    (item) => pathname === item.href || pathname.startsWith(`${item.href}/`),
-  );
+  const matchHref = activeHrefFor(pathname, allItems);
+  const match = allItems.find((item) => item.href === matchHref);
   if (match) return match.label;
   if (customObjects) {
     const customMatch = customObjects.find(
@@ -52,7 +51,9 @@ function pageTitleFor(pathname: string, customObjects?: { slug: string; name: st
 function activeHrefFor(pathname: string, items: NavItem[]): string | null {
   let best: string | null = null;
   for (const item of items) {
-    const matches = pathname === item.href || pathname.startsWith(`${item.href}/`);
+    const matches =
+      pathname === item.href ||
+      (item.href !== '/dashboard' && pathname.startsWith(`${item.href}/`));
     if (matches && (best === null || item.href.length > best.length)) best = item.href;
   }
   return best;

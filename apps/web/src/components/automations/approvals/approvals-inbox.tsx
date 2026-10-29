@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import type { AutomationApprovalDto } from '@saas/shared';
 import { useAutomationApprovals } from '@/hooks/use-automations';
 import { ApprovalDecision } from '@/components/automations/runs/approval-decision';
+import { Button } from '@/components/ui/button';
 import { Card, CardBody, EmptyState, PageHeader, Skeleton } from '@/components/ui/primitives';
 import { formatRelative } from '@/lib/utils';
 
@@ -44,7 +45,7 @@ function ApprovalDetails({ approval }: { approval: AutomationApprovalDto }) {
 }
 
 export function ApprovalsInbox() {
-  const { data, isLoading } = useAutomationApprovals();
+  const { data, isLoading, isError, refetch } = useAutomationApprovals();
   // A decided (or already-decided) item leaves at once, ahead of the refetch.
   const [gone, setGone] = useState<Set<string>>(new Set());
 
@@ -65,6 +66,15 @@ export function ApprovalsInbox() {
       />
       {isLoading ? (
         <Skeleton className="h-32 w-full" />
+      ) : isError ? (
+        <EmptyState
+          title="Couldn't load approvals."
+          action={
+            <Button variant="secondary" onClick={() => refetch()}>
+              Retry
+            </Button>
+          }
+        />
       ) : items.length === 0 ? (
         <EmptyState
           icon={<ShieldCheck className="size-5" />}

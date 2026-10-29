@@ -70,12 +70,20 @@ describe('AppShell navigation', () => {
     state.pathname = '/automations/approvals';
     renderShell();
     expect(current()).toEqual(['/automations/approvals']);
+    expect(screen.getByText('Approvals', { selector: 'span.font-semibold.text-ink' })).toBeTruthy();
   });
 
   it('marks only Automations active on /automations/abc', () => {
     state.pathname = '/automations/abc';
     renderShell();
     expect(current()).toEqual(['/automations']);
+    expect(screen.getByText('Automations', { selector: 'span.font-semibold.text-ink' })).toBeTruthy();
+  });
+
+  it('does not highlight Dashboard on /dashboard subroutes', () => {
+    state.pathname = '/dashboard/reports';
+    renderShell();
+    expect(current()).toEqual([]);
   });
 
   it('hides the Approvals item without automation:approve', () => {

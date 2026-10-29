@@ -103,6 +103,17 @@ describe('ApprovalsInbox', () => {
     expect(await screen.findByText(/the action is dropped/)).toBeTruthy();
   });
 
+  it('shows an error state with retry instead of the empty state', async () => {
+    vi.mocked(api.automations.listApprovals)
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValue([make({})]);
+    renderInbox();
+    expect(await screen.findByText("Couldn't load approvals.")).toBeTruthy();
+    expect(screen.queryByText('Nothing is waiting for approval.')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText('Quote Q-1 accepted')).toBeTruthy();
+  });
+
   it('shows the empty state', async () => {
     vi.mocked(api.automations.listApprovals).mockResolvedValue([]);
     renderInbox();
