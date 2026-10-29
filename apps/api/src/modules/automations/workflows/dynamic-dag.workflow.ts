@@ -6,6 +6,7 @@ import {
   executeChild,
   getExternalWorkflowHandle,
   isCancellation,
+  log,
   patched,
   proxyActivities,
   setHandler,
@@ -188,7 +189,7 @@ export async function dynamicDagWorkflow(
       approval: {
         id: uuid4(),
         kind: 'agent_action',
-        title: node?.data?.label ?? 'AI Agent',
+        title: node?.data?.label || 'AI Agent',
         details: { tool: request.tool, preview: request.preview },
         requestedAt,
         // The agent step waits as long as its own timeout, 3 days by default.
@@ -721,9 +722,18 @@ export async function dynamicDagWorkflow(
           finishedAt: new Date().toISOString(),
         });
       // A cancelled scope refuses new activities, so record outside it.
-      await (cancelled
-        ? CancellationScope.nonCancellable(recordFinished)
-        : recordFinished());
+      try {
+        await (cancelled
+          ? CancellationScope.nonCancellable(recordFinished)
+          : recordFinished());
+      } catch (recordErr) {
+        // The run's own error is what matters: never let a failed record
+        // replace it.
+        log.warn(
+          `Could not record the end of the run: ${failureReason(recordErr)}`,
+          { executionId: input.executionId },
+        );
+      }
     }
     throw err;
   }
