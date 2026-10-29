@@ -3,7 +3,6 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'crypto';
@@ -11,8 +10,13 @@ import { Repository } from 'typeorm';
 import type { ZodError } from 'zod';
 import { WorkflowExecutionAlreadyStartedError } from '@temporalio/client';
 import type {
+  AutomationExecutionDto,
+  AutomationExecutionPageDto,
+  AutomationExecutionStatus,
   AutomationNode,
   CreateAutomationWorkflowPayload,
+  ExecutionStepResultDto,
+  ExecutionTriggerSource,
   UpdateAutomationWorkflowPayload,
 } from '@saas/shared';
 import { automationScheduleSchema, PERMISSIONS } from '@saas/shared';
@@ -22,10 +26,6 @@ import { TemporalService } from '../temporal/temporal.service';
 import { AutomationSchedulesService } from './schedules/automation-schedules.service';
 import { AutomationApprovalsService } from './approvals/automation-approvals.service';
 import { dynamicDagWorkflow } from './workflows/dynamic-dag.workflow';
-import {
-  getExecutionStateQuery,
-  WorkflowExecutionState,
-} from './workflows/interfaces';
 
 export interface TriggerExecutionOptions {
   /** Outbox event id: makes the trigger idempotent per (workflow, event). */
@@ -48,6 +48,51 @@ export interface TriggerExecutionOptions {
    * Every other run (events, webhooks) acts as the workflow's owner.
    */
   testRun?: boolean;
+  /** What started the run; a test run or a `sourceEventId` overrides it. */
+  triggerSource?: ExecutionTriggerSource;
+}
+
+function resolveTriggerSource(
+  options: TriggerExecutionOptions,
+): ExecutionTriggerSource {
+  if (options.testRun) return 'test';
+  if (options.sourceEventId) return 'event';
+  return options.triggerSource ?? 'event';
+}
+
+const DEFAULT_PAGE_SIZE = 25;
+const MAX_PAGE_SIZE = 100;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const EXECUTION_STATUSES: readonly AutomationExecutionStatus[] = [
+  'RUNNING',
+  'WAITING_APPROVAL',
+  'COMPLETED',
+  'FAILED',
+  'CANCELLED',
+  'UNKNOWN',
+];
+
+function encodeCursor(startedAt: Date, id: string): string {
+  return Buffer.from(`${startedAt.toISOString()}|${id}`).toString('base64url');
+}
+
+function decodeCursor(cursor: string): { startedAt: Date; id: string } {
+  const bad = () => new BadRequestException('Invalid cursor');
+  const text = Buffer.from(cursor, 'base64url').toString('utf8');
+  const sep = text.indexOf('|');
+  if (sep < 0) throw bad();
+  const iso = text.slice(0, sep);
+  const id = text.slice(sep + 1);
+  const startedAt = new Date(iso);
+  if (
+    Number.isNaN(startedAt.getTime()) ||
+    startedAt.toISOString() !== iso ||
+    !UUID_RE.test(id)
+  ) {
+    throw bad();
+  }
+  return { startedAt, id };
 }
 
 /** How long an idempotency key is remembered per workflow. */
@@ -336,6 +381,7 @@ export class AutomationsService {
       );
     }
 
+    const triggerSource = resolveTriggerSource(options);
     const ownerUserId =
       options.testRun && actorUserId ? actorUserId : wf.activatedByUserId;
 
@@ -345,6 +391,7 @@ export class AutomationsService {
         wf,
         options.idempotencyKey,
         triggerPayload,
+        triggerSource,
       );
       if (!exec.temporalWorkflowId.startsWith(PENDING_WORKFLOW_ID_PREFIX)) {
         return exec;
@@ -356,6 +403,7 @@ export class AutomationsService {
           workflowId: wf.id,
           temporalWorkflowId: `${PENDING_WORKFLOW_ID_PREFIX}${Date.now()}`,
           status: 'RUNNING',
+          triggerSource,
           triggerPayload,
           nodeResults: {},
         }),
@@ -395,8 +443,13 @@ export class AutomationsService {
       if (!(err instanceof WorkflowExecutionAlreadyStartedError)) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         if (!options.failOnStartError) {
-          this.logger.warn(`Temporal start deferred/failed: ${errorMsg}`);
-          return exec;
+          this.logger.warn(`Temporal start failed: ${errorMsg}`);
+          // The placeholder workflow id stays, so an idempotent retry still
+          // resumes this row.
+          exec.status = 'FAILED';
+          exec.errorMessage = "Couldn't start the run";
+          exec.finishedAt = new Date();
+          return this.executionRepo.save(exec);
         }
         this.logger.warn(
           `Temporal start failed for execution ${exec.id}: ${errorMsg}`,
@@ -429,6 +482,7 @@ export class AutomationsService {
     wf: AutomationWorkflow,
     idempotencyKey: string,
     triggerPayload: Record<string, any>,
+    triggerSource: ExecutionTriggerSource,
   ): Promise<AutomationExecution> {
     const where = { tenantId: wf.tenantId, workflowId: wf.id, idempotencyKey };
 
@@ -450,6 +504,7 @@ export class AutomationsService {
           idempotencyKey,
           temporalWorkflowId: `${PENDING_WORKFLOW_ID_PREFIX}${Date.now()}`,
           status: 'RUNNING',
+          triggerSource,
           triggerPayload,
           nodeResults: {},
         }),
@@ -489,6 +544,7 @@ export class AutomationsService {
             sourceEventId,
             temporalWorkflowId: `${PENDING_WORKFLOW_ID_PREFIX}${Date.now()}`,
             status: 'RUNNING',
+            triggerSource: 'event',
             triggerPayload,
             nodeResults: {},
           }),
@@ -541,24 +597,121 @@ export class AutomationsService {
     return this.executionRepo.save(exec);
   }
 
-  async findExecutionsByWorkflow(
+  async findExecutionsPage(
     tenantId: string,
     workflowId: string,
-  ): Promise<AutomationExecution[]> {
+    q: { limit?: number; cursor?: string; status?: AutomationExecutionStatus },
+  ): Promise<AutomationExecutionPageDto> {
+    if (q.status !== undefined && !EXECUTION_STATUSES.includes(q.status)) {
+      throw new BadRequestException('Invalid status');
+    }
+    const cursor = q.cursor ? decodeCursor(q.cursor) : null;
     await this.findWorkflowById(tenantId, workflowId);
-    return this.executionRepo.find({
-      where: { tenantId, workflowId },
-      order: { startedAt: 'DESC' },
-    });
+    const limit = Math.min(
+      Math.max(Math.trunc(q.limit ?? DEFAULT_PAGE_SIZE), 1),
+      MAX_PAGE_SIZE,
+    );
+
+    // Millisecond precision on both sides: the cursor round-trips through a
+    // JS Date, which would otherwise skip rows that differ by microseconds.
+    const started = `date_trunc('milliseconds', e."startedAt")`;
+    const qb = this.executionRepo
+      .createQueryBuilder('e')
+      .select([
+        'e.id',
+        'e.workflowId',
+        'e.status',
+        'e.triggerSource',
+        'e.startedAt',
+        'e.finishedAt',
+        'e.errorMessage',
+      ])
+      .where('e.tenantId = :tenantId AND e.workflowId = :workflowId', {
+        tenantId,
+        workflowId,
+      });
+    if (q.status) qb.andWhere('e.status = :status', { status: q.status });
+    if (cursor) {
+      qb.andWhere(`(${started}, e.id) < (:cursorAt, :cursorId)`, {
+        cursorAt: cursor.startedAt,
+        cursorId: cursor.id,
+      });
+    }
+    const rows = await qb
+      .orderBy(started, 'DESC')
+      .addOrderBy('e.id', 'DESC')
+      .limit(limit + 1)
+      .getMany();
+
+    const page = rows.slice(0, limit);
+    const last = page[page.length - 1];
+    return {
+      items: page.map((r) => ({
+        id: r.id,
+        workflowId: r.workflowId,
+        status: r.status,
+        triggerSource: r.triggerSource ?? null,
+        startedAt: r.startedAt.toISOString(),
+        finishedAt: r.finishedAt ? r.finishedAt.toISOString() : null,
+        errorMessage: r.errorMessage ?? null,
+      })),
+      nextCursor:
+        rows.length > limit && last
+          ? encodeCursor(last.startedAt, last.id)
+          : null,
+    };
   }
 
+  /**
+   * Straight from the database: the worker writes every step and the final
+   * status there, so a run never depends on Temporal being reachable. Without
+   * `canViewData` the trigger payload and each step's input and output are
+   * withheld.
+   */
   async findExecutionById(
     tenantId: string,
     executionId: string,
-  ): Promise<AutomationExecution> {
+    canViewData: boolean,
+  ): Promise<AutomationExecutionDto> {
     const execution = await this.findExecutionRecord(tenantId, executionId);
-    const state = await this.getLiveExecutionState(execution);
-    return this.withLiveExecutionState(execution, state);
+    const pending = await this.approvals.findPendingForExecution(
+      tenantId,
+      executionId,
+    );
+
+    const steps = (execution.nodeResults || {}) as Record<
+      string,
+      ExecutionStepResultDto
+    >;
+    const nodeResults: Record<string, ExecutionStepResultDto> = {};
+    for (const [nodeId, step] of Object.entries(steps)) {
+      if (canViewData) {
+        nodeResults[nodeId] = step;
+      } else {
+        const { input: _input, output: _output, ...rest } = step;
+        nodeResults[nodeId] = rest;
+      }
+    }
+
+    return {
+      id: execution.id,
+      tenantId: execution.tenantId,
+      workflowId: execution.workflowId,
+      temporalWorkflowId: execution.temporalWorkflowId,
+      status: execution.status,
+      triggerSource: execution.triggerSource ?? null,
+      triggerPayload: canViewData ? execution.triggerPayload : {},
+      nodeResults,
+      dataHidden: !canViewData,
+      pendingApprovals: canViewData
+        ? pending
+        : pending.map((a) => ({ ...a, details: {} })),
+      startedAt: execution.startedAt.toISOString(),
+      finishedAt: execution.finishedAt
+        ? execution.finishedAt.toISOString()
+        : null,
+      errorMessage: execution.errorMessage ?? null,
+    };
   }
 
   /**
@@ -604,38 +757,5 @@ export class AutomationsService {
       throw new NotFoundException(`Execution ${executionId} not found`);
     }
     return execution;
-  }
-
-  private async getLiveExecutionState(
-    execution: AutomationExecution,
-  ): Promise<WorkflowExecutionState> {
-    try {
-      const client = await this.temporalService.getClient();
-      const handle = client.workflow.getHandle(execution.temporalWorkflowId);
-      return await handle.query(getExecutionStateQuery);
-    } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(
-        `Temporal state query failed for execution ${execution.id}: ${errorMsg}`,
-      );
-      throw new ServiceUnavailableException(
-        'Unable to retrieve live automation execution state',
-      );
-    }
-  }
-
-  private withLiveExecutionState(
-    execution: AutomationExecution,
-    state: WorkflowExecutionState,
-  ): AutomationExecution {
-    return {
-      ...execution,
-      status: state.status,
-      nodeResults: state.nodeResults,
-      finishedAt: state.finishedAt
-        ? new Date(state.finishedAt)
-        : execution.finishedAt,
-      errorMessage: state.errorMessage ?? execution.errorMessage,
-    };
   }
 }

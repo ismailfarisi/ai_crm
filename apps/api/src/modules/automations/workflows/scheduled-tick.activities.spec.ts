@@ -130,7 +130,11 @@ describe('startScheduledRunActivity', () => {
       'wf-1',
       { scheduledAt: SCHEDULED_AT, timezone: 'Asia/Dubai' },
       undefined,
-      { failOnStartError: true, idempotencyKey: `schedule:${SCHEDULED_AT}` },
+      {
+        failOnStartError: true,
+        triggerSource: 'schedule',
+        idempotencyKey: `schedule:${SCHEDULED_AT}`,
+      },
     );
   });
 

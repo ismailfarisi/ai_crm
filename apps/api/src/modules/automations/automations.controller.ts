@@ -9,15 +9,25 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { PERMISSIONS } from '@saas/shared';
+import {
+  PERMISSIONS,
+  type AutomationExecutionDto,
+  type AutomationExecutionPageDto,
+} from '@saas/shared';
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
+import { zodQuery } from '@/common/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { AutomationsService, redactForReader } from './automations.service';
 import { AiService } from '../ai/ai.service';
 import { CreateAutomationDto } from './dto/create-automation.dto';
 import { UpdateAutomationDto } from './dto/update-automation.dto';
+import {
+  listExecutionsQuerySchema,
+  type ListExecutionsQuery,
+} from './dto/list-executions-query.dto';
 import { SignalExecutionDto } from './dto/signal-execution.dto';
 import { AutomationWorkflow } from './entities/automation-workflow.entity';
 import { AutomationExecution } from './entities/automation-execution.entity';
@@ -85,10 +95,13 @@ export class AutomationsController {
   async findExecutionById(
     @CurrentUser() user: AuthenticatedUser,
     @Param('executionId', ParseUUIDPipe) executionId: string,
-  ): Promise<AutomationExecution> {
+  ): Promise<AutomationExecutionDto> {
+    // Payloads and step data can hold customer details: only people who can
+    // edit automations see them.
     return this.automationsService.findExecutionById(
       user.organizationId,
       executionId,
+      user.permissions.includes(PERMISSIONS.AUTOMATION_UPDATE),
     );
   }
 
@@ -204,15 +217,17 @@ export class AutomationsController {
   @RequirePermissions(PERMISSIONS.AUTOMATION_READ)
   @ApiOperation({
     summary: 'List workflow executions',
-    description: 'List execution history for a workflow',
+    description: 'One page of a workflow run history, newest first',
   })
   async findExecutions(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<AutomationExecution[]> {
-    return this.automationsService.findExecutionsByWorkflow(
+    @Query(zodQuery(listExecutionsQuerySchema)) query: ListExecutionsQuery,
+  ): Promise<AutomationExecutionPageDto> {
+    return this.automationsService.findExecutionsPage(
       user.organizationId,
       id,
+      query,
     );
   }
 }

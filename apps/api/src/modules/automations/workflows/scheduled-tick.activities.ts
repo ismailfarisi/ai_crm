@@ -133,6 +133,7 @@ export function createScheduledTickActivities(deps: ScheduledTickActivityDeps) {
               undefined,
               {
                 failOnStartError: true,
+                triggerSource: 'schedule',
                 // One run per slot: a redelivered or retried tick finds the
                 // execution the first one recorded (and resumes it if its
                 // start failed). Webhooks use a `webhook:` prefix.

@@ -122,6 +122,7 @@ export class AutomationWebhookService {
           undefined,
           {
             failOnStartError: true,
+            triggerSource: 'webhook',
             ...(idempotencyKey
               ? { idempotencyKey: `webhook:${idempotencyKey}` }
               : {}),

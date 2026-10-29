@@ -71,7 +71,7 @@ describe('AutomationsController', () => {
       updateWorkflow: jest.fn().mockResolvedValue(mockWorkflow),
       deleteWorkflow: jest.fn().mockResolvedValue(undefined),
       triggerExecution: jest.fn().mockResolvedValue(mockExecution),
-      findExecutionsByWorkflow: jest.fn().mockResolvedValue([mockExecution]),
+      findExecutionsPage: jest.fn().mockResolvedValue({ items: [], nextCursor: null }),
       findExecutionById: jest.fn().mockResolvedValue(mockExecution),
       signalExecution: jest.fn().mockResolvedValue(mockExecution),
     };
@@ -217,23 +217,39 @@ describe('AutomationsController', () => {
   });
 
   describe('findExecutions', () => {
-    it('returns executions for a workflow', async () => {
-      const result = await controller.findExecutions(mockUser, 'wf-123');
-      expect(result).toEqual([mockExecution]);
-      expect(service.findExecutionsByWorkflow).toHaveBeenCalledWith(
+    it('returns one page of runs for a workflow', async () => {
+      const query = { limit: 10, status: 'FAILED' as const };
+      const result = await controller.findExecutions(mockUser, 'wf-123', query);
+      expect(result).toEqual({ items: [], nextCursor: null });
+      expect(service.findExecutionsPage).toHaveBeenCalledWith(
         mockUser.organizationId,
         'wf-123',
+        query,
       );
     });
   });
 
   describe('findExecutionById', () => {
-    it('returns a single execution record', async () => {
-      const result = await controller.findExecutionById(mockUser, 'exec-123');
-      expect(result).toEqual(mockExecution);
+    it('shows run data to a user who can update automations', async () => {
+      const user = {
+        ...mockUser,
+        permissions: [PERMISSIONS.AUTOMATION_READ, PERMISSIONS.AUTOMATION_UPDATE],
+      };
+      await controller.findExecutionById(user, 'exec-123');
       expect(service.findExecutionById).toHaveBeenCalledWith(
         mockUser.organizationId,
         'exec-123',
+        true,
+      );
+    });
+
+    it('hides run data from a user who can only read', async () => {
+      const user = { ...mockUser, permissions: [PERMISSIONS.AUTOMATION_READ] };
+      await controller.findExecutionById(user, 'exec-123');
+      expect(service.findExecutionById).toHaveBeenCalledWith(
+        mockUser.organizationId,
+        'exec-123',
+        false,
       );
     });
   });

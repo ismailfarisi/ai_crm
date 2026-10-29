@@ -16,7 +16,6 @@ import { AutomationExecution } from './entities/automation-execution.entity';
 import { TemporalService } from '../temporal/temporal.service';
 import { AutomationSchedulesService } from './schedules/automation-schedules.service';
 import { AutomationApprovalsService } from './approvals/automation-approvals.service';
-import { getExecutionStateQuery } from './workflows/interfaces';
 
 describe('AutomationsService', () => {
   let service: AutomationsService;
@@ -25,7 +24,7 @@ describe('AutomationsService', () => {
   let temporalService: any;
   let mockTemporalClient: any;
   let mockWorkflowHandle: any;
-  let approvals: { decideByNode: jest.Mock };
+  let approvals: { decideByNode: jest.Mock; findPendingForExecution: jest.Mock };
 
   const mockTenantId = 'tenant-uuid-1';
   const mockWorkflow: AutomationWorkflow = {
@@ -71,6 +70,7 @@ describe('AutomationsService', () => {
   beforeEach(async () => {
     approvals = {
       decideByNode: jest.fn().mockResolvedValue({ id: 'appr-1' }),
+      findPendingForExecution: jest.fn().mockResolvedValue([]),
     };
     mockWorkflowHandle = {
       signal: jest.fn().mockResolvedValue(undefined),
@@ -953,79 +953,295 @@ describe('AutomationsService', () => {
     });
   });
 
-  describe('findExecutionsByWorkflow', () => {
-    it('returns executions list for workflow', async () => {
-      const execs = await service.findExecutionsByWorkflow(
+  describe('findExecutionsPage', () => {
+    const idFor = (n: number) =>
+      `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+    const rowAt = (n: number) => ({
+      id: idFor(n),
+      workflowId: 'wf-uuid-1',
+      status: 'COMPLETED',
+      triggerSource: n % 2 ? 'webhook' : null,
+      startedAt: new Date(Date.UTC(2026, 9, 1, 12, 0, 0) - n * 1000),
+      finishedAt: null,
+      errorMessage: null,
+    });
+    let qb: any;
+
+    beforeEach(() => {
+      qb = {
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([]),
+      };
+      executionRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+    });
+
+    it('returns 25 by default, with a cursor to the rest', async () => {
+      qb.getMany.mockResolvedValueOnce(
+        Array.from({ length: 26 }, (_, i) => rowAt(i)),
+      );
+      const first = await service.findExecutionsPage(
         mockTenantId,
         'wf-uuid-1',
+        {},
       );
-      expect(execs).toEqual([mockExecution]);
-      expect(executionRepo.find).toHaveBeenCalledWith({
-        where: { tenantId: mockTenantId, workflowId: 'wf-uuid-1' },
-        order: { startedAt: 'DESC' },
+      expect(qb.limit).toHaveBeenCalledWith(26);
+      expect(first.items).toHaveLength(25);
+      expect(first.nextCursor).toBe(
+        Buffer.from(`${rowAt(24).startedAt.toISOString()}|${idFor(24)}`).toString(
+          'base64url',
+        ),
+      );
+      expect(qb.andWhere).not.toHaveBeenCalled();
+
+      qb.getMany.mockResolvedValueOnce([rowAt(25)]);
+      const second = await service.findExecutionsPage(
+        mockTenantId,
+        'wf-uuid-1',
+        { cursor: first.nextCursor! },
+      );
+      expect(second.items.map((i) => i.id)).toEqual([idFor(25)]);
+      expect(second.nextCursor).toBeNull();
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('<'),
+        {
+          cursorAt: rowAt(24).startedAt,
+          cursorId: idFor(24),
+        },
+      );
+    });
+
+    it('orders newest first and caps the page size at 100', async () => {
+      await service.findExecutionsPage(mockTenantId, 'wf-uuid-1', {
+        limit: 5000,
+      });
+      expect(qb.limit).toHaveBeenCalledWith(101);
+      expect(qb.orderBy).toHaveBeenCalledWith(
+        expect.stringContaining('startedAt'),
+        'DESC',
+      );
+      expect(qb.addOrderBy).toHaveBeenCalledWith('e.id', 'DESC');
+    });
+
+    it('filters by status', async () => {
+      await service.findExecutionsPage(mockTenantId, 'wf-uuid-1', {
+        status: 'FAILED',
+      });
+      expect(qb.andWhere).toHaveBeenCalledWith('e.status = :status', {
+        status: 'FAILED',
       });
     });
 
-    it('throws NotFoundException if workflow does not exist', async () => {
+    it('lists summaries only: no step results and no trigger payload', async () => {
+      qb.getMany.mockResolvedValueOnce([rowAt(1)]);
+      const page = await service.findExecutionsPage(
+        mockTenantId,
+        'wf-uuid-1',
+        {},
+      );
+      expect(page.items[0]).not.toHaveProperty('nodeResults');
+      expect(page.items[0]).not.toHaveProperty('triggerPayload');
+      expect(page.items[0]).toMatchObject({
+        id: idFor(1),
+        triggerSource: 'webhook',
+        startedAt: rowAt(1).startedAt.toISOString(),
+      });
+      const selected: string[] = qb.select.mock.calls[0][0];
+      expect(selected).not.toContain('e.nodeResults');
+      expect(selected).not.toContain('e.triggerPayload');
+    });
+
+    it.each(['not-base64-of-anything', Buffer.from('2026|x').toString('base64url')])(
+      'rejects a malformed cursor (%s) with 400',
+      async (cursor) => {
+        await expect(
+          service.findExecutionsPage(mockTenantId, 'wf-uuid-1', { cursor }),
+        ).rejects.toThrow(BadRequestException);
+      },
+    );
+
+    it('rejects an unknown status with 400', async () => {
+      await expect(
+        service.findExecutionsPage(mockTenantId, 'wf-uuid-1', {
+          status: 'BOGUS' as any,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws NotFoundException if the workflow does not exist', async () => {
       workflowRepo.findOne.mockResolvedValueOnce(null);
       await expect(
-        service.findExecutionsByWorkflow(mockTenantId, 'wf-unknown'),
+        service.findExecutionsPage(mockTenantId, 'wf-unknown', {}),
       ).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('findExecutionById', () => {
-    it('returns execution when found', async () => {
+    const pendingApproval = {
+      id: 'appr-1',
+      executionId: 'exec-uuid-1',
+      status: 'PENDING',
+      details: { tool: 'quote.create', preview: { total: 100 } },
+    };
+    const recorded = {
+      ...mockExecution,
+      status: 'WAITING_APPROVAL' as const,
+      triggerSource: 'webhook' as const,
+      triggerPayload: { email: 'a@b.com' },
+      nodeResults: {
+        n1: {
+          status: 'SUCCESS',
+          label: 'Send email',
+          type: 'sendEmail',
+          input: { to: 'a@b.com' },
+          output: { id: 'm1' },
+          startedAt: '2026-10-08T12:00:00.000Z',
+          durationMs: 5,
+        },
+        n2: {
+          status: 'FAILED',
+          error: 'boom',
+          input: { x: 1 },
+          startedAt: '2026-10-08T12:00:01.000Z',
+        },
+      },
+    };
+
+    beforeEach(() => {
+      executionRepo.findOne.mockResolvedValue(recorded);
+      approvals.findPendingForExecution.mockResolvedValue([pendingApproval]);
+    });
+
+    it('reads the database only, never Temporal, and adds pending approvals', async () => {
       const result = await service.findExecutionById(
         mockTenantId,
         'exec-uuid-1',
+        true,
       );
-      expect(result).toEqual(mockExecution);
+      expect(temporalService.getClient).not.toHaveBeenCalled();
+      expect(mockTemporalClient.workflow.getHandle).not.toHaveBeenCalled();
       expect(executionRepo.findOne).toHaveBeenCalledWith({
         where: { id: 'exec-uuid-1', tenantId: mockTenantId },
       });
-    });
-
-    it('returns live Temporal node results, including pending approval details', async () => {
-      const liveState = {
-        status: 'WAITING_APPROVAL' as const,
-        nodeResults: {
-          'agent-node': {
-            status: 'WAITING' as const,
-            startedAt: '2026-10-08T12:00:00.000Z',
-            output: {
-              pendingAction: {
-                tool: 'quote.create',
-                preview: { summary: 'Create quote QT-1' },
-              },
-            },
-          },
-        },
-        pendingApprovals: {},
-        finishedAt: null,
-        errorMessage: null,
-      };
-      mockWorkflowHandle.query.mockResolvedValueOnce(liveState);
-
-      const result = await service.findExecutionById(
+      expect(approvals.findPendingForExecution).toHaveBeenCalledWith(
         mockTenantId,
         'exec-uuid-1',
       );
+      expect(result).toMatchObject({
+        id: 'exec-uuid-1',
+        status: 'WAITING_APPROVAL',
+        triggerSource: 'webhook',
+        triggerPayload: { email: 'a@b.com' },
+        dataHidden: false,
+        pendingApprovals: [pendingApproval],
+      });
+      expect(result.nodeResults.n1).toEqual(recorded.nodeResults.n1);
+      expect(typeof result.startedAt).toBe('string');
+    });
 
-      expect(mockWorkflowHandle.query).toHaveBeenCalledWith(
-        getExecutionStateQuery,
+    it('without data access strips payload, step input/output and approval details', async () => {
+      const result = await service.findExecutionById(
+        mockTenantId,
+        'exec-uuid-1',
+        false,
       );
-      expect(result.status).toBe('WAITING_APPROVAL');
-      expect(result.nodeResults['agent-node'].output.pendingAction).toEqual(
-        liveState.nodeResults['agent-node'].output.pendingAction,
-      );
+      expect(result.dataHidden).toBe(true);
+      expect(result.triggerPayload).toEqual({});
+      expect(result.nodeResults.n1).not.toHaveProperty('input');
+      expect(result.nodeResults.n1).not.toHaveProperty('output');
+      expect(result.nodeResults.n1).toMatchObject({
+        status: 'SUCCESS',
+        label: 'Send email',
+        durationMs: 5,
+      });
+      expect(result.nodeResults.n2).toMatchObject({
+        status: 'FAILED',
+        error: 'boom',
+      });
+      expect(result.nodeResults.n2).not.toHaveProperty('input');
+      expect(result.pendingApprovals).toEqual([
+        { ...pendingApproval, details: {} },
+      ]);
+      // The stored record is untouched.
+      expect(recorded.nodeResults.n1.input).toEqual({ to: 'a@b.com' });
     });
 
     it('throws NotFoundException when execution does not exist', async () => {
       executionRepo.findOne.mockResolvedValueOnce(null);
       await expect(
-        service.findExecutionById(mockTenantId, 'exec-missing'),
+        service.findExecutionById(mockTenantId, 'exec-missing', true),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('run source', () => {
+    it.each([
+      ['webhook option', { triggerSource: 'webhook' as const }, 'webhook'],
+      ['schedule option', { triggerSource: 'schedule' as const }, 'schedule'],
+      ['test run', { testRun: true, triggerSource: 'webhook' as const }, 'test'],
+      ['no option', {}, 'event'],
+    ])('a keyless run from %s is recorded as %s', async (_n, options, want) => {
+      await service.triggerExecution(
+        mockTenantId,
+        'wf-uuid-1',
+        {},
+        'user-1',
+        options,
+      );
+      expect(executionRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ triggerSource: want }),
+      );
+    });
+
+    it('a keyed run records its source', async () => {
+      executionRepo.findOne.mockResolvedValueOnce(null);
+      await service.triggerExecution(mockTenantId, 'wf-uuid-1', {}, undefined, {
+        idempotencyKey: 'schedule:t1',
+        triggerSource: 'schedule',
+      });
+      expect(executionRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          idempotencyKey: 'schedule:t1',
+          triggerSource: 'schedule',
+        }),
+      );
+    });
+
+    it('a sourceEventId run is recorded as event, whatever the option says', async () => {
+      executionRepo.findOne.mockResolvedValueOnce(null);
+      await service.triggerExecution(mockTenantId, 'wf-uuid-1', {}, undefined, {
+        sourceEventId: '7d1f0b2a-4c1e-4f7a-9a51-2f6f3c1d9e01',
+        triggerSource: 'webhook',
+      });
+      expect(executionRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ triggerSource: 'event' }),
+      );
+    });
+
+    it('without failOnStartError a failed start leaves the row FAILED', async () => {
+      mockTemporalClient.workflow.start.mockRejectedValueOnce(
+        new Error('Temporal offline'),
+      );
+      executionRepo.save.mockClear();
+
+      const exec = await service.triggerExecution(
+        mockTenantId,
+        'wf-uuid-1',
+        {},
+      );
+
+      expect(exec).toMatchObject({
+        status: 'FAILED',
+        errorMessage: "Couldn't start the run",
+      });
+      expect(exec.finishedAt).toBeInstanceOf(Date);
+      const saved = executionRepo.save.mock.calls.at(-1)[0];
+      expect(saved).toMatchObject({ status: 'FAILED' });
+      expect(saved.temporalWorkflowId).toMatch(/^exec-/);
     });
   });
 

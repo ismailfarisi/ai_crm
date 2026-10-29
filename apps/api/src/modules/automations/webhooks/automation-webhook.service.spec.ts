@@ -202,7 +202,10 @@ describe('AutomationWebhookService', () => {
       expect(tenantId).toBe(TENANT);
       expect(workflowId).toBe('wf-1');
       expect(actor).toBeUndefined();
-      expect(options).toEqual({ failOnStartError: true });
+      expect(options).toEqual({
+        failOnStartError: true,
+        triggerSource: 'webhook',
+      });
       expect(Object.keys(trigger).sort()).toEqual([
         'contentType',
         'payload',
@@ -333,6 +336,7 @@ describe('AutomationWebhookService', () => {
       });
       expect(automations.triggerExecution.mock.calls[0][4]).toEqual({
         failOnStartError: true,
+        triggerSource: 'webhook',
         idempotencyKey: `webhook:${'k'.repeat(200)}`,
       });
 
