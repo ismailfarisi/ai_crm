@@ -19,7 +19,11 @@ import type {
   ExecutionTriggerSource,
   UpdateAutomationWorkflowPayload,
 } from '@saas/shared';
-import { automationScheduleSchema, PERMISSIONS } from '@saas/shared';
+import {
+  AUTOMATION_EXECUTION_STATUSES,
+  automationScheduleSchema,
+  PERMISSIONS,
+} from '@saas/shared';
 import { AutomationWorkflow } from './entities/automation-workflow.entity';
 import { AutomationExecution } from './entities/automation-execution.entity';
 import { TemporalService } from '../temporal/temporal.service';
@@ -64,14 +68,6 @@ const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const EXECUTION_STATUSES: readonly AutomationExecutionStatus[] = [
-  'RUNNING',
-  'WAITING_APPROVAL',
-  'COMPLETED',
-  'FAILED',
-  'CANCELLED',
-  'UNKNOWN',
-];
 
 function encodeCursor(startedAt: Date, id: string): string {
   return Buffer.from(`${startedAt.toISOString()}|${id}`).toString('base64url');
@@ -457,7 +453,7 @@ export class AutomationsService {
         // The placeholder workflow id stays: a retry with the same
         // idempotency key finds this row and starts it.
         exec.status = 'FAILED';
-        exec.errorMessage = `The run could not start: ${errorMsg}`;
+        exec.errorMessage = "Couldn't start the run";
         exec.finishedAt = new Date();
         await this.executionRepo.save(exec);
         throw err;
@@ -602,13 +598,16 @@ export class AutomationsService {
     workflowId: string,
     q: { limit?: number; cursor?: string; status?: AutomationExecutionStatus },
   ): Promise<AutomationExecutionPageDto> {
-    if (q.status !== undefined && !EXECUTION_STATUSES.includes(q.status)) {
+    if (q.status !== undefined && !(AUTOMATION_EXECUTION_STATUSES as readonly string[]).includes(q.status)) {
       throw new BadRequestException('Invalid status');
     }
     const cursor = q.cursor ? decodeCursor(q.cursor) : null;
     await this.findWorkflowById(tenantId, workflowId);
     const limit = Math.min(
-      Math.max(Math.trunc(q.limit ?? DEFAULT_PAGE_SIZE), 1),
+      Math.max(
+        Math.trunc(Number.isFinite(q.limit) ? (q.limit as number) : DEFAULT_PAGE_SIZE),
+        1,
+      ),
       MAX_PAGE_SIZE,
     );
 
@@ -688,8 +687,15 @@ export class AutomationsService {
       if (canViewData) {
         nodeResults[nodeId] = step;
       } else {
-        const { input: _input, output: _output, ...rest } = step;
-        nodeResults[nodeId] = rest;
+        nodeResults[nodeId] = {
+          status: step.status,
+          label: step.label,
+          type: step.type,
+          error: step.error,
+          startedAt: step.startedAt,
+          finishedAt: step.finishedAt,
+          durationMs: step.durationMs,
+        };
       }
     }
 
@@ -727,8 +733,8 @@ export class AutomationsService {
       reason?: string;
       comment?: string;
     },
-    user: { id: string },
-  ): Promise<AutomationExecution> {
+    user: { id: string; permissions?: readonly string[] },
+  ): Promise<AutomationExecutionDto> {
     const comment =
       payload.action === 'REJECT'
         ? (payload.reason ?? payload.comment)
@@ -743,7 +749,12 @@ export class AutomationsService {
         ...(comment !== undefined ? { comment } : {}),
       },
     );
-    return this.findExecutionRecord(tenantId, executionId);
+    // Same view as the detail route: approvers need not be able to see data.
+    return this.findExecutionById(
+      tenantId,
+      executionId,
+      user.permissions?.includes(PERMISSIONS.AUTOMATION_UPDATE) ?? false,
+    );
   }
 
   private async findExecutionRecord(

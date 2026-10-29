@@ -11,6 +11,7 @@ import {
   generateWebhookToken,
   redactForReader,
 } from './automations.service';
+import { PERMISSIONS } from '@saas/shared';
 import { AutomationWorkflow } from './entities/automation-workflow.entity';
 import { AutomationExecution } from './entities/automation-execution.entity';
 import { TemporalService } from '../temporal/temporal.service';
@@ -779,7 +780,7 @@ describe('AutomationsService', () => {
       expect(last).toMatchObject({
         id: 'exec-uuid-1',
         status: 'FAILED',
-        errorMessage: expect.stringContaining('could not start'),
+        errorMessage: "Couldn't start the run",
       });
       expect(last.finishedAt).toBeInstanceOf(Date);
       expect(last.temporalWorkflowId).toMatch(/^exec-/);
@@ -846,7 +847,7 @@ describe('AutomationsService', () => {
         idempotencyKey: key,
         temporalWorkflowId: 'exec-1700000000000',
         status: 'FAILED' as const,
-        errorMessage: 'The run could not start: Temporal offline',
+        errorMessage: "Couldn't start the run",
         finishedAt: new Date(),
         triggerPayload: { first: true },
         startedAt: new Date(),
@@ -1064,6 +1065,13 @@ describe('AutomationsService', () => {
       },
     );
 
+    it('falls back to the default page size for a non-finite limit', async () => {
+      await service.findExecutionsPage(mockTenantId, 'wf-uuid-1', {
+        limit: Number.NaN,
+      });
+      expect(qb.limit).toHaveBeenCalledWith(26);
+    });
+
     it('rejects an unknown status with 400', async () => {
       await expect(
         service.findExecutionsPage(mockTenantId, 'wf-uuid-1', {
@@ -1248,6 +1256,38 @@ describe('AutomationsService', () => {
   describe('signalExecution', () => {
     const user = { id: 'user-ana' };
 
+    it('returns the run with data only to a user who can update automations', async () => {
+      executionRepo.findOne.mockResolvedValueOnce({
+        ...mockExecution,
+        triggerPayload: { secret: 1 },
+        nodeResults: {
+          n1: { status: 'SUCCESS', input: { a: 1 }, output: { b: 2 }, startedAt: 's' },
+        },
+      });
+      const hidden = await service.signalExecution(
+        mockTenantId,
+        'exec-uuid-1',
+        { action: 'APPROVE', nodeId: 'n1' },
+        { id: 'u', permissions: ['automation:approve'] },
+      );
+      expect(hidden.dataHidden).toBe(true);
+      expect(hidden.triggerPayload).toEqual({});
+      expect(hidden.nodeResults.n1).not.toHaveProperty('input');
+
+      executionRepo.findOne.mockResolvedValueOnce({
+        ...mockExecution,
+        triggerPayload: { secret: 1 },
+      });
+      const shown = await service.signalExecution(
+        mockTenantId,
+        'exec-uuid-1',
+        { action: 'APPROVE', nodeId: 'n1' },
+        { id: 'u', permissions: [PERMISSIONS.AUTOMATION_UPDATE] },
+      );
+      expect(shown.dataHidden).toBe(false);
+      expect(shown.triggerPayload).toEqual({ secret: 1 });
+    });
+
     it('decides through the approvals claim, as the user, and returns the run', async () => {
       const result = await service.signalExecution(
         mockTenantId,
@@ -1267,7 +1307,7 @@ describe('AutomationsService', () => {
         user,
         { action: 'APPROVE', comment: 'Approved by manager' },
       );
-      expect(result).toEqual(mockExecution);
+      expect(result).toMatchObject({ id: 'exec-uuid-1', dataHidden: true });
       expect(executionRepo.findOne).toHaveBeenCalledWith({
         where: { id: 'exec-uuid-1', tenantId: mockTenantId },
       });

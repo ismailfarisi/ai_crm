@@ -115,7 +115,7 @@ export class AutomationsController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('executionId', ParseUUIDPipe) executionId: string,
     @Body() dto: SignalExecutionDto,
-  ): Promise<AutomationExecution> {
+  ): Promise<AutomationExecutionDto> {
     return this.automationsService.signalExecution(
       user.organizationId,
       executionId,

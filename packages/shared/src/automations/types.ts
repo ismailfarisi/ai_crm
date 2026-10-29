@@ -68,14 +68,18 @@ export interface AutomationWorkflowDto {
   updatedAt: string;
 }
 
+/** `UNKNOWN` is a run whose record predates step history. */
+export const AUTOMATION_EXECUTION_STATUSES = [
+  'RUNNING',
+  'WAITING_APPROVAL',
+  'COMPLETED',
+  'FAILED',
+  'CANCELLED',
+  'UNKNOWN',
+] as const;
+
 export type AutomationExecutionStatus =
-  | 'RUNNING'
-  | 'WAITING_APPROVAL'
-  | 'COMPLETED'
-  | 'FAILED'
-  | 'CANCELLED'
-  /** A run whose record predates step history, so its outcome is not known. */
-  | 'UNKNOWN';
+  (typeof AUTOMATION_EXECUTION_STATUSES)[number];
 
 export type ExecutionTriggerSource = 'event' | 'webhook' | 'schedule' | 'test';
 
