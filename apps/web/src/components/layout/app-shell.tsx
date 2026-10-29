@@ -18,7 +18,8 @@ import {
 import { PERMISSIONS } from '@saas/shared';
 import { useSession } from '@/lib/session-context';
 import { cn, initials } from '@/lib/utils';
-import { CORE_ACTION_ITEMS, SECONDARY_SECTIONS } from '@/lib/nav';
+import { CORE_ACTION_ITEMS, SECONDARY_SECTIONS, type NavItem } from '@/lib/nav';
+import { useAutomationApprovalCount } from '@/hooks/use-automations';
 import { useCustomObjects } from '@/hooks/use-custom-objects';
 import { Button } from '@/components/ui/button';
 import { AssistantProvider } from '@/components/assistant/assistant-provider';
@@ -43,6 +44,38 @@ function pageTitleFor(pathname: string, customObjects?: { slug: string; name: st
   return 'Dashboard';
 }
 
+/**
+ * The one visible item the pathname belongs to: an exact match or a path
+ * prefix, and the longest href wins, so /automations/approvals does not also
+ * light up /automations.
+ */
+function activeHrefFor(pathname: string, items: NavItem[]): string | null {
+  let best: string | null = null;
+  for (const item of items) {
+    const matches = pathname === item.href || pathname.startsWith(`${item.href}/`);
+    if (matches && (best === null || item.href.length > best.length)) best = item.href;
+  }
+  return best;
+}
+
+function NavBadge({ kind }: { kind: NonNullable<NavItem['badge']> }) {
+  const { can } = useSession();
+  const canApprove = can(PERMISSIONS.AUTOMATION_APPROVE);
+  const { data } = useAutomationApprovalCount({
+    enabled: kind === 'automationApprovals' && canApprove,
+  });
+  const count = canApprove ? (data?.count ?? 0) : 0;
+  if (count <= 0) return null;
+  return (
+    <span
+      data-testid={`nav-badge-${kind}`}
+      className="ml-auto rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-semibold leading-none text-ink-inverted"
+    >
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const { session, check, logout } = useSession();
   const pathname = usePathname();
@@ -65,6 +98,11 @@ export function AppShell({ children }: { children: ReactNode }) {
     items: section.items.filter((item) => check(item.rule ?? {})),
   })).filter((section) => section.items.length > 0);
 
+  const activeHref = activeHrefFor(pathname, [
+    ...visibleCoreItems,
+    ...visibleSecondarySections.flatMap((section) => section.items),
+  ]);
+
   const { data: customObjects = [] } = useCustomObjects();
   const activeCustomObjects = customObjects.filter((obj) => !obj.isArchived);
 
@@ -73,10 +111,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* 2-Column Core Action Tile Grid */}
       <div className="grid grid-cols-2 gap-2.5">
         {visibleCoreItems.map((item) => {
-          const active =
-            item.href === '/dashboard'
-              ? pathname === '/dashboard'
-              : pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const active = item.href === activeHref;
           const Icon = item.icon;
 
           return (
@@ -100,11 +135,12 @@ export function AppShell({ children }: { children: ReactNode }) {
               />
               <span
                 className={cn(
-                  'text-xs font-semibold tracking-tight',
+                  'flex w-full items-center text-xs font-semibold tracking-tight',
                   active ? 'text-white' : 'text-ink-muted group-hover:text-ink',
                 )}
               >
                 {item.label}
+                {item.badge && <NavBadge kind={item.badge} />}
               </span>
             </Link>
           );
@@ -191,7 +227,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 {isOpen && (
                   <ul className="space-y-0.5">
                     {section.items.map((item) => {
-                      const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                      const active = item.href === activeHref;
                       const Icon = item.icon;
 
                       return (
@@ -214,6 +250,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                               )}
                             />
                             <span className="truncate">{item.label}</span>
+                            {item.badge && <NavBadge kind={item.badge} />}
                           </Link>
                         </li>
                       );

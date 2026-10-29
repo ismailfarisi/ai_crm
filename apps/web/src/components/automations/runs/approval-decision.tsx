@@ -13,7 +13,8 @@ import { formatRelative } from '@/lib/utils';
 
 export interface ApprovalDecisionProps {
   approval: AutomationApprovalDto;
-  onDecided?: () => void;
+  /** `conflict` carries the "Already approved by…" text when the decision lost a race (409). */
+  onDecided?: (result: { conflict?: string }) => void;
 }
 
 function alreadyDecidedMessage(body: Partial<ApprovalAlreadyDecidedBody> | undefined): string {
@@ -43,16 +44,14 @@ export function ApprovalDecision({ approval, onDecided }: ApprovalDecisionProps)
         workflowId: approval.workflowId,
         payload: { action, ...(comment.trim() ? { comment: comment.trim() } : {}) },
       });
-      onDecided?.();
+      onDecided?.({});
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
-        setNotice({
-          tone: 'info',
-          text: alreadyDecidedMessage(
-            (error as ApiErrorWithBody).body as Partial<ApprovalAlreadyDecidedBody> | undefined,
-          ),
-        });
-        onDecided?.();
+        const text = alreadyDecidedMessage(
+          (error as ApiErrorWithBody).body as Partial<ApprovalAlreadyDecidedBody> | undefined,
+        );
+        setNotice({ tone: 'info', text });
+        onDecided?.({ conflict: text });
       } else {
         setNotice({ tone: 'error', text: describe(error, "Couldn't record the decision") });
       }

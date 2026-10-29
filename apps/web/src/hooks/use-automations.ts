@@ -200,10 +200,11 @@ export function useAutomationApprovals() {
   });
 }
 
-export function useAutomationApprovalCount() {
+export function useAutomationApprovalCount(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.automationApprovalCount,
     queryFn: () => api.automations.countApprovals(),
+    enabled: options.enabled ?? true,
     refetchInterval: 60000,
   });
 }

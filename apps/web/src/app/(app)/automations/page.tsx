@@ -8,12 +8,14 @@ import {
   CheckCircle2,
   Plus,
   Search,
+  ShieldCheck,
   Sparkles,
   Trash2,
   Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import clsx from 'clsx';
+import { PERMISSIONS } from '@saas/shared';
 import type { AutomationWorkflowDto } from '@saas/shared';
 import {
   useAutomations,
@@ -57,7 +59,7 @@ export default function AutomationsListPage() {
   const { data: workflows = [], isLoading } = useAutomations();
   const deleteMutation = useDeleteAutomationWorkflow();
   const createMutation = useCreateAutomationWorkflow();
-  const { session } = useSession();
+  const { session, can } = useSession();
 
   // Loading or failed settings count as off: drafts go to the team, never the customer.
   const { data: automationSettings } = useAutomationSettings();
@@ -94,12 +96,22 @@ export default function AutomationsListPage() {
         title="Automations"
         description="Event-driven workflows, scheduled routines and approval pipelines."
         actions={
-          <Link href="/automations/new" data-testid="create-automation-btn">
-            <Button>
-              <Plus className="size-4" />
-              New automation
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            {can(PERMISSIONS.AUTOMATION_APPROVE) && (
+              <Link href="/automations/approvals" data-testid="approvals-link">
+                <Button variant="secondary">
+                  <ShieldCheck className="size-4" />
+                  Approvals
+                </Button>
+              </Link>
+            )}
+            <Link href="/automations/new" data-testid="create-automation-btn">
+              <Button>
+                <Plus className="size-4" />
+                New automation
+              </Button>
+            </Link>
+          </div>
         }
       />
 

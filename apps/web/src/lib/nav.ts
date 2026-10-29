@@ -38,6 +38,8 @@ export interface NavItem {
    * can never lead somewhere the user is then refused.
    */
   rule?: AccessRule;
+  /** Renders a live count next to the label. */
+  badge?: 'automationApprovals';
 }
 
 export interface NavSection {
@@ -147,6 +149,13 @@ export const CORE_ACTION_ITEMS: NavItem[] = [
     label: 'Automations',
     icon: Zap,
     rule: { permission: PERMISSIONS.AUTOMATION_READ },
+  },
+  {
+    href: '/automations/approvals',
+    label: 'Approvals',
+    icon: ShieldCheck,
+    rule: { permission: PERMISSIONS.AUTOMATION_APPROVE },
+    badge: 'automationApprovals',
   },
 ];
 
