@@ -240,6 +240,7 @@ describe('AutomationsController', () => {
         mockUser.organizationId,
         'exec-123',
         true,
+        false,
       );
     });
 
@@ -250,6 +251,21 @@ describe('AutomationsController', () => {
         mockUser.organizationId,
         'exec-123',
         false,
+        false,
+      );
+    });
+
+    it('tells the service when the caller can approve', async () => {
+      const user = {
+        ...mockUser,
+        permissions: [PERMISSIONS.AUTOMATION_READ, PERMISSIONS.AUTOMATION_APPROVE],
+      };
+      await controller.findExecutionById(user, 'exec-123');
+      expect(service.findExecutionById).toHaveBeenCalledWith(
+        mockUser.organizationId,
+        'exec-123',
+        false,
+        true,
       );
     });
   });

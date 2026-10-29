@@ -718,6 +718,57 @@ describe('AutomationsService', () => {
         ).rejects.toThrow('Temporal offline');
       });
 
+      it('marks the row FAILED before rethrowing, so a dead-lettered event does not leave it Running', async () => {
+        executionRepo.findOne.mockResolvedValueOnce(null);
+        mockTemporalClient.workflow.start.mockRejectedValueOnce(
+          new Error('connect ECONNREFUSED 10.0.0.5:7233'),
+        );
+        executionRepo.save.mockClear();
+
+        await expect(
+          service.triggerExecution(mockTenantId, 'wf-uuid-1', {}, undefined, {
+            sourceEventId: eventId,
+          }),
+        ).rejects.toThrow('ECONNREFUSED');
+
+        const saved = executionRepo.save.mock.calls.at(-1)[0];
+        expect(saved).toMatchObject({
+          status: 'FAILED',
+          errorMessage: "Couldn't start the run",
+        });
+        expect(saved.finishedAt).toBeInstanceOf(Date);
+        // The placeholder stays, so the outbox retry starts this row again.
+        expect(saved.temporalWorkflowId).toMatch(/^exec-/);
+      });
+
+      it('a retry that starts a run marked FAILED puts it back to Running', async () => {
+        const failed = {
+          ...mockExecution,
+          sourceEventId: eventId,
+          temporalWorkflowId: 'exec-1700000000000',
+          status: 'FAILED' as const,
+          errorMessage: "Couldn't start the run",
+          finishedAt: new Date(),
+        };
+        executionRepo.findOne.mockResolvedValueOnce(failed);
+        executionRepo.save.mockClear();
+
+        const exec = await service.triggerExecution(
+          mockTenantId,
+          'wf-uuid-1',
+          {},
+          undefined,
+          { sourceEventId: eventId },
+        );
+
+        expect(exec).toMatchObject({
+          status: 'RUNNING',
+          errorMessage: null,
+          finishedAt: null,
+          temporalWorkflowId: `automation-${mockWorkflow.id}-${eventId}`,
+        });
+      });
+
       it('falls back to the row another delivery inserted first', async () => {
         const raced = {
           ...mockExecution,
@@ -1094,6 +1145,7 @@ describe('AutomationsService', () => {
       executionId: 'exec-uuid-1',
       status: 'PENDING',
       details: { tool: 'quote.create', preview: { total: 100 } },
+      triggerSummary: 'contact.created — Ana Silva',
     };
     const recorded = {
       ...mockExecution,
@@ -1172,10 +1224,25 @@ describe('AutomationsService', () => {
       });
       expect(result.nodeResults.n2).not.toHaveProperty('input');
       expect(result.pendingApprovals).toEqual([
-        { ...pendingApproval, details: {} },
+        { ...pendingApproval, details: {}, triggerSummary: '' },
       ]);
       // The stored record is untouched.
       expect(recorded.nodeResults.n1.input).toEqual({ to: 'a@b.com' });
+    });
+
+    it('an approver without data access keeps approval details but not the trigger summary', async () => {
+      const result = await service.findExecutionById(
+        mockTenantId,
+        'exec-uuid-1',
+        false,
+        true,
+      );
+      expect(result.dataHidden).toBe(true);
+      expect(result.triggerPayload).toEqual({});
+      expect(result.nodeResults.n1).not.toHaveProperty('input');
+      expect(result.pendingApprovals).toEqual([
+        { ...pendingApproval, triggerSummary: '' },
+      ]);
     });
 
     it('throws NotFoundException when execution does not exist', async () => {
@@ -1286,6 +1353,25 @@ describe('AutomationsService', () => {
       );
       expect(shown.dataHidden).toBe(false);
       expect(shown.triggerPayload).toEqual({ secret: 1 });
+    });
+
+    it('keeps pending approval details for an approver, without the trigger summary', async () => {
+      const pending = {
+        id: 'appr-2',
+        details: { message: 'Check the discount' },
+        triggerSummary: 'Webhook',
+      };
+      approvals.findPendingForExecution.mockResolvedValueOnce([pending]);
+      const result = await service.signalExecution(
+        mockTenantId,
+        'exec-uuid-1',
+        { action: 'APPROVE', nodeId: 'n1' },
+        { id: 'u', permissions: [PERMISSIONS.AUTOMATION_APPROVE] },
+      );
+      expect(result.dataHidden).toBe(true);
+      expect(result.pendingApprovals).toEqual([
+        { ...pending, triggerSummary: '' },
+      ]);
     });
 
     it('decides through the approvals claim, as the user, and returns the run', async () => {

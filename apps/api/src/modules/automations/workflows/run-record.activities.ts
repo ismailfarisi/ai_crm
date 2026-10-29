@@ -29,6 +29,16 @@ export function capForStorage(value: unknown): unknown {
   };
 }
 
+const MAX_TITLE_CHARS = 255;
+
+/** The title column is varchar(255): an over-long step label must not fail the insert. */
+function fitTitle(title: string): string {
+  const chars = Array.from(title);
+  return chars.length <= MAX_TITLE_CHARS
+    ? title
+    : chars.slice(0, MAX_TITLE_CHARS).join('');
+}
+
 // A pending approval whose deadline has passed ends EXPIRED, otherwise CANCELLED.
 const CLOSE_STATUS = `CASE WHEN "expiresAt" IS NOT NULL AND "expiresAt" <= now() THEN 'EXPIRED' ELSE 'CANCELLED' END`;
 
@@ -101,8 +111,8 @@ export function createRunRecordActivities(deps: RunRecordActivityDeps) {
                 p.workflowId,
                 p.nodeId,
                 p.approval.kind,
-                p.approval.title,
-                JSON.stringify(p.approval.details ?? {}),
+                fitTitle(p.approval.title),
+                JSON.stringify(capForStorage(p.approval.details ?? {})),
                 p.approval.requestedAt,
                 p.approval.expiresAt,
               ],

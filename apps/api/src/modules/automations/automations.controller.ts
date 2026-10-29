@@ -97,11 +97,12 @@ export class AutomationsController {
     @Param('executionId', ParseUUIDPipe) executionId: string,
   ): Promise<AutomationExecutionDto> {
     // Payloads and step data can hold customer details: only people who can
-    // edit automations see them.
+    // edit automations see them. Approvers still see what they decide on.
     return this.automationsService.findExecutionById(
       user.organizationId,
       executionId,
       user.permissions.includes(PERMISSIONS.AUTOMATION_UPDATE),
+      user.permissions.includes(PERMISSIONS.AUTOMATION_APPROVE),
     );
   }
 

@@ -518,8 +518,9 @@ export class AutomationsService {
    * than once. One execution per (workflow, event) is enforced by
    * `uq_automation_executions_source_event`, and the Temporal workflow id is
    * derived from the event so a second start is rejected. A start that fails
-   * is rethrown: the outbox then retries the event, and the retry picks up the
-   * execution row recorded here instead of creating another.
+   * marks the row FAILED and is rethrown: the outbox then retries the event,
+   * and the retry picks up the execution row recorded here instead of
+   * creating another (and puts it back to RUNNING once it starts).
    */
   private async triggerForEvent(
     wf: AutomationWorkflow,
@@ -585,11 +586,23 @@ export class AutomationsService {
         this.logger.warn(
           `Temporal start failed for execution ${exec.id} (event ${sourceEventId}); the event will be retried: ${errorMsg}`,
         );
+        // Recorded before the rethrow: if the event dead-letters, no retry
+        // comes to finish this row and it would read "Running" forever. The
+        // placeholder workflow id stays, so a retry still starts it.
+        exec.status = 'FAILED';
+        exec.errorMessage = "Couldn't start the run";
+        exec.finishedAt = new Date();
+        await this.executionRepo.save(exec);
         throw err;
       }
     }
 
     exec.temporalWorkflowId = temporalWorkflowId;
+    if (exec.status === 'FAILED') {
+      exec.status = 'RUNNING';
+      exec.errorMessage = null;
+      exec.finishedAt = null;
+    }
     return this.executionRepo.save(exec);
   }
 
@@ -664,13 +677,15 @@ export class AutomationsService {
   /**
    * Straight from the database: the worker writes every step and the final
    * status there, so a run never depends on Temporal being reachable. Without
-   * `canViewData` the trigger payload and each step's input and output are
-   * withheld.
+   * `canViewData` the trigger payload, each step's input and output and each
+   * pending approval's trigger summary are withheld. A pending approval's
+   * details stay for `canApprove` too: approvers can't decide without them.
    */
   async findExecutionById(
     tenantId: string,
     executionId: string,
     canViewData: boolean,
+    canApprove = false,
   ): Promise<AutomationExecutionDto> {
     const execution = await this.findExecutionRecord(tenantId, executionId);
     const pending = await this.approvals.findPendingForExecution(
@@ -711,7 +726,11 @@ export class AutomationsService {
       dataHidden: !canViewData,
       pendingApprovals: canViewData
         ? pending
-        : pending.map((a) => ({ ...a, details: {} })),
+        : pending.map((a) => ({
+            ...a,
+            details: canApprove ? a.details : {},
+            triggerSummary: '',
+          })),
       startedAt: execution.startedAt.toISOString(),
       finishedAt: execution.finishedAt
         ? execution.finishedAt.toISOString()
@@ -754,6 +773,7 @@ export class AutomationsService {
       tenantId,
       executionId,
       user.permissions?.includes(PERMISSIONS.AUTOMATION_UPDATE) ?? false,
+      user.permissions?.includes(PERMISSIONS.AUTOMATION_APPROVE) ?? false,
     );
   }
 

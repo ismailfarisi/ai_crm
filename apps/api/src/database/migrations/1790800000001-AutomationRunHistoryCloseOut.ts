@@ -20,6 +20,9 @@ export class AutomationRunHistoryCloseOut1790800000001 implements MigrationInter
       await queryRunner.commitTransaction();
       await queryRunner.startTransaction();
     }
+    // Every tenant's rows: under FORCE RLS a non-superuser owner would
+    // otherwise match none. Transaction-local, so it ends with this one.
+    await queryRunner.query(`SELECT set_config('app.bypass_rls','on',true)`);
     await queryRunner.query(
       `UPDATE "automation_executions" SET "status" = 'UNKNOWN' ` +
         `WHERE "status" IN ('RUNNING', 'WAITING_APPROVAL') AND "nodeResults" = '{}'::jsonb`,

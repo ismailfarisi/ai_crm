@@ -139,6 +139,34 @@ describe('run-record activities', () => {
     );
   });
 
+  it('fits the approval title to its column and caps oversized details', async () => {
+    await activities.recordNodeResultActivity({
+      ...base,
+      status: 'WAITING',
+      approval: {
+        ...approval,
+        title: 'é'.repeat(300),
+        details: { message: 'x'.repeat(20000) },
+      },
+    });
+    const [insert] = find('INSERT INTO automation_approvals');
+    expect(insert.params[6]).toBe('é'.repeat(255));
+    const details = JSON.parse(insert.params[7] as string);
+    expect(details.truncated).toBe(true);
+    expect(details.preview).toHaveLength(4096);
+  });
+
+  it('stores a short title and small details as given', async () => {
+    await activities.recordNodeResultActivity({
+      ...base,
+      status: 'WAITING',
+      approval,
+    });
+    const [insert] = find('INSERT INTO automation_approvals');
+    expect(insert.params[6]).toBe('Approve email');
+    expect(JSON.parse(insert.params[7] as string)).toEqual({ to: 'a@b.c' });
+  });
+
   it('recording the same WAITING call twice sends the same keyed insert', async () => {
     const waiting = { ...base, status: 'WAITING' as const, approval };
     await activities.recordNodeResultActivity(waiting);
