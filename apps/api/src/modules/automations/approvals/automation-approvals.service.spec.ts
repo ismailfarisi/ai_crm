@@ -102,9 +102,12 @@ function makeStore() {
         return [[], 0];
       }
       if (sql.includes("'EXPIRED' ELSE 'CANCELLED'")) {
-        const [id, tenantId] = params;
+        const [id, tenantId, claimedStatus, userId] = params;
         const row = approvals.get(id);
-        if (!row || row.tenantId !== tenantId || row.status !== 'PENDING') {
+        const still = claimedStatus
+          ? row?.status === claimedStatus && row?.decidedByUserId === userId
+          : row?.status === 'PENDING';
+        if (!row || row.tenantId !== tenantId || !still) {
           return [[], 0];
         }
         row.status =
@@ -387,6 +390,46 @@ describe('AutomationApprovalsService', () => {
       });
     });
 
+    it('a run that ended before the signal closes the claimed row and answers 409 "No longer pending"', async () => {
+      handle.signal.mockRejectedValueOnce(
+        new WorkflowNotFoundError('gone', 'automation-exec-exec-1', undefined),
+      );
+      const body = await conflictBody(
+        service.decide(
+          TENANT,
+          'appr-1',
+          { id: 'user-ana' },
+          { action: 'APPROVE', comment: 'ok' },
+        ),
+      );
+      expect(body).toMatchObject({
+        message: 'No longer pending',
+        status: 'CANCELLED',
+        decidedBy: { id: 'user-ana', name: 'Ana Silva' },
+      });
+      // Closed, not put back in the inbox; who tried is kept.
+      expect(store.approvals.get('appr-1')).toMatchObject({
+        status: 'CANCELLED',
+        decidedByUserId: 'user-ana',
+      });
+    });
+
+    it('a delivered decision still answers when the decider name lookup fails', async () => {
+      users.find.mockRejectedValueOnce(new Error('db hiccup'));
+      const dto = await service.decide(
+        TENANT,
+        'appr-1',
+        { id: 'user-ana' },
+        { action: 'APPROVE' },
+      );
+      expect(handle.signal).toHaveBeenCalledTimes(1);
+      expect(dto).toMatchObject({
+        id: 'appr-1',
+        status: 'APPROVED',
+        decidedBy: { id: 'user-ana', name: 'Unknown user' },
+      });
+    });
+
     it('a failed signal puts the row back to PENDING and answers 503', async () => {
       handle.signal.mockRejectedValueOnce(new Error('connection lost'));
 
@@ -618,6 +661,16 @@ describe('AutomationApprovalsService', () => {
       expect(store.approvalRepo.find).toHaveBeenCalledWith(
         expect.objectContaining({ take: 200, order: { requestedAt: 'ASC' } }),
       );
+      // Only what the item shows is read from the run, never its step results.
+      const { select } = store.approvalRepo.find.mock.calls[0][0];
+      expect(Object.keys(select.execution).sort()).toEqual([
+        'id',
+        'triggerPayload',
+        'triggerSource',
+        'workflow',
+        'workflowId',
+      ]);
+      expect(select.execution.workflow).toEqual({ id: true, name: true });
     });
 
     it("finds a run's pending approvals", async () => {

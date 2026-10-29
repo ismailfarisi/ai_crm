@@ -32,6 +32,18 @@ export function capForStorage(value: unknown): unknown {
 // A pending approval whose deadline has passed ends EXPIRED, otherwise CANCELLED.
 const CLOSE_STATUS = `CASE WHEN "expiresAt" IS NOT NULL AND "expiresAt" <= now() THEN 'EXPIRED' ELSE 'CANCELLED' END`;
 
+/**
+ * The step finished by timing out: an Approval step's `decision: 'TIMEOUT'`,
+ * or an AI agent step's `status: 'TIMEOUT'` (see dynamic-dag.workflow.ts).
+ */
+export function endedInTimeout(p: RecordNodeResultParams): boolean {
+  const output = p.output as Record<string, unknown> | null | undefined;
+  if (!output || typeof output !== 'object') return false;
+  if (p.nodeType === 'approvalNode') return output.decision === 'TIMEOUT';
+  if (p.nodeType === 'aiAgentNode') return output.status === 'TIMEOUT';
+  return false;
+}
+
 export function createRunRecordActivities(deps: RunRecordActivityDeps) {
   const { executions, tenantContext } = deps;
 
@@ -42,11 +54,6 @@ export function createRunRecordActivities(deps: RunRecordActivityDeps) {
       const tenantId = p.tenantId;
       if (!tenantId) {
         throw new Error('recordNodeResultActivity requires a tenantId');
-      }
-      if (p.status === 'WAITING' && p.approval && !p.workflowId) {
-        throw new Error(
-          'recordNodeResultActivity requires a workflowId with an approval',
-        );
       }
       if (p.status === 'WAITING' && p.approval && !p.workflowId) {
         throw new Error(
@@ -101,6 +108,24 @@ export function createRunRecordActivities(deps: RunRecordActivityDeps) {
               ],
             );
           } else if (p.status !== 'WAITING') {
+            if (endedInTimeout(p)) {
+              // A decision can be claimed in the moment the step times out:
+              // the workflow then drops the signal and takes the timeout
+              // path. The node's latest approval must say so, not "approved".
+              // Who tried to decide (decidedBy/decidedAt) is kept.
+              await m.query(
+                `UPDATE automation_approvals
+                    SET status = 'EXPIRED'
+                  WHERE id = (
+                          SELECT id FROM automation_approvals
+                           WHERE "executionId" = $1 AND "nodeId" = $2 AND "tenantId" = $3
+                           ORDER BY "requestedAt" DESC
+                           LIMIT 1)
+                    AND "tenantId" = $3
+                    AND status IN ('PENDING', 'APPROVED', 'REJECTED')`,
+                [p.executionId, p.nodeId, tenantId],
+              );
+            }
             await m.query(
               `UPDATE automation_approvals
                   SET status = ${CLOSE_STATUS}

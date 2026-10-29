@@ -69,6 +69,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
         details: details as Record<string, string[]> | undefined,
         // A 4xx may carry what the client needs to explain it (who decided an
         // approval first, which rules a quote breaks). A 5xx never does.
+        // Every extra field of a 4xx HttpException body is client-visible:
+        // throw sites must not put internal data (ids of other tenants,
+        // queries, stack details) in them.
         ...(status < 500 ? extra : {}),
       };
     }

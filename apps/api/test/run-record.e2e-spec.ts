@@ -167,6 +167,39 @@ describe('run-record activities against Postgres (e2e)', () => {
     expect((await approvalsOf(id))[0].status).toBe('EXPIRED');
   });
 
+  it('an approval claimed as APPROVED on a step that then times out ends EXPIRED, keeping who tried', async () => {
+    const id = await newExecution('RUNNING');
+    const approvalId = randomUUID();
+    await activities.recordNodeResultActivity(
+      step(id, {
+        nodeType: 'approvalNode',
+        status: 'WAITING',
+        approval: approval(null, approvalId),
+      }),
+    );
+    // The API claimed it, but the workflow had already timed the step out.
+    await inTenant(() =>
+      dataSource.query(
+        `UPDATE automation_approvals SET status = 'APPROVED', "decidedAt" = now() WHERE id = $1`,
+        [approvalId],
+      ),
+    );
+    await activities.recordNodeResultActivity(
+      step(id, {
+        nodeType: 'approvalNode',
+        output: { decision: 'TIMEOUT', reason: 'Approval timed out after 1h' },
+      }),
+    );
+    const [row] = await inTenant(() =>
+      dataSource.query(
+        `SELECT status, "decidedAt" FROM automation_approvals WHERE id = $1`,
+        [approvalId],
+      ),
+    );
+    expect(row.status).toBe('EXPIRED');
+    expect(row.decidedAt).not.toBeNull();
+  });
+
   it('recordRunFinishedActivity closes pending approvals and never overwrites COMPLETED', async () => {
     const id = await newExecution('RUNNING');
     await activities.recordNodeResultActivity(

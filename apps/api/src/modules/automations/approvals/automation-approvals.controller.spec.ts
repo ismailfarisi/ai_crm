@@ -45,7 +45,7 @@ describe('AutomationApprovalsController', () => {
           PERMISSIONS_KEY,
           AutomationApprovalsController.prototype[method],
         ),
-      ).toEqual(['automation:approve']);
+      ).toEqual([PERMISSIONS.AUTOMATION_APPROVE]);
     },
   );
 

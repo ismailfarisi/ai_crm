@@ -34,6 +34,34 @@ const UNKNOWN_USER = 'Unknown user';
 
 type Decider = { id: string; name: string };
 
+/**
+ * What an inbox item needs from its run and automation. Not the whole run:
+ * `nodeResults` can be large.
+ */
+const LIST_SELECT = {
+  id: true,
+  tenantId: true,
+  executionId: true,
+  workflowId: true,
+  nodeId: true,
+  kind: true,
+  title: true,
+  details: true,
+  status: true,
+  requestedAt: true,
+  expiresAt: true,
+  decidedByUserId: true,
+  decidedAt: true,
+  comment: true,
+  execution: {
+    id: true,
+    workflowId: true,
+    triggerSource: true,
+    triggerPayload: true,
+    workflow: { id: true, name: true },
+  },
+} as const;
+
 /** `UPDATE … RETURNING` through `Repository.query` answers `[rows, rowCount]`. */
 function returnedRows(result: unknown): AutomationApproval[] {
   if (Array.isArray(result) && Array.isArray(result[0])) {
@@ -100,6 +128,7 @@ export class AutomationApprovalsService {
     const rows = await this.approvals.find({
       where: { tenantId, status: 'PENDING' },
       relations: { execution: { workflow: true } },
+      select: LIST_SELECT,
       order: { requestedAt: 'ASC' },
       take: INBOX_LIMIT,
     });
@@ -117,6 +146,7 @@ export class AutomationApprovalsService {
     const rows = await this.approvals.find({
       where: { tenantId, executionId, status: 'PENDING' },
       relations: { execution: { workflow: true } },
+      select: LIST_SELECT,
       order: { requestedAt: 'ASC' },
     });
     return this.toDtos(tenantId, rows);
@@ -202,16 +232,27 @@ export class AutomationApprovalsService {
       this.logger.warn(
         `Temporal signal for approval ${row.id} failed: ${err instanceof Error ? err.message : String(err)}`,
       );
+      // The run has ended since the state check: nothing can take this
+      // decision any more, so the item leaves the inbox.
+      if (err instanceof WorkflowNotFoundError) {
+        throw await this.close(tenantId, claimed, { status, userId: user.id });
+      }
       await this.unclaim(tenantId, row.id, status, user.id);
       throw new ServiceUnavailableException(DELIVERY_FAILED);
     }
 
     await this.resumeRunIfNothingPending(tenantId, exec.id);
 
-    const [dto] = await this.toDtos(tenantId, [
-      { ...claimed, execution: exec },
-    ]);
-    return dto;
+    // The decision is delivered: failing to dress up the answer is no 500.
+    const decided = { ...claimed, execution: exec };
+    try {
+      return (await this.toDtos(tenantId, [decided]))[0];
+    } catch (err: unknown) {
+      this.logger.warn(
+        `Could not build the answer for approval ${row.id}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return this.toDto(decided, new Map());
+    }
   }
 
   /** One line on what started the run, for the inbox. */
@@ -263,20 +304,28 @@ export class AutomationApprovalsService {
 
   /**
    * The workflow no longer waits on this node: close the row (EXPIRED once
-   * its deadline has passed, else CANCELLED) and answer the 409.
+   * its deadline has passed, else CANCELLED) and answer the 409. A row this
+   * request claimed is closed only while it is still that claim; who tried to
+   * decide is kept.
    */
   private async close(
     tenantId: string,
     row: AutomationApproval,
+    claim?: { status: 'APPROVED' | 'REJECTED'; userId: string },
   ): Promise<ConflictException> {
+    const guard = claim
+      ? `status = $3 AND "decidedByUserId" = $4`
+      : `status = 'PENDING'`;
     const closed = returnedRows(
       await this.approvals.query(
         `UPDATE automation_approvals
             SET status = CASE WHEN "expiresAt" IS NOT NULL AND "expiresAt" <= now()
                               THEN 'EXPIRED' ELSE 'CANCELLED' END
-          WHERE id = $1 AND "tenantId" = $2 AND status = 'PENDING'
+          WHERE id = $1 AND "tenantId" = $2 AND ${guard}
         RETURNING *`,
-        [row.id, tenantId],
+        claim
+          ? [row.id, tenantId, claim.status, claim.userId]
+          : [row.id, tenantId],
       ),
     )[0];
     return this.conflict(tenantId, closed ?? (await this.reload(row)));
@@ -385,26 +434,31 @@ export class AutomationApprovalsService {
     rows: AutomationApproval[],
   ): Promise<AutomationApprovalDto[]> {
     const names = await this.deciderNames(tenantId, rows);
-    return rows.map((row) => {
-      const exec = row.execution;
-      return {
-        id: row.id,
-        executionId: row.executionId,
-        workflowId: row.workflowId,
-        nodeId: row.nodeId,
-        kind: row.kind,
-        title: row.title,
-        details: row.details ?? {},
-        status: row.status,
-        requestedAt: iso(row.requestedAt) ?? '',
-        expiresAt: iso(row.expiresAt),
-        decidedBy: this.decider(row, names),
-        decidedAt: iso(row.decidedAt),
-        comment: row.comment ?? null,
-        workflowName: exec?.workflow?.name ?? '',
-        triggerSource: exec?.triggerSource ?? null,
-        triggerSummary: exec ? this.triggerSummary(exec) : '—',
-      };
-    });
+    return rows.map((row) => this.toDto(row, names));
+  }
+
+  private toDto(
+    row: AutomationApproval,
+    names: Map<string, string>,
+  ): AutomationApprovalDto {
+    const exec = row.execution;
+    return {
+      id: row.id,
+      executionId: row.executionId,
+      workflowId: row.workflowId,
+      nodeId: row.nodeId,
+      kind: row.kind,
+      title: row.title,
+      details: row.details ?? {},
+      status: row.status,
+      requestedAt: iso(row.requestedAt) ?? '',
+      expiresAt: iso(row.expiresAt),
+      decidedBy: this.decider(row, names),
+      decidedAt: iso(row.decidedAt),
+      comment: row.comment ?? null,
+      workflowName: exec?.workflow?.name ?? '',
+      triggerSource: exec?.triggerSource ?? null,
+      triggerSummary: exec ? this.triggerSummary(exec) : '—',
+    };
   }
 }

@@ -165,6 +165,37 @@ describe('run-record activities', () => {
     },
   );
 
+  it.each([
+    ['approvalNode', { decision: 'TIMEOUT', reason: 'timed out' }],
+    ['aiAgentNode', { success: false, status: 'TIMEOUT' }],
+  ])(
+    "a %s that timed out expires the node's latest approval, even one claimed as decided",
+    async (nodeType, output) => {
+      await activities.recordNodeResultActivity({ ...base, nodeType, output });
+      const [expire] = find("SET status = 'EXPIRED'");
+      expect(expire.sql).toContain('ORDER BY "requestedAt" DESC LIMIT 1');
+      expect(expire.sql).toContain(
+        "status IN ('PENDING', 'APPROVED', 'REJECTED')",
+      );
+      expect(expire.sql).not.toContain('decidedByUserId');
+      expect(expire.params).toEqual([EXEC, 'node-1', TENANT]);
+      // The usual close of anything else still pending follows.
+      expect(find('CASE WHEN "expiresAt"')).toHaveLength(1);
+    },
+  );
+
+  it.each([
+    ['approvalNode', { decision: 'APPROVED' }],
+    ['aiAgentNode', { status: 'COMPLETED' }],
+    ['httpRequestNode', { status: 'TIMEOUT' }],
+  ])(
+    'a %s that did not time out leaves decided approvals alone',
+    async (nodeType, output) => {
+      await activities.recordNodeResultActivity({ ...base, nodeType, output });
+      expect(find("SET status = 'EXPIRED'")).toHaveLength(0);
+    },
+  );
+
   it('moves UNKNOWN, RUNNING and WAITING_APPROVAL runs only', async () => {
     await activities.recordNodeResultActivity(base);
     const status = find("THEN 'WAITING_APPROVAL' ELSE 'RUNNING'")[0];
