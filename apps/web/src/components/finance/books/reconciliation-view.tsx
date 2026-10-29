@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Ban, Check, FileUp, Link2Off } from 'lucide-react';
+import { ArrowLeft, Ban, Check, FileUp, Layers, Link2Off } from 'lucide-react';
 import {
   PERMISSIONS,
   SUBLEDGER_CONTROLLED_ROLES,
@@ -25,17 +25,21 @@ import { useOrganization } from '@/hooks/use-organization';
 import { useCan } from '@/lib/session-context';
 import { formatDate, formatMoney } from '@/lib/utils';
 import { FinanceNav } from '../finance-nav';
+import { GroupMatchDialog, SuggestionsPanel } from './reconciliation-matching';
 
 /**
  * Bank reconciliation for one account: import the bank's CSV, match each
- * statement line to the ledger entry that moved the account, and book what
- * the ledger has no entry for (bank charges, interest) in one step.
+ * statement line to the ledger entries that moved the account — one, or
+ * several for a deposit of several receipts — and book what the ledger has
+ * no entry for (bank charges, interest) in one step. Kerf proposes matches;
+ * the certain ones can be applied together.
  */
 export function ReconciliationView({ financeAccountId }: { financeAccountId: string }) {
   const canReconcile = useCan({ permission: PERMISSIONS.BANK_RECONCILE });
   const base = useOrganization().data?.baseCurrency;
   const { data, isLoading, error } = useReconciliation(financeAccountId);
   const [filter, setFilter] = useState<'UNMATCHED' | 'ALL'>('UNMATCHED');
+  const [grouping, setGrouping] = useState<string | null>(null);
 
   if (isLoading) return <Skeleton className="h-96" />;
   if (error || !data) return <Alert>Could not load this account.</Alert>;
@@ -80,6 +84,16 @@ export function ReconciliationView({ financeAccountId }: { financeAccountId: str
 
       {canReconcile && <ImportCard financeAccountId={financeAccountId} />}
 
+      <SuggestionsPanel
+        financeAccountId={financeAccountId}
+        suggestions={data.suggestions}
+        lines={data.lines}
+        movements={data.unreconciledLedger}
+        currency={data.currency}
+        base={base}
+        editable={canReconcile}
+      />
+
       <section aria-labelledby="lines-heading" className="rounded-xl border border-border/60 bg-surface">
         <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
           <h2 id="lines-heading" className="text-sm font-semibold text-ink">
@@ -111,11 +125,24 @@ export function ReconciliationView({ financeAccountId }: { financeAccountId: str
                 comparable={data.amountsComparable}
                 bankLedgerId={data.ledgerAccountId}
                 editable={canReconcile}
+                onGroup={() => setGrouping(line.id)}
               />
             ))}
           </ul>
         )}
       </section>
+
+      {grouping && data.lines.some((l) => l.id === grouping) && (
+        <GroupMatchDialog
+          startLine={data.lines.find((l) => l.id === grouping)!}
+          lines={data.lines}
+          movements={data.unreconciledLedger}
+          comparable={data.amountsComparable}
+          currency={data.currency}
+          base={base}
+          onClose={() => setGrouping(null)}
+        />
+      )}
 
       <section aria-labelledby="ledger-heading" className="rounded-xl border border-border/60 bg-surface">
         <h2 id="ledger-heading" className="border-b border-border/60 px-4 py-3 text-sm font-semibold text-ink">
@@ -232,6 +259,7 @@ function StatementLineRow({
   comparable,
   bankLedgerId,
   editable,
+  onGroup,
 }: {
   line: BankStatementLineDto;
   currency: string;
@@ -239,6 +267,7 @@ function StatementLineRow({
   comparable: boolean;
   bankLedgerId: string;
   editable: boolean;
+  onGroup: () => void;
 }) {
   const act = useStatementLineAction();
   const canPost = useCan({ permission: PERMISSIONS.JOURNAL_POST });
@@ -276,7 +305,12 @@ function StatementLineRow({
           <span className={`tabular-nums font-medium ${moneyIn ? 'text-success' : 'text-ink'}`}>
             {formatMoney(line.amount, currency)}
           </span>
-          {line.status === 'MATCHED' && <Badge tone="success">Matched {line.journalEntryNumber ?? ''}</Badge>}
+          {line.status === 'MATCHED' && (
+            <Badge tone="success">
+              Matched {line.matchedEntries.map((e) => e.entryNumber).join(', ')}
+              {line.matchedLineCount > 1 ? ` · with ${line.matchedLineCount - 1} other line(s)` : ''}
+            </Badge>
+          )}
           {line.status === 'EXCLUDED' && <Badge>Excluded</Badge>}
         </div>
       </div>
@@ -311,6 +345,10 @@ function StatementLineRow({
             <Check className="size-4" />
             Match
           </Button>
+          <Button size="sm" variant="outline" onClick={onGroup}>
+            <Layers className="size-4" />
+            Match several…
+          </Button>
           {canPost && (
             <>
               <span className="px-1 text-xs text-ink-subtle">or book to</span>
@@ -344,7 +382,11 @@ function StatementLineRow({
       {editable && line.status !== 'UNMATCHED' && (
         <Button size="sm" variant="ghost" onClick={() => act.mutate({ kind: 'unmatch', lineId: line.id })}>
           <Link2Off className="size-4" />
-          {line.status === 'MATCHED' ? 'Unmatch' : 'Include again'}
+          {line.status !== 'MATCHED'
+            ? 'Include again'
+            : line.matchedLineCount > 1
+              ? `Unmatch all ${line.matchedLineCount} lines`
+              : 'Unmatch'}
         </Button>
       )}
     </li>

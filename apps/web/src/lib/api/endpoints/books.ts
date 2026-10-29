@@ -2,7 +2,9 @@
  * Keeping the books: the period lock, manual journals, the chart of accounts,
  * bank reconciliation and the VAT return. */
 import type {
+  AutoMatchResult,
   BankStatementLineDto,
+  CreateBankMatchPayload,
   CreateLedgerAccountPayload,
   CreateManualJournalPayload,
   ImportStatementPayload,
@@ -51,6 +53,11 @@ export const booksEndpoints = {
         method: 'POST',
         body: { journalEntryId },
       }),
+    /** Several lines and/or several entries as one match. */
+    createMatch: (payload: CreateBankMatchPayload) =>
+      apiFetch<BankStatementLineDto[]>('/finance/bank-matches', { method: 'POST', body: payload }),
+    autoMatch: (financeAccountId: string) =>
+      apiFetch<AutoMatchResult>(`/finance/accounts/${financeAccountId}/auto-match`, { method: 'POST' }),
     unmatchLine: (lineId: string) =>
       apiFetch<BankStatementLineDto>(`/finance/bank-statement-lines/${lineId}/unmatch`, { method: 'POST' }),
     excludeLine: (lineId: string) =>

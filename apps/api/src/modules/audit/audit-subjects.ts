@@ -32,6 +32,7 @@ import { VatSettings } from '../tax/entities/vat-settings.entity';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
 import { LedgerAccount } from '../finance/entities/ledger-account.entity';
 import { BankStatementLine } from '../finance/entities/bank-statement-line.entity';
+import { BankMatch } from '../finance/entities/bank-match.entity';
 import { AutomationApproval } from '../automations/entities/automation-approval.entity';
 
 /**
@@ -113,6 +114,10 @@ export const AUDIT_SUBJECTS: Record<string, AuditSubject> = {
   'finance/bank-statement-lines': {
     subject: 'BANK_STATEMENT_LINE',
     entity: BankStatementLine,
+  },
+  'finance/bank-matches': {
+    subject: 'BANK_MATCH',
+    entity: BankMatch,
   },
 };
 

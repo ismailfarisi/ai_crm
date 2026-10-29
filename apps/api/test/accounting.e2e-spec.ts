@@ -241,6 +241,101 @@ describe('Accounting (e2e)', () => {
   );
 
   it(
+    'matches a deposit of several receipts and a payroll paid out per person, as groups',
+    async () => {
+      const journal = (memo: string, amount: number, date = day(-1)) =>
+        send('post', '/finance/journal-entries', {
+          entryDate: date,
+          memo,
+          lines:
+            amount > 0
+              ? [
+                  { ledgerAccountId: bankLedgerId, debit: amount },
+                  { ledgerAccountId: equipmentId, credit: amount },
+                ]
+              : [
+                  { ledgerAccountId: byCode.get('6900'), debit: -amount },
+                  { ledgerAccountId: bankLedgerId, credit: -amount },
+                ],
+        }).expect(201);
+      const receipts = [
+        await journal('Receipt Al Noor', 310),
+        await journal('Receipt Gulf Board', 460),
+        await journal('Receipt Emirates Inks', 230),
+      ];
+      // Nets to zero, so the bank balance later tests check is unchanged.
+      const payroll = await journal('Payroll October', -939);
+      await journal('Card fee', -61);
+
+      await send('post', '/finance/bank-statements', {
+        financeAccountId: bankId,
+        lines: [
+          { date: day(0), description: 'CHEQUE DEPOSIT 3 ITEMS', amount: 1000 },
+          { date: day(0), description: 'SALARY TRANSFER A', amount: -539 },
+          { date: day(0), description: 'SALARY TRANSFER B', amount: -400 },
+          { date: day(0), description: 'CARD FEE', amount: -61 },
+        ],
+      }).expect(201);
+
+      let rec = await get(`/finance/accounts/${bankId}/reconciliation`).expect(200);
+      const lineBy = (d: string) => rec.body.lines.find((l: { description: string }) => l.description === d);
+      const deposit = lineBy('CHEQUE DEPOSIT 3 ITEMS');
+      const salaryA = lineBy('SALARY TRANSFER A');
+      const salaryB = lineBy('SALARY TRANSFER B');
+      const kinds = rec.body.suggestions.map((s: { kind: string; certain: boolean }) => `${s.kind}:${s.certain}`);
+      expect(kinds).toEqual(
+        expect.arrayContaining(['ONE_TO_ONE:true', 'ONE_LINE_MANY_ENTRIES:false', 'MANY_LINES_ONE_ENTRY:false']),
+      );
+
+      // Only the certain one is applied without a person.
+      const auto = await send('post', `/finance/accounts/${bankId}/auto-match`).expect(201);
+      expect(auto.body).toEqual({ matched: 1 });
+
+      // Totals that do not agree are refused.
+      await send('post', '/finance/bank-matches', {
+        lineIds: [salaryA.id],
+        journalEntryIds: [payroll.body.id],
+      }).expect(400);
+
+      const grouped = await send('post', '/finance/bank-matches', {
+        lineIds: [deposit.id],
+        journalEntryIds: receipts.map((r) => r.body.id),
+      }).expect(201);
+      expect(grouped.body[0].matchedEntries).toHaveLength(3);
+
+      const paid = await send('post', '/finance/bank-matches', {
+        lineIds: [salaryA.id, salaryB.id],
+        journalEntryIds: [payroll.body.id],
+      }).expect(201);
+      expect(paid.body.map((l: { matchedLineCount: number }) => l.matchedLineCount)).toEqual([2, 2]);
+
+      // An entry is reconciled once.
+      await send('post', `/finance/bank-statement-lines/${salaryA.id}/unmatch`).expect(201);
+      rec = await get(`/finance/accounts/${bankId}/reconciliation`).expect(200);
+      // Unmatching one line of a group reopens the whole group.
+      expect(lineBy('SALARY TRANSFER B').status).toBe('UNMATCHED');
+      expect(rec.body.unreconciledLedger.map((m: { journalEntryId: string }) => m.journalEntryId)).toContain(
+        payroll.body.id,
+      );
+      await send('post', '/finance/bank-matches', {
+        lineIds: [salaryA.id, salaryB.id],
+        journalEntryIds: [payroll.body.id],
+      }).expect(201);
+      await send('post', '/finance/bank-matches', {
+        lineIds: [deposit.id],
+        journalEntryIds: [payroll.body.id],
+      }).expect(409);
+
+      rec = await get(`/finance/accounts/${bankId}/reconciliation`).expect(200);
+      expect(lineBy('CHEQUE DEPOSIT 3 ITEMS').status).toBe('MATCHED');
+      expect(lineBy('CARD FEE').status).toBe('MATCHED');
+      expect(rec.body.counts.UNMATCHED).toBe(0);
+      await balanced();
+    },
+    TIMEOUT,
+  );
+
+  it(
     'converts a transfer between currencies at what the bank paid out',
     async () => {
       await send('post', '/finance/fx-rates', { currency: 'EUR', rateDate: day(-1), rate: 1.08 }).expect(201);

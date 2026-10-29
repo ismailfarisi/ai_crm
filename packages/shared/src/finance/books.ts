@@ -7,6 +7,7 @@
  */
 
 import type { LedgerAccountType, LedgerRole } from './ledger';
+import type { ReconciliationSuggestion } from './reconciliation-suggest';
 
 /* ------------------------------------------------------------------ *
  * Period lock
@@ -123,8 +124,12 @@ export interface BankStatementLineDto {
   amount: number;
   reference: string | null;
   status: BankStatementLineStatus;
-  journalEntryId: string | null;
-  journalEntryNumber: string | null;
+  /** The match this line belongs to. Unmatching any line of it unmatches all of it. */
+  matchId: string | null;
+  /** The ledger entries the match covers. Several for a deposit of several receipts. */
+  matchedEntries: { journalEntryId: string; entryNumber: string }[];
+  /** Statement lines in the match, this one included. More than one for a payout split across lines. */
+  matchedLineCount: number;
   createdAt: string;
 }
 
@@ -155,10 +160,29 @@ export interface ReconciliationDto {
   unreconciledLedger: LedgerMovementDto[];
   lines: BankStatementLineDto[];
   counts: Record<BankStatementLineStatus, number>;
+  /**
+   * Proposed matches for the open lines, best first. Empty when amounts
+   * cannot be compared (an account not in base currency).
+   */
+  suggestions: ReconciliationSuggestion[];
 }
 
 export interface MatchStatementLinePayload {
   journalEntryId: string;
+}
+
+/**
+ * Any number of open statement lines against any number of unreconciled
+ * entries. The totals must agree when the account is in base currency.
+ */
+export interface CreateBankMatchPayload {
+  lineIds: string[];
+  journalEntryIds: string[];
+}
+
+export interface AutoMatchResult {
+  /** Matches made: every suggestion that was certain. */
+  matched: number;
 }
 
 /** Books an unmatched line (bank charges, interest) and matches it in one step. */

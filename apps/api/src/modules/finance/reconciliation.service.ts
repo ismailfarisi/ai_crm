@@ -2,20 +2,30 @@ import { createHash } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
-import type {
-  BankStatementLineDto,
-  BankStatementLineStatus,
-  ImportStatementResult,
-  ImportStatementSchemaPayload,
-  LedgerMovementDto,
-  PostStatementLineSchemaPayload,
-  ReconciliationDto,
+import {
+  DataSource,
+  EntityManager,
+  In,
+  QueryFailedError,
+  Repository,
+} from 'typeorm';
+import {
+  suggestReconciliation,
+  type AutoMatchResult,
+  type BankStatementLineDto,
+  type BankStatementLineStatus,
+  type ImportStatementResult,
+  type ImportStatementSchemaPayload,
+  type LedgerMovementDto,
+  type PostStatementLineSchemaPayload,
+  type ReconciliationDto,
 } from '@saas/shared';
+import { BankMatch, BankMatchEntry } from './entities/bank-match.entity';
 import { BankStatementLine } from './entities/bank-statement-line.entity';
 import { FinanceAccount } from './entities/finance-account.entity';
 import { JournalEntry } from './entities/journal-entry.entity';
@@ -24,10 +34,22 @@ import { baseCurrencyFor } from './fx';
 import { LedgerService } from './ledger.service';
 
 const cents = (n: number) => Math.round((n + Number.EPSILON) * 100);
+const money = (c: number) => (c / 100).toFixed(2);
+
+const ENTRY_TAKEN = 'uq_bank_match_entries_entry';
+
+type MatchedEntries = Map<
+  string,
+  { journalEntryId: string; entryNumber: string }[]
+>;
 
 /**
- * Bank reconciliation: statement lines imported from the bank, matched one to
- * one against journal entries that moved the account's ledger account.
+ * Bank reconciliation: statement lines imported from the bank, matched
+ * against journal entries that moved the account's ledger account.
+ *
+ * A match is a group: any number of lines against any number of entries,
+ * whose totals agree. One of each is the usual case; a deposit of several
+ * receipts and a payroll paid out per person are the reasons it is a group.
  *
  * A line the books have no entry for (bank charges, interest) is booked and
  * matched in one step, through a manual journal. The ledger side is always
@@ -57,22 +79,48 @@ export class ReconciliationService {
       tenantId,
       financeAccountId,
     );
-    const [rows, movements] = await Promise.all([
+    const [rows, movements, matchEntries] = await Promise.all([
       this.lines.find({
         where: { tenantId, financeAccountId },
         order: { statementDate: 'DESC', createdAt: 'DESC' },
       }),
       this.movements(tenantId, ledgerAccountId),
+      this.dataSource.manager
+        .getRepository(BankMatchEntry)
+        .find({ where: { tenantId, financeAccountId } }),
     ]);
 
-    const numbers = new Map(movements.map((m) => [m.journalEntryId, m.entryNumber]));
-    const matched = new Set(rows.map((r) => r.journalEntryId).filter(Boolean));
+    const numbers = await this.entryNumbers(
+      tenantId,
+      matchEntries.map((e) => e.journalEntryId),
+      movements,
+    );
+    const byMatch: MatchedEntries = new Map();
+    for (const e of matchEntries) {
+      const list = byMatch.get(e.matchId) ?? [];
+      list.push({
+        journalEntryId: e.journalEntryId,
+        entryNumber: numbers.get(e.journalEntryId) ?? '—',
+      });
+      byMatch.set(e.matchId, list);
+    }
+    const lineCounts = new Map<string, number>();
+    for (const r of rows) {
+      if (r.matchId)
+        lineCounts.set(r.matchId, (lineCounts.get(r.matchId) ?? 0) + 1);
+    }
+
+    const reconciled = new Set(matchEntries.map((e) => e.journalEntryId));
+    const unreconciledLedger = movements.filter(
+      (m) => !reconciled.has(m.journalEntryId),
+    );
     const counts: Record<BankStatementLineStatus, number> = {
       UNMATCHED: 0,
       MATCHED: 0,
       EXCLUDED: 0,
     };
     for (const row of rows) counts[row.status]++;
+    const lines = rows.map((r) => toDto(r, byMatch, lineCounts));
 
     return {
       financeAccountId,
@@ -85,9 +133,17 @@ export class ReconciliationService {
           .filter((r) => r.status !== 'EXCLUDED')
           .reduce((s, r) => s + cents(Number(r.amount)), 0) / 100,
       ledgerBalance: movements.reduce((s, m) => s + cents(m.amount), 0) / 100,
-      unreconciledLedger: movements.filter((m) => !matched.has(m.journalEntryId)),
-      lines: rows.map((r) => toDto(r, numbers)),
+      unreconciledLedger,
+      lines,
       counts,
+      // Suggestions compare amounts, which an account in another currency
+      // cannot do against a base-currency ledger.
+      suggestions: comparable
+        ? suggestReconciliation(
+            lines.filter((l) => l.status === 'UNMATCHED'),
+            unreconciledLedger,
+          )
+        : [],
     };
   }
 
@@ -103,7 +159,11 @@ export class ReconciliationService {
     tenantId: string,
     payload: ImportStatementSchemaPayload,
   ): Promise<ImportStatementResult> {
-    await this.account(this.dataSource.manager, tenantId, payload.financeAccountId);
+    await this.account(
+      this.dataSource.manager,
+      tenantId,
+      payload.financeAccountId,
+    );
     const seen = new Map<string, number>();
     const rows = payload.lines.map((line) => {
       const key = [
@@ -141,61 +201,178 @@ export class ReconciliationService {
     return { imported, skipped: rows.length - imported };
   }
 
+  /**
+   * Matches statement lines to journal entries as one group.
+   *
+   * Every line must be open and on the same account; every entry must move
+   * that account and not already be reconciled. In base currency the totals
+   * must agree to the cent. The unique index on (account, entry) is the
+   * final word on "already reconciled", so two people matching the same
+   * entry at once cannot both succeed.
+   */
   async match(
     tenantId: string,
     actorId: string,
-    lineId: string,
-    journalEntryId: string,
+    lineIds: string[],
+    journalEntryIds: string[],
     outer?: EntityManager,
-  ): Promise<BankStatementLineDto> {
+  ): Promise<BankStatementLineDto[]> {
+    if (!lineIds.length || !journalEntryIds.length) {
+      throw new BadRequestException(
+        'Choose at least one statement line and one ledger entry.',
+      );
+    }
     const run = async (manager: EntityManager) => {
-      const line = await this.line(manager, tenantId, lineId);
-      if (line.status !== 'UNMATCHED')
-        throw new ConflictException(
-          `That line is ${line.status.toLowerCase()}; unmatch it first.`,
+      const lines = await manager.getRepository(BankStatementLine).find({
+        where: { id: In(lineIds), tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (lines.length !== new Set(lineIds).size) {
+        throw new NotFoundException('Statement line not found');
+      }
+      const accountId = lines[0].financeAccountId;
+      if (lines.some((l) => l.financeAccountId !== accountId)) {
+        throw new BadRequestException(
+          'The lines belong to different accounts.',
         );
+      }
+      const closed = lines.find((l) => l.status !== 'UNMATCHED');
+      if (closed) {
+        throw new ConflictException(
+          `The line of ${closed.statementDate} "${closed.description}" is ${closed.status.toLowerCase()}; unmatch it first.`,
+        );
+      }
       const { ledgerAccountId, comparable } = await this.account(
         manager,
         tenantId,
-        line.financeAccountId,
+        accountId,
       );
-      const entry = await manager
+
+      const entries = await manager
         .getRepository(JournalEntry)
-        .findOne({ where: { id: journalEntryId, tenantId } });
-      if (!entry) throw new NotFoundException('Journal entry not found');
+        .find({ where: { id: In(journalEntryIds), tenantId } });
+      if (entries.length !== new Set(journalEntryIds).size) {
+        throw new NotFoundException('Journal entry not found');
+      }
+      let entryCents = 0;
+      for (const entry of entries) {
+        const net = netOn(entry, ledgerAccountId);
+        if (net === null || cents(net) === 0) {
+          throw new BadRequestException(
+            `${entry.entryNumber} does not move this account.`,
+          );
+        }
+        entryCents += cents(net);
+      }
 
-      const net = netOn(entry, ledgerAccountId);
-      if (net === null)
-        throw new BadRequestException(
-          `${entry.entryNumber} does not move this account.`,
-        );
-      if (comparable && cents(net) !== cents(Number(line.amount)))
-        throw new BadRequestException(
-          `The amounts differ: the statement says ${Number(line.amount).toFixed(2)}, ${entry.entryNumber} moved the account by ${net.toFixed(2)}.`,
-        );
-
-      const taken = await manager.getRepository(BankStatementLine).findOne({
+      const taken = await manager.getRepository(BankMatchEntry).find({
         where: {
           tenantId,
-          financeAccountId: line.financeAccountId,
-          journalEntryId,
+          financeAccountId: accountId,
+          journalEntryId: In(journalEntryIds),
         },
       });
-      if (taken)
+      if (taken.length) {
+        const names = entries
+          .filter((e) => taken.some((t) => t.journalEntryId === e.id))
+          .map((e) => e.entryNumber);
         throw new ConflictException(
-          `${entry.entryNumber} is already matched to the line of ${taken.statementDate} "${taken.description}".`,
+          `${names.join(', ')} ${names.length === 1 ? 'is' : 'are'} already reconciled.`,
         );
+      }
 
-      line.status = 'MATCHED';
-      line.journalEntryId = entry.id;
-      line.matchedAt = new Date();
-      line.matchedById = actorId;
-      await manager.getRepository(BankStatementLine).save(line);
-      return toDto(line, new Map([[entry.id, entry.entryNumber]]));
+      const lineCents = lines.reduce((s, l) => s + cents(Number(l.amount)), 0);
+      if (comparable && lineCents !== entryCents) {
+        throw new BadRequestException(
+          `The totals differ: the statement line${lines.length === 1 ? ' says' : 's add up to'} ${money(lineCents)}, ` +
+            `the entr${entries.length === 1 ? 'y moved' : 'ies moved'} the account by ${money(entryCents)}.`,
+        );
+      }
+      if (!comparable && Math.sign(lineCents) !== Math.sign(entryCents)) {
+        throw new BadRequestException(
+          'The statement shows money going one way and the ledger the other.',
+        );
+      }
+
+      const now = new Date();
+      const match = await manager.getRepository(BankMatch).save(
+        manager.getRepository(BankMatch).create({
+          tenantId,
+          financeAccountId: accountId,
+          matchedAt: now,
+          matchedById: actorId,
+        }),
+      );
+      try {
+        await manager.getRepository(BankMatchEntry).insert(
+          entries.map((e) => ({
+            tenantId,
+            matchId: match.id,
+            financeAccountId: accountId,
+            journalEntryId: e.id,
+          })),
+        );
+      } catch (err) {
+        if (isUniqueViolation(err, ENTRY_TAKEN)) {
+          throw new ConflictException(
+            'One of those entries was reconciled a moment ago. Reload and try again.',
+          );
+        }
+        throw err;
+      }
+      for (const line of lines) {
+        line.status = 'MATCHED';
+        line.matchId = match.id;
+        line.matchedAt = now;
+        line.matchedById = actorId;
+      }
+      await manager.getRepository(BankStatementLine).save(lines);
+
+      const matched: MatchedEntries = new Map([
+        [
+          match.id,
+          entries.map((e) => ({
+            journalEntryId: e.id,
+            entryNumber: e.entryNumber,
+          })),
+        ],
+      ]);
+      const count = new Map([[match.id, lines.length]]);
+      return lines.map((l) => toDto(l, matched, count));
     };
     return outer ? run(outer) : this.dataSource.transaction(run);
   }
 
+  /**
+   * Applies every suggestion that is certain — the only pairing either side
+   * could make — and nothing else. Each is its own transaction, so one that
+   * someone else matched meanwhile is skipped rather than undoing the rest.
+   */
+  async autoMatch(
+    tenantId: string,
+    actorId: string,
+    financeAccountId: string,
+  ): Promise<AutoMatchResult> {
+    const { suggestions } = await this.reconciliation(
+      tenantId,
+      financeAccountId,
+    );
+    let matched = 0;
+    for (const s of suggestions.filter((x) => x.certain)) {
+      try {
+        await this.match(tenantId, actorId, s.lineIds, s.journalEntryIds);
+        matched++;
+      } catch (err) {
+        if (!(err instanceof HttpException)) throw err;
+      }
+    }
+    return { matched };
+  }
+
+  /**
+   * Reopens a line. A matched line takes its whole match with it — every
+   * line and entry in the group is freed — since half a match is not one.
+   */
   async setStatus(
     tenantId: string,
     lineId: string,
@@ -205,12 +382,36 @@ export class ReconciliationService {
       const line = await this.line(manager, tenantId, lineId);
       if (status === 'EXCLUDED' && line.status === 'MATCHED')
         throw new ConflictException('Unmatch the line before excluding it.');
+
+      if (line.matchId) {
+        const matchId = line.matchId;
+        await manager
+          .getRepository(BankStatementLine)
+          .createQueryBuilder()
+          .update()
+          .set({
+            status: 'UNMATCHED',
+            matchId: null,
+            matchedAt: null,
+            matchedById: null,
+          })
+          .where('tenant_id = :tenantId AND match_id = :matchId', {
+            tenantId,
+            matchId,
+          })
+          .execute();
+        // Entries go with it (ON DELETE CASCADE).
+        await manager
+          .getRepository(BankMatch)
+          .delete({ id: matchId, tenantId });
+      }
+
       line.status = status;
-      line.journalEntryId = null;
+      line.matchId = null;
       line.matchedAt = null;
       line.matchedById = null;
       await manager.getRepository(BankStatementLine).save(line);
-      return toDto(line, new Map());
+      return toDto(line, new Map(), new Map());
     });
   }
 
@@ -228,7 +429,9 @@ export class ReconciliationService {
     return this.dataSource.transaction(async (manager) => {
       const line = await this.line(manager, tenantId, lineId);
       if (line.status !== 'UNMATCHED')
-        throw new ConflictException(`That line is ${line.status.toLowerCase()}.`);
+        throw new ConflictException(
+          `That line is ${line.status.toLowerCase()}.`,
+        );
       const { ledgerAccountId } = await this.account(
         manager,
         tenantId,
@@ -264,7 +467,14 @@ export class ReconciliationService {
         },
         manager,
       );
-      return this.match(tenantId, actorId, line.id, entry.id, manager);
+      const [matched] = await this.match(
+        tenantId,
+        actorId,
+        [line.id],
+        [entry.id],
+        manager,
+      );
+      return matched;
     });
   }
 
@@ -274,7 +484,11 @@ export class ReconciliationService {
     manager: EntityManager,
     tenantId: string,
     financeAccountId: string,
-  ): Promise<{ account: FinanceAccount; ledgerAccountId: string; comparable: boolean }> {
+  ): Promise<{
+    account: FinanceAccount;
+    ledgerAccountId: string;
+    comparable: boolean;
+  }> {
     const account = await manager
       .getRepository(FinanceAccount)
       .findOne({ where: { id: financeAccountId, tenantId } });
@@ -297,11 +511,32 @@ export class ReconciliationService {
     tenantId: string,
     id: string,
   ): Promise<BankStatementLine> {
-    const line = await manager
-      .getRepository(BankStatementLine)
-      .findOne({ where: { id, tenantId }, lock: { mode: 'pessimistic_write' } });
+    const line = await manager.getRepository(BankStatementLine).findOne({
+      where: { id, tenantId },
+      lock: { mode: 'pessimistic_write' },
+    });
     if (!line) throw new NotFoundException('Statement line not found');
     return line;
+  }
+
+  /** Entry numbers for reconciled entries, mostly from the movements already loaded. */
+  private async entryNumbers(
+    tenantId: string,
+    ids: string[],
+    movements: LedgerMovementDto[],
+  ): Promise<Map<string, string>> {
+    const numbers = new Map(
+      movements.map((m) => [m.journalEntryId, m.entryNumber]),
+    );
+    const missing = [...new Set(ids)].filter((id) => !numbers.has(id));
+    if (missing.length) {
+      const rows = await this.journal.find({
+        where: { id: In(missing), tenantId },
+        select: { id: true, entryNumber: true },
+      });
+      for (const r of rows) numbers.set(r.id, r.entryNumber);
+    }
+    return numbers;
   }
 
   /** Every entry that moved this ledger account, newest first, with its net movement. */
@@ -322,7 +557,9 @@ export class ReconciliationService {
     for (const entry of entries) {
       const net = netOn(entry, ledgerAccountId);
       if (net === null || cents(net) === 0) continue;
-      const line = entry.lines.find((l) => l.ledgerAccountId === ledgerAccountId);
+      const line = entry.lines.find(
+        (l) => l.ledgerAccountId === ledgerAccountId,
+      );
       out.push({
         journalEntryId: entry.id,
         entryNumber: entry.entryNumber,
@@ -338,7 +575,9 @@ export class ReconciliationService {
 
 /** Debit minus credit on one ledger account; null when the entry does not touch it. */
 function netOn(entry: JournalEntry, ledgerAccountId: string): number | null {
-  const lines = (entry.lines ?? []).filter((l) => l.ledgerAccountId === ledgerAccountId);
+  const lines = (entry.lines ?? []).filter(
+    (l) => l.ledgerAccountId === ledgerAccountId,
+  );
   if (!lines.length) return null;
   return (
     lines.reduce(
@@ -348,9 +587,17 @@ function netOn(entry: JournalEntry, ledgerAccountId: string): number | null {
   );
 }
 
+function isUniqueViolation(err: unknown, constraint: string): boolean {
+  if (!(err instanceof QueryFailedError)) return false;
+  const driver = err.driverError as
+    { code?: string; constraint?: string } | undefined;
+  return driver?.code === '23505' && driver.constraint === constraint;
+}
+
 function toDto(
   row: BankStatementLine,
-  numbers: Map<string, string>,
+  matched: MatchedEntries,
+  lineCounts: Map<string, number>,
 ): BankStatementLineDto {
   return {
     id: row.id,
@@ -360,10 +607,9 @@ function toDto(
     amount: Number(row.amount),
     reference: row.reference,
     status: row.status,
-    journalEntryId: row.journalEntryId,
-    journalEntryNumber: row.journalEntryId
-      ? (numbers.get(row.journalEntryId) ?? null)
-      : null,
+    matchId: row.matchId,
+    matchedEntries: row.matchId ? (matched.get(row.matchId) ?? []) : [],
+    matchedLineCount: row.matchId ? (lineCounts.get(row.matchId) ?? 1) : 0,
     createdAt: row.createdAt?.toISOString?.() ?? new Date().toISOString(),
   };
 }

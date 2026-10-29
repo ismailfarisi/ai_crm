@@ -115,6 +115,19 @@ export const matchStatementLineSchema = z.object({
   journalEntryId: z.string().uuid(),
 });
 
+const distinctIds = (what: string) =>
+  z
+    .array(z.string().uuid())
+    .min(1, `Choose at least one ${what}`)
+    .max(50, `A match covers at most 50 ${what}s`)
+    .refine((ids) => new Set(ids).size === ids.length, `The same ${what} is listed twice`);
+
+export const createBankMatchSchema = z.object({
+  lineIds: distinctIds('statement line'),
+  journalEntryIds: distinctIds('ledger entry'),
+});
+export type CreateBankMatchSchemaPayload = z.output<typeof createBankMatchSchema>;
+
 export const postStatementLineSchema = z.object({
   ledgerAccountId: z.string().uuid('Choose the account to book it to'),
   description: optionalText(255),

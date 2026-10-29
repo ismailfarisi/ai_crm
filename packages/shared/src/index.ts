@@ -29,6 +29,7 @@ export * from './finance/types';
 export * from './finance/expense-categories';
 export * from './finance/recurring';
 export * from './finance/books';
+export * from './finance/reconciliation-suggest';
 export * from './finance/receipts';
 export * from './schemas/books';
 export * from './ai/types';

@@ -38,6 +38,7 @@ import { BooksController } from './books.controller';
 import { BooksService } from './books.service';
 import { ReconciliationService } from './reconciliation.service';
 import { BankStatementLine } from './entities/bank-statement-line.entity';
+import { BankMatch, BankMatchEntry } from './entities/bank-match.entity';
 import { ExpensesController } from './expenses.controller';
 import { TemporalModule } from '../temporal/temporal.module';
 import { AiModule } from '../ai/ai.module';
@@ -57,6 +58,8 @@ import { ExpenseReceiptsService } from './expense-receipts.service';
       JournalEntry,
       LedgerAccount,
       BankStatementLine,
+      BankMatch,
+      BankMatchEntry,
       // Read by the currency and reporting services; owned elsewhere.
       FxRate,
       Organization,

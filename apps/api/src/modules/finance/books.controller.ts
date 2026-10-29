@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
+  createBankMatchSchema,
   createLedgerAccountSchema,
   importStatementSchema,
   journalListQuerySchema,
@@ -23,6 +24,7 @@ import {
   postStatementLineSchema,
   reverseJournalSchema,
   updateLedgerAccountSchema,
+  type CreateBankMatchSchemaPayload,
   type CreateLedgerAccountSchemaPayload,
   type ImportStatementSchemaPayload,
   type JournalListQuery,
@@ -185,17 +187,51 @@ export class BooksController {
 
   @Post('bank-statement-lines/:id/match')
   @RequirePermissions(PERMISSIONS.BANK_RECONCILE)
-  matchLine(
+  async matchLine(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body(zodBody(matchStatementLineSchema)) body: { journalEntryId: string },
   ) {
+    const [line] = await this.reconciliation.match(
+      user.organizationId,
+      user.id,
+      [id],
+      [body.journalEntryId],
+    );
+    return line;
+  }
+
+  @Post('bank-matches')
+  @RequirePermissions(PERMISSIONS.BANK_RECONCILE)
+  @ApiOperation({
+    summary: 'Match statement lines to ledger entries as one group',
+    description:
+      'Any number of open lines against any number of unreconciled entries, e.g. a deposit of three cheques. In base currency the totals must agree.',
+  })
+  createMatch(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(zodBody(createBankMatchSchema)) body: CreateBankMatchSchemaPayload,
+  ) {
     return this.reconciliation.match(
       user.organizationId,
       user.id,
-      id,
-      body.journalEntryId,
+      body.lineIds,
+      body.journalEntryIds,
     );
+  }
+
+  @Post('accounts/:id/auto-match')
+  @RequirePermissions(PERMISSIONS.BANK_RECONCILE)
+  @ApiOperation({
+    summary: 'Apply every certain match suggestion',
+    description:
+      'Matches only pairings that are the only one either side could make; everything else is left for a person.',
+  })
+  autoMatch(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.reconciliation.autoMatch(user.organizationId, user.id, id);
   }
 
   @Post('bank-statement-lines/:id/unmatch')

@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type {
+  CreateBankMatchPayload,
   CreateLedgerAccountPayload,
   CreateManualJournalPayload,
   ImportStatementPayload,
@@ -153,6 +154,29 @@ export function useStatementLineAction() {
     },
     onSuccess: () => invalidate(),
     onError: (error) => toast.error(describe(error, 'That did not go through')),
+  });
+}
+
+/** Several statement lines and/or several entries, matched as one. */
+export function useCreateBankMatch() {
+  const invalidate = useInvalidateFinance();
+  return useMutation({
+    mutationFn: (payload: CreateBankMatchPayload) => api.books.createMatch(payload),
+    onSuccess: () => invalidate(),
+    onError: (error) => toast.error(describe(error, 'That match did not go through')),
+  });
+}
+
+/** Applies every certain suggestion, and says how many. */
+export function useAutoMatch() {
+  const invalidate = useInvalidateFinance();
+  return useMutation({
+    mutationFn: (financeAccountId: string) => api.books.autoMatch(financeAccountId),
+    onSuccess: async (result) => {
+      await invalidate();
+      toast.success(result.matched ? `${result.matched} line(s) matched` : 'Nothing was certain enough to match');
+    },
+    onError: (error) => toast.error(describe(error, 'Auto-match did not go through')),
   });
 }
 

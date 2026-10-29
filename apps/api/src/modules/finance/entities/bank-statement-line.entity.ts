@@ -12,9 +12,10 @@ import { numericTransformer } from './finance-account.entity';
 /**
  * One line of a bank statement, imported to be reconciled against the ledger.
  *
- * Matched to at most one journal entry per account: the entry that moved this
- * account's ledger account by the same amount. `fingerprint` is the date,
- * amount, description and reference hashed together, so importing a
+ * Matched through a `BankMatch`, which may hold several lines and several
+ * journal entries (a deposit of three cheques, a payroll paid out per
+ * person). `fingerprint` is the date, amount, description and reference
+ * hashed together, so importing a
  * statement that overlaps the last one skips the lines already there.
  * Created in migration 1790500000000-AccountingCore.
  */
@@ -29,11 +30,7 @@ import { numericTransformer } from './finance-account.entity';
   ['tenantId', 'financeAccountId', 'fingerprint'],
   { unique: true },
 )
-@Index(
-  'uq_bank_statement_lines_entry',
-  ['financeAccountId', 'journalEntryId'],
-  { unique: true, where: '"journal_entry_id" IS NOT NULL' },
-)
+@Index('idx_bank_statement_lines_match', ['matchId'])
 export class BankStatementLine {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -65,12 +62,13 @@ export class BankStatementLine {
   @Column({ type: 'varchar', length: 64 })
   fingerprint: string;
 
-  /** CHECK in the migration. */
+  /** CHECK in the migration: MATCHED exactly when `matchId` is set. */
   @Column({ type: 'varchar', length: 20, default: 'UNMATCHED' })
   status: BankStatementLineStatus;
 
-  @Column({ name: 'journal_entry_id', type: 'uuid', nullable: true })
-  journalEntryId: string | null;
+  /** Migration 1790900000000-BankMatchGroups. */
+  @Column({ name: 'match_id', type: 'uuid', nullable: true })
+  matchId: string | null;
 
   @Column({ name: 'matched_at', type: 'timestamptz', nullable: true })
   matchedAt: Date | null;
