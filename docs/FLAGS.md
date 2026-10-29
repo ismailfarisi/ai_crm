@@ -864,13 +864,28 @@ address can start one, so a person approves each tool call.
 
 A run that is terminated, that times out, or that is stuck on a workflow-task
 error never records its end, so its row stays Running. There is no cleanup job
-yet to close such rows.
+yet to close such rows. Their pending approvals stay in the Approvals inbox and
+count towards the nav badge until someone tries to decide one; that attempt
+finds the run gone and closes the item as "No longer pending".
 
-### Run contents are visible only to automation editors — by design
+### A decision whose delivery times out is released, even if it arrived — open
 
-A run's step inputs, outputs and trigger payload can hold customer data, so
-the run list and run detail require the edit-automations permission. Viewers
-see the automation, not what it processed.
+Deciding an approval claims the row, then signals the run. If the signal call
+fails without a clear answer (a client timeout where Temporal in fact accepted
+the signal), the claim is released and the person is told to try again. The
+run still acts on the decision, and the step's output records the real
+approver; only the approval row ends Cancelled rather than Approved or
+Rejected (when the step records its result, or at the latest when the run
+finishes).
+
+### Run payloads are visible only to automation editors — by design
+
+Anyone with the read-automations permission sees the run list and each run's
+steps: label, type, status, timing and error. A run's trigger payload, step
+inputs and outputs, and the details of its pending approvals can hold
+customer data, so the run view shows them only to holders of the
+edit-automations permission. Approvers also see a pending approval's details
+in the run view, because they can't decide without them.
 
 ### A scheduled run waiting on approval holds later ticks — by design
 
