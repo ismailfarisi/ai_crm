@@ -702,12 +702,13 @@ describe('QuotesService', () => {
       ).not.toHaveBeenCalled();
     });
 
-    it('emits invoice.issued for each invoice approval actually raised', async () => {
+    it('emits invoice.issued for each invoice approval raises for a quote already accepted', async () => {
       const existing = {
         id: quoteId,
         tenantId,
         status: QuoteStatus.DRAFT,
         workflowId: `quote-${quoteId}`,
+        acceptedAt: new Date(),
       } as Quote;
       quoteRepo.findOne = jest.fn().mockResolvedValue({ ...existing });
       invoicesService.createFromQuote = jest.fn().mockResolvedValue({
@@ -763,12 +764,31 @@ describe('QuotesService', () => {
         }) as Quote;
 
       /**
-       * The order and approval commit together, and Temporal only hears about
-       * it afterwards — so the workflow never acts on an approval that then
-       * rolls back, and a quote is never approved with no order behind it.
+       * Approval signs off the price so the quote can be sent; the order waits
+       * for the customer to accept. Temporal only hears about the decision
+       * once it has committed.
        */
-      it('locks, approves and provisions the order in one transaction, then signals', async () => {
+      it('approves without raising an order; the order waits for acceptance', async () => {
         quoteRepo.findOne = jest.fn().mockResolvedValue(pending());
+
+        await service.sendSignal(tenantId, quoteId, 'APPROVE');
+
+        expect(timeline).toEqual([
+          'begin',
+          'lock:pessimistic_write',
+          'update',
+          'commit',
+          'signal',
+        ]);
+        expect(invoicesService.createFromQuote).not.toHaveBeenCalled();
+      });
+
+      // Links issued before approval came first can be accepted early; such a
+      // quote becomes an order the moment it is approved, in one transaction.
+      it('provisions the order with the approval when the customer accepted first', async () => {
+        quoteRepo.findOne = jest
+          .fn()
+          .mockResolvedValue(pending({ acceptedAt: new Date() }));
 
         await service.sendSignal(tenantId, quoteId, 'APPROVE');
 
@@ -787,8 +807,10 @@ describe('QuotesService', () => {
         );
       });
 
-      it('does not approve a quote whose order could not be created', async () => {
-        quoteRepo.findOne = jest.fn().mockResolvedValue(pending());
+      it('does not approve an accepted quote whose order could not be created', async () => {
+        quoteRepo.findOne = jest
+          .fn()
+          .mockResolvedValue(pending({ acceptedAt: new Date() }));
         invoicesService.createFromQuote = jest
           .fn()
           .mockRejectedValue(new BadRequestException('Billing schedule invalid'));
@@ -858,9 +880,9 @@ describe('QuotesService', () => {
         expect(invoicesService.createFromQuote).not.toHaveBeenCalled();
       });
 
-      // A second click must not re-cost or re-signal; provisioning is
-      // idempotent, so it only fills in an order that is somehow missing.
-      it('treats approving an approved quote as a no-op apart from provisioning', async () => {
+      // A second click must not re-cost or re-signal. Provisioning is
+      // idempotent, so for an accepted quote it only fills in a missing order.
+      it('treats approving an approved quote as a no-op', async () => {
         quoteRepo.findOne = jest
           .fn()
           .mockResolvedValue(pending({ status: QuoteStatus.APPROVED }));
@@ -869,8 +891,58 @@ describe('QuotesService', () => {
 
         expect(res.status).toBe(QuoteStatus.APPROVED);
         expect(quoteRepo.update).not.toHaveBeenCalled();
+        expect(invoicesService.createFromQuote).not.toHaveBeenCalled();
+        expect(mockWorkflowHandle.signal).not.toHaveBeenCalled();
+      });
+
+      it('fills in a missing order when an approved, accepted quote is approved again', async () => {
+        quoteRepo.findOne = jest.fn().mockResolvedValue(
+          pending({ status: QuoteStatus.APPROVED, acceptedAt: new Date() }),
+        );
+
+        await service.sendSignal(tenantId, quoteId, 'APPROVE');
+
         expect(invoicesService.createFromQuote).toHaveBeenCalled();
         expect(mockWorkflowHandle.signal).not.toHaveBeenCalled();
+      });
+
+      describe('provisionAcceptedQuote', () => {
+        it('raises the order once the quote is both approved and accepted', async () => {
+          quoteRepo.findOne = jest.fn().mockResolvedValue(
+            pending({ status: QuoteStatus.APPROVED, acceptedAt: new Date() }),
+          );
+
+          await expect(
+            service.provisionAcceptedQuote(tenantId, quoteId),
+          ).resolves.toBe(true);
+          expect(invoicesService.createFromQuote).toHaveBeenCalledWith(
+            tenantId,
+            expect.objectContaining({ id: quoteId }),
+            quoteRepo.manager,
+          );
+        });
+
+        it.each([
+          ['not yet approved', { acceptedAt: new Date() }],
+          ['not yet accepted', { status: QuoteStatus.APPROVED }],
+          [
+            'replaced by a revision',
+            {
+              status: QuoteStatus.APPROVED,
+              acceptedAt: new Date(),
+              supersededAt: new Date(),
+            },
+          ],
+        ])('waits when the quote is %s', async (_label, overrides) => {
+          quoteRepo.findOne = jest
+            .fn()
+            .mockResolvedValue(pending(overrides as Partial<Quote>));
+
+          await expect(
+            service.provisionAcceptedQuote(tenantId, quoteId),
+          ).resolves.toBe(false);
+          expect(invoicesService.createFromQuote).not.toHaveBeenCalled();
+        });
       });
 
       describe('margin floor', () => {

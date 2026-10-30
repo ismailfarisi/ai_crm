@@ -16,7 +16,7 @@ function makeService(overrides: Record<string, unknown> = {}) {
     title: 'Gift boxes',
     customerName: 'Acme',
     customerEmail: 'ap@acme.test',
-    status: QuoteStatus.DRAFT,
+    status: QuoteStatus.APPROVED,
     currency: 'GBP',
     paymentTerms: 'net_30',
     termsAndConditions: null,
@@ -77,13 +77,17 @@ function makeService(overrides: Record<string, unknown> = {}) {
     }),
   };
   const events = { handleCrmEvent: jest.fn() };
+  const quotesService = { provisionAcceptedQuote: jest.fn(async () => true) };
   const service = new QuoteAcceptanceService(
     quotes,
     { findOne: jest.fn(async () => ({ name: 'Northside Print' })) } as any,
     { get: () => ['https://app.example.test'] } as any,
     events as any,
+    undefined as any,
+    undefined,
+    quotesService as any,
   );
-  return { service, quote, events };
+  return { service, quote, events, quotesService };
 }
 
 const tokenFrom = (url: string) => url.split('/q/')[1];
@@ -111,8 +115,8 @@ describe('QuoteAcceptanceService', () => {
     expect(wire).not.toMatch(/cost|haggle/i);
   });
 
-  it('records acceptance once; the same link cannot accept again', async () => {
-    const { service, quote, events } = makeService();
+  it('records acceptance once and raises the order; the same link cannot accept again', async () => {
+    const { service, quote, events, quotesService } = makeService();
     const token = tokenFrom((await service.createLink(tenantId, 'q1')).url);
 
     await service.accept(token, { name: 'Jo Bloggs' }, '203.0.113.9');
@@ -120,8 +124,10 @@ describe('QuoteAcceptanceService', () => {
     expect(events.handleCrmEvent).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: 'quote.accepted' }),
     );
-    // Acceptance is recorded, not acted on: approval stays internal.
-    expect(quote.status).toBe(QuoteStatus.DRAFT);
+    expect(quotesService.provisionAcceptedQuote).toHaveBeenCalledWith(
+      tenantId,
+      'q1',
+    );
 
     await expect(
       service.accept(token, { name: 'Someone Else' }, undefined),
@@ -145,6 +151,59 @@ describe('QuoteAcceptanceService', () => {
     quote.supersededAt = new Date();
 
     await expect(service.view(token)).rejects.toBeInstanceOf(GoneException);
+  });
+
+  it('will not send a quote that has not been approved', async () => {
+    const { service, quote } = makeService({ status: QuoteStatus.DRAFT });
+
+    await expect(service.createLink(tenantId, 'q1')).rejects.toThrow(
+      /Approve QT-2026-0001 before sending it/,
+    );
+    expect(quote.acceptanceTokenHash).toBeNull();
+  });
+
+  // The customer still said yes even if their order fails to appear.
+  it('keeps the acceptance when the order cannot be raised', async () => {
+    const { service, quote, quotesService } = makeService();
+    quotesService.provisionAcceptedQuote.mockRejectedValueOnce(
+      new Error('no FX rate'),
+    );
+    const token = tokenFrom((await service.createLink(tenantId, 'q1')).url);
+
+    await expect(
+      service.accept(token, { name: 'Jo Bloggs' }, undefined),
+    ).resolves.toMatchObject({ acceptedByName: 'Jo Bloggs' });
+    expect(quote.acceptedAt).toBeInstanceOf(Date);
+  });
+
+  describe('markAccepted', () => {
+    it('records an acceptance given another way and raises the order', async () => {
+      const { service, quote, events, quotesService } = makeService();
+
+      await service.markAccepted(tenantId, 'q1', 'Fatima (signed PO)');
+
+      expect(quote.acceptedByName).toBe('Fatima (signed PO)');
+      expect(events.handleCrmEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ eventType: 'quote.accepted' }),
+      );
+      expect(quotesService.provisionAcceptedQuote).toHaveBeenCalledWith(
+        tenantId,
+        'q1',
+      );
+    });
+
+    it('refuses a quote that is not approved, or already accepted', async () => {
+      const draft = makeService({ status: QuoteStatus.DRAFT });
+      await expect(
+        draft.service.markAccepted(tenantId, 'q1', 'Fatima'),
+      ).rejects.toThrow(/must be approved/);
+      expect(draft.quotesService.provisionAcceptedQuote).not.toHaveBeenCalled();
+
+      const accepted = makeService({ acceptedAt: new Date() });
+      await expect(
+        accepted.service.markAccepted(tenantId, 'q1', 'Fatima'),
+      ).rejects.toThrow(/already been accepted/);
+    });
   });
 
   it('treats a malformed token as not found without querying', async () => {

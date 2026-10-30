@@ -1,7 +1,8 @@
 /**
  * Sales orders and staged billing.
  *
- * A quote can be billed in stages — a deposit on approval, the balance later.
+ * A quote can be billed in stages — a deposit when the customer accepts, the
+ * balance later.
  * The schedule is chosen while quoting (it is part of what the customer is
  * agreeing to) and copied onto the order when the order is created.
  */
@@ -14,7 +15,9 @@ export type BillingKind = 'DEPOSIT' | 'MILESTONE' | 'FINAL';
  * When a stage is invoiced.
  *
  * `ON_APPROVAL` is raised the moment the order exists — the deposit case, and
- * the whole-amount case that every quote without a schedule falls into.
+ * the whole-amount case that every quote without a schedule falls into. The
+ * name predates order-on-acceptance: the order, and so this stage, now comes
+ * when the customer accepts an approved quote, not at approval itself.
  * `MANUAL` waits for someone to say the milestone has been reached.
  * `ON_DELIVERY` is never raised as a stage: each dispatched delivery note is
  * invoiced for what it carried, until the order is billed in full.
@@ -29,13 +32,13 @@ export interface BillingStage {
   trigger: BillingTrigger;
 }
 
-/** What every quote without a schedule is billed as: everything, on approval. */
+/** What every quote without a schedule is billed as: everything, when the customer accepts. */
 export const DEFAULT_BILLING_SCHEDULE: BillingStage[] = [
   { kind: 'FINAL', label: 'Full amount', percent: 100, trigger: 'ON_APPROVAL' },
 ];
 
 export const BILLING_PRESETS: { key: string; label: string; stages: BillingStage[] }[] = [
-  { key: 'full', label: 'Invoice in full on approval', stages: DEFAULT_BILLING_SCHEDULE },
+  { key: 'full', label: 'Invoice in full when accepted', stages: DEFAULT_BILLING_SCHEDULE },
   {
     key: 'deposit-30',
     label: '30% deposit, balance on completion',

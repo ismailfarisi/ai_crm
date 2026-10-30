@@ -469,14 +469,18 @@ export class QuotesService {
    * Approval and rejection are decided in one transaction on the locked quote
    * row: its status and `superseded_at` are checked as they are now, only the
    * columns the decision owns are written (a whole-entity save could write a
-   * concurrent revision's `superseded_at` back to NULL), and an approval
-   * creates the sales order in the same transaction — so a quote is never
-   * approved without its order, and an approve and a reject cannot both win.
+   * concurrent revision's `superseded_at` back to NULL), and an approve and a
+   * reject cannot both win.
    *
-   * Temporal hears about the decision only after it has committed. Its
-   * `generateInvoiceActivity` runs the same idempotent provisioning and finds
-   * the order already there. A signal that fails is logged, not fatal: the
-   * decision is on record and the order exists either way.
+   * Approval signs off the price so the quote can go to the customer; it does
+   * not create the order. The order follows the customer's acceptance
+   * (`provisionAcceptedQuote`), so a customer who asks for changes gets a
+   * revision rather than an order someone has to cancel. A quote accepted
+   * before it was approved — links issued before approval came first — gets
+   * its order here instead, in the same transaction as the approval.
+   *
+   * Temporal hears about the decision only after it has committed. A signal
+   * that fails is logged, not fatal: the decision is on record either way.
    */
   async sendSignal(
     tenantId: string,
@@ -511,7 +515,7 @@ export class QuotesService {
         if (action === 'REJECT') {
           if (quote.status === QuoteStatus.APPROVED) {
             throw new BadRequestException(
-              `${name} is already approved and has a sales order. Cancel the order instead.`,
+              `${name} is already approved. Revise it to change it.`,
             );
           }
           if (quote.status === QuoteStatus.REJECTED) {
@@ -532,12 +536,15 @@ export class QuotesService {
         }
         if (quote.status === QuoteStatus.APPROVED) {
           // Already decided; nothing is re-costed or re-signalled. Provisioning
-          // is idempotent, so this only fills in an order that is missing.
-          const { invoicesRaised } = await this.invoicesService.createFromQuote(
-            tenantId,
-            quote,
-            manager,
-          );
+          // is idempotent, so for an accepted quote this only fills in an
+          // order that is missing.
+          const { invoicesRaised } = quote.acceptedAt
+            ? await this.invoicesService.createFromQuote(
+                tenantId,
+                quote,
+                manager,
+              )
+            : { invoicesRaised: [] as Invoice[] };
           return { quote, decided: false, invoicesRaised };
         }
 
@@ -585,13 +592,16 @@ export class QuotesService {
         await repo.update({ id: quote.id, tenantId }, decision);
         Object.assign(quote, decision);
 
-        // Same transaction: if the order cannot be created, the approval
-        // rolls back with it.
-        const { invoicesRaised } = await this.invoicesService.createFromQuote(
-          tenantId,
-          quote,
-          manager,
-        );
+        // Only a quote the customer has already accepted becomes an order
+        // now; the rest wait for acceptance. Same transaction, so if that
+        // order cannot be created the approval rolls back with it.
+        const { invoicesRaised } = quote.acceptedAt
+          ? await this.invoicesService.createFromQuote(
+              tenantId,
+              quote,
+              manager,
+            )
+          : { invoicesRaised: [] as Invoice[] };
         return { quote, decided: true, invoicesRaised };
       });
 
@@ -601,6 +611,48 @@ export class QuotesService {
       await this.notifications.resolve(tenantId, quote.id);
     }
 
+    await this.emitInvoicesIssued(tenantId, quote, invoicesRaised);
+    return quote;
+  }
+
+  /**
+   * The order for an approved quote the customer has accepted.
+   *
+   * Called when the acceptance is recorded — from the customer's link or by
+   * hand — and a no-op until both have happened, so it is safe to call from
+   * either side. Idempotent: provisioning finds an existing order and
+   * returns it.
+   */
+  async provisionAcceptedQuote(
+    tenantId: string,
+    quoteId: string,
+  ): Promise<boolean> {
+    const { quote, invoicesRaised, ready } =
+      await this.quoteRepository.manager.transaction(async (manager) => {
+        const quote = await lockQuote(manager, tenantId, quoteId);
+        if (
+          quote.status !== QuoteStatus.APPROVED ||
+          !quote.acceptedAt ||
+          quote.supersededAt
+        ) {
+          return { quote, invoicesRaised: [] as Invoice[], ready: false };
+        }
+        const { invoicesRaised } = await this.invoicesService.createFromQuote(
+          tenantId,
+          quote,
+          manager,
+        );
+        return { quote, invoicesRaised, ready: true };
+      });
+    await this.emitInvoicesIssued(tenantId, quote, invoicesRaised);
+    return ready;
+  }
+
+  private async emitInvoicesIssued(
+    tenantId: string,
+    quote: Quote,
+    invoicesRaised: Invoice[],
+  ): Promise<void> {
     for (const invoice of invoicesRaised) {
       try {
         await this.automationEventBridgeService.handleCrmEvent({
@@ -624,8 +676,6 @@ export class QuotesService {
         );
       }
     }
-
-    return quote;
   }
 
   /** Best-effort: the decision is already committed by the time this runs. */

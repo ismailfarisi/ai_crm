@@ -1,4 +1,9 @@
-import { condition, proxyActivities, setHandler } from '@temporalio/workflow';
+import {
+  condition,
+  patched,
+  proxyActivities,
+  setHandler,
+} from '@temporalio/workflow';
 import type * as activities from './quote.activities';
 import {
   approveQuoteSignal,
@@ -93,6 +98,20 @@ export async function quoteWorkflow(
   }
 
   status = 'APPROVED';
+
+  // Approval now signs off the price only. The sales order follows the
+  // customer's acceptance, which QuotesService.provisionAcceptedQuote handles
+  // outside this workflow. Workflows that approved before this change replay
+  // the old path, which raised the order here.
+  if (patched('order-on-acceptance')) {
+    await sendNotificationActivity({
+      quoteId: input.quoteId,
+      tenantId: input.tenantId,
+      type: 'QUOTE_APPROVED',
+    });
+    return { status: 'APPROVED' };
+  }
+
   const invoiceId = await generateInvoiceActivity({
     quoteId: input.quoteId,
     tenantId: input.tenantId,

@@ -66,6 +66,12 @@ describe('Public links (e2e)', () => {
       items: resolved.body.lines,
     }).expect(201);
     quoteId = quote.body.id;
+    // Only an approved quote can go to a customer, and approving one no
+    // longer creates its order: that waits for the customer to accept.
+    await post(`/quotes/${quoteId}/acceptance-link`).expect(400);
+    await post(`/quotes/${quoteId}/signal`, { action: 'APPROVE' }).expect(201);
+    const before = await get(`/quotes/${quoteId}/sales-order`).expect(200);
+    expect(before.body.order).toBeNull();
     const link = await post(`/quotes/${quoteId}/acceptance-link`).expect(201);
     token = String(link.body.url).split('/q/')[1];
   }, TIMEOUT);
@@ -98,6 +104,9 @@ describe('Public links (e2e)', () => {
         .expect(400);
       const inside = await get(`/quotes/${quoteId}`).expect(200);
       expect(inside.body.acceptedByName).toBe('Fatima Al Noor');
+      // Accepting is what turns the approved quote into an order.
+      const order = await get(`/quotes/${quoteId}/sales-order`).expect(200);
+      expect(order.body.order?.quoteId).toBe(quoteId);
     },
     TIMEOUT,
   );

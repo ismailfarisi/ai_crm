@@ -26,6 +26,7 @@ import { AutomationEventBridgeService } from '../automations/services/automation
 import { MailService } from '../mail/mail.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { Quote, QuoteStatus } from './entities/quote.entity';
+import { QuotesService } from './quotes.service';
 
 const hashToken = (token: string) =>
   createHash('sha256').update(token).digest('hex');
@@ -53,12 +54,11 @@ const TOKEN_SHAPE = /^[A-Za-z0-9_-]{43}$/;
 /**
  * A customer accepting a quote from a link, without an account.
  *
- * Acceptance is recorded, not acted on. Approval stays an internal decision,
- * because approval is where the margin floors are enforced against the
- * approver's own permissions — letting a customer's click create the order
- * would let anyone with the link walk a below-floor quote past them.
- * `quote.accepted` is emitted so a tenant who wants acceptance to approve
- * can build that as an automation, with a person in the loop.
+ * A quote reaches a customer only once it is approved: approval is where the
+ * margin floors are enforced against the approver's own permissions, so the
+ * price on the link has already been signed off. The customer's acceptance is
+ * then what turns it into a sales order — recorded from the link, or by hand
+ * when they said yes some other way. `quote.accepted` is emitted either way.
  */
 @Injectable()
 export class QuoteAcceptanceService {
@@ -72,6 +72,7 @@ export class QuoteAcceptanceService {
     private readonly events: AutomationEventBridgeService,
     private readonly mail: MailService,
     @Optional() private readonly tenantContext?: TenantContextService,
+    @Optional() private readonly quotesService?: QuotesService,
   ) {}
 
   /**
@@ -126,6 +127,11 @@ export class QuoteAcceptanceService {
     if (!(Number(quote.totalAmount) > 0)) {
       throw new BadRequestException(
         'Add priced lines before sending the quote',
+      );
+    }
+    if (quote.status !== QuoteStatus.APPROVED) {
+      throw new BadRequestException(
+        `Approve ${quote.quoteNumber ?? 'the quote'} before sending it to the customer`,
       );
     }
 
@@ -272,28 +278,92 @@ export class QuoteAcceptanceService {
     quote!.acceptedAt = acceptedAt;
     quote!.acceptedByName = name;
 
+    await this.afterAcceptance(quote!, name);
+    // The customer has said yes; a failure here must not tell them otherwise.
+    // The order can still be raised from the quote, by re-approving it.
     try {
-      await this.events.handleCrmEvent({
-        tenantId: quote!.tenantId,
-        eventType: 'quote.accepted',
-        entityId: quote!.id,
-        data: {
-          quoteId: quote!.id,
-          quoteNumber: quote!.quoteNumber,
-          customerId: quote!.customerId,
-          customerEmail: quote!.customerEmail,
-          acceptedByName: name,
-          totalAmount: quote!.totalAmount,
-        },
-      });
+      await this.quotesService?.provisionAcceptedQuote(
+        quote!.tenantId,
+        quote!.id,
+      );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(
-        `Failed to emit quote.accepted for ${quote!.id}: ${msg}`,
+      this.logger.error(
+        `Quote ${quote!.id} was accepted but its order was not created: ${msg}`,
       );
     }
 
     return this.toPublic(quote!);
+  }
+
+  /**
+   * Records an acceptance the customer gave some other way — a signed PDF, a
+   * purchase order, a phone call — and raises the order, exactly as accepting
+   * through the link does. Only an approved quote can be accepted.
+   */
+  async markAccepted(
+    tenantId: string,
+    quoteId: string,
+    name: string,
+  ): Promise<Quote> {
+    const quote = await this.quotes.findOne({
+      where: { id: quoteId, tenantId },
+    });
+    if (!quote) {
+      throw new NotFoundException(`Quote with ID ${quoteId} not found`);
+    }
+    const label = quote.quoteNumber ?? 'This quote';
+    if (quote.supersededAt) {
+      throw new BadRequestException(
+        `${label} has been replaced by a newer revision. Record the acceptance on the latest version.`,
+      );
+    }
+    if (quote.status !== QuoteStatus.APPROVED) {
+      throw new BadRequestException(
+        `${label} must be approved before the customer can accept it`,
+      );
+    }
+
+    const acceptedAt = new Date();
+    const result = await this.quotes
+      .createQueryBuilder()
+      .update(Quote)
+      .set({ acceptedAt, acceptedByName: name, acceptedIp: null })
+      .where('id = :id', { id: quote.id })
+      .andWhere('tenant_id = :tenantId', { tenantId })
+      .andWhere('accepted_at IS NULL')
+      .andWhere('superseded_at IS NULL')
+      .execute();
+    if (!result.affected) {
+      throw new BadRequestException(`${label} has already been accepted`);
+    }
+    quote.acceptedAt = acceptedAt;
+    quote.acceptedByName = name;
+
+    await this.afterAcceptance(quote, name);
+    await this.quotesService?.provisionAcceptedQuote(tenantId, quote.id);
+    return quote;
+  }
+
+  private async afterAcceptance(quote: Quote, name: string): Promise<void> {
+    try {
+      await this.events.handleCrmEvent({
+        tenantId: quote.tenantId,
+        eventType: 'quote.accepted',
+        entityId: quote.id,
+        data: {
+          quoteId: quote.id,
+          quoteNumber: quote.quoteNumber,
+          customerId: quote.customerId,
+          customerEmail: quote.customerEmail,
+          acceptedByName: name,
+          totalAmount: quote.totalAmount,
+        },
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Failed to emit quote.accepted for ${quote.id}: ${msg}`);
+    }
   }
 
   private async findByToken(token: string): Promise<Quote | null> {

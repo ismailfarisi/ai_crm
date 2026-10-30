@@ -32,3 +32,14 @@ export type SendQuoteInput = z.input<typeof sendQuoteSchema>;
 
 /** What the schema produces, and what the handler receives. */
 export type SendQuotePayload = z.output<typeof sendQuoteSchema>;
+
+/**
+ * Recording that the customer accepted, when they said yes some other way —
+ * a signed PDF, a purchase order, a phone call — instead of through the link.
+ */
+export const markQuoteAcceptedSchema = z.object({
+  /** Who accepted, as the person recording it was told. */
+  name: z.string().trim().min(2, 'Type the name of the person who accepted').max(255),
+});
+
+export type MarkQuoteAcceptedPayload = z.output<typeof markQuoteAcceptedSchema>;

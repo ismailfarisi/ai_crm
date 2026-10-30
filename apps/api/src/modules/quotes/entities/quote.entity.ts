@@ -148,7 +148,7 @@ export class Quote {
   @Column({ name: 'workflow_id', type: 'varchar', nullable: true })
   workflowId: string | null;
 
-  /** Null means the default: everything, invoiced on approval. */
+  /** Null means the default: everything, invoiced when the customer accepts. */
   @Column({ name: 'billing_schedule', type: 'jsonb', nullable: true })
   billingSchedule: BillingStage[] | null;
 

@@ -199,7 +199,7 @@ export interface CreateQuotePayload {
   notes?: string | null;
   prompt?: string | null;
   createdBy?: QuoteCreatedBy;
-  /** Null or absent: invoice everything on approval. See `orders/billing.ts`. */
+  /** Null or absent: invoice everything when the customer accepts. See `orders/billing.ts`. */
   billingSchedule?: BillingStage[] | null;
 }
 

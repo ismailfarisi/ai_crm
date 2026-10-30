@@ -20,6 +20,8 @@ import {
   QuoteLineItem,
   QuoteStatus as SharedQuoteStatus,
   RecordInvoicePaymentPayload,
+  markQuoteAcceptedSchema,
+  type MarkQuoteAcceptedPayload,
   sendQuoteSchema,
   type SendQuotePayload,
   UpdateQuotePayload,
@@ -227,12 +229,27 @@ export class QuotesController {
     return this.acceptance.sendToCustomer(user.organizationId, id, input);
   }
 
+  @Post('quotes/:id/mark-accepted')
+  @RequirePermissions(PERMISSIONS.QUOTE_UPDATE)
+  @ApiOperation({
+    summary: 'Record that the customer accepted',
+    description:
+      'For a customer who said yes some other way — a signed PDF, a purchase order, a phone call. Only an approved quote can be accepted, and accepting raises its sales order, exactly as accepting through the link does.',
+  })
+  async markQuoteAccepted(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(zodBody(markQuoteAcceptedSchema)) input: MarkQuoteAcceptedPayload,
+  ): Promise<Quote> {
+    return this.acceptance.markAccepted(user.organizationId, id, input.name);
+  }
+
   @Post('quotes/:id/revise')
   @RequirePermissions(PERMISSIONS.QUOTE_CREATE)
   @ApiOperation({
     summary: 'Revise a quote',
     description:
-      'Creates the next version as a draft and marks this one superseded. Refused once the quote has a sales order.',
+      'Creates the next version as a draft and marks this one superseded. Refused once the quote has a sales order, which it gets when the customer accepts.',
   })
   async reviseQuote(
     @CurrentUser() user: AuthenticatedUser,
