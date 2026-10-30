@@ -141,7 +141,7 @@ export function DataTableToolbar<TData>({
               </Button>
               {showColumnDropdown && (
                 <div className="absolute right-0 mt-1 z-20 w-48 rounded-2xl border border-border/40 bg-surface/95 backdrop-blur-sm p-2 shadow-lg max-h-60 overflow-y-auto">
-                  <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted px-2 py-1">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted px-2 py-1">
                     Toggle Columns
                   </div>
                   {table

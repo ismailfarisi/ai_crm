@@ -220,7 +220,7 @@ export function TemplateStudio({ templateId }: TemplateStudioProps) {
                       onClick={() => toggleDocumentType(type)}
                       className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                         isChecked
-                          ? 'bg-brand text-ink font-semibold border border-brand'
+                          ? 'bg-brand text-on-brand font-semibold border border-brand'
                           : 'bg-surface-muted/60 text-ink-muted border border-border/30 hover:border-border'
                       }`}
                     >

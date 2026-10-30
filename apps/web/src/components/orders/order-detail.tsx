@@ -153,7 +153,7 @@ export function OrderDetail({ id }: { id: string }) {
                           stage.invoicedAt ? new Date(stage.invoicedAt).toLocaleDateString() : ''
                         }`
                       : stage.trigger === 'ON_APPROVAL'
-                        ? 'Invoiced on approval'
+                        ? 'Invoiced when accepted'
                         : stage.trigger === 'ON_DELIVERY'
                           ? stage.invoicedAt
                             ? 'Invoiced in full across its deliveries'

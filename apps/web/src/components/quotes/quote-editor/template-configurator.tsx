@@ -78,19 +78,19 @@ export function TemplateConfigurator({
 
   return (
     <div className="flex max-h-[78vh] flex-col">
-      <div className="flex items-start gap-3 border-b border-border/30 px-5 py-4">
+      <div className="flex items-center gap-3 border-b border-border/60 px-5 py-4">
         <button
           type="button"
           onClick={onBack}
-          className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border border-border/40 text-ink-subtle transition-colors hover:bg-surface-muted hover:text-ink"
+          className="flex size-10 shrink-0 items-center justify-center rounded-full border border-border text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
           aria-label="Back to catalog"
         >
-          <ArrowLeft className="size-3.5" />
+          <ArrowLeft className="size-4" aria-hidden />
         </button>
         <div className="min-w-0">
           <h2 className="truncate text-sm font-bold text-ink">{template.name}</h2>
-          <p className="truncate text-xs text-ink-subtle">
-            {template.templateKey} · version {template.version}
+          <p className="truncate text-xs text-ink-muted">
+            {template.description || 'Set the size and options, then pick a quantity.'}
           </p>
         </div>
       </div>
@@ -120,7 +120,7 @@ export function TemplateConfigurator({
                     onChange={(event) =>
                       setParameter(parameter.key, event.target.valueAsNumber || 0)
                     }
-                    className="w-full rounded-lg border border-border/40 bg-surface px-2.5 py-1.5 text-sm text-ink focus:border-brand focus:outline-hidden"
+                    className="h-10 w-full rounded-xl border border-border-control bg-surface px-2.5 text-sm text-ink tabular-nums focus:border-brand-ring focus:ring-1 focus:ring-brand-ring focus:outline-hidden"
                   />
                 )}
 
@@ -128,7 +128,7 @@ export function TemplateConfigurator({
                   <select
                     value={String(parameters[parameter.key] ?? '')}
                     onChange={(event) => setParameter(parameter.key, event.target.value)}
-                    className="w-full rounded-lg border border-border/40 bg-surface px-2.5 py-1.5 text-sm text-ink focus:border-brand focus:outline-hidden"
+                    className="h-10 w-full rounded-xl border border-border-control bg-surface px-2.5 text-sm text-ink tabular-nums focus:border-brand-ring focus:ring-1 focus:ring-brand-ring focus:outline-hidden"
                   >
                     {(parameter.options ?? []).map((option) => (
                       <option key={option} value={option}>
@@ -144,14 +144,14 @@ export function TemplateConfigurator({
                       type="checkbox"
                       checked={Boolean(parameters[parameter.key])}
                       onChange={(event) => setParameter(parameter.key, event.target.checked)}
-                      className="size-4 rounded border-border/50 accent-[var(--color-brand,#4f46e5)]"
+                      className="size-4 rounded border-border-control accent-brand"
                     />
                     <span className="text-sm text-ink-muted">Include</span>
                   </span>
                 )}
 
                 {parameter.help && (
-                  <span className="mt-1 block text-[11px] text-ink-subtle">{parameter.help}</span>
+                  <span className="mt-1 block text-xs text-ink-muted">{parameter.help}</span>
                 )}
               </label>
             ))}
@@ -166,7 +166,7 @@ export function TemplateConfigurator({
               min={1}
               value={quantity}
               onChange={(event) => setQuantity(Math.max(1, Math.round(event.target.valueAsNumber || 1)))}
-              className="w-full rounded-lg border border-border/40 bg-surface px-2.5 py-2 text-sm font-semibold text-ink focus:border-brand focus:outline-hidden"
+              className="h-10 w-full rounded-xl border border-border-control bg-surface px-2.5 text-sm text-ink tabular-nums focus:border-brand-ring focus:ring-1 focus:ring-brand-ring focus:outline-hidden font-semibold"
             />
           </label>
 
@@ -201,9 +201,9 @@ export function TemplateConfigurator({
                 {isLoading && <Loader2 className="size-3.5 animate-spin text-ink-subtle" />}
               </div>
 
-              <div className="overflow-hidden rounded-xl border border-border/30">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-surface-muted/40 text-[11px] uppercase tracking-wider text-ink-subtle">
+              <div className="overflow-hidden rounded-xl border border-border/60">
+                <table className="w-full text-left text-sm tabular-nums">
+                  <thead className="bg-surface-muted/40 text-xs uppercase tracking-wider text-ink-muted">
                     <tr>
                       <th className="px-3 py-2 font-semibold">Qty</th>
                       <th className="px-3 py-2 text-right font-semibold">Unit</th>
@@ -223,7 +223,21 @@ export function TemplateConfigurator({
                             : 'hover:bg-surface-muted/40',
                         )}
                       >
-                        <td className="px-3 py-2 text-ink">{row.quantity.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-ink tabular-nums">
+                          {/* The row is the click target; this is its keyboard and screen-reader twin. */}
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setQuantity(row.quantity);
+                            }}
+                            aria-pressed={row.quantity === quantity}
+                            aria-label={`Quote ${row.quantity.toLocaleString()}`}
+                            className="rounded underline-offset-2 hover:underline"
+                          >
+                            {row.quantity.toLocaleString()}
+                          </button>
+                        </td>
                         <td className="px-3 py-2 text-right text-ink">
                           {formatCurrency(row.unitPrice, currency)}
                         </td>
@@ -239,7 +253,7 @@ export function TemplateConfigurator({
                     ))}
                     {!data && isLoading && (
                       <tr>
-                        <td colSpan={canSeeCost ? 4 : 3} className="px-3 py-8 text-center text-xs text-ink-subtle">
+                        <td colSpan={canSeeCost ? 4 : 3} className="px-3 py-8 text-center text-xs text-ink-muted">
                           Pricing…
                         </td>
                       </tr>
@@ -249,7 +263,7 @@ export function TemplateConfigurator({
               </div>
 
               {data && data.breaks.length > 1 && (
-                <p className="text-[11px] leading-relaxed text-ink-subtle">
+                <p className="text-xs leading-relaxed text-ink-muted">
                   Unit price falls in steps, not smoothly — sheets are bought whole and setup is
                   charged once per run.
                 </p>
@@ -258,15 +272,15 @@ export function TemplateConfigurator({
               {data?.warnings.map((warning) => (
                 <div
                   key={warning}
-                  className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2"
+                  className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2"
                 >
-                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
-                  <p className="text-[11px] leading-relaxed text-ink-muted">{warning}</p>
+                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden />
+                  <p className="text-xs leading-relaxed text-ink-muted">{warning}</p>
                 </div>
               ))}
 
               {data && (
-                <p className="flex items-center gap-1.5 text-xs text-ink-subtle">
+                <p className="flex items-center gap-1.5 text-xs text-ink-muted">
                   <Clock className="size-3.5" />
                   About {data.leadTimeDays} working day{data.leadTimeDays === 1 ? '' : 's'} on the
                   floor at this quantity
@@ -278,7 +292,7 @@ export function TemplateConfigurator({
       </div>
 
       <div className="flex items-center justify-between gap-3 border-t border-border/30 bg-surface-muted/20 px-5 py-3">
-        <div className="min-w-0 text-sm">
+        <div className="min-w-0 text-sm tabular-nums">
           {chosen ? (
             <>
               <span className="font-semibold text-ink">
@@ -297,13 +311,12 @@ export function TemplateConfigurator({
         <Button
           type="button"
           variant="primary"
-          size="sm"
           loading={isAdding}
-          disabled={!chosen || isAdding || Boolean(error)}
+          disabled={!chosen || Boolean(error)}
           onClick={() => onAdd({ quantity, parameters })}
-          className="shrink-0 gap-1.5 rounded-full px-4 text-xs font-semibold"
+          className="shrink-0"
         >
-          <Plus className="size-4" />
+          <Plus className="size-4" aria-hidden />
           Add to quote
         </Button>
       </div>

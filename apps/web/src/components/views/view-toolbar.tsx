@@ -70,7 +70,7 @@ export function ViewToolbar({
             <SlidersHorizontal className="size-3.5" />
             <span>Filter</span>
             {filterCount > 0 && (
-              <span className="bg-brand text-ink text-[10px] px-1.5 rounded-full font-bold">
+              <span className="bg-brand text-on-brand text-[10px] px-1.5 rounded-full font-bold">
                 {filterCount}
               </span>
             )}

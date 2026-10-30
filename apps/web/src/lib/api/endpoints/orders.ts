@@ -40,6 +40,9 @@ export const ordersEndpoints = {
         { method: 'POST', body },
       ),
     revise: (quoteId: string) => apiFetch<QuoteDto>(`/quotes/${quoteId}/revise`, { method: 'POST' }),
+    /** For a customer who said yes some other way; raises the order like accepting the link does. */
+    markAccepted: (quoteId: string, body: { name: string }) =>
+      apiFetch<QuoteDto>(`/quotes/${quoteId}/mark-accepted`, { method: 'POST', body }),
   },
 };
 

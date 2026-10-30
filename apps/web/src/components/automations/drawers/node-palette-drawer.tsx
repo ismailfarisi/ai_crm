@@ -304,7 +304,7 @@ export function NodePaletteDrawer({
               className={clsx(
                 'px-2.5 py-1 text-[11px] font-medium rounded-md whitespace-nowrap transition-all cursor-pointer',
                 selectedCategory === cat
-                  ? 'bg-brand text-ink shadow-2xs font-semibold'
+                  ? 'bg-brand text-on-brand shadow-2xs font-semibold'
                   : 'bg-surface-muted text-ink-muted hover:bg-surface-muted hover:text-ink',
               )}
             >

@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
+import { formatCurrency } from './quote-lines-table';
 import {
   allocateStageAmounts,
   BILLING_PRESETS,
@@ -12,7 +13,7 @@ import {
 } from '@saas/shared';
 
 interface QuoteBillingCardProps {
-  /** Null means the default: everything invoiced on approval. */
+  /** Null means the default: everything invoiced when the customer accepts. */
   schedule: BillingStage[] | null;
   onChange: (schedule: BillingStage[] | null) => void;
   totals: QuoteTotals;
@@ -20,8 +21,8 @@ interface QuoteBillingCardProps {
   readOnly?: boolean;
 }
 
-const money = (n: number, currency: string) =>
-  `${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
+// One money format across the editor: the same one as the lines and totals.
+const money = (n: number, currency: string) => formatCurrency(n, currency);
 
 const sameStages = (a: BillingStage[], b: BillingStage[]) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -62,20 +63,26 @@ export function QuoteBillingCard({ schedule, onChange, totals, currency, readOnl
         <h2 id="billing-title" className="text-sm font-bold uppercase tracking-wider text-ink">
           Billing
         </h2>
-        <select
-          aria-label="Billing schedule"
-          value={presetKey}
-          disabled={readOnly}
-          onChange={(e) => choosePreset(e.target.value)}
-          className="rounded border border-line bg-surface px-3 py-1.5 text-sm text-ink disabled:opacity-60"
-        >
-          {BILLING_PRESETS.map((preset) => (
-            <option key={preset.key} value={preset.key}>
-              {preset.label}
-            </option>
-          ))}
-          <option value="custom">Custom stages</option>
-        </select>
+        {/* A locked quote states its schedule; a greyed-out dropdown reads as broken. */}
+        {readOnly ? (
+          <p className="text-sm font-medium text-ink">
+            {BILLING_PRESETS.find((preset) => preset.key === presetKey)?.label ?? 'Custom stages'}
+          </p>
+        ) : (
+          <select
+            aria-label="Billing schedule"
+            value={presetKey}
+            onChange={(e) => choosePreset(e.target.value)}
+            className="min-h-10 rounded-xl border border-border-control bg-surface px-3 text-sm text-ink focus:border-brand-ring focus:outline-hidden focus:ring-1 focus:ring-brand-ring"
+          >
+            {BILLING_PRESETS.map((preset) => (
+              <option key={preset.key} value={preset.key}>
+                {preset.label}
+              </option>
+            ))}
+            <option value="custom">Custom stages</option>
+          </select>
+        )}
       </div>
 
       <ol className="space-y-2">
@@ -87,7 +94,7 @@ export function QuoteBillingCard({ schedule, onChange, totals, currency, readOnl
                   aria-label={`Stage ${index + 1} name`}
                   value={stage.label}
                   onChange={(e) => update(index, { label: e.target.value })}
-                  className="min-w-0 flex-1 rounded border border-line bg-surface px-2 py-1 text-ink"
+                  className="min-w-0 flex-1 rounded-xl border border-border-control bg-surface px-2 py-1.5 focus:border-brand-ring focus:outline-hidden focus:ring-1 focus:ring-brand-ring text-ink"
                 />
                 <input
                   aria-label={`Stage ${index + 1} percent`}
@@ -97,16 +104,16 @@ export function QuoteBillingCard({ schedule, onChange, totals, currency, readOnl
                   step="any"
                   value={stage.percent}
                   onChange={(e) => update(index, { percent: Number(e.target.value) })}
-                  className="w-20 rounded border border-line bg-surface px-2 py-1 text-right tabular-nums text-ink"
+                  className="w-20 rounded-xl border border-border-control bg-surface px-2 py-1.5 focus:border-brand-ring focus:outline-hidden focus:ring-1 focus:ring-brand-ring text-right tabular-nums text-ink"
                 />
                 <span className="text-ink-subtle">%</span>
                 <select
                   aria-label={`Stage ${index + 1} timing`}
                   value={stage.trigger}
                   onChange={(e) => update(index, { trigger: e.target.value as BillingStage['trigger'] })}
-                  className="rounded border border-line bg-surface px-2 py-1 text-ink"
+                  className="rounded-xl border border-border-control bg-surface px-2 py-1.5 focus:border-brand-ring focus:outline-hidden focus:ring-1 focus:ring-brand-ring text-ink"
                 >
-                  <option value="ON_APPROVAL">On approval</option>
+                  <option value="ON_APPROVAL">When accepted</option>
                   <option value="MANUAL">When reached</option>
                 </select>
                 <button
@@ -120,7 +127,7 @@ export function QuoteBillingCard({ schedule, onChange, totals, currency, readOnl
                         .map((s, i, all) => ({ ...s, kind: i === all.length - 1 ? 'FINAL' : s.kind === 'FINAL' ? 'MILESTONE' : s.kind })),
                     )
                   }
-                  className="rounded p-1 text-ink-subtle hover:text-danger disabled:opacity-40"
+                  className="grid size-9 place-items-center rounded-full text-ink-subtle hover:bg-danger-soft hover:text-danger disabled:opacity-40"
                 >
                   <Trash2 className="size-4" />
                 </button>
@@ -131,7 +138,7 @@ export function QuoteBillingCard({ schedule, onChange, totals, currency, readOnl
                 <span className="text-ink-subtle">
                   · {stage.percent}% ·{' '}
                   {stage.trigger === 'ON_APPROVAL'
-                    ? 'on approval'
+                    ? 'when accepted'
                     : stage.trigger === 'ON_DELIVERY'
                       ? 'invoiced as each delivery ships'
                       : 'when reached'}
@@ -154,7 +161,7 @@ export function QuoteBillingCard({ schedule, onChange, totals, currency, readOnl
               { kind: 'FINAL', label: 'Balance', percent: 0, trigger: 'MANUAL' },
             ])
           }
-          className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline"
+          className="mt-2 inline-flex items-center gap-1 min-h-9 text-sm font-medium text-ink underline-offset-2 hover:underline"
         >
           <Plus className="size-3.5" />
           Add stage

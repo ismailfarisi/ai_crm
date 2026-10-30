@@ -1132,6 +1132,43 @@ its routes carry provider API keys. The trail shows that the budget was saved,
 not whether customer email was switched on. Recording it needs a field-level
 allowlist for `PATCH /ai/budget`, or an explicit `AuditService.record` call.
 
+### Every quote is approved before it is sent; the order follows acceptance — by design
+
+A quote reaches a customer only once it is approved: `createLink` (and so
+`POST /quotes/:id/send`) refuses anything else. Approval signs off the price
+and locks the quote; it no longer creates the sales order. The order is raised
+when the customer accepts — through the link, or recorded by hand with
+`POST /quotes/:id/mark-accepted` — by `QuotesService.provisionAcceptedQuote`.
+Until then the quote has no order, so a customer who wants changes gets a
+revision rather than an order someone has to cancel.
+
+Consequences worth knowing:
+
+- **The `ON_APPROVAL` billing trigger** now fires when the order exists, which
+  is at acceptance. The enum keeps its name; the labels say "when accepted".
+- **Links issued before this change** may belong to quotes that are not yet
+  approved. Accepting one records the acceptance only; approving that quote
+  later raises its order in the same transaction.
+- **The Temporal quote workflow** no longer provisions on approval, behind
+  `patched('order-on-acceptance')`. Workflows that approved before the change
+  replay the old path.
+- **If raising the order fails at acceptance** (a missing exchange rate, say),
+  the customer's acceptance still stands and the error is logged. The quote's
+  customer panel then says the order wasn't raised and offers **Raise the
+  order** to anyone with `quote:approve`; it sends `APPROVE` again
+  (`POST /quotes/:id/signal`), which fills in the missing order and does
+  nothing when one exists.
+- **Quotes approved before this change** already have an order but no
+  acceptance on record. The panel treats the order as the end of the road:
+  it shows the order and offers no Send, Mark as accepted or Revise.
+- **The editor's live margin re-costs as quantities change.** A catalog line's
+  cost is its unit cost times the quantity, worked out in the browser exactly
+  as the server does; a template line goes back to `/catalog/resolve-lines`
+  and the margin reads "Re-costing…" until it returns. Saving still re-costs
+  every line on the server, and that copy is the one approval checks.
+- **Automations that approve quotes** no longer produce an order or
+  `invoice.issued` at approval; those now follow `quote.accepted`.
+
 ---
 
 ## Staging environment

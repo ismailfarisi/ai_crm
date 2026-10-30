@@ -1,22 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import {
-  Sparkles,
-  X,
-  Bot,
-  ArrowRight,
-  Check,
-  Layers,
-  FileText,
-  DollarSign,
-  Wand2,
-  ListPlus,
-  RotateCcw,
-} from 'lucide-react';
+import { useState, useId, useRef } from 'react';
+import { X, Check, Layers, FileText, ListPlus, RotateCcw, ClipboardList } from 'lucide-react';
 import type { QuoteLineItem } from '@saas/shared';
-import { calculateQuoteTotals } from '@saas/shared';
+import { calculateQuoteTotals, DEFAULT_UNIT } from '@saas/shared';
 import { Button } from '@/components/ui/button';
+import { ModalShell } from '@/components/ui/modal-shell';
 import { formatCurrency } from './quote-lines-table';
 import { toast } from 'sonner';
 
@@ -37,148 +26,124 @@ interface QuoteAiDrawerProps {
   currentCurrency?: string;
 }
 
-const TEMPLATES = [
+const EXAMPLES = [
   {
-    title: 'Enterprise CRM Implementation',
-    description: '3 phases: Platform setup, data migration, and annual SLA support.',
+    title: 'Rigid gift boxes',
+    description: 'Boxes, inserts and sleeves for a seasonal run.',
     prompt:
-      'Quote for Enterprise CRM Rollout:\nPhase 1: Cloud Architecture & Setup - 1 package at $6,500.\nPhase 2: Custom Temporal Workflows & Migration - 80 hours at $150/hr with 10% volume discount.\nPhase 3: 24/7 SLA Support Retainer - 12 months at $1,200/mo with 5% VAT.\nPayment Terms: Net 30 days.',
+      'Ramadan gift boxes for Al Noor Sweets\nSection: Boxes\n- Rigid box 200x150x60, gold foil lid: 5000 boxes @ AED 4.60\n- EVA foam insert, 2 cavities: 5000 pcs @ AED 0.85\nSection: Finishing\n- Printed paper sleeve, matt lamination: 5000 pcs @ AED 0.40 with 5% discount\nNote: Artwork to be approved before production.\nPayment terms: Net 30.',
   },
   {
-    title: 'Cloud Security Audit & Compliance',
-    description: 'Full infrastructure pen-test and ISO/SOC2 compliance audit.',
+    title: 'Corrugated shipping cartons',
+    description: 'Printed cartons with dividers, delivered on pallets.',
     prompt:
-      'Comprehensive Cloud Security Engagement:\nSection 1: Infrastructure Assessment\n- Multi-Cloud IAM & Kubernetes Security Audit: 1 Package @ $5,500\n- External Penetration Testing: 40 Hours @ $175/hr (5% discount)\nSection 2: Remediation & Compliance\n- Automated Vulnerability Pipeline: 1 Package @ $4,000\nNote: Includes executive summary presentation and ISO27001 readiness matrix.\nPayment terms: Net 15 days.',
+      'Shipping cartons for Gulf Dates\n- Double-wall carton 400x300x300, 1-colour flexo: 2000 boxes @ AED 3.20\n- Cardboard divider, 12 cells: 2000 pcs @ AED 0.55\n- Palletising and stretch wrap: 10 pallets @ AED 45\nNote: Overs and unders of 10% apply.\nPayment terms: Net 15.',
   },
   {
-    title: 'AI Agent & LLM Automation',
-    description: 'Custom AI orchestration and fine-tuned model workflows.',
+    title: 'Shop signage',
+    description: 'Fascia sign, lightbox and installation.',
     prompt:
-      'AI CRM Automation System:\nPhase 1: Agentic Workflow Design & Prompt Engineering: 60 Hours @ $160/hr with 10% partner discount.\nPhase 2: Temporal State Machine Integration: 1 System @ $8,000.\nNote: High availability SLA with 99.9% uptime guarantee.\nMonthly LLM Maintenance Retainer: 6 Months @ $2,000/mo (Tax exempt).\nPayment terms: Net 30.',
+      'Signage for Marina Bakery\n- Aluminium fascia sign with acrylic letters: 1 set @ AED 6,500\n- Double-sided LED lightbox, 600mm: 2 pcs @ AED 1,800\n- Installation, two installers: 8 hours @ AED 150 with 5% VAT\nNote: Municipality permit by the customer.\nPayment terms: Immediate.',
   },
 ];
 
+/** Units the reader recognises, mapped to how the quote writes them. */
+const UNIT_WORDS: Array<[RegExp, string]> = [
+  [/^(boxes|box|cartons?)$/, 'boxes'],
+  [/^(pcs|pieces?|pc|units?)$/, 'pcs'],
+  [/^(sheets?)$/, 'sheets'],
+  [/^(labels?)$/, 'labels'],
+  [/^(rolls?)$/, 'rolls'],
+  [/^(sets?)$/, 'sets'],
+  [/^(pallets?)$/, 'pallets'],
+  [/^(kg|kgs|kilos?)$/, 'kg'],
+  [/^(m2|sqm)$/, 'm²'],
+  [/^(hours?|hrs?)$/, 'hours'],
+  [/^(days?)$/, 'days'],
+];
+
+const UNIT_PATTERN =
+  'boxes|box|cartons?|pcs|pieces?|pc|units?|sheets?|labels?|rolls?|sets?|pallets?|kgs?|kilos?|m2|sqm|hours?|hrs?|days?';
+
 /**
- * Intelligent parser simulating AI extraction of quotation sections, products, notes,
- * and financial metadata from free-form natural language or RFP text.
+ * Reads quote lines out of plain text, one item per line.
+ *
+ * This is a pattern reader, not a model: it picks out a quantity with its
+ * unit, a price after "@" or a currency code, and any "% discount" or
+ * "% VAT". Anything it cannot read as a priced line is left out rather than
+ * guessed, and the person reviews every line before it reaches the quote.
  */
-function parsePromptToQuote(promptText: string, defaultCurrency = 'USD'): GeneratedQuoteDraft {
+function parsePromptToQuote(promptText: string, defaultCurrency = 'AED'): GeneratedQuoteDraft {
   const lines = promptText.split('\n').map((l) => l.trim()).filter(Boolean);
   const items: QuoteLineItem[] = [];
 
-  let currentSection = '';
-  let title = 'AI Generated Quotation';
-  let paymentTerms = 'net_30';
-  let termsAndConditions = 'All work performed under standard Master Services Agreement. Net 30 payment terms apply.';
-  let notes = `Draft generated by AI Copilot from prompt: "${promptText.substring(0, 100)}..."`;
+  let title: string | undefined;
+  let paymentTerms: string | undefined;
 
-  // Try to detect title from first line
-  if (lines.length > 0 && !lines[0].toLowerCase().includes('section') && !lines[0].toLowerCase().includes('phase')) {
-    const firstLineClean = lines[0].replace(/^(quote for|proposal for|rfp:?)\s*/i, '').trim();
-    if (firstLineClean.length > 3 && firstLineClean.length < 80) {
-      title = firstLineClean;
-    }
+  // The first line is the title unless it is itself a line item or a section.
+  if (lines.length > 0 && !/[:@]|^(section|note)\b/i.test(lines[0])) {
+    const firstLineClean = lines[0].replace(/^(quote for|proposal for|rfq:?)\s*/i, '').trim();
+    if (firstLineClean.length > 3 && firstLineClean.length < 80) title = firstLineClean;
   }
 
-  // Detect payment terms in text
   const lowerText = promptText.toLowerCase();
-  if (lowerText.includes('immediate') || lowerText.includes('due on receipt')) {
-    paymentTerms = 'immediate';
-  } else if (lowerText.includes('net 15') || lowerText.includes('net15') || lowerText.includes('15 days')) {
-    paymentTerms = 'net_15';
-  } else if (lowerText.includes('net 60') || lowerText.includes('net60') || lowerText.includes('60 days')) {
-    paymentTerms = 'net_60';
-  } else if (lowerText.includes('end of month') || lowerText.includes('eom')) {
-    paymentTerms = 'end_of_month';
-  } else {
-    paymentTerms = 'net_30';
-  }
+  if (lowerText.includes('immediate') || lowerText.includes('due on receipt')) paymentTerms = 'immediate';
+  else if (/net ?15|15 days/.test(lowerText)) paymentTerms = 'net_15';
+  else if (/net ?30|30 days/.test(lowerText)) paymentTerms = 'net_30';
+  else if (/net ?60|60 days/.test(lowerText)) paymentTerms = 'net_60';
+  else if (lowerText.includes('end of month')) paymentTerms = 'end_of_month';
 
   let lineCounter = 1;
 
-  for (const line of lines) {
-    const trimmed = line.trim();
+  for (const [index, line] of lines.entries()) {
+    if (index === 0 && title) continue;
+    const cleanLine = line.replace(/^[-*•]\s*/, '');
 
-    // Check if section header
-    if (/^(phase|section|module|part|deliverable)\s*\d*[:\-]/i.test(trimmed) || /^[A-Z\s]{4,30}:$/.test(trimmed)) {
-      currentSection = trimmed.replace(/^[-*•]\s*/, '');
-      items.push({
-        id: `ai_sec_${lineCounter++}`,
-        type: 'section',
-        description: currentSection,
-      });
+    if (/^payment terms?\b/i.test(cleanLine)) continue;
+
+    const section = cleanLine.match(/^(section|part)\s*\d*\s*[:\-]\s*(.+)$/i);
+    if (section) {
+      items.push({ id: `draft_sec_${lineCounter++}`, type: 'section', description: section[2].trim() });
       continue;
     }
 
-    // Check if note
-    if (/^(note|sla|terms|condition|disclaimer)[:\-]/i.test(trimmed)) {
+    if (/^note\s*[:\-]/i.test(cleanLine)) {
       items.push({
-        id: `ai_note_${lineCounter++}`,
+        id: `draft_note_${lineCounter++}`,
         type: 'note',
-        description: trimmed.replace(/^[-*•]\s*/, ''),
+        description: cleanLine.replace(/^note\s*[:\-]\s*/i, ''),
       });
       continue;
     }
 
-    // Attempt product parsing
-    // Example patterns:
-    // "Cloud Architecture & Setup - 1 package at $6,500"
-    // "Custom Temporal Workflows & Migration - 80 hours at $150/hr with 10% discount"
-    // "- External Penetration Testing: 40 Hours @ $175/hr (5% discount)"
-    const cleanLine = trimmed.replace(/^[-*•]\s*/, '');
+    const priceMatch = cleanLine.match(/(?:@|\bat\b|\$|\b[A-Z]{3}\b)\s*(?:[A-Z]{3}\s*)?([\d,]+(?:\.\d+)?)/);
+    if (!priceMatch) continue;
+    const unitPrice = parseFloat(priceMatch[1].replace(/,/g, ''));
 
-    // Extract price ($X,XXX or @ $XXX)
-    const priceMatch = cleanLine.match(/\$\s?([\d,]+(?:\.\d{2})?)/);
-    const unitPrice = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : 1000;
-
-    // Extract quantity and UoM
     let quantity = 1;
-    let uom = 'Units';
-
-    const qtyMatch = cleanLine.match(/(\d+)\s*(hours|hrs|days|months|mo|licenses|units|packages|systems|packages)/i);
+    let uom = DEFAULT_UNIT;
+    const qtyMatch = cleanLine.match(new RegExp(`([\\d,]+)\\s*(${UNIT_PATTERN})\\b`, 'i'));
     if (qtyMatch) {
-      quantity = parseInt(qtyMatch[1], 10);
-      const rawUom = qtyMatch[2].toLowerCase();
-      if (rawUom.startsWith('hour') || rawUom === 'hrs') uom = 'Hours';
-      else if (rawUom.startsWith('day')) uom = 'Days';
-      else if (rawUom.startsWith('month') || rawUom === 'mo') uom = 'Months';
-      else if (rawUom.startsWith('license')) uom = 'Licenses';
-      else if (rawUom.startsWith('package')) uom = 'Packages';
-      else uom = 'Units';
+      quantity = parseInt(qtyMatch[1].replace(/,/g, ''), 10);
+      const word = qtyMatch[2].toLowerCase();
+      uom = UNIT_WORDS.find(([pattern]) => pattern.test(word))?.[1] ?? DEFAULT_UNIT;
     }
 
-    // Extract discount percentage
-    let discount = 0;
-    const discMatch = cleanLine.match(/(\d+)%\s*(?:discount|off)/i);
-    if (discMatch) {
-      discount = parseInt(discMatch[1], 10);
-    }
+    const discount = Number(cleanLine.match(/(\d+(?:\.\d+)?)%\s*(?:discount|off)/i)?.[1] ?? 0);
+    const taxRate = Number(cleanLine.match(/(\d+(?:\.\d+)?)%\s*(?:vat|tax)/i)?.[1] ?? 0);
 
-    // Extract Tax rate
-    let taxRate = 0;
-    const taxMatch = cleanLine.match(/(\d+)%\s*(?:vat|tax)/i);
-    if (taxMatch) {
-      taxRate = parseInt(taxMatch[1], 10);
-    }
-
-    // Clean description by stripping numbers/price hints
-    let description = cleanLine
-      .replace(/\$\s?[\d,]+(?:\.\d{2})?/g, '')
-      .replace(/@\s*[\d,]+/g, '')
-      .replace(/\b(at|@|with|for)\b.*$/i, '')
-      .replace(/^[:\-–\s]+|[:\-–\s]+$/g, '')
-      .trim();
-
-    if (!description) {
-      description = `Service Item ${lineCounter}`;
-    }
+    // The description is everything before the quantity or price.
+    const cut = Math.min(
+      ...[qtyMatch?.index, priceMatch.index].filter((at): at is number => typeof at === 'number'),
+    );
+    const description =
+      cleanLine.slice(0, cut).replace(/[:\-–,\s]+$/g, '').trim() || `Line ${lineCounter}`;
 
     const gross = quantity * unitPrice;
-    const discountVal = gross * (discount / 100);
-    const subtotal = Number((gross - discountVal).toFixed(2));
+    const subtotal = Number((gross - gross * (discount / 100)).toFixed(2));
 
     items.push({
-      id: `ai_item_${lineCounter++}`,
+      id: `draft_item_${lineCounter++}`,
       type: 'product',
       description,
       quantity,
@@ -190,39 +155,10 @@ function parsePromptToQuote(promptText: string, defaultCurrency = 'USD'): Genera
     });
   }
 
-  // If no items were parsed, provide a robust default set
-  if (items.filter((i) => i.type === 'product').length === 0) {
-    items.push(
-      {
-        id: `ai_sec_1`,
-        type: 'section',
-        description: 'Phase 1: Professional Engineering & Delivery',
-      },
-      {
-        id: `ai_item_1`,
-        type: 'product',
-        description: promptText.slice(0, 50) || 'Custom AI Solution Architecture',
-        quantity: 1,
-        uom: 'Packages',
-        unitPrice: 5000,
-        discount: 0,
-        taxRate: 0,
-        subtotal: 5000,
-      },
-      {
-        id: `ai_note_1`,
-        type: 'note',
-        description: 'Includes implementation, testing, and 30 days post-launch support warranty.',
-      },
-    );
-  }
-
   return {
     title,
     items,
     paymentTerms,
-    termsAndConditions,
-    notes,
     currency: defaultCurrency,
     prompt: promptText,
   };
@@ -235,76 +171,63 @@ export function QuoteAiDrawer({
   currentCurrency = 'USD',
 }: QuoteAiDrawerProps) {
   const [prompt, setPrompt] = useState('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [generatedDraft, setGeneratedDraft] = useState<GeneratedQuoteDraft | null>(null);
-
-  // Close on Escape key
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && open) onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open, onClose]);
+  const titleId = useId();
+  const promptId = useId();
+  const promptRef = useRef<HTMLTextAreaElement>(null);
+  // The examples and the hint are written in the quote's own currency.
+  const inCurrency = (text: string) => text.replaceAll('AED', currentCurrency);
 
   const handleGenerate = () => {
     if (!prompt.trim()) {
-      toast.error('Please enter a prompt or choose a template.');
+      toast.error('Type or paste the job first, one item per line.');
       return;
     }
-
-    setIsAnalyzing(true);
-    setGeneratedDraft(null);
-
-    // Simulate AI synthesis with natural micro-delay
-    setTimeout(() => {
-      const draft = parsePromptToQuote(prompt.trim(), currentCurrency);
-      setGeneratedDraft(draft);
-      setIsAnalyzing(false);
-      toast.success('AI quotation structure generated successfully!');
-    }, 600);
+    const draft = parsePromptToQuote(prompt.trim(), currentCurrency);
+    if (!draft.items.some((item) => item.type === 'product')) {
+      setGeneratedDraft(null);
+      toast.error('No priced lines found. Write each item with its quantity and price, e.g. "Rigid box: 5000 boxes @ AED 4.60".');
+      return;
+    }
+    setGeneratedDraft(draft);
   };
 
   const handleApply = () => {
     if (!generatedDraft) return;
     onApply(generatedDraft);
-    toast.success('Generated lines & settings applied to quotation!');
+    const count = generatedDraft.items.filter((item) => item.type === 'product').length;
+    toast.success(`${count} ${count === 1 ? 'line' : 'lines'} added to the quote. Check them before saving.`);
+    setGeneratedDraft(null);
+    setPrompt('');
     onClose();
   };
 
-  const handleUseTemplate = (templatePrompt: string) => {
-    setPrompt(templatePrompt);
-  };
-
-  if (!open) return null;
-
   const totals = generatedDraft ? calculateQuoteTotals(generatedDraft.items) : null;
+  const productCount = generatedDraft?.items.filter((item) => item.type === 'product').length ?? 0;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden" role="dialog" aria-modal="true">
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
-        onClick={onClose}
-      />
-
-      <div className="fixed inset-y-0 right-0 flex max-w-full pl-10">
-        <div className="w-screen max-w-2xl transform bg-surface shadow-2xl transition-all duration-300 ease-in-out border-l border-border/80 flex flex-col">
+    <ModalShell
+      open={open}
+      onClose={onClose}
+      labelledBy={titleId}
+      placement="end"
+      initialFocusRef={promptRef}
+    >
+      <div className="flex h-full flex-col">
+        <div className="flex min-h-0 flex-1 flex-col">
           {/* Drawer Header */}
-          <div className="flex items-center justify-between border-b border-border/80 px-6 py-4.5 bg-gradient-to-r from-brand-soft/60 via-surface to-surface">
-            <div className="flex items-center gap-3">
-              <span className="grid size-10 place-items-center rounded-xl bg-brand text-ink shadow-xs">
-                <Sparkles className="size-5" />
+          <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-4 sm:px-6">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface-muted text-ink">
+                <ClipboardList className="size-5" aria-hidden />
               </span>
-              <div>
-                <h2 className="text-base font-bold tracking-tight text-ink flex items-center gap-2">
-                  <span>AI Quotation Copilot</span>
-                  <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[11px] font-semibold text-brand-hover border border-brand/20">
-                    v2.0
-                  </span>
+              <div className="min-w-0">
+                <h2 id={titleId} className="text-sm font-bold tracking-tight text-ink">
+                  Draft lines from an enquiry
                 </h2>
                 <p className="text-xs text-ink-muted">
-                  Transform requirements, RFPs, and scopes into structured Odoo quotes.
+                  Paste or type the job, one item per line. Kerf picks out quantities, prices,
+                  discounts and VAT, and you check every line before it&apos;s added.
                 </p>
               </div>
             </div>
@@ -312,204 +235,132 @@ export function QuoteAiDrawer({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg p-2 text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors cursor-pointer"
-              aria-label="Close drawer"
+              className="grid size-10 shrink-0 place-items-center rounded-full text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors cursor-pointer"
+              aria-label="Close the enquiry drawer"
             >
-              <X className="size-5" />
+              <X className="size-5" aria-hidden />
             </button>
           </div>
 
           {/* Drawer Body */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin">
-            {/* Quick Templates */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 scrollbar-thin">
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-ink-muted uppercase tracking-wider flex items-center gap-1.5">
-                <Wand2 className="size-3.5 text-brand-hover" />
-                <span>Quick Prompt Presets</span>
-              </label>
+              <p className="text-xs font-semibold text-ink-muted">Start from an example</p>
               <div className="grid gap-2 sm:grid-cols-3">
-                {TEMPLATES.map((tmpl) => (
+                {EXAMPLES.map((example) => (
                   <button
-                    key={tmpl.title}
+                    key={example.title}
                     type="button"
-                    onClick={() => handleUseTemplate(tmpl.prompt)}
-                    className="flex flex-col text-left p-2.5 rounded-xl border border-border/80 bg-surface-muted/30 hover:border-brand hover:bg-brand-soft/30 transition-all text-xs group cursor-pointer"
+                    onClick={() => setPrompt(inCurrency(example.prompt))}
+                    className="flex min-h-11 flex-col text-left p-3 rounded-xl border border-border bg-surface-muted/30 hover:border-border-strong hover:bg-surface-muted transition-colors text-xs cursor-pointer"
                   >
-                    <span className="font-semibold text-ink group-hover:text-brand-hover">
-                      {tmpl.title}
-                    </span>
-                    <span className="text-[11px] text-ink-subtle mt-0.5 line-clamp-2">
-                      {tmpl.description}
-                    </span>
+                    <span className="font-semibold text-ink">{example.title}</span>
+                    <span className="text-xs text-ink-muted mt-0.5 line-clamp-2">{example.description}</span>
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Prompt Textarea */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-ink-muted uppercase tracking-wider">
-                  Describe Quote Requirements or Paste RFP
+                <label htmlFor={promptId} className="text-sm font-medium text-ink">
+                  The job
                 </label>
                 {prompt && (
                   <button
                     type="button"
-                    onClick={() => setPrompt('')}
-                    className="text-xs text-ink-subtle hover:text-danger flex items-center gap-1 transition-colors cursor-pointer"
+                    onClick={() => {
+                      setPrompt('');
+                      setGeneratedDraft(null);
+                    }}
+                    className="flex min-h-10 items-center gap-1 px-2 text-xs text-ink-muted hover:text-ink transition-colors cursor-pointer"
                   >
-                    <RotateCcw className="size-3" />
+                    <RotateCcw className="size-3.5" aria-hidden />
                     Clear
                   </button>
                 )}
               </div>
               <textarea
+                ref={promptRef}
+                id={promptId}
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Example: Quote for ACME Corp: Phase 1 Cloud Architecture ($5,000), Phase 2 Custom Temporal Workflow 80 hrs @ $150/hr with 10% discount, and 12-month 24/7 SLA ($1,200/mo, 5% VAT). Payment terms Net 30."
-                rows={5}
-                className="w-full rounded-xl border border-border/80 bg-surface p-3.5 text-sm leading-relaxed text-ink placeholder:text-ink-subtle focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden"
+                placeholder={inCurrency('Rigid box 200x150x60, gold foil lid: 5000 boxes @ AED 4.60\nEVA foam insert: 5000 pcs @ AED 0.85 with 5% discount')}
+                rows={6}
+                className="w-full rounded-xl border border-border-control bg-surface p-3.5 text-sm leading-relaxed text-ink placeholder:text-ink-subtle focus:border-brand-ring focus:ring-1 focus:ring-brand-ring focus:outline-hidden"
               />
             </div>
 
-            {/* Generate Action Button */}
-            <Button
-              type="button"
-              variant="primary"
-              loading={isAnalyzing}
-              onClick={handleGenerate}
-              className="w-full py-2.5 shadow-xs text-sm font-semibold"
-            >
-              <Sparkles className="size-4 mr-2" />
-              {isAnalyzing ? 'Analyzing & Structuring Quotation...' : 'Analyze & Generate Quotation'}
+            <Button type="button" variant={generatedDraft ? 'outline' : 'primary'} size="lg" onClick={handleGenerate} className="w-full">
+              <ListPlus className="size-4" aria-hidden />
+              {generatedDraft ? 'Read it again' : 'Read the lines'}
             </Button>
 
-            {/* AI Generated Preview */}
             {generatedDraft && totals && (
-              <div className="space-y-4 rounded-2xl border border-brand/40 bg-brand-soft/10 p-5 animate-in fade-in duration-300">
-                <div className="flex items-center justify-between border-b border-brand/20 pb-3">
-                  <div className="flex items-center gap-2">
-                    <Bot className="size-4 text-brand-hover" />
-                    <span className="text-sm font-bold text-ink">
-                      Structured Quotation Preview
-                    </span>
-                  </div>
-                  <span className="rounded-full bg-brand-soft px-2.5 py-0.5 text-xs font-semibold text-brand-hover border border-brand/20">
-                    {generatedDraft.items.length} items parsed
+              <div className="space-y-4 rounded-2xl border border-border bg-surface-muted/30 p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-2 border-b border-border pb-3">
+                  <span className="text-sm font-bold text-ink">Check before adding</span>
+                  <span className="text-xs font-medium text-ink-muted">
+                    {productCount} priced {productCount === 1 ? 'line' : 'lines'}
                   </span>
                 </div>
 
-                {/* Title and metadata */}
-                <div className="grid grid-cols-2 gap-3 text-xs bg-surface/80 rounded-xl p-3 border border-border/80">
-                  <div>
-                    <span className="text-ink-subtle block">Suggested Title</span>
-                    <span className="font-semibold text-ink">{generatedDraft.title}</span>
-                  </div>
-                  <div>
-                    <span className="text-ink-subtle block">Payment Terms</span>
-                    <span className="font-semibold text-ink uppercase">
-                      {generatedDraft.paymentTerms}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Parsed Line Items List */}
-                <div className="space-y-2">
-                  <span className="text-xs font-semibold text-ink-muted uppercase tracking-wider block">
-                    Extracted Lines
-                  </span>
-                  <div className="divide-y divide-border/60 rounded-xl border border-border/80 bg-surface overflow-hidden">
-                    {generatedDraft.items.map((item) => {
-                      if (item.type === 'section') {
-                        return (
-                          <div
-                            key={item.id}
-                            className="flex items-center gap-2 bg-surface-muted/60 px-3 py-2 text-xs font-semibold text-ink"
-                          >
-                            <Layers className="size-3.5 text-brand-hover shrink-0" />
-                            <span>{item.description}</span>
-                          </div>
-                        );
-                      }
-                      if (item.type === 'note') {
-                        return (
-                          <div
-                            key={item.id}
-                            className="flex items-center gap-2 bg-surface/40 px-3 py-1.5 text-xs italic text-ink-muted"
-                          >
-                            <FileText className="size-3.5 text-warning shrink-0" />
-                            <span>{item.description}</span>
-                          </div>
-                        );
-                      }
-
+                <div className="divide-y divide-border rounded-xl border border-border bg-surface overflow-hidden">
+                  {generatedDraft.items.map((item) => {
+                    if (item.type === 'section') {
                       return (
-                        <div
-                          key={item.id}
-                          className="flex items-center justify-between px-3 py-2 text-xs hover:bg-surface-muted/20"
-                        >
-                          <div className="min-w-0 flex-1 pr-2">
-                            <p className="font-medium text-ink truncate">{item.description}</p>
-                            <p className="text-[11px] text-ink-subtle">
-                              {item.quantity} {item.uom} × {formatCurrency(item.unitPrice || 0, currentCurrency)}
-                              {(item.discount || 0) > 0 && ` (${item.discount}% off)`}
-                              {(item.taxRate || 0) > 0 && ` [${item.taxRate}% tax]`}
-                            </p>
-                          </div>
-                          <span className="font-semibold text-ink tabular-nums shrink-0">
-                            {formatCurrency(item.subtotal || 0, currentCurrency)}
-                          </span>
+                        <div key={item.id} className="flex items-center gap-2 bg-surface-muted/60 px-3 py-2 text-xs font-semibold text-ink">
+                          <Layers className="size-3.5 text-ink-subtle shrink-0" aria-hidden />
+                          <span>{item.description}</span>
                         </div>
                       );
-                    })}
-                  </div>
+                    }
+                    if (item.type === 'note') {
+                      return (
+                        <div key={item.id} className="flex items-center gap-2 px-3 py-1.5 text-xs italic text-ink-muted">
+                          <FileText className="size-3.5 text-ink-subtle shrink-0" aria-hidden />
+                          <span>{item.description}</span>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div key={item.id} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-ink truncate">{item.description}</p>
+                          <p className="text-xs text-ink-muted tabular-nums">
+                            {item.quantity?.toLocaleString()} {item.uom} × {formatCurrency(item.unitPrice || 0, currentCurrency)}
+                            {(item.discount || 0) > 0 && ` · ${item.discount}% off`}
+                            {(item.taxRate || 0) > 0 && ` · ${item.taxRate}% VAT`}
+                          </p>
+                        </div>
+                        <span className="font-semibold text-ink tabular-nums shrink-0">
+                          {formatCurrency(item.subtotal || 0, currentCurrency)}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
 
-                {/* Financial Summary */}
-                <div className="rounded-xl bg-surface p-3.5 border border-border/80 space-y-1.5 text-xs">
-                  <div className="flex justify-between text-ink-muted">
-                    <span>Untaxed Subtotal:</span>
-                    <span className="font-medium text-ink tabular-nums">
-                      {formatCurrency(totals.subtotalAmount, currentCurrency)}
-                    </span>
-                  </div>
-                  {totals.discountAmount > 0 && (
-                    <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
-                      <span>Total Savings / Discount:</span>
-                      <span className="font-medium tabular-nums">
-                        -{formatCurrency(totals.discountAmount, currentCurrency)}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-ink-muted">
-                    <span>Taxes:</span>
-                    <span className="font-medium text-ink tabular-nums">
-                      {formatCurrency(totals.taxAmount, currentCurrency)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-sm font-bold text-ink border-t border-border/80 pt-2 mt-1">
-                    <span>Estimated Total:</span>
-                    <span className="text-ink tabular-nums font-extrabold">
-                      {formatCurrency(totals.totalAmount, currentCurrency)}
-                    </span>
-                  </div>
+                <div className="flex justify-between text-sm font-bold text-ink">
+                  <span>Adds before tax</span>
+                  <span className="tabular-nums">{formatCurrency(totals.subtotalAmount, currentCurrency)}</span>
                 </div>
 
-                {/* 1-Click Apply */}
-                <Button
-                  type="button"
-                  variant="primary"
-                  onClick={handleApply}
-                  className="w-full py-2.5 font-semibold text-sm shadow-md"
-                >
-                  <Check className="size-4 mr-2 stroke-[2.5]" />
-                  Apply to Quotation Form
+                <p className="text-xs text-ink-muted">
+                  These lines are typed, not costed from the catalog, so the margin can&apos;t count
+                  their cost until you swap them for catalog items.
+                </p>
+
+                <Button type="button" variant="primary" size="lg" onClick={handleApply} className="w-full">
+                  <Check className="size-4 stroke-[2.5]" aria-hidden />
+                  Add {productCount} {productCount === 1 ? 'line' : 'lines'} to the quote
                 </Button>
               </div>
             )}
           </div>
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 }

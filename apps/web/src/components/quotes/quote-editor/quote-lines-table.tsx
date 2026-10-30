@@ -1,10 +1,11 @@
 'use client';
 
-import { Plus, Trash2, Layers, FileText, Package, Hash } from 'lucide-react';
+import { Plus, Trash2, Layers, FileText, Package, PackagePlus, Hash } from 'lucide-react';
 import type { QuoteLineItem, QuoteLineItemType } from '@saas/shared';
 import { DEFAULT_UNIT, UNIT_GROUPS } from '@saas/shared';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { lineMargin } from './margin-status';
 
 export interface QuoteLinesTableProps {
   items: QuoteLineItem[];
@@ -17,6 +18,64 @@ export interface QuoteLinesTableProps {
    * can still quote.
    */
   taxCodes?: Array<{ id: string; code: string; name: string; rate: number }>;
+  /** Opens the catalog picker; lines priced from what they cost come first. */
+  onAddFromCatalog?: () => void;
+  /** Opens the catalog picker to replace one typed line with a costed one. */
+  onFindInCatalog?: (lineId: string) => void;
+  /** The shortcut that opens the picker, shown on its button. */
+  catalogShortcut?: string;
+  /** Removes a line; the page offers an undo. Without it the line simply goes. */
+  onRemoveLine?: (lineId: string) => void;
+  /** Adds a typed line, section or note; the page puts focus in it. */
+  onAddTypedLine?: (line: QuoteLineItem) => void;
+  /** Shows each line's cost and margin under its subtotal (`quote:view_cost`). */
+  canSeeCost?: boolean;
+  /** The margin floor as a fraction, to tint a line that falls below it. */
+  marginFloor?: number | null;
+  /** Lines whose cost is being worked out again after a quantity change. */
+  recostingIds?: ReadonlySet<string>;
+}
+
+const formatPct = (fraction: number) => `${(fraction * 100).toFixed(1).replace('-', '−')}%`;
+
+/** The quiet second row under a line's subtotal: what it costs and what it keeps. */
+function LineCost({
+  item,
+  currency,
+  floor,
+  recosting,
+  readOnly,
+}: {
+  item: QuoteLineItem;
+  currency: string;
+  floor: number | null;
+  recosting: boolean;
+  readOnly: boolean;
+}) {
+  if (recosting) {
+    return <span className="block text-xs text-ink-muted">Re-costing…</span>;
+  }
+  const margin = lineMargin(item, floor);
+  if (!margin) {
+    const priced = (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0) > 0;
+    // In the editor the line says this under its description, with the fix.
+    return priced && readOnly ? <span className="block text-xs text-warning">No cost</span> : null;
+  }
+  const verdict =
+    margin.marginPct === null
+      ? null
+      : margin.marginPct < 0
+        ? `${formatPct(margin.marginPct)} loss`
+        : margin.tone === 'danger'
+          ? `${formatPct(margin.marginPct)} below floor`
+          : `${formatPct(margin.marginPct)} margin`;
+  // Two short rows, so the figures stay whole in a narrow column.
+  return (
+    <span className={cn('block text-xs tabular-nums', margin.tone === 'danger' ? 'text-danger' : 'text-ink-muted')}>
+      <span className="block whitespace-nowrap">Cost {formatCurrency(margin.cost, currency)}</span>
+      {verdict && <span className="block whitespace-nowrap">{verdict}</span>}
+    </span>
+  );
 }
 
 
@@ -49,20 +108,54 @@ export function formatCurrency(amount: number, currency = 'USD'): string {
   }
 }
 
+/*
+ * The table needs about 840px to show every column. Narrower than that — a
+ * phone, a tablet, a laptop with the sidebar open — each line becomes a card
+ * instead, so price and subtotal never scroll away from the line they belong
+ * to. Measured on the table's own container, not the viewport, because the
+ * sidebar decides how much room it actually has.
+ */
+const CONTROL =
+  'rounded-xl border border-border-control bg-surface-muted/30 px-2 py-1.5 text-sm text-ink tabular-nums ' +
+  'focus:bg-surface focus:border-brand-ring focus:ring-1 focus:ring-brand-ring focus:outline-hidden transition-colors ' +
+  '@max-[52rem]:h-10 @max-[52rem]:w-full';
+const CELL = 'px-3 py-2.5 @max-[52rem]:p-0';
+
+/** A field's label, shown only when the line is a card and has no column heading above it. */
+function CardLabel({ children }: { children: string }) {
+  return (
+    <span aria-hidden className="mb-1 hidden text-xs font-medium text-ink-muted @max-[52rem]:block">
+      {children}
+    </span>
+  );
+}
+
 export function QuoteLinesTable({
   items,
   onChange,
   currency = 'USD',
   readOnly = false,
   taxCodes = [],
+  onAddFromCatalog,
+  onFindInCatalog,
+  catalogShortcut,
+  onRemoveLine,
+  onAddTypedLine,
+  canSeeCost = false,
+  marginFloor = null,
+  recostingIds,
 }: QuoteLinesTableProps) {
   const taxRateOptions =
     taxCodes.length > 0
       ? taxCodes.map((code) => ({
           value: String(code.rate),
-          label: `${code.name} (${code.rate}%)`,
+          // Codes are often named for their rate already ("No tax (0%)").
+          label: code.name.includes('%') ? code.name : `${code.name} (${code.rate}%)`,
         }))
       : FALLBACK_TAX_RATE_OPTIONS;
+  // Once any code exists the round fallbacks disappear, so an organisation
+  // that has set up only a zero-rated code can quote nothing but 0%.
+  const onlyZeroRated = taxCodes.length > 0 && taxCodes.every((code) => !(code.rate > 0));
 
   const handleItemChange = (
     id: string,
@@ -94,45 +187,35 @@ export function QuoteLinesTable({
     if (readOnly) return;
     const newId = `line_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-    if (type === 'product') {
-      const newItem: QuoteLineItem = {
-        id: newId,
-        type: 'product',
-        description: '',
-        quantity: 1,
-        uom: 'Units',
-        unitPrice: 0,
-        discount: 0,
-        taxRate: 0,
-        subtotal: 0,
-      };
-      onChange([...items, newItem]);
-    } else if (type === 'section') {
-      const newItem: QuoteLineItem = {
-        id: newId,
-        type: 'section',
-        description: 'New Section / Deliverable Phase',
-      };
-      onChange([...items, newItem]);
-    } else {
-      const newItem: QuoteLineItem = {
-        id: newId,
-        type: 'note',
-        description: 'Note: ',
-      };
-      onChange([...items, newItem]);
-    }
+    const newItem: QuoteLineItem =
+      type === 'product'
+        ? {
+            id: newId,
+            type: 'product',
+            description: '',
+            quantity: 1,
+            uom: DEFAULT_UNIT,
+            unitPrice: 0,
+            discount: 0,
+            taxRate: 0,
+            subtotal: 0,
+          }
+        : { id: newId, type, description: '' };
+
+    if (onAddTypedLine) onAddTypedLine(newItem);
+    else onChange([...items, newItem]);
   };
 
   const handleRemoveItem = (id: string) => {
     if (readOnly) return;
-    onChange(items.filter((item) => item.id !== id));
+    if (onRemoveLine) onRemoveLine(id);
+    else onChange(items.filter((item) => item.id !== id));
   };
 
   let productCounter = 0;
 
   return (
-    <div className="bg-surface/85 backdrop-blur-xs rounded-2xl border border-border/30 overflow-hidden shadow-[0_2px_12px_rgba(0,0,0,0.015)]">
+    <div className="@container bg-surface rounded-2xl border border-border/60 overflow-hidden shadow-[0_2px_10px_rgba(0,0,0,0.015)]">
       {/* Shared by every line's unit input. Grouped so the trades read apart. */}
       <datalist id="quote-line-units">
         {UNIT_GROUPS.map((group) => (
@@ -145,119 +228,95 @@ export function QuoteLinesTable({
       </datalist>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[840px] text-left border-collapse">
-          <thead>
-            <tr className="bg-surface-muted/30 text-xs font-semibold text-ink-muted/80 uppercase tracking-wider border-b border-border/25">
+        <table className="w-full min-w-[840px] text-left border-collapse @max-[52rem]:block @max-[52rem]:min-w-0">
+          <thead className="@max-[52rem]:hidden">
+            <tr className="bg-surface-muted/30 text-xs font-semibold text-ink-muted uppercase tracking-wider border-b border-border/60">
               <th className="w-12 px-3 py-3 text-center">
-                <Hash className="inline size-3.5" />
+                <Hash className="inline size-3.5" aria-hidden />
+                <span className="sr-only">Line</span>
               </th>
               <th className="px-3 py-3 min-w-[240px]">Description</th>
               <th className="w-24 px-3 py-3 text-right">Quantity</th>
-              <th className="w-28 px-3 py-3">UoM</th>
-              <th className="w-32 px-3 py-3 text-right">Unit Price</th>
-              <th className="w-24 px-3 py-3 text-right">Disc.%</th>
+              <th className="w-28 px-3 py-3">Unit</th>
+              <th className="w-32 px-3 py-3 text-right">Unit price</th>
+              <th className="w-24 px-3 py-3 text-right">Disc. %</th>
               <th className="w-32 px-3 py-3">Tax</th>
-              <th className="w-32 px-3 py-3 text-right">Subtotal</th>
-              {!readOnly && <th className="w-12 px-3 py-3 text-center"></th>}
+              <th className="w-36 px-3 py-3 text-right">Subtotal</th>
+              {!readOnly && (
+                <th className="w-12 px-3 py-3 text-center">
+                  <span className="sr-only">Remove</span>
+                </th>
+              )}
             </tr>
           </thead>
-          <tbody className="divide-y divide-border/20">
+          <tbody className="divide-y divide-border/60 @max-[52rem]:block">
             {items.length === 0 ? (
-              <tr>
+              <tr className="@max-[52rem]:block">
                 <td
                   colSpan={readOnly ? 8 : 9}
-                  className="px-6 py-12 text-center text-sm text-ink-muted"
+                  className="px-6 py-12 text-center text-sm text-ink-muted @max-[52rem]:block"
                 >
-                  <Package className="mx-auto size-8 text-ink-subtle opacity-60 mb-2" />
-                  <p className="font-medium text-ink">No line items in this quote</p>
-                  <p className="text-xs text-ink-subtle mt-1">
-                    Click the buttons below to add products, phase sections, or notes.
+                  <Package className="mx-auto size-8 text-ink-subtle mb-2" aria-hidden />
+                  <p className="font-medium text-ink">No lines on this quote yet</p>
+                  <p className="text-xs text-ink-muted mt-1">
+                    Add a line from the catalog to price it from what it costs, or type one below.
                   </p>
                 </td>
               </tr>
             ) : (
               items.map((item, index) => {
-                if (item.type === 'section') {
-                  return (
-                    <tr
-                      key={item.id}
-                      className="bg-amber-500/5 font-semibold text-ink border-y border-amber-500/10 hover:bg-amber-500/10 transition-colors"
-                    >
-                      <td className="px-3 py-2.5 text-center text-ink-subtle">
-                        <Layers className="inline size-4 text-brand" />
-                      </td>
-                      <td colSpan={readOnly ? 7 : 7} className="px-3 py-2.5">
-                        {readOnly ? (
-                          <div className="py-1 text-sm font-semibold tracking-wide text-ink">
-                            {item.description}
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="text"
-                              value={item.description}
-                              placeholder="Section Header (e.g., Phase 1: Implementation)"
-                              onChange={(e) =>
-                                handleItemChange(item.id, 'description', e.target.value)
-                              }
-                              className="w-full rounded-lg border border-transparent bg-transparent px-2.5 py-1 text-sm font-semibold text-ink placeholder:text-ink-subtle hover:border-border/40 focus:border-brand focus:bg-surface focus:outline-hidden"
-                            />
-                          </div>
-                        )}
-                      </td>
-                      {!readOnly && (
-                        <td className="px-3 py-2.5 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveItem(item.id)}
-                            className="rounded-full p-1 text-ink-subtle transition-colors hover:bg-danger-soft hover:text-danger"
-                            title="Delete Section"
-                          >
-                            <Trash2 className="size-4" />
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  );
-                }
+                if (item.type === 'section' || item.type === 'note') {
+                  const isSection = item.type === 'section';
+                  const kind = isSection ? 'Section heading' : 'Note';
+                  const Icon = isSection ? Layers : FileText;
 
-                if (item.type === 'note') {
                   return (
                     <tr
                       key={item.id}
-                      className="bg-surface-muted/25 italic text-ink-muted hover:bg-surface-muted/35 transition-colors"
+                      data-line-id={item.id}
+                      className={cn(
+                        'transition-colors @max-[52rem]:flex @max-[52rem]:items-center @max-[52rem]:gap-2 @max-[52rem]:px-3 @max-[52rem]:py-2',
+                        isSection
+                          ? 'bg-brand-soft/40 font-semibold text-ink'
+                          : 'bg-surface-muted/25 italic text-ink-muted',
+                      )}
                     >
-                      <td className="px-3 py-2.5 text-center text-ink-subtle">
-                        <FileText className="inline size-4 text-amber-500" />
+                      <td className="px-3 py-2.5 text-center @max-[52rem]:p-0">
+                        <Icon className="inline size-4 text-ink-subtle" aria-hidden />
                       </td>
-                      <td colSpan={readOnly ? 7 : 7} className="px-3 py-2.5">
+                      <td colSpan={7} className="px-3 py-2.5 @max-[52rem]:flex-1 @max-[52rem]:p-0">
                         {readOnly ? (
-                          <div className="py-1 text-sm italic text-ink-muted">
+                          <div className={cn('py-1 text-sm', isSection ? 'font-semibold text-ink' : 'italic text-ink-muted')}>
                             {item.description}
                           </div>
                         ) : (
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="text"
-                              value={item.description}
-                              placeholder="Add a note or deliverable condition (e.g., Includes 99.9% uptime SLA)..."
-                              onChange={(e) =>
-                                handleItemChange(item.id, 'description', e.target.value)
-                              }
-                              className="w-full rounded-lg border border-transparent bg-transparent px-2.5 py-1 text-sm italic text-ink placeholder:text-ink-subtle hover:border-border/40 focus:border-brand focus:bg-surface focus:outline-hidden"
-                            />
-                          </div>
+                          <input
+                            type="text"
+                            value={item.description}
+                            placeholder={
+                              isSection
+                                ? 'Section heading (e.g. Inner packaging)'
+                                : 'Add a note (e.g. Artwork to be approved before production)'
+                            }
+                            aria-label={`${kind}, row ${index + 1}`}
+                            data-line-field="description"
+                            onChange={(e) => handleItemChange(item.id, 'description', e.target.value)}
+                            className={cn(
+                              'w-full rounded-lg border border-transparent bg-transparent px-2.5 py-1 text-sm text-ink placeholder:text-ink-subtle hover:border-border focus:border-brand focus:bg-surface focus:outline-hidden @max-[52rem]:h-10',
+                              isSection ? 'font-semibold' : 'italic',
+                            )}
+                          />
                         )}
                       </td>
                       {!readOnly && (
-                        <td className="px-3 py-2.5 text-center">
+                        <td className="px-3 py-2.5 text-center @max-[52rem]:p-0">
                           <button
                             type="button"
                             onClick={() => handleRemoveItem(item.id)}
-                            className="rounded-full p-1 text-ink-subtle transition-colors hover:bg-danger-soft hover:text-danger"
-                            title="Delete Note"
+                            className="inline-flex size-8 items-center justify-center rounded-full text-ink-subtle transition-colors hover:bg-danger-soft hover:text-danger @max-[52rem]:size-10"
+                            aria-label={`Remove ${kind.toLowerCase()}${item.description ? ` "${item.description}"` : ''}`}
                           >
-                            <Trash2 className="size-4" />
+                            <Trash2 className="size-4" aria-hidden />
                           </button>
                         </td>
                       )}
@@ -267,23 +326,27 @@ export function QuoteLinesTable({
 
                 // Default: 'product'
                 productCounter += 1;
+                const lineNo = productCounter;
                 const qty = Number(item.quantity) || 0;
                 const price = Number(item.unitPrice) || 0;
                 const discount = Number(item.discount) || 0;
                 const subtotal = item.subtotal ?? qty * price * (1 - discount / 100);
+                const name = (field: string) => `${field}, line ${lineNo}`;
 
                 return (
                   <tr
                     key={item.id}
-                    className="group border-b border-border/20 py-2.5 hover:bg-surface-muted/15 transition-colors"
+                    data-line-id={item.id}
+                    className="transition-colors hover:bg-surface-muted/20 @max-[52rem]:grid @max-[52rem]:grid-cols-6 @max-[52rem]:gap-x-3 @max-[52rem]:gap-y-3 @max-[52rem]:px-4 @max-[52rem]:py-4"
                   >
                     {/* # Index */}
-                    <td className="px-3 py-2.5 text-center text-xs font-mono text-ink-subtle">
-                      {productCounter}
+                    <td className="px-3 py-2.5 text-center text-xs tabular-nums text-ink-subtle @max-[52rem]:hidden">
+                      {lineNo}
                     </td>
 
                     {/* Description */}
-                    <td className="px-3 py-2.5">
+                    <td className={cn(CELL, '@max-[52rem]:col-span-5')}>
+                      <CardLabel>{`Line ${lineNo}`}</CardLabel>
                       {readOnly ? (
                         <span className="text-sm font-medium text-ink">
                           {item.description || '—'}
@@ -292,37 +355,54 @@ export function QuoteLinesTable({
                         <input
                           type="text"
                           value={item.description}
-                          placeholder="Product or service description"
-                          onChange={(e) =>
-                            handleItemChange(item.id, 'description', e.target.value)
-                          }
-                          className="w-full rounded-xl border border-border/40 bg-surface-muted/30 px-2.5 py-1.5 text-sm text-ink placeholder:text-ink-subtle focus:bg-surface focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden transition-colors"
+                          placeholder="What's being made or supplied"
+                          aria-label={name('Description')}
+                          data-line-field="description"
+                          onChange={(e) => handleItemChange(item.id, 'description', e.target.value)}
+                          className={cn(CONTROL, 'w-full px-2.5 placeholder:text-ink-subtle')}
                         />
+                      )}
+                      {/* A typed line has a price but no cost, so the margin counts it as pure profit. */}
+                      {!readOnly && onFindInCatalog && !item.cost && (item.description.trim() || price > 0) && (
+                        <button
+                          type="button"
+                          onClick={() => onFindInCatalog(item.id)}
+                          className="mt-1 inline-flex min-h-8 items-center gap-1 rounded text-xs font-medium text-ink-muted underline-offset-2 hover:text-ink hover:underline"
+                          aria-label={`Line ${lineNo} has no cost. Replace it with a catalog item`}
+                        >
+                          <PackagePlus className="size-3.5" aria-hidden />
+                          No cost. Find in catalog
+                        </button>
                       )}
                     </td>
 
                     {/* Quantity */}
-                    <td className="px-3 py-2.5 text-right">
+                    <td className={cn(CELL, 'text-right @max-[52rem]:col-span-2 @max-[52rem]:text-start')}>
+                      <CardLabel>Quantity</CardLabel>
                       {readOnly ? (
                         <span className="text-sm tabular-nums text-ink font-medium">
-                          {item.quantity ?? 1}
+                          {Number(item.quantity ?? 1).toLocaleString('en-GB')}
                         </span>
                       ) : (
                         <input
                           type="number"
+                          inputMode="decimal"
                           min="0"
                           step="any"
                           value={item.quantity ?? 1}
+                          aria-label={name('Quantity')}
+                          data-line-field="quantity"
                           onChange={(e) =>
                             handleItemChange(item.id, 'quantity', parseFloat(e.target.value) || 0)
                           }
-                          className="w-20 rounded-xl border border-border/40 bg-surface-muted/30 px-2 py-1.5 text-right text-sm tabular-nums text-ink focus:bg-surface focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden transition-colors"
+                          className={cn(CONTROL, 'w-20 text-right')}
                         />
                       )}
                     </td>
 
-                    {/* UoM */}
-                    <td className="px-3 py-2.5">
+                    {/* Unit of measure */}
+                    <td className={cn(CELL, '@max-[52rem]:col-span-2')}>
+                      <CardLabel>Unit</CardLabel>
                       {readOnly ? (
                         <span className="text-xs text-ink-muted font-medium">
                           {item.uom || DEFAULT_UNIT}
@@ -341,14 +421,15 @@ export function QuoteLinesTable({
                           list="quote-line-units"
                           value={item.uom || DEFAULT_UNIT}
                           onChange={(e) => handleItemChange(item.id, 'uom', e.target.value)}
-                          aria-label="Unit of measure"
-                          className="w-full rounded-xl border border-border/40 bg-surface-muted/30 px-2 py-1.5 text-xs text-ink focus:bg-surface focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden transition-colors"
+                          aria-label={name('Unit of measure')}
+                          className={cn(CONTROL, 'w-full')}
                         />
                       )}
                     </td>
 
                     {/* Unit Price */}
-                    <td className="px-3 py-2.5 text-right">
+                    <td className={cn(CELL, 'text-right @max-[52rem]:col-span-2 @max-[52rem]:text-start')}>
+                      <CardLabel>Unit price</CardLabel>
                       {readOnly ? (
                         <span className="text-sm tabular-nums text-ink">
                           {formatCurrency(price, currency)}
@@ -356,50 +437,51 @@ export function QuoteLinesTable({
                       ) : (
                         <input
                           type="number"
+                          inputMode="decimal"
                           min="0"
                           step="0.01"
                           value={item.unitPrice ?? 0}
+                          aria-label={name('Unit price')}
                           onChange={(e) =>
                             handleItemChange(item.id, 'unitPrice', parseFloat(e.target.value) || 0)
                           }
-                          className="w-28 rounded-xl border border-border/40 bg-surface-muted/30 px-2 py-1.5 text-right text-sm tabular-nums text-ink focus:bg-surface focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden transition-colors"
+                          className={cn(CONTROL, 'w-28 text-right')}
                         />
                       )}
                     </td>
 
                     {/* Discount % */}
-                    <td className="px-3 py-2.5 text-right">
+                    <td className={cn(CELL, 'text-right @max-[52rem]:col-span-2 @max-[52rem]:text-start')}>
+                      <CardLabel>Discount</CardLabel>
                       {readOnly ? (
-                        <span
-                          className={cn(
-                            'text-sm tabular-nums',
-                            discount > 0 ? 'font-medium text-emerald-600 dark:text-emerald-400' : 'text-ink-muted',
-                          )}
-                        >
+                        <span className={cn('text-sm tabular-nums', discount > 0 ? 'font-medium text-ink' : 'text-ink-muted')}>
                           {discount > 0 ? `${discount}%` : '—'}
                         </span>
                       ) : (
-                        <div className="relative inline-block w-20">
+                        <div className="relative inline-block w-20 @max-[52rem]:w-full">
                           <input
                             type="number"
+                            inputMode="decimal"
                             min="0"
                             max="100"
                             step="1"
                             value={item.discount ?? 0}
+                            aria-label={name('Discount percent')}
                             onChange={(e) =>
                               handleItemChange(item.id, 'discount', parseFloat(e.target.value) || 0)
                             }
-                            className="w-full rounded-xl border border-border/40 bg-surface-muted/30 pr-5 pl-2 py-1.5 text-right text-sm tabular-nums text-ink focus:bg-surface focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden transition-colors"
+                            className={cn(CONTROL, 'w-full pr-5 text-right')}
                           />
-                          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-ink-subtle">
+                          <span aria-hidden className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-ink-subtle">
                             %
                           </span>
                         </div>
                       )}
                     </td>
 
-                    {/* Tax Rate */}
-                    <td className="px-3 py-2.5">
+                    {/* Tax Rate: wider on a card, so a code's full name fits */}
+                    <td className={cn(CELL, '@max-[52rem]:col-span-4')}>
+                      <CardLabel>Tax</CardLabel>
                       {readOnly ? (
                         <span className="text-xs text-ink-muted">
                           {item.taxRate ? `${item.taxRate}%` : '0%'}
@@ -407,10 +489,11 @@ export function QuoteLinesTable({
                       ) : (
                         <select
                           value={String(item.taxRate ?? 0)}
+                          aria-label={name('Tax rate')}
                           onChange={(e) =>
                             handleItemChange(item.id, 'taxRate', parseFloat(e.target.value) || 0)
                           }
-                          className="w-full rounded-xl border border-border/40 bg-surface-muted/30 px-2 py-1.5 text-xs text-ink focus:bg-surface focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden transition-colors"
+                          className={cn(CONTROL, 'w-full text-xs @max-[52rem]:text-sm')}
                         >
                           {taxRateOptions.map((opt) => (
                             <option key={opt.value} value={opt.value}>
@@ -421,23 +504,40 @@ export function QuoteLinesTable({
                       )}
                     </td>
 
-                    {/* Subtotal */}
-                    <td className="px-3 py-2.5 text-right">
-                      <span className="text-sm font-semibold tabular-nums text-ink">
-                        {formatCurrency(subtotal, currency)}
+                    {/* Subtotal, with the line's cost and margin under it */}
+                    <td
+                      className={cn(
+                        CELL,
+                        'text-right @max-[52rem]:col-span-6 @max-[52rem]:flex @max-[52rem]:items-baseline @max-[52rem]:justify-between @max-[52rem]:gap-3 @max-[52rem]:border-t @max-[52rem]:border-border/60 @max-[52rem]:pt-3',
+                      )}
+                    >
+                      <CardLabel>Subtotal</CardLabel>
+                      <span className="block">
+                        <span className="block text-sm font-semibold tabular-nums text-ink">
+                          {formatCurrency(subtotal, currency)}
+                        </span>
+                        {canSeeCost && (
+                          <LineCost
+                            item={item}
+                            currency={currency}
+                            floor={marginFloor}
+                            recosting={recostingIds?.has(item.id) ?? false}
+                            readOnly={readOnly}
+                          />
+                        )}
                       </span>
                     </td>
 
                     {/* Actions */}
                     {!readOnly && (
-                      <td className="px-3 py-2.5 text-center">
+                      <td className={cn(CELL, 'text-center @max-[52rem]:col-start-6 @max-[52rem]:row-start-1 @max-[52rem]:flex @max-[52rem]:items-start @max-[52rem]:justify-end')}>
                         <button
                           type="button"
                           onClick={() => handleRemoveItem(item.id)}
-                          className="rounded-full p-1.5 text-ink-subtle opacity-60 group-hover:opacity-100 transition-all hover:bg-danger-soft hover:text-danger"
-                          title="Delete Line Item"
+                          className="inline-flex size-8 items-center justify-center rounded-full text-ink-subtle transition-colors hover:bg-danger-soft hover:text-danger @max-[52rem]:size-10"
+                          aria-label={`Remove line ${lineNo}${item.description ? `, ${item.description}` : ''}`}
                         >
-                          <Trash2 className="size-4" />
+                          <Trash2 className="size-4" aria-hidden />
                         </button>
                       </td>
                     )}
@@ -449,39 +549,40 @@ export function QuoteLinesTable({
         </table>
       </div>
 
-      {/* Action Bar (Odoo Style Add Buttons) */}
+      {!readOnly && onlyZeroRated && (
+        <p className="border-t border-border/60 px-4 py-2.5 text-xs text-ink-muted">
+          The only tax code set up is 0%, so every line is zero-rated. Add your VAT rate under Finance → Tax
+          to charge it.
+        </p>
+      )}
+
+      {/* The catalog first; typed lines for anything it does not cover */}
       {!readOnly && (
-        <div className="flex flex-wrap items-center gap-2 border-t border-border/25 bg-surface-muted/20 px-4 py-3">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => handleAddItem('product')}
-            className="gap-1.5 text-xs font-medium rounded-full px-4 py-1.5 border-border/40 hover:border-brand/60"
-          >
-            <Plus className="size-3.5 text-brand-hover" />
-            Add a product
+        <div className="flex flex-wrap items-center gap-2 border-t border-border/60 bg-surface-muted/20 px-4 py-3">
+          {onAddFromCatalog && (
+            <Button type="button" variant="outline" onClick={onAddFromCatalog}>
+              <PackagePlus className="size-4 text-ink-subtle" aria-hidden />
+              Add from catalog
+              {catalogShortcut && (
+                <kbd className="ms-1 hidden rounded border border-border px-1.5 py-0.5 text-xs font-medium text-ink-muted md:pointer-fine:inline">
+                  {catalogShortcut}
+                </kbd>
+              )}
+            </Button>
+          )}
+
+          <Button type="button" variant={onAddFromCatalog ? 'ghost' : 'outline'} onClick={() => handleAddItem('product')}>
+            <Plus className="size-4 text-ink-subtle" aria-hidden />
+            Type a line
           </Button>
 
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => handleAddItem('section')}
-            className="gap-1.5 text-xs text-ink-muted hover:text-ink rounded-full px-4 py-1.5 hover:bg-surface-muted/40"
-          >
-            <Layers className="size-3.5 text-brand-hover" />
+          <Button type="button" variant="ghost" onClick={() => handleAddItem('section')}>
+            <Layers className="size-4 text-ink-subtle" aria-hidden />
             Add a section
           </Button>
 
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => handleAddItem('note')}
-            className="gap-1.5 text-xs text-ink-muted hover:text-ink rounded-full px-4 py-1.5 hover:bg-surface-muted/40"
-          >
-            <FileText className="size-3.5 text-warning" />
+          <Button type="button" variant="ghost" onClick={() => handleAddItem('note')}>
+            <FileText className="size-4 text-ink-subtle" aria-hidden />
             Add a note
           </Button>
         </div>

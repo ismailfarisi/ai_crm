@@ -70,7 +70,7 @@ function NavBadge({ kind }: { kind: NonNullable<NavItem['badge']> }) {
   return (
     <span
       data-testid={`nav-badge-${kind}`}
-      className="ml-auto rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-semibold leading-none text-ink-inverted"
+      className="ml-auto rounded-full bg-brand px-1.5 py-0.5 text-[11px] font-semibold leading-none text-on-brand"
     >
       {count > 99 ? '99+' : count}
     </span>
@@ -124,20 +124,20 @@ export function AppShell({ children }: { children: ReactNode }) {
               className={cn(
                 'group flex min-h-[72px] flex-col items-start justify-between rounded-2xl p-3 transition-all',
                 active
-                  ? 'bg-[#1E1E1E] text-white shadow-md'
+                  ? 'bg-charcoal text-on-charcoal shadow-md'
                   : 'border border-border/50 bg-surface-muted/60 text-ink-muted hover:bg-surface-muted hover:text-ink hover:shadow-xs',
               )}
             >
               <Icon
                 className={cn(
                   'size-5 shrink-0 transition-colors',
-                  active ? 'text-white' : 'text-ink-subtle group-hover:text-ink',
+                  active ? 'text-on-charcoal' : 'text-ink-subtle group-hover:text-ink',
                 )}
               />
               <span
                 className={cn(
                   'flex w-full items-center text-xs font-semibold tracking-tight',
-                  active ? 'text-white' : 'text-ink-muted group-hover:text-ink',
+                  active ? 'text-on-charcoal' : 'text-ink-muted group-hover:text-ink',
                 )}
               >
                 {item.label}
@@ -348,7 +348,7 @@ function Brand() {
       <KerfMark />
       <div className="flex min-w-0 flex-col">
         <span className="truncate text-sm font-bold tracking-tight text-ink">Kerf</span>
-        <span className="text-[10px] font-medium uppercase tracking-wider text-ink-subtle">
+        <span className="text-xs font-medium uppercase tracking-wider text-ink-subtle">
           Workspace
         </span>
       </div>
@@ -378,12 +378,12 @@ function UserCard({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="shrink-0 border-t border-border/60 p-3">
       <div className="flex items-center gap-2.5 rounded-2xl border border-border/70 bg-surface-muted/40 p-2 transition-colors hover:bg-surface-muted/60">
-        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-amber-500/15 text-xs font-bold text-amber-700 ring-1 ring-amber-500/30 dark:text-amber-300">
+        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-brand-soft text-xs font-bold text-ink ring-1 ring-brand/40">
           {initials(user.firstName, user.lastName)}
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-xs font-semibold leading-tight text-ink">{user.fullName}</p>
-          <span className="inline-block truncate rounded-md border border-border/50 bg-surface px-1.5 py-0.5 text-[10px] font-medium text-ink-subtle">
+          <span className="inline-block truncate rounded-md border border-border/50 bg-surface px-1.5 py-0.5 text-xs font-medium text-ink-muted">
             {user.roles.map((role) => role.name).join(', ') || 'Member'}
           </span>
         </div>

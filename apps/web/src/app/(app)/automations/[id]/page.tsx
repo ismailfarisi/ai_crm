@@ -50,7 +50,7 @@ export default function AutomationStudioPage({ params }: PageProps) {
           <p className="text-xs text-ink-muted">The requested automation workflow does not exist or has been deleted.</p>
           <button
             onClick={() => router.push('/automations')}
-            className="px-4 py-2 rounded-xl bg-brand text-ink text-xs font-semibold hover:bg-brand-hover cursor-pointer"
+            className="px-4 py-2 rounded-xl bg-brand text-on-brand text-xs font-semibold hover:bg-brand-hover cursor-pointer"
           >
             Back to Automations
           </button>

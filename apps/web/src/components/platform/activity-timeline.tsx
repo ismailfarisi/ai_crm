@@ -21,14 +21,47 @@ export function describeAction(action: string): string {
     payments: 'Payment recorded',
     dispatch: 'Dispatched',
     login: 'Signed in',
-    change_password: 'Changed password',
+    'change password': 'Changed password',
     execute: 'Ran from chat',
+    'mark accepted': 'Marked accepted',
+    revise: 'Revised',
+    send: 'Sent',
+    submit: 'Submitted',
   };
   return past[verb] ?? verb.charAt(0).toUpperCase() + verb.slice(1);
 }
 
+/** Record fields as people say them, for the "Changed …" line. */
+const FIELD_NAMES: Record<string, string> = {
+  items: 'lines',
+  subtotalAmount: 'subtotal',
+  discountAmount: 'discount',
+  taxAmount: 'tax',
+  totalAmount: 'total',
+  acceptedAt: 'acceptance',
+  acceptedByName: 'acceptance',
+  acceptedIp: 'acceptance',
+  validUntil: 'valid-until date',
+  paymentTerms: 'payment terms',
+  customerId: 'customer',
+  customerName: 'customer',
+  customerEmail: 'customer email',
+  termsAndConditions: 'terms',
+  billingSchedule: 'billing',
+  supersededAt: 'superseded',
+};
+
+/** `acceptedByName` → "acceptance", `leadTimeDays` → "lead time days"; each said once. */
+export function describeFields(fields: string[]): string[] {
+  const words = fields.map(
+    (field) => FIELD_NAMES[field] ?? field.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').toLowerCase(),
+  );
+  return [...new Set(words)];
+}
+
 export function ActivityRow({ entry }: { entry: AuditLogDto }) {
   const byModel = entry.origin !== 'HUMAN';
+  const changed = describeFields(entry.changedFields);
   return (
     <li className="flex gap-3 py-2.5">
       <span
@@ -39,7 +72,7 @@ export function ActivityRow({ entry }: { entry: AuditLogDto }) {
         {byModel ? <Bot className="h-3.5 w-3.5" /> : <User className="h-3.5 w-3.5" />}
       </span>
       <div className="min-w-0">
-        <p className="text-sm text-ink">
+        <p className="text-sm text-pretty text-ink">
           <span className="font-medium">{describeAction(entry.action)}</span>
           {/*
             Which record. Without it the trail reads "Created by …", "Status by
@@ -62,10 +95,10 @@ export function ActivityRow({ entry }: { entry: AuditLogDto }) {
             </span>
           )}
         </p>
-        {entry.changedFields.length > 0 && (
+        {changed.length > 0 && (
           <p className="truncate text-xs text-ink-muted">
-            Changed {entry.changedFields.slice(0, 6).join(', ')}
-            {entry.changedFields.length > 6 ? ` and ${entry.changedFields.length - 6} more` : ''}
+            Changed {changed.slice(0, 6).join(', ')}
+            {changed.length > 6 ? ` and ${changed.length - 6} more` : ''}
           </p>
         )}
         {byModel && entry.model && (
@@ -75,7 +108,7 @@ export function ActivityRow({ entry }: { entry: AuditLogDto }) {
             {entry.confidence != null ? ` · confidence ${entry.confidence}` : ''}
           </p>
         )}
-        <p className="text-xs text-ink-subtle">{new Date(entry.createdAt).toLocaleString()}</p>
+        <p className="text-xs text-ink-subtle">{new Date(entry.createdAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
       </div>
     </li>
   );

@@ -158,7 +158,7 @@ export function ScheduleTriggerFields({
                     aria-pressed={on}
                     data-testid={`schedule-day-${day}`}
                     onClick={() => toggleDay(day)}
-                    className={`rounded-lg border px-2 py-1 text-xs ${on ? 'border-brand bg-brand text-ink' : 'border-border text-ink-muted'}`}
+                    className={`rounded-lg border px-2 py-1 text-xs ${on ? 'border-brand bg-brand text-on-brand' : 'border-border text-ink-muted'}`}
                   >
                     {label}
                   </button>

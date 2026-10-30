@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import type { ProductTemplateDto, QuoteLineItem } from '@saas/shared';
 import { api } from '@/lib/api/endpoints';
 import { useLineResolver } from '@/hooks/use-catalog';
+import { ModalShell } from '@/components/ui/modal-shell';
 import { CatalogPicker, type PickerChoice } from './catalog-picker';
 import { TemplateConfigurator } from './template-configurator';
 
@@ -100,30 +101,15 @@ export function AddLineFlow({ open, onClose, onAddLines, currency }: AddLineFlow
 
   if (template) {
     return (
-      <div
-        className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-4 pt-[8vh] backdrop-blur-sm"
-        role="presentation"
-        onClick={close}
-      >
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Configure ${template.name}`}
-          className="w-full max-w-3xl overflow-hidden rounded-2xl border border-border/40 bg-surface shadow-2xl"
-          onClick={(event) => event.stopPropagation()}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') close();
-          }}
-        >
-          <TemplateConfigurator
-            template={template}
-            currency={currency}
-            onBack={() => setTemplate(null)}
-            onAdd={handleAddConfigured}
-            isAdding={isResolving}
-          />
-        </div>
-      </div>
+      <ModalShell open onClose={close} label={`Configure ${template.name}`} className="max-w-3xl">
+        <TemplateConfigurator
+          template={template}
+          currency={currency}
+          onBack={() => setTemplate(null)}
+          onAdd={handleAddConfigured}
+          isAdding={isResolving}
+        />
+      </ModalShell>
     );
   }
 

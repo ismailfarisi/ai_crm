@@ -234,7 +234,7 @@ export function ExpenseStatusRibbon({
                     className={cn(
                       'flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 transition-all text-xs',
                       state === 'current' &&
-                        'bg-brand text-ink font-semibold shadow-xs ring-1 ring-brand-ring/40',
+                        'bg-brand text-on-brand font-semibold shadow-xs ring-1 ring-brand-ring/40',
                       state === 'completed' &&
                         'text-ink-muted font-medium hover:text-ink',
                       state === 'upcoming' &&

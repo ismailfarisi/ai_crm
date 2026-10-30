@@ -38,7 +38,7 @@ export function RunsDrawer({ workflowId, onClose, className }: RunsDrawerProps) 
     >
       <div className="flex items-center justify-between p-4 border-b border-border/40 bg-surface-muted/50">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-ink font-bold">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-on-brand font-bold">
             <History className="h-4 w-4" />
           </div>
           <div>

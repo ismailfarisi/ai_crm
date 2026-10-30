@@ -279,7 +279,7 @@ export default async function DashboardPage() {
         <div className="flex items-center gap-2.5">
           <Link
             href="/quotes/new"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-brand-hover hover:shadow-sm"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-3.5 py-2 text-xs font-semibold text-on-brand shadow-xs transition-all hover:bg-brand-hover hover:shadow-sm"
           >
             <FilePlus2 className="size-3.5" />
             Create Quote

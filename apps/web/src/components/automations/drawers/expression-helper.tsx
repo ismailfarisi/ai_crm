@@ -366,7 +366,7 @@ export function ExpressionHelper({
           className={clsx(
             'px-2 py-0.5 rounded text-[11px] font-medium transition-colors flex items-center gap-1 ml-auto cursor-pointer',
             activeTab === 'preview'
-              ? 'bg-brand text-ink font-semibold'
+              ? 'bg-brand text-on-brand font-semibold'
               : 'text-ink-muted hover:bg-surface-muted',
           )}
         >

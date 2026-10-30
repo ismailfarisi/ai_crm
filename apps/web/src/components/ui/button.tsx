@@ -7,17 +7,17 @@ export type Size = 'sm' | 'md' | 'lg' | 'icon';
 
 const VARIANTS: Record<Variant, string> = {
   primary:
-    'bg-brand text-ink font-semibold hover:bg-brand-hover shadow-xs active:scale-[0.99] transition-all',
+    'bg-brand text-on-brand font-semibold hover:bg-brand-hover shadow-xs active:scale-[0.99] transition-all',
   secondary:
-    'bg-[#1E1E1E] text-white font-medium hover:bg-[#2C2C2C] shadow-xs active:scale-[0.99] transition-all',
+    'bg-charcoal text-on-charcoal font-medium hover:bg-charcoal-hover shadow-xs active:scale-[0.99] transition-all',
   dark:
-    'bg-[#1E1E1E] text-white font-medium hover:bg-[#2C2C2C] shadow-xs active:scale-[0.99] transition-all',
+    'bg-charcoal text-on-charcoal font-medium hover:bg-charcoal-hover shadow-xs active:scale-[0.99] transition-all',
   outline:
     'border border-border/50 bg-surface/50 hover:bg-surface text-ink active:scale-[0.99] transition-all',
   ghost:
     'hover:bg-surface-muted/60 text-ink-muted hover:text-ink transition-all',
   danger:
-    'bg-danger text-white hover:bg-danger-hover shadow-xs font-semibold active:scale-[0.99] transition-all',
+    'bg-danger text-ink-inverted hover:bg-danger-hover shadow-xs font-semibold active:scale-[0.99] transition-all',
 };
 
 const SIZES: Record<Size, string> = {
@@ -34,19 +34,28 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { className, variant = 'primary', size = 'md', loading = false, disabled, children, ...props },
+  { className, variant = 'primary', size = 'md', loading = false, disabled, children, onClick, ...props },
   ref,
 ) {
   return (
     <button
       ref={ref}
       // A loading button stays focusable but rejects clicks, so screen-reader
-      // users are not thrown out of the form mid-submit.
-      disabled={disabled || loading}
+      // users are not thrown out of the form mid-submit. Disabling it would
+      // drop focus to the page body the moment it started loading.
+      disabled={disabled}
+      aria-disabled={loading || undefined}
       aria-busy={loading || undefined}
+      onClick={(event) => {
+        if (loading) {
+          event.preventDefault();
+          return;
+        }
+        onClick?.(event);
+      }}
       className={cn(
         'inline-flex items-center justify-center rounded-full font-medium transition-all duration-150 cursor-pointer',
-        'disabled:pointer-events-none disabled:opacity-50',
+        'disabled:pointer-events-none disabled:opacity-50 aria-disabled:cursor-progress',
         VARIANTS[variant],
         SIZES[size],
         className,

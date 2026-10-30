@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -26,6 +26,8 @@ const SIZES = {
  */
 export function Dialog({ open, onClose, title, description, children, footer, size = 'md' }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
+  // One page can hold several dialogs; each needs its own title id.
+  const titleId = useId();
 
   useEffect(() => {
     const element = ref.current;
@@ -51,7 +53,7 @@ export function Dialog({ open, onClose, title, description, children, footer, si
   return (
     <dialog
       ref={ref}
-      aria-labelledby="dialog-title"
+      aria-labelledby={titleId}
       onClick={(event) => {
         // Clicking the ::backdrop reports the <dialog> itself as the target.
         if (event.target === ref.current) onClose();
@@ -61,14 +63,14 @@ export function Dialog({ open, onClose, title, description, children, footer, si
         // agent's own `margin: auto`, which Tailwind's preflight resets to
         // `margin: 0` along with every other element's — which is why every
         // modal in the app opened pinned to the top-left corner.
-        'm-auto w-[calc(100vw-2rem)] rounded-2xl border border-border/30 bg-surface/95 backdrop-blur-md p-0 text-ink shadow-[0_10px_40px_rgba(0,0,0,0.06)]',
+        'm-auto w-[calc(100vw-2rem)] rounded-2xl border border-border/60 bg-surface p-0 text-ink shadow-[0_10px_40px_rgba(0,0,0,0.06)]',
         'backdrop:bg-black/25 backdrop:backdrop-blur-xs',
         SIZES[size],
       )}
     >
       <div className="flex items-start justify-between gap-4 border-b border-border/25 px-6 py-4">
         <div>
-          <h2 id="dialog-title" className="text-sm font-semibold tracking-tight text-ink">
+          <h2 id={titleId} className="text-sm font-semibold tracking-tight text-ink">
             {title}
           </h2>
           {description && <p className="mt-1 text-xs text-ink-muted">{description}</p>}

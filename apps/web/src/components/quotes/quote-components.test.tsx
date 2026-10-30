@@ -19,14 +19,20 @@ function renderWithClient(ui: React.ReactElement) {
 describe('QuoteStatusPipeline', () => {
   it('renders all pipeline stages for DRAFT', () => {
     render(<QuoteStatusPipeline status="DRAFT" />);
-    expect(screen.getByText('Quotation (Draft)')).toBeDefined();
-    expect(screen.getByText('Awaiting Approval')).toBeDefined();
-    expect(screen.getByText('Quotation Confirmed')).toBeDefined();
+    expect(screen.getAllByText('Draft').length).toBeGreaterThan(0);
+    expect(screen.getByText('Awaiting approval')).toBeDefined();
+    expect(screen.getAllByText('Approved').length).toBeGreaterThan(0);
+  });
+
+  it('marks the current step for assistive technology', () => {
+    render(<QuoteStatusPipeline status="AWAITING_APPROVAL" />);
+    const current = document.querySelector('[aria-current="step"]');
+    expect(current?.textContent).toContain('Awaiting approval');
   });
 
   it('renders rejected badge when status is REJECTED', () => {
     render(<QuoteStatusPipeline status="REJECTED" />);
-    expect(screen.getByText(/Rejected \/ Revision Needed/i)).toBeDefined();
+    expect(screen.getByText(/Rejected: needs changes/i)).toBeDefined();
   });
 });
 
@@ -69,7 +75,7 @@ describe('QuoteLinesTable', () => {
     const handleChange = vi.fn();
     render(<QuoteLinesTable items={[]} onChange={handleChange} currency="USD" />);
 
-    const addProductBtn = screen.getByText('Add a product');
+    const addProductBtn = screen.getByText('Type a line');
     fireEvent.click(addProductBtn);
     expect(handleChange).toHaveBeenCalledTimes(1);
 
@@ -86,7 +92,7 @@ describe('QuoteLinesTable', () => {
     const handleChange = vi.fn();
     render(<QuoteLinesTable items={sampleItems} onChange={handleChange} readOnly={true} />);
 
-    expect(screen.queryByText('Add a product')).toBeNull();
+    expect(screen.queryByText('Type a line')).toBeNull();
     expect(screen.queryByText('Add a section')).toBeNull();
     expect(screen.queryByText('Add a note')).toBeNull();
   });
@@ -110,11 +116,14 @@ describe('QuoteTotalsCard', () => {
       />,
     );
 
-    expect(screen.getByText('Untaxed Amount')).toBeDefined();
+    // Each row is the sum so far: the lines, the discount off them, then the subtotal.
+    expect(screen.getByText('Lines')).toBeDefined();
+    expect(screen.getByText('$1,100.00')).toBeDefined();
+    expect(screen.getByText('Discount')).toBeDefined();
+    expect(screen.getByText('−$100.00')).toBeDefined();
+    expect(screen.getByText('Subtotal before tax')).toBeDefined();
     expect(screen.getByText('$1,000.00')).toBeDefined();
-    expect(screen.getByText('Total Discount')).toBeDefined();
-    expect(screen.getByText('-$100.00')).toBeDefined();
-    expect(screen.getByText('Taxes')).toBeDefined();
+    expect(screen.getByText('VAT and taxes')).toBeDefined();
     expect(screen.getByText('$50.00')).toBeDefined();
     expect(screen.getByText('$1,050.00')).toBeDefined();
   });
@@ -137,9 +146,11 @@ describe('QuoteTabsSection', () => {
     // Initial tab is Terms
     expect(screen.getByDisplayValue('Custom payment schedule.')).toBeDefined();
 
-    // Click Internal Notes tab
-    fireEvent.click(screen.getByText('Internal Notes'));
+    expect(screen.getByRole('tab', { name: /terms and conditions/i }).getAttribute('aria-selected')).toBe('true');
+
+    fireEvent.click(screen.getByRole('tab', { name: /internal notes/i }));
     expect(screen.getByDisplayValue('Internal target margin: 40%.')).toBeDefined();
+    expect(screen.getByRole('tab', { name: /internal notes/i }).getAttribute('aria-selected')).toBe('true');
   });
 });
 

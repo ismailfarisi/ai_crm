@@ -80,7 +80,7 @@ export function DataTableCardGrid<TData>({
               <div className="grid grid-cols-2 gap-3 text-xs">
                 {contentCells.map((cell) => (
                   <div key={cell.id} className="space-y-0.5">
-                    <span className="text-[10px] font-medium uppercase tracking-wider text-ink-muted">
+                    <span className="text-xs font-medium uppercase tracking-wider text-ink-muted">
                       {typeof cell.column.columnDef.header === 'string'
                         ? cell.column.columnDef.header
                         : cell.column.id}

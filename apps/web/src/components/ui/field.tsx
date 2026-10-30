@@ -3,12 +3,12 @@ import { cn } from '@/lib/utils';
 
 const CONTROL_BASE =
   'w-full rounded-xl border bg-surface px-3 text-sm text-ink placeholder:text-ink-subtle transition-colors ' +
-  'disabled:cursor-not-allowed disabled:opacity-60 focus:outline-hidden focus:ring-1 focus:ring-brand focus:border-brand';
+  'disabled:cursor-not-allowed disabled:opacity-60 focus:outline-hidden focus:ring-1 focus:ring-brand-ring focus:border-brand-ring';
 
 function controlClasses(hasError: boolean, ...extra: (string | undefined)[]): string {
   return cn(
     CONTROL_BASE,
-    hasError ? 'border-danger' : 'border-border/80 hover:border-border-strong',
+    hasError ? 'border-danger' : 'border-border-control hover:border-ink-subtle',
     ...extra,
   );
 }

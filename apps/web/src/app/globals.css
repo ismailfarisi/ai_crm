@@ -1,6 +1,13 @@
 @import "tailwindcss";
 
 /*
+ * Dark mode is the .dark class the theme toggle puts on <html>. Without this,
+ * Tailwind v4's dark: variant follows the operating system instead, so every
+ * dark: utility switched on its own, out of step with the toggle.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
  * Semantic tokens. Components reference these rather than raw palette values,
  * so dark mode is one block of overrides instead of a `dark:` variant on every
  * element.
@@ -11,26 +18,40 @@
   --color-surface-muted: oklch(0.945 0.02 80);
   --color-border: oklch(0.92 0.012 80);
   --color-border-strong: oklch(0.84 0.02 80);
+  /* The outline of a field: 3:1 against what it sits on, so the box is visible. */
+  --color-border-control: oklch(0.62 0.02 80);
 
   --color-ink: oklch(0.18 0.015 60);
-  --color-ink-muted: oklch(0.48 0.02 60);
-  --color-ink-subtle: oklch(0.65 0.015 60);
+  --color-ink-muted: oklch(0.44 0.02 60);
+  --color-ink-subtle: oklch(0.52 0.015 60);
   --color-ink-inverted: oklch(0.99 0 0);
 
   --color-brand: oklch(0.78 0.16 75);
   --color-brand-hover: oklch(0.72 0.17 75);
   --color-brand-soft: oklch(0.96 0.05 85);
-  --color-brand-ring: oklch(0.78 0.16 75);
+  /* Darker than the brand fill, so the focus ring holds 3:1 on white and cream. */
+  --color-brand-ring: oklch(0.6 0.15 70);
   --color-brand-dark: oklch(0.18 0.01 260);
+  /* Text on Cut-Line Amber: Workshop Ink in both themes, because amber stays light. */
+  --color-on-brand: oklch(0.18 0.015 60);
 
-  --color-success: oklch(0.62 0.15 155);
+  /*
+   * "You are here" and the strong alternative: the active nav tile and the
+   * dark button. Near-black in light mode; in dark mode it flips to a light
+   * tile, because a near-black tile on a near-black sidebar disappears.
+   */
+  --color-charcoal: #1e1e1e;
+  --color-charcoal-hover: #2c2c2c;
+  --color-on-charcoal: oklch(0.99 0 0);
+
+  --color-success: oklch(0.52 0.14 155);
   --color-success-soft: oklch(0.955 0.04 155);
-  --color-warning: oklch(0.72 0.15 75);
+  --color-warning: oklch(0.52 0.12 65);
   --color-warning-soft: oklch(0.96 0.05 85);
-  --color-danger: oklch(0.58 0.2 25);
-  --color-danger-hover: oklch(0.52 0.2 25);
+  --color-danger: oklch(0.53 0.2 25);
+  --color-danger-hover: oklch(0.47 0.2 25);
   --color-danger-soft: oklch(0.96 0.03 25);
-  --color-info: oklch(0.6 0.14 240);
+  --color-info: oklch(0.52 0.14 240);
   --color-info-soft: oklch(0.955 0.035 240);
 
   /*
@@ -53,10 +74,11 @@
     --color-surface-muted: oklch(0.25 0.015 60);
     --color-border: oklch(0.30 0.015 60);
     --color-border-strong: oklch(0.38 0.018 60);
+    --color-border-control: oklch(0.55 0.015 60);
 
     --color-ink: oklch(0.96 0.005 80);
     --color-ink-muted: oklch(0.75 0.01 80);
-    --color-ink-subtle: oklch(0.62 0.012 80);
+    --color-ink-subtle: oklch(0.68 0.012 80);
     --color-ink-inverted: oklch(0.18 0.01 60);
 
     --color-brand: oklch(0.80 0.16 75);
@@ -65,12 +87,16 @@
     --color-brand-ring: oklch(0.80 0.16 75);
     --color-brand-dark: oklch(0.12 0.01 60);
 
+    --color-charcoal: oklch(0.9 0.012 80);
+    --color-charcoal-hover: oklch(0.84 0.015 80);
+    --color-on-charcoal: oklch(0.18 0.015 60);
+
     --color-success: oklch(0.72 0.15 155);
     --color-success-soft: oklch(0.3 0.05 155);
     --color-warning: oklch(0.8 0.14 80);
     --color-warning-soft: oklch(0.32 0.05 80);
-    --color-danger: oklch(0.68 0.18 25);
-    --color-danger-hover: oklch(0.74 0.18 25);
+    --color-danger: oklch(0.72 0.17 25);
+    --color-danger-hover: oklch(0.78 0.16 25);
     --color-danger-soft: oklch(0.3 0.07 25);
     --color-info: oklch(0.7 0.13 240);
     --color-info-soft: oklch(0.3 0.05 240);

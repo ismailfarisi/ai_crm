@@ -269,7 +269,7 @@ export function PublicQuoteView({ token }: { token: string }) {
               <button
                 type="submit"
                 disabled={!agreed || name.trim().length < 2 || submitting}
-                className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-2 text-sm font-semibold text-on-brand disabled:opacity-50"
               >
                 {submitting && <Loader2 className="size-4 animate-spin" />}
                 Accept quote

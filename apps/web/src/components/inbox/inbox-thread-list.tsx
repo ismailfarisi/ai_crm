@@ -112,7 +112,7 @@ export function InboxThreadList({
                 onClick={() => onFilterChange(btn.key)}
                 className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                   isActive
-                    ? 'bg-brand text-white'
+                    ? 'bg-brand text-on-brand'
                     : 'bg-surface-muted text-ink-muted hover:bg-border/60 hover:text-ink'
                 }`}
               >

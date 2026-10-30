@@ -305,7 +305,7 @@ export function ExpenseClaimsTable({
                     className={cn(
                       'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all cursor-pointer',
                       isActive
-                        ? 'bg-brand text-ink font-semibold shadow-xs'
+                        ? 'bg-brand text-on-brand font-semibold shadow-xs'
                         : 'bg-surface-muted/40 text-ink-muted hover:bg-surface-muted hover:text-ink',
                     )}
                   >

@@ -103,7 +103,7 @@ function EmptyState({ onStart }: { onStart: () => void }) {
   }
   return (
     <div className="grid flex-1 place-items-center p-6">
-      <button type="button" onClick={onStart} className="rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-ink">
+      <button type="button" onClick={onStart} className="rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-on-brand">
         Start a chat
       </button>
     </div>

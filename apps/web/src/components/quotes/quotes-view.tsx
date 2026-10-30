@@ -172,7 +172,7 @@ export function QuotesView() {
               renderCard={(q) => (
                 <div className="flex flex-col gap-1.5">
                   <div className="flex items-center justify-between">
-                    <span className="font-mono text-[10px] bg-surface-muted px-1.5 py-0.5 rounded text-ink-muted">
+                    <span className="font-mono text-xs bg-surface-muted px-1.5 py-0.5 rounded text-ink-muted">
                       {q.quoteNumber || 'DRAFT'}
                     </span>
                     <span className="text-xs font-semibold text-ink">

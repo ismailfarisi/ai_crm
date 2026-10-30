@@ -48,10 +48,16 @@ export function DocumentPrintModal({
   useEffect(() => {
     if (!open) return;
     document.body.classList.add('quote-print-modal-open');
+    // A modal that looks like one closes like one.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
     return () => {
       document.body.classList.remove('quote-print-modal-open');
+      window.removeEventListener('keydown', onKeyDown);
     };
-  }, [open]);
+  }, [open, onClose]);
 
   if (!open || !mounted) return null;
 

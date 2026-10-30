@@ -85,7 +85,7 @@ export function ApprovalDecision({ approval, onDecided }: ApprovalDecisionProps)
           type="button"
           disabled={decide.isPending}
           onClick={() => submit('APPROVE')}
-          className="flex-1 py-1.5 rounded-lg bg-brand hover:bg-brand-hover text-xs font-semibold text-ink-inverted cursor-pointer disabled:opacity-60"
+          className="flex-1 py-1.5 rounded-lg bg-brand hover:bg-brand-hover text-xs font-semibold text-on-brand cursor-pointer disabled:opacity-60"
         >
           Approve
         </button>
