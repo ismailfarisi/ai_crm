@@ -35,9 +35,10 @@ describe('createCustomerSchema', () => {
     ).toBe(false);
   });
 
-  it('applies currency and payment terms defaults', () => {
+  it('leaves currency empty for the organisation default and applies payment terms', () => {
+    // No currency means the API fills in the organisation's base currency.
     const parsed = createCustomerSchema.parse({ companyName: 'Acme' });
-    expect(parsed.currency).toBe('USD');
+    expect(parsed.currency).toBeNull();
     expect(parsed.paymentTermsDays).toBe(30);
   });
 
