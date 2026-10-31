@@ -48,32 +48,32 @@ export function ConditionNode({
         <div className="space-y-1.5 pt-0.5">
           {/* True Branch */}
           <div className="relative flex items-center justify-between rounded-lg bg-success-soft/60 px-2.5 py-1 border border-success/20">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-success">
+            <span className="text-[11px] font-semibold text-success">
               True
             </span>
             <div className="relative flex items-center">
-              <span className="text-[9px] font-medium text-success mr-2">Then</span>
+              <span className="text-[11px] font-medium text-success mr-2">Then</span>
               <Handle
                 type="source"
                 position={Position.Right}
                 id="true"
-                className="!w-3 !h-3 !bg-success !border-2 !border-surface transition-all hover:scale-125 !right-[-16px]"
+                className="!w-3 !h-3 !bg-success !border-2 !border-surface transition !right-[-16px]"
               />
             </div>
           </div>
 
           {/* False Branch */}
           <div className="relative flex items-center justify-between rounded-lg bg-surface-muted/60 px-2.5 py-1 border border-border/60">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">
+            <span className="text-[11px] font-semibold text-ink-muted">
               False
             </span>
             <div className="relative flex items-center">
-              <span className="text-[9px] font-medium text-ink-muted mr-2">Else</span>
+              <span className="text-[11px] font-medium text-ink-muted mr-2">Else</span>
               <Handle
                 type="source"
                 position={Position.Right}
                 id="false"
-                className="!w-3 !h-3 !bg-border-strong !border-2 !border-surface transition-all hover:scale-125 !right-[-16px]"
+                className="!w-3 !h-3 !bg-border-strong !border-2 !border-surface transition !right-[-16px]"
               />
             </div>
           </div>

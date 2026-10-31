@@ -68,7 +68,7 @@ export function FinanceNav({ className }: FinanceNavProps) {
           className={cn('flex flex-wrap items-center gap-1', index > 0 && 'sm:border-s sm:border-border sm:ps-4')}
         >
           {group.label && (
-            <span aria-hidden className="pe-1 text-[11px] font-semibold uppercase tracking-wider text-ink-subtle">
+            <span aria-hidden className="pe-1 text-[11px] font-semibold text-ink-subtle">
               {group.label}
             </span>
           )}

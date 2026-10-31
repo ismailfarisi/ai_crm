@@ -236,10 +236,10 @@ function TradingSummary({ overview }: { overview: CustomerOverviewDto }) {
     <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
       {stats.map((stat) => (
         <Card key={stat.label} className="rounded-2xl p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+          <p className="text-xs font-semibold text-ink-subtle">
             {stat.label}
           </p>
-          <p className="mt-1 text-2xl font-extrabold tabular-nums tracking-tight text-ink">
+          <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-ink">
             {stat.value}
           </p>
           <p className="mt-0.5 text-xs text-ink-muted">{stat.detail}</p>
@@ -284,7 +284,7 @@ function DocumentList({
                 >
                   {doc.number ?? 'Not yet numbered'}
                 </Link>
-                <Badge className="text-[10px] uppercase tracking-wide">
+                <Badge className="text-[11px]">
                   {doc.status.replace(/_/g, ' ').toLowerCase()}
                 </Badge>
                 <span className="text-xs text-ink-subtle">

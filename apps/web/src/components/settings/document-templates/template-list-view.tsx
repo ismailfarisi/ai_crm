@@ -113,7 +113,7 @@ export function TemplateListView() {
             const density = tmpl.config?.branding?.layoutDensity || 'normal';
 
             return (
-              <Card key={tmpl.id} className="flex flex-col justify-between hover:border-border transition-all shadow-xs">
+              <Card key={tmpl.id} className="flex flex-col justify-between hover:border-border transition shadow-xs">
                 <div>
                   <CardHeader className="flex items-start justify-between gap-3 pb-3">
                     <div>
@@ -167,7 +167,7 @@ export function TemplateListView() {
 
                     {/* Applies To Document Badges */}
                     <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-subtle mb-1.5">
+                      <p className="text-[11px] font-semibold text-ink-subtle mb-1.5">
                         Applies To:
                       </p>
                       <div className="flex flex-wrap gap-1">
@@ -175,13 +175,13 @@ export function TemplateListView() {
                           tmpl.appliesTo.map((type) => (
                             <span
                               key={type}
-                              className="rounded-md bg-surface-muted/60 px-2 py-0.5 text-[10px] font-medium text-ink-muted border border-border/20"
+                              className="rounded-md bg-surface-muted/60 px-2 py-0.5 text-[11px] font-medium text-ink-muted border border-border/20"
                             >
                               {type.replace('_', ' ')}
                             </span>
                           ))
                         ) : (
-                          <span className="text-[11px] text-ink-subtle italic">None specified</span>
+                          <span className="text-[11px] text-ink-subtle">None specified</span>
                         )}
                       </div>
                     </div>

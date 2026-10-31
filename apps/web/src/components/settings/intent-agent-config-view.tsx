@@ -106,7 +106,7 @@ export function IntentAgentConfigView() {
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label htmlFor="max-turns" className="block text-xs font-bold text-ink">
+              <label htmlFor="max-turns" className="block text-xs font-semibold text-ink">
                 Max clarifying turns
               </label>
               <Input
@@ -121,7 +121,7 @@ export function IntentAgentConfigView() {
             </div>
 
             <div>
-              <label htmlFor="reply-timeout" className="block text-xs font-bold text-ink">
+              <label htmlFor="reply-timeout" className="block text-xs font-semibold text-ink">
                 Reply timeout (minutes)
               </label>
               <Input
@@ -153,7 +153,7 @@ export function IntentAgentConfigView() {
           />
 
           <fieldset>
-            <legend className="mb-2 text-xs font-bold text-ink">Eligible channels</legend>
+            <legend className="mb-2 text-xs font-semibold text-ink">Eligible channels</legend>
             <div className="grid grid-cols-2 gap-2">
               {PROVIDER_OPTIONS.map((provider) => (
                 <label

@@ -38,12 +38,12 @@ export function RunsDrawer({ workflowId, onClose, className }: RunsDrawerProps) 
     >
       <div className="flex items-center justify-between p-4 border-b border-border/40 bg-surface-muted/50">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-on-brand font-bold">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-on-brand font-semibold">
             <History className="h-4 w-4" />
           </div>
           <div>
-            <h3 className="text-xs font-bold text-ink">Runs</h3>
-            <p className="text-[10px] text-ink-muted">Every run of this automation, step by step</p>
+            <h3 className="text-xs font-semibold text-ink">Runs</h3>
+            <p className="text-[11px] text-ink-muted">Every run of this automation, step by step</p>
           </div>
         </div>
         <button
@@ -103,7 +103,7 @@ export function RunsDrawer({ workflowId, onClose, className }: RunsDrawerProps) 
                       <span className="text-ink" title={formatTime(run.startedAt)}>
                         {formatRelative(run.startedAt)}
                       </span>
-                      <span className="text-[10px] text-ink-muted">
+                      <span className="text-[11px] text-ink-muted">
                         {triggerSourceLabel(run.triggerSource)}
                         {run.finishedAt && (
                           <span data-testid="run-duration">
@@ -115,7 +115,7 @@ export function RunsDrawer({ workflowId, onClose, className }: RunsDrawerProps) 
                         )}
                       </span>
                       {run.errorMessage && (
-                        <span className="text-[10px] text-danger truncate">{run.errorMessage}</span>
+                        <span className="text-[11px] text-danger truncate">{run.errorMessage}</span>
                       )}
                     </span>
                     <StatusChip status={run.status} />

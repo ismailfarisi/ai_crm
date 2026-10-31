@@ -75,7 +75,7 @@ export function VoidInvoiceModal({
         )}
 
         <div className="space-y-1.5">
-          <label htmlFor="input-void-reason" className="block text-xs font-bold text-ink">
+          <label htmlFor="input-void-reason" className="block text-xs font-semibold text-ink">
             Reason (optional)
           </label>
           <Textarea

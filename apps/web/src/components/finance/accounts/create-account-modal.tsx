@@ -162,7 +162,7 @@ export function CreateAccountModal({
 
         {/* Account Name */}
         <div>
-          <label htmlFor="input-account-name" className="block text-xs font-bold text-ink">
+          <label htmlFor="input-account-name" className="block text-xs font-semibold text-ink">
             Account Name
           </label>
           <Input
@@ -178,7 +178,7 @@ export function CreateAccountModal({
 
         {/* Account Type Selector Grid */}
         <div className="space-y-1.5">
-          <label className="block text-xs font-bold text-ink">Account Type</label>
+          <label className="block text-xs font-semibold text-ink">Account Type</label>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {ACCOUNT_TYPE_OPTIONS.map((opt) => {
               const Icon = opt.icon;
@@ -190,7 +190,7 @@ export function CreateAccountModal({
                   data-testid={`account-type-option-${opt.value}`}
                   onClick={() => setAccountType(opt.value)}
                   className={cn(
-                    'flex flex-col items-center justify-center rounded-xl border p-3 text-center transition-all cursor-pointer',
+                    'flex flex-col items-center justify-center rounded-xl border p-3 text-center transition cursor-pointer',
                     isSelected
                       ? 'border-brand-ring bg-brand-soft ring-1 ring-brand-ring text-ink'
                       : 'border-border/40 bg-surface hover:bg-surface-muted text-ink-muted',
@@ -202,7 +202,7 @@ export function CreateAccountModal({
                       isSelected ? 'text-ink' : 'text-ink-subtle',
                     )}
                   />
-                  <span className="mt-1 text-[11px] font-bold tracking-tight">{opt.value}</span>
+                  <span className="mt-1 text-[11px] font-semibold tracking-tight">{opt.value}</span>
                 </button>
               );
             })}
@@ -212,7 +212,7 @@ export function CreateAccountModal({
         {/* Currency & Initial Balance */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label htmlFor="select-account-currency" className="block text-xs font-bold text-ink">
+            <label htmlFor="select-account-currency" className="block text-xs font-semibold text-ink">
               Currency
             </label>
             <Select
@@ -225,7 +225,7 @@ export function CreateAccountModal({
           </div>
 
           <div>
-            <label htmlFor="input-initial-balance" className="block text-xs font-bold text-ink">
+            <label htmlFor="input-initial-balance" className="block text-xs font-semibold text-ink">
               Initial Balance
             </label>
             <Input
@@ -243,7 +243,7 @@ export function CreateAccountModal({
 
         {/* Account Number / Masked Number */}
         <div>
-          <label htmlFor="input-account-number" className="block text-xs font-bold text-ink">
+          <label htmlFor="input-account-number" className="block text-xs font-semibold text-ink">
             Account Number / Identifier (Optional)
           </label>
           <Input
@@ -272,7 +272,7 @@ export function CreateAccountModal({
             htmlFor="input-is-default-account"
             className="flex flex-col cursor-pointer select-none"
           >
-            <span className="text-xs font-bold text-ink">Set as Default Operating Account</span>
+            <span className="text-xs font-semibold text-ink">Set as Default Operating Account</span>
             <span className="text-[11px] text-ink-subtle">
               Used as the primary source for expense disbursements and vendor subscription billings.
             </span>
@@ -285,7 +285,7 @@ export function CreateAccountModal({
           className="rounded-xl border border-border/30 bg-surface/90 p-3.5 space-y-2"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-ink-subtle">
+            <span className="text-[11px] font-semibold text-ink-subtle">
               Live Card Preview
             </span>
             {isDefault && (
@@ -301,14 +301,14 @@ export function CreateAccountModal({
                 <SelectedIcon className="size-4" />
               </div>
               <div>
-                <p className="text-xs font-bold text-ink">{name || 'Account Name'}</p>
-                <p className="font-mono text-[10px] text-ink-subtle">
+                <p className="text-xs font-semibold text-ink">{name || 'Account Name'}</p>
+                <p className="font-mono text-[11px] text-ink-subtle">
                   {formatAccountNumber(accountNumber)} • {currency}
                 </p>
               </div>
             </div>
             <div className="text-right">
-              <p className="font-bold text-sm text-ink tabular-nums">
+              <p className="font-semibold text-sm text-ink tabular-nums">
                 {formatFinanceCurrency(numericBalance || 0, currency)}
               </p>
             </div>

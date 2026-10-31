@@ -10,7 +10,6 @@ import {
   Clock,
   ChevronRight,
   Layers,
-  Sparkles,
   ShieldAlert,
   Terminal,
 } from 'lucide-react';
@@ -135,12 +134,12 @@ export function TestRunDrawer({
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-border/40 bg-surface-muted/50">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-ink font-bold">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-ink font-semibold">
             <Play className="h-4 w-4 fill-surface" />
           </div>
           <div>
-            <h3 className="text-xs font-bold text-ink">Test Run Workflow</h3>
-            <p className="text-[10px] text-ink-muted">Live trigger simulation & step tracer</p>
+            <h3 className="text-xs font-semibold text-ink">Test Run Workflow</h3>
+            <p className="text-[11px] text-ink-muted">Live trigger simulation & step tracer</p>
           </div>
         </div>
         <button
@@ -158,7 +157,7 @@ export function TestRunDrawer({
         <div className="space-y-1.5">
           <label className="text-xs font-semibold text-ink flex items-center justify-between">
             <span>Trigger Input JSON Payload</span>
-            <span className="text-[10px] text-ink-subtle font-mono">mock $trigger</span>
+            <span className="text-[11px] text-ink-subtle font-mono">mock $trigger</span>
           </label>
           <textarea
             rows={5}
@@ -176,7 +175,7 @@ export function TestRunDrawer({
           disabled={isRunning}
           onClick={handleRun}
           className={clsx(
-            'w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-on-brand shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer',
+            'w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-on-brand shadow-sm flex items-center justify-center gap-2 transition cursor-pointer',
             isRunning
               ? 'bg-brand cursor-not-allowed'
               : 'bg-brand hover:bg-brand-hover active:scale-[0.99]',
@@ -202,7 +201,7 @@ export function TestRunDrawer({
               <span className="text-xs font-semibold text-ink">Execution Output</span>
               <span
                 className={clsx(
-                  'px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider',
+                  'px-2 py-0.5 rounded-md text-[11px] font-semibold',
                   executionResult.status === 'COMPLETED' && 'bg-success-soft text-success',
                   executionResult.status === 'RUNNING' && 'bg-info-soft text-info',
                   executionResult.status === 'WAITING_APPROVAL' && 'bg-brand-soft text-ink',
@@ -258,7 +257,7 @@ export function TestRunDrawer({
                     data-testid={`step-trace-${nodeId}`}
                     onClick={() => setSelectedNodeResultKey(nodeId)}
                     className={clsx(
-                      'w-full flex items-center justify-between p-2 rounded-lg border text-left text-xs transition-all cursor-pointer',
+                      'w-full flex items-center justify-between p-2 rounded-lg border text-left text-xs transition cursor-pointer',
                       selectedNodeResultKey === nodeId
                         ? 'border-brand bg-brand-soft/60 font-semibold'
                         : 'border-border bg-surface-muted hover:bg-surface-muted',
@@ -274,7 +273,7 @@ export function TestRunDrawer({
                       )}
                       <span className="truncate">{nodeId}</span>
                     </div>
-                    <span className="text-[10px] font-mono text-ink-subtle shrink-0">
+                    <span className="text-[11px] font-mono text-ink-subtle shrink-0">
                       {res.durationMs !== undefined ? `${res.durationMs}ms` : ''}
                     </span>
                   </button>

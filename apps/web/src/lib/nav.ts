@@ -1,5 +1,6 @@
 import {
-  Bot,
+  Gauge,
+  MessageCircle,
   Boxes,
   ClipboardList,
   CreditCard,
@@ -18,7 +19,6 @@ import {
   Receipt,
   ReceiptText,
   ShieldCheck,
-  Sparkles,
   Store,
   UserRoundCog,
   Users,
@@ -63,7 +63,7 @@ export const CORE_ACTION_ITEMS: NavItem[] = [
   {
     href: '/assistant',
     label: 'Assistant',
-    icon: Sparkles,
+    icon: MessageCircle,
     rule: { permission: PERMISSIONS.ASSISTANT_USE },
   },
   {
@@ -214,7 +214,7 @@ export const SECONDARY_SECTIONS: NavSection[] = [
       {
         href: '/settings/ai',
         label: 'AI Cost Guard',
-        icon: Bot,
+        icon: Gauge,
         rule: { permission: PERMISSIONS.AI_MANAGE },
       },
       {

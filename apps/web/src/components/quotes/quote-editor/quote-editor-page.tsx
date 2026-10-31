@@ -702,7 +702,7 @@ export function QuoteEditorPage({
     <div className="flex items-center gap-3">
       <div className="text-end leading-tight">
         <p className="text-xs text-ink-muted">Total</p>
-        <p className="text-sm font-bold tabular-nums text-ink">
+        <p className="text-sm font-semibold tabular-nums text-ink">
           {formatCurrency(totals.totalAmount, currency)}
         </p>
       </div>
@@ -834,7 +834,7 @@ export function QuoteEditorPage({
       {/* Section 2: The lines, costed from the catalog or typed */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-bold text-ink uppercase tracking-wider">Lines</h2>
+          <h2 className="text-sm font-semibold text-ink">Lines</h2>
           <span className="text-xs text-ink-muted tabular-nums">
             {lineCount} {lineCount === 1 ? 'line' : 'lines'}
             {sectionCount > 0 && ` · ${sectionCount} ${sectionCount === 1 ? 'section' : 'sections'}`}
@@ -911,7 +911,7 @@ export function QuoteEditorPage({
       {isPhone && (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_20px_rgba(0,0,0,0.05)] print:hidden">
           <div className="mb-2.5 flex items-center justify-between gap-3">
-            <p className="text-base font-bold tabular-nums text-ink">
+            <p className="text-base font-semibold tabular-nums text-ink">
               <span className="me-1.5 text-xs font-medium text-ink-muted">Total</span>
               {formatCurrency(totals.totalAmount, currency)}
             </p>

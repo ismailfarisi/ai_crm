@@ -162,7 +162,7 @@ export function WorkOrderFloor({ id }: { id: string }) {
                       {op.sequence}. {op.label}
                     </p>
                     <p className="text-base text-ink-muted">{op.workCenterName}</p>
-                    <p className="mt-1 text-sm font-medium uppercase tracking-wide text-ink-subtle">
+                    <p className="mt-1 text-sm font-medium text-ink-subtle">
                       {{ PENDING: 'Not started', RUNNING: 'Running', PAUSED: 'Paused', DONE: 'Done', SKIPPED: 'Skipped' }[op.status]}
                     </p>
                   </div>

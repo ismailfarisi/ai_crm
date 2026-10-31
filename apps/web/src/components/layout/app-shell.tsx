@@ -122,7 +122,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               onClick={() => setMobileOpen(false)}
               aria-current={active ? 'page' : undefined}
               className={cn(
-                'group flex min-h-[72px] flex-col items-start justify-between rounded-2xl p-3 transition-all',
+                'group flex min-h-[72px] flex-col items-start justify-between rounded-2xl p-3 transition',
                 active
                   ? 'bg-charcoal text-on-charcoal shadow-md'
                   : 'border border-border/50 bg-surface-muted/60 text-ink-muted hover:bg-surface-muted hover:text-ink hover:shadow-xs',
@@ -178,7 +178,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                       onClick={() => setMobileOpen(false)}
                       aria-current={active ? 'page' : undefined}
                       className={cn(
-                        'flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium transition-all',
+                        'flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium transition',
                         active
                           ? 'bg-surface-muted font-semibold text-ink shadow-2xs'
                           : 'text-ink-muted hover:bg-surface-muted/70 hover:text-ink',
@@ -238,7 +238,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                             onClick={() => setMobileOpen(false)}
                             aria-current={active ? 'page' : undefined}
                             className={cn(
-                              'flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium transition-all',
+                              'flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium transition',
                               active
                                 ? 'bg-surface-muted font-semibold text-ink shadow-2xs'
                                 : 'text-ink-muted hover:bg-surface-muted/70 hover:text-ink',
@@ -354,7 +354,7 @@ function Brand() {
     <Link href="/dashboard" className="flex items-center gap-2.5 px-4 pt-4 pb-3">
       <KerfMark />
       <div className="flex min-w-0 flex-col">
-        <span className="truncate text-sm font-bold tracking-tight text-ink">Kerf</span>
+        <span className="truncate text-sm font-semibold tracking-tight text-ink">Kerf</span>
         <span className="text-xs font-medium uppercase tracking-wider text-ink-subtle">
           Workspace
         </span>
@@ -385,7 +385,7 @@ function UserCard({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="shrink-0 border-t border-border/60 p-3">
       <div className="flex items-center gap-2.5 rounded-2xl border border-border/70 bg-surface-muted/40 p-2 transition-colors hover:bg-surface-muted/60">
-        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-brand-soft text-xs font-bold text-ink ring-1 ring-brand/40">
+        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-brand-soft text-xs font-semibold text-ink ring-1 ring-brand/40">
           {initials(user.firstName, user.lastName)}
         </span>
         <div className="min-w-0 flex-1">

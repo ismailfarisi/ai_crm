@@ -28,7 +28,7 @@ export function TimesheetsView() {
             aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}
             className={cn(
-              'rounded-xl px-3.5 py-2 text-xs font-semibold transition-all',
+              'rounded-xl px-3.5 py-2 text-xs font-semibold transition',
               tab === t.id
                 ? 'bg-charcoal text-on-charcoal shadow-xs'
                 : 'text-ink-muted hover:bg-surface-muted/80 hover:text-ink',

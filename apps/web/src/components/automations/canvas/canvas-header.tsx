@@ -13,7 +13,6 @@ import {
   Redo2,
   Check,
   Zap,
-  Sparkles,
 } from 'lucide-react';
 import clsx from 'clsx';
 import type { AutomationWorkflowDto } from '@saas/shared';
@@ -95,13 +94,13 @@ export function CanvasHeader({
             value={workflowName}
             onChange={(e) => onNameChange(e.target.value)}
             placeholder="Untitled Automation Workflow"
-            className="text-sm font-bold text-ink bg-transparent border border-transparent hover:border-border focus:border-brand rounded-md px-2 py-1 focus:bg-surface focus:outline-none transition-all truncate"
+            className="text-sm font-semibold text-ink bg-transparent border border-transparent hover:border-border focus:border-brand rounded-md px-2 py-1 focus:bg-surface focus:outline-none transition truncate"
           />
 
           <span
             data-testid="workflow-status-badge"
             className={clsx(
-              'px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0',
+              'px-2 py-0.5 rounded-full text-[11px] font-semibold shrink-0',
               status === 'ACTIVE'
                 ? 'bg-success-soft text-success'
                 : status === 'PAUSED'
@@ -209,7 +208,7 @@ export function CanvasHeader({
           title={saveBlockedReason ?? undefined}
           onClick={onSave}
           className={clsx(
-            'flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50',
+            'flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-50',
             isDirty
               ? 'bg-brand text-on-brand hover:bg-brand-hover active:scale-95'
               : 'border border-border bg-surface text-ink-muted hover:bg-surface-muted',
@@ -219,7 +218,7 @@ export function CanvasHeader({
           {isSaving ? 'Saving...' : isDirty ? 'Save Changes*' : 'Saved'}
         </button>
         {workflow?.status === 'ACTIVE' && isDirty && (
-          <span data-testid="owner-warning" className="text-[10px] text-ink-muted max-w-48 leading-tight">
+          <span data-testid="owner-warning" className="text-[11px] text-ink-muted max-w-48 leading-tight">
             Saving makes you the owner: steps will run with your permissions
           </span>
         )}

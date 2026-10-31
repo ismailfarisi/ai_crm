@@ -147,11 +147,14 @@ export function QuoteLinesTable({
 }: QuoteLinesTableProps) {
   const taxRateOptions =
     taxCodes.length > 0
-      ? taxCodes.map((code) => ({
-          value: String(code.rate),
+      ? // A line keeps only the rate, so codes that share one (zero-rated and
+        // exempt are both 0%) are one choice here, named for all of them.
+        [...new Set(taxCodes.map((code) => code.rate))].map((rate) => {
+          const names = taxCodes.filter((code) => code.rate === rate).map((code) => code.name);
+          const label = names.join(' / ');
           // Codes are often named for their rate already ("No tax (0%)").
-          label: code.name.includes('%') ? code.name : `${code.name} (${code.rate}%)`,
-        }))
+          return { value: String(rate), label: label.includes('%') ? label : `${label} (${rate}%)` };
+        })
       : FALLBACK_TAX_RATE_OPTIONS;
   // Once any code exists the round fallbacks disappear, so an organisation
   // that has set up only a zero-rated code can quote nothing but 0%.
@@ -278,7 +281,7 @@ export function QuoteLinesTable({
                         'transition-colors @max-[52rem]:flex @max-[52rem]:items-center @max-[52rem]:gap-2 @max-[52rem]:px-3 @max-[52rem]:py-2',
                         isSection
                           ? 'bg-brand-soft/40 font-semibold text-ink'
-                          : 'bg-surface-muted/25 italic text-ink-muted',
+                          : 'bg-surface-muted/25 text-ink-muted',
                       )}
                     >
                       <td className="px-3 py-2.5 text-center @max-[52rem]:p-0">
@@ -286,7 +289,7 @@ export function QuoteLinesTable({
                       </td>
                       <td colSpan={7} className="px-3 py-2.5 @max-[52rem]:flex-1 @max-[52rem]:p-0">
                         {readOnly ? (
-                          <div className={cn('py-1 text-sm', isSection ? 'font-semibold text-ink' : 'italic text-ink-muted')}>
+                          <div className={cn('py-1 text-sm', isSection ? 'font-semibold text-ink' : ' text-ink-muted')}>
                             {item.description}
                           </div>
                         ) : (
@@ -303,7 +306,7 @@ export function QuoteLinesTable({
                             onChange={(e) => handleItemChange(item.id, 'description', e.target.value)}
                             className={cn(
                               'w-full rounded-lg border border-transparent bg-transparent px-2.5 py-1 text-sm text-ink placeholder:text-ink-subtle hover:border-border focus:border-brand focus:bg-surface focus:outline-hidden @max-[52rem]:h-10',
-                              isSection ? 'font-semibold' : 'italic',
+                              isSection ? 'font-semibold' : '',
                             )}
                           />
                         )}

@@ -79,7 +79,7 @@ export function WebhookTriggerFields({ workflow, config, onChange, onRegenerate 
         )}
       </div>
       {workflow.status !== 'ACTIVE' && (
-        <p data-testid="webhook-inactive-hint" className="text-[10px] text-ink-muted">
+        <p data-testid="webhook-inactive-hint" className="text-[11px] text-ink-muted">
           Switch the automation on to start receiving
         </p>
       )}
@@ -124,10 +124,10 @@ export function WebhookTriggerFields({ workflow, config, onChange, onRegenerate 
                   </button>
                 </div>
               ) : (
-                <p className="text-[10px] text-ink-muted">The secret is generated when you save.</p>
+                <p className="text-[11px] text-ink-muted">The secret is generated when you save.</p>
               )}
               {config.regenerateSignature && (
-                <p data-testid="webhook-secret-pending" className="text-[10px] text-ink-muted">
+                <p data-testid="webhook-secret-pending" className="text-[11px] text-ink-muted">
                   A new secret is created when you save; it appears here afterwards.
                 </p>
               )}
@@ -149,17 +149,17 @@ export function WebhookTriggerFields({ workflow, config, onChange, onRegenerate 
 
           <div className="space-y-1">
             <p className="text-[11px] font-medium text-ink">Examples</p>
-            <pre data-testid="webhook-curl" className="overflow-x-auto rounded-lg bg-surface-muted p-2 text-[10px] font-mono text-ink">
+            <pre data-testid="webhook-curl" className="overflow-x-auto rounded-lg bg-surface-muted p-2 text-[11px] font-mono text-ink">
 {`curl -X POST ${url} -H 'Content-Type: application/json' -d '{"name":"Ana"}'`}
             </pre>
-            <pre data-testid="webhook-form" className="overflow-x-auto rounded-lg bg-surface-muted p-2 text-[10px] font-mono text-ink">
+            <pre data-testid="webhook-form" className="overflow-x-auto rounded-lg bg-surface-muted p-2 text-[11px] font-mono text-ink">
 {`<form method="post" action="${url}">
   <input name="name" />
   <button type="submit">Send</button>
 </form>`}
             </pre>
             {requireSignature && (
-              <p className="text-[10px] text-ink-muted">
+              <p className="text-[11px] text-ink-muted">
                 Sign the raw body with HMAC-SHA256 and send it as <code>X-Kerf-Signature: sha256=&lt;hex&gt;</code>.
               </p>
             )}

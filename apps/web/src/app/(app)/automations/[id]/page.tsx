@@ -48,7 +48,7 @@ export default function AutomationStudioPage({ params }: PageProps) {
     return (
       <div className="h-[calc(100vh-3.5rem)] flex items-center justify-center bg-surface-muted text-ink">
         <div className="p-8 rounded-2xl bg-surface border border-border shadow-sm max-w-md text-center space-y-4">
-          <h3 className="text-sm font-bold text-ink">Automation Not Found</h3>
+          <h3 className="text-sm font-semibold text-ink">Automation Not Found</h3>
           <p className="text-xs text-ink-muted">The requested automation workflow does not exist or has been deleted.</p>
           <button
             onClick={() => router.push('/automations')}

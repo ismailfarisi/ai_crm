@@ -197,7 +197,7 @@ export function BudgetMeterCard({
     <div
       data-testid={`budget-meter-card-${budget.id}`}
       className={cn(
-        'group relative flex flex-col justify-between rounded-2xl border bg-surface p-5 shadow-xs transition-all hover:border-border hover:shadow-sm',
+        'group relative flex flex-col justify-between rounded-2xl border bg-surface p-5 shadow-xs transition hover:border-border hover:shadow-sm',
         status.isOverBudget
           ? 'border-danger/30 bg-danger-soft'
           : status.isNearLimit
@@ -212,7 +212,7 @@ export function BudgetMeterCard({
           <div className="flex items-center gap-3">
             <div
               className={cn(
-                'grid size-10 place-items-center rounded-xl border transition-transform group-hover:scale-105',
+                'grid size-10 place-items-center rounded-xl border transition-transform',
                 meta.colorClass,
               )}
             >
@@ -221,7 +221,7 @@ export function BudgetMeterCard({
             <div>
               <h3
                 data-testid={`budget-category-${budget.id}`}
-                className="text-sm font-bold text-ink transition-colors"
+                className="text-sm font-semibold text-ink transition-colors"
               >
                 {budget.category}
               </h3>
@@ -239,7 +239,7 @@ export function BudgetMeterCard({
             <Badge
               data-testid={`budget-period-badge-${budget.id}`}
               tone={meta.badgeTone}
-              className="text-[10px] uppercase font-bold tracking-wider"
+              className="text-[11px] font-semibold"
             >
               {budget.period}
             </Badge>
@@ -274,7 +274,7 @@ export function BudgetMeterCard({
           <div className="flex items-baseline justify-between gap-2">
             <span
               data-testid={`budget-spent-amount-${budget.id}`}
-              className="text-2xl font-extrabold tracking-tight tabular-nums text-ink"
+              className="text-2xl font-semibold tracking-tight tabular-nums text-ink"
             >
               {formatBudgetCurrency(budget.spentAmount, currency)}
             </span>
@@ -304,7 +304,7 @@ export function BudgetMeterCard({
               <div
                 data-testid={`budget-progress-bar-${budget.id}`}
                 className={cn(
-                  'h-full transition-all duration-500 rounded-full',
+                  'h-full transition duration-500 rounded-full',
                   status.meterColor,
                 )}
                 style={{ width: `${status.clampedPercentage}%` }}
@@ -321,7 +321,7 @@ export function BudgetMeterCard({
                 {status.isOverBudget ? (
                   <span
                     data-testid={`status-badge-overbudget-${budget.id}`}
-                    className="inline-flex items-center gap-1 font-bold text-danger"
+                    className="inline-flex items-center gap-1 font-semibold text-danger"
                   >
                     <AlertOctagon className="size-3.5" />
                     Over Budget ({status.percentage}%)
@@ -329,7 +329,7 @@ export function BudgetMeterCard({
                 ) : status.isNearLimit ? (
                   <span
                     data-testid={`status-badge-warning-${budget.id}`}
-                    className="inline-flex items-center gap-1 font-bold text-warning"
+                    className="inline-flex items-center gap-1 font-semibold text-warning"
                   >
                     <AlertTriangle className="size-3.5" />
                     Near Cap ({status.percentage}%)
@@ -431,7 +431,7 @@ export function BudgetGrid({
             <span className="grid size-7 place-items-center rounded-lg bg-surface-muted text-ink-muted">
               <DollarSign className="size-4" />
             </span>
-            <h2 className="text-lg font-bold tracking-tight text-ink sm:text-xl">{title}</h2>
+            <h2 className="text-lg font-semibold tracking-tight text-ink sm:text-xl">{title}</h2>
           </div>
           {description && <p className="mt-1 text-xs text-ink-muted sm:text-sm">{description}</p>}
         </div>

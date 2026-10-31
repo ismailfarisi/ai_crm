@@ -122,7 +122,7 @@ export function RecordPaymentModal({
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="select-payment-account" className="block text-xs font-bold text-ink">
+          <label htmlFor="select-payment-account" className="block text-xs font-semibold text-ink">
             Deposit Into
           </label>
           {accounts.length === 0 ? (
@@ -163,7 +163,7 @@ export function RecordPaymentModal({
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <label htmlFor="input-payment-amount" className="block text-xs font-bold text-ink">
+            <label htmlFor="input-payment-amount" className="block text-xs font-semibold text-ink">
               Amount Paid ({invoice.currency})
             </label>
             <Input
@@ -178,7 +178,7 @@ export function RecordPaymentModal({
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="input-payment-date" className="block text-xs font-bold text-ink">
+            <label htmlFor="input-payment-date" className="block text-xs font-semibold text-ink">
               Payment Date
             </label>
             <Input

@@ -58,7 +58,7 @@ export function ViewToolbar({
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search..."
-            className="pl-8 pr-3 py-1 text-xs bg-surface border border-border/60 rounded-md outline-none focus:border-brand w-48 sm:w-64 transition-all"
+            className="pl-8 pr-3 py-1 text-xs bg-surface border border-border/60 rounded-md outline-none focus:border-brand w-48 sm:w-64 transition"
           />
         </div>
       </div>
@@ -70,7 +70,7 @@ export function ViewToolbar({
             <SlidersHorizontal className="size-3.5" />
             <span>Filter</span>
             {filterCount > 0 && (
-              <span className="bg-brand text-on-brand text-[10px] px-1.5 rounded-full font-bold">
+              <span className="bg-brand text-on-brand text-[11px] px-1.5 rounded-full font-semibold">
                 {filterCount}
               </span>
             )}

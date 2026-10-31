@@ -226,7 +226,7 @@ export function ColumnModal({
                   aria-checked={isSelected}
                   aria-label={col}
                   onClick={() => setColor(col)}
-                  className={`size-7 rounded-full transition-all cursor-pointer ${meta.chip} ${
+                  className={`size-7 rounded-full transition cursor-pointer ${meta.chip} ${
                     isSelected
                       ? 'ring-3 ring-accent ring-offset-2 ring-offset-surface scale-110'
                       : 'opacity-80 hover:opacity-100'

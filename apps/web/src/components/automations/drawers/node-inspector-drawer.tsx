@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import {
   X,
   Trash2,
-  Sparkles,
   Globe,
   Mail,
   ShieldAlert,
@@ -20,6 +19,7 @@ import {
   Play,
   RotateCcw,
   CheckCircle2,
+  MessageSquareText,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { usesAiOutput } from '@saas/shared';
@@ -152,7 +152,7 @@ export function NodeInspectorDrawer({
     <aside
       data-testid="node-inspector-drawer"
       className={clsx(
-        'w-96 border-l border-border bg-surface shadow-xl flex flex-col h-full z-40 transition-all duration-200 select-text',
+        'w-96 border-l border-border bg-surface shadow-xl flex flex-col h-full z-40 transition duration-200 select-text',
         className,
       )}
     >
@@ -167,13 +167,13 @@ export function NodeInspectorDrawer({
             ) : node.type === 'approvalNode' ? (
               <ShieldAlert className="h-4 w-4" />
             ) : node.type === 'aiPromptNode' ? (
-              <Sparkles className="h-4 w-4" />
+              <MessageSquareText className="h-4 w-4" />
             ) : (
               <Layers className="h-4 w-4" />
             )}
           </div>
           <div className="min-w-0">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-ink block truncate">
+            <span className="text-[11px] font-semibold text-ink block truncate">
               {node.type}
             </span>
             <h3 className="text-xs font-semibold text-ink truncate">
@@ -312,14 +312,14 @@ export function NodeInspectorDrawer({
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <label className="text-[11px] font-medium text-ink flex items-center gap-1">
-                      <Sparkles className="h-3 w-3 text-brand" />
+                      <MessageSquareText className="h-3 w-3 text-ink-muted" />
                       LLM Prompt Template
                     </label>
                     <button
                       type="button"
                       data-testid="toggle-expression-helper-btn"
                       onClick={() => setShowHelper(!showHelper)}
-                      className="text-[10px] text-ink font-semibold hover:underline cursor-pointer"
+                      className="text-[11px] text-ink font-semibold hover:underline cursor-pointer"
                     >
                       {showHelper ? 'Hide Variables' : 'Show Variables'}
                     </button>
@@ -358,7 +358,7 @@ export function NodeInspectorDrawer({
                     <button
                       type="button"
                       onClick={() => setShowHelper(!showHelper)}
-                      className="text-[10px] text-ink font-semibold hover:underline cursor-pointer"
+                      className="text-[11px] text-ink font-semibold hover:underline cursor-pointer"
                     >
                       {showHelper ? 'Hide Variables' : 'Show Variables'}
                     </button>
@@ -370,7 +370,7 @@ export function NodeInspectorDrawer({
                     onChange={(e) => handleConfigChange('message', e.target.value)}
                     className="w-full rounded-lg border border-border p-2 text-xs text-ink focus:border-brand focus:outline-none resize-none"
                   />
-                  <p className="text-[10px] text-ink-subtle">
+                  <p className="text-[11px] text-ink-subtle">
                     Shown in the Approvals inbox. You can use {'{{ }}'} expressions, e.g. {'{{ $trigger.payload.name }}'}.
                   </p>
                 </div>
@@ -388,7 +388,7 @@ export function NodeInspectorDrawer({
                     placeholder="e.g. 24 hours, 3 days, 1 week"
                     className="w-full rounded-lg border border-border px-3 py-2 text-xs font-mono text-ink focus:border-brand focus:outline-none"
                   />
-                  <p className="text-[10px] text-ink-subtle">
+                  <p className="text-[11px] text-ink-subtle">
                     If no action is taken within this duration, flow routes along the Timeout branch.
                   </p>
                 </div>
@@ -410,7 +410,7 @@ export function NodeInspectorDrawer({
                     placeholder="e.g. $json.amount > 10000 && $json.status === 'ACTIVE'"
                     className="w-full rounded-lg border border-border px-3 py-2 text-xs font-mono text-ink focus:border-brand focus:outline-none"
                   />
-                  <p className="text-[10px] text-ink-subtle">
+                  <p className="text-[11px] text-ink-subtle">
                     Routes to TRUE handle if truthy; otherwise routes to FALSE handle.
                   </p>
                 </div>
@@ -453,7 +453,7 @@ export function NodeInspectorDrawer({
                     className="w-full rounded-lg border border-border p-2 text-xs font-mono text-ink focus:border-brand focus:outline-none resize-none"
                   />
                   {aiHint && (
-                    <p data-testid="email-ai-hint" className="text-[10px] text-ink-muted">
+                    <p data-testid="email-ai-hint" className="text-[11px] text-ink-muted">
                       {aiHint}
                     </p>
                   )}
@@ -576,7 +576,7 @@ export function NodeInspectorDrawer({
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-surface-muted/60">
               <div>
                 <h5 className="text-xs font-semibold text-ink">Continue on Fail</h5>
-                <p className="text-[10px] text-ink-muted">
+                <p className="text-[11px] text-ink-muted">
                   Keep executing subsequent nodes if this node errors.
                 </p>
               </div>
@@ -600,7 +600,7 @@ export function NodeInspectorDrawer({
                 onChange={(e) => onUpdate(node.id, { retryCount: parseInt(e.target.value, 10) || 0 })}
                 className="w-full rounded-lg border border-border px-3 py-2 text-xs text-ink"
               />
-              <p className="text-[10px] text-ink-subtle">
+              <p className="text-[11px] text-ink-subtle">
                 Number of automatic retries with exponential backoff on failure.
               </p>
             </div>

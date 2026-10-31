@@ -6,7 +6,6 @@ import {
   Calendar,
   AlertTriangle,
   Layers,
-  Sparkles,
   Percent,
   CheckCircle2,
   AlertCircle,
@@ -201,7 +200,7 @@ export function CreateBudgetModal({
 
         {/* Category Picker */}
         <div className="space-y-1.5">
-          <label className="block text-xs font-bold text-ink">Expense Category</label>
+          <label className="block text-xs font-semibold text-ink">Expense Category</label>
           <div className="space-y-2">
             <Select
               id="select-budget-category"
@@ -237,7 +236,7 @@ export function CreateBudgetModal({
         {/* Period & Amount Row */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label className="block text-xs font-bold text-ink">Budget Period</label>
+            <label className="block text-xs font-semibold text-ink">Budget Period</label>
             <Select
               id="select-budget-period"
               data-testid="select-budget-period"
@@ -248,7 +247,7 @@ export function CreateBudgetModal({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-ink">Budget Cap Amount ($)</label>
+            <label className="block text-xs font-semibold text-ink">Budget Cap Amount ($)</label>
             <div className="relative">
               <Input
                 id="input-budget-amount"
@@ -270,13 +269,13 @@ export function CreateBudgetModal({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <AlertTriangle className="size-3.5 text-warning" />
-              <label htmlFor="input-alert-threshold" className="text-xs font-bold text-ink">
+              <label htmlFor="input-alert-threshold" className="text-xs font-semibold text-ink">
                 Alert Threshold Trigger
               </label>
             </div>
             <span
               data-testid="threshold-percent-display"
-              className="rounded-md bg-warning-soft px-2 py-0.5 font-mono text-xs font-bold text-warning"
+              className="rounded-md bg-warning-soft px-2 py-0.5 font-mono text-xs font-semibold text-warning"
             >
               {alertThresholdPercent}%
             </span>
@@ -304,7 +303,7 @@ export function CreateBudgetModal({
                     type="button"
                     data-testid={`preset-threshold-${preset}`}
                     onClick={() => setAlertThresholdPercent(preset)}
-                    className={`rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors cursor-pointer ${
+                    className={`rounded px-1.5 py-0.5 text-[11px] font-semibold transition-colors cursor-pointer ${
                       alertThresholdPercent === preset
                         ? 'bg-charcoal text-on-charcoal'
                         : 'bg-surface hover:bg-surface-muted text-ink-muted'
@@ -338,7 +337,7 @@ export function CreateBudgetModal({
         {/* Date Range Row */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label htmlFor="input-budget-start-date" className="block text-xs font-bold text-ink">
+            <label htmlFor="input-budget-start-date" className="block text-xs font-semibold text-ink">
               Start Date
             </label>
             <Input
@@ -352,7 +351,7 @@ export function CreateBudgetModal({
           </div>
 
           <div>
-            <label htmlFor="input-budget-end-date" className="block text-xs font-bold text-ink">
+            <label htmlFor="input-budget-end-date" className="block text-xs font-semibold text-ink">
               End Date
             </label>
             <Input

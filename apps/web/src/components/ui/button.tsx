@@ -7,17 +7,17 @@ export type Size = 'sm' | 'md' | 'lg' | 'icon';
 
 const VARIANTS: Record<Variant, string> = {
   primary:
-    'bg-brand text-on-brand font-semibold hover:bg-brand-hover shadow-xs active:scale-[0.99] transition-all',
+    'bg-brand text-on-brand font-semibold hover:bg-brand-hover shadow-xs active:scale-[0.99] transition',
   secondary:
-    'bg-charcoal text-on-charcoal font-medium hover:bg-charcoal-hover shadow-xs active:scale-[0.99] transition-all',
+    'bg-charcoal text-on-charcoal font-medium hover:bg-charcoal-hover shadow-xs active:scale-[0.99] transition',
   dark:
-    'bg-charcoal text-on-charcoal font-medium hover:bg-charcoal-hover shadow-xs active:scale-[0.99] transition-all',
+    'bg-charcoal text-on-charcoal font-medium hover:bg-charcoal-hover shadow-xs active:scale-[0.99] transition',
   outline:
-    'border border-border/50 bg-surface/50 hover:bg-surface text-ink active:scale-[0.99] transition-all',
+    'border border-border/50 bg-surface/50 hover:bg-surface text-ink active:scale-[0.99] transition',
   ghost:
-    'hover:bg-surface-muted/60 text-ink-muted hover:text-ink transition-all',
+    'hover:bg-surface-muted/60 text-ink-muted hover:text-ink transition',
   danger:
-    'bg-danger text-ink-inverted hover:bg-danger-hover shadow-xs font-semibold active:scale-[0.99] transition-all',
+    'bg-danger text-ink-inverted hover:bg-danger-hover shadow-xs font-semibold active:scale-[0.99] transition',
 };
 
 const SIZES: Record<Size, string> = {
@@ -54,7 +54,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
         onClick?.(event);
       }}
       className={cn(
-        'inline-flex items-center justify-center rounded-full font-medium transition-all duration-150 cursor-pointer',
+        'inline-flex items-center justify-center rounded-full font-medium transition duration-150 cursor-pointer',
         'disabled:pointer-events-none disabled:opacity-50 aria-disabled:cursor-progress',
         VARIANTS[variant],
         SIZES[size],

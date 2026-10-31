@@ -198,7 +198,7 @@ export function TeamsView() {
                     <ul className="space-y-1.5">
                       {teamMembers.slice(0, 5).map((m) => (
                         <li key={m.id} className="flex items-center gap-2 text-sm text-ink-muted">
-                          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-surface-muted text-[10px] font-semibold text-ink-subtle">
+                          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-surface-muted text-[11px] font-semibold text-ink-subtle">
                             {initials(m.firstName, m.lastName)}
                           </span>
                           <span className="min-w-0 truncate">{m.fullName}</span>

@@ -3,7 +3,7 @@ import { PERMISSIONS } from '@saas/shared';
 import { PageGuard } from '@/components/auth/page-guard';
 import { QuoteEditorPage } from '@/components/quotes/quote-editor/quote-editor-page';
 
-export const metadata: Metadata = { title: 'New Quotation' };
+export const metadata: Metadata = { title: 'New quote' };
 
 export default function NewQuotePage() {
   return (

@@ -176,7 +176,7 @@ export function CatalogPicker({ open, onClose, onChoose, currency = 'USD' }: Cat
               <p
                 id={`${baseId}-${group.key}`}
                 className={cn(
-                  'px-3 pb-1 text-xs font-semibold uppercase tracking-wider text-ink-muted',
+                  'px-3 pb-1 text-xs font-semibold text-ink-muted',
                   group.key === 'templates' ? 'pt-2' : 'pt-3',
                   // A list of items alone needs no heading on screen.
                   !group.showHeading && 'sr-only',

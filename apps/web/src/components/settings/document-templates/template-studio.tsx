@@ -9,13 +9,13 @@ import {
   ChevronUp,
   Loader2,
   Save,
-  Sparkles,
   Sliders,
   Palette,
   FileSpreadsheet,
   Building,
   Calculator,
   FileCheck,
+  PenLine,
 } from 'lucide-react';
 import {
   DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
@@ -192,7 +192,7 @@ export function TemplateStudio({ templateId }: TemplateStudioProps) {
         {/* Left Control Panel */}
         <div className="lg:col-span-5 flex flex-col gap-4 overflow-y-auto pr-1">
           {/* Metadata Section */}
-          <div className="rounded-2xl border border-border/30 bg-surface/85 backdrop-blur-xs p-4 space-y-3 shadow-xs">
+          <div className="rounded-2xl border border-border bg-surface p-4 space-y-3 shadow-xs">
             <Input
               label="Template Name"
               value={name}
@@ -218,7 +218,7 @@ export function TemplateStudio({ templateId }: TemplateStudioProps) {
                       key={type}
                       type="button"
                       onClick={() => toggleDocumentType(type)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
                         isChecked
                           ? 'bg-brand text-on-brand font-semibold border border-brand'
                           : 'bg-surface-muted/60 text-ink-muted border border-border/30 hover:border-border'
@@ -243,13 +243,12 @@ export function TemplateStudio({ templateId }: TemplateStudioProps) {
           </div>
 
           {/* AI Prompt Input Bar */}
-          <div className="rounded-2xl border border-brand/30 bg-brand-soft/20 backdrop-blur-xs p-4 space-y-3 shadow-xs">
+          <div className="rounded-2xl border border-border bg-surface p-4 space-y-3 shadow-xs">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Sparkles className="size-4 text-brand" />
-                <span className="text-xs font-bold text-ink">Natural Language AI Designer</span>
+                <PenLine className="size-4 text-ink-muted" />
+                <span className="text-xs font-semibold text-ink">Describe a change</span>
               </div>
-              <span className="text-[10px] text-ink-muted">Powered by AI</span>
             </div>
 
             <div className="relative">
@@ -257,7 +256,7 @@ export function TemplateStudio({ templateId }: TemplateStudioProps) {
                 value={aiPrompt}
                 onChange={(e) => setAiPrompt(e.target.value)}
                 placeholder="Describe your desired layout (e.g., 'Modern minimalist invoice with navy blue header, compact item rows, and wire transfer bank details in footer')..."
-                className="text-xs min-h-[70px] pr-20 resize-none"
+                className="text-xs min-h-[72px] pr-20 resize-none"
               />
               <Button
                 type="button"
@@ -267,14 +266,14 @@ export function TemplateStudio({ templateId }: TemplateStudioProps) {
                 disabled={isGenerating || !aiPrompt.trim()}
                 className="absolute right-2 bottom-2 text-xs h-7 px-2.5"
               >
-                {isGenerating ? <Loader2 className="size-3 animate-spin mr-1" /> : <Sparkles className="size-3 mr-1" />}
+                {isGenerating ? <Loader2 className="size-3 animate-spin mr-1" /> : <PenLine className="size-3 mr-1" />}
                 Generate
               </Button>
             </div>
 
             {/* Quick Starter Chips */}
             <div>
-              <p className="text-[10px] font-medium text-ink-subtle mb-1.5">Quick Inspiration Chips:</p>
+              <p className="text-[11px] font-medium text-ink-subtle mb-1.5">Quick Inspiration Chips:</p>
               <div className="flex flex-wrap gap-1.5">
                 {STARTER_CHIPS.map((chip) => (
                   <button
@@ -283,7 +282,6 @@ export function TemplateStudio({ templateId }: TemplateStudioProps) {
                     onClick={() => handleChipClick(chip)}
                     className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-surface/80 px-2.5 py-1 text-[11px] font-medium text-ink-muted hover:border-brand/40 hover:text-ink hover:bg-surface transition-colors cursor-pointer"
                   >
-                    <span>✨</span>
                     <span>{chip}</span>
                   </button>
                 ))}
@@ -725,7 +723,7 @@ export function TemplateStudio({ templateId }: TemplateStudioProps) {
                       }))
                     }
                     placeholder="Thank you for your business..."
-                    className="min-h-[50px]"
+                    className="min-h-12"
                   />
 
                   <div className="pt-2 border-t border-border/20 space-y-2">

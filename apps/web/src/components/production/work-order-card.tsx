@@ -129,7 +129,7 @@ export function WorkOrderCard({ workOrder, onSelect, onActionSuccess }: WorkOrde
           onSelect(workOrder.id);
         }
       }}
-      className={`group relative flex flex-col justify-between rounded-xl border bg-surface p-3.5 shadow-2xs transition-all duration-150 hover:border-brand hover:shadow-sm cursor-pointer select-none ${
+      className={`group relative flex flex-col justify-between rounded-xl border bg-surface p-3.5 shadow-2xs transition duration-150 hover:border-brand hover:shadow-sm cursor-pointer select-none ${
         runningOp ? 'border-success/60 ring-1 ring-success/30' : 'border-line'
       }`}
     >
@@ -181,7 +181,7 @@ export function WorkOrderCard({ workOrder, onSelect, onActionSuccess }: WorkOrde
                 >
                   {idx > 0 && <div className="h-0.5 w-2 bg-line shrink-0" />}
                   <div
-                    className={`flex items-center justify-center rounded-full text-[10px] font-semibold transition-all ${
+                    className={`flex items-center justify-center rounded-full text-[11px] font-semibold transition ${
                       isDone
                         ? 'size-5 bg-success text-white'
                         : isRunning
@@ -199,7 +199,7 @@ export function WorkOrderCard({ workOrder, onSelect, onActionSuccess }: WorkOrde
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
                           <span className="relative inline-flex rounded-full size-2 bg-success" />
                         </span>
-                        <span className="font-mono text-[10px] tabular-nums font-semibold">
+                        <span className="font-mono text-[11px] tabular-nums font-semibold">
                           {formatMinutes(liveElapsed)}
                         </span>
                       </>
@@ -224,7 +224,7 @@ export function WorkOrderCard({ workOrder, onSelect, onActionSuccess }: WorkOrde
             onClick={handleQuickAction}
             disabled={act.isPending}
             aria-label={`${quickAction.label} ${workOrder.woNumber}`}
-            className="inline-flex items-center gap-1 rounded-md border border-line bg-surface px-2 py-1 text-xs font-medium text-ink shadow-2xs pointer-coarse:min-h-11 pointer-coarse:px-3 pointer-coarse:text-sm hover:bg-surface-sunk hover:border-brand active:scale-95 transition-all sm:pointer-fine:opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer"
+            className="inline-flex items-center gap-1 rounded-md border border-line bg-surface px-2 py-1 text-xs font-medium text-ink shadow-2xs pointer-coarse:min-h-11 pointer-coarse:px-3 pointer-coarse:text-sm hover:bg-surface-sunk hover:border-brand active:scale-95 transition sm:pointer-fine:opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer"
           >
             {quickAction.icon}
             <span>{quickAction.label}</span>

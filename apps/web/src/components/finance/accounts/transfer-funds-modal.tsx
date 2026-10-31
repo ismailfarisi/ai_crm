@@ -179,7 +179,7 @@ export function TransferFundsModal({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {/* From Account */}
           <div className="space-y-1.5">
-            <label htmlFor="select-from-account" className="block text-xs font-bold text-ink">
+            <label htmlFor="select-from-account" className="block text-xs font-semibold text-ink">
               From Source Account
             </label>
             <Select
@@ -195,7 +195,7 @@ export function TransferFundsModal({
                 <span>Available:</span>
                 <span
                   data-testid="from-account-balance"
-                  className="font-mono font-bold text-ink"
+                  className="font-mono font-semibold text-ink"
                 >
                   {formatFinanceCurrency(fromAccount.balance, fromAccount.currency)}
                 </span>
@@ -205,7 +205,7 @@ export function TransferFundsModal({
 
           {/* To Account */}
           <div className="space-y-1.5">
-            <label htmlFor="select-to-account" className="block text-xs font-bold text-ink">
+            <label htmlFor="select-to-account" className="block text-xs font-semibold text-ink">
               To Destination Account
             </label>
             <Select
@@ -221,7 +221,7 @@ export function TransferFundsModal({
                 <span>Current:</span>
                 <span
                   data-testid="to-account-balance"
-                  className="font-mono font-bold text-ink"
+                  className="font-mono font-semibold text-ink"
                 >
                   {formatFinanceCurrency(toAccount.balance, toAccount.currency)}
                 </span>
@@ -233,7 +233,7 @@ export function TransferFundsModal({
         {/* Amount & Quick Percentage Chips */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label htmlFor="input-transfer-amount" className="block text-xs font-bold text-ink">
+            <label htmlFor="input-transfer-amount" className="block text-xs font-semibold text-ink">
               Amount{fromAccount ? ` (${fromAccount.currency})` : ''}
             </label>
             {fromAccount && fromAccount.balance > 0 && (
@@ -244,7 +244,7 @@ export function TransferFundsModal({
                     type="button"
                     data-testid={`quick-amount-${pct}`}
                     onClick={() => handleQuickPercent(pct)}
-                    className="rounded-md border border-border/40 bg-surface px-2 py-0.5 text-[10px] font-semibold text-ink-muted hover:border-border-control hover:text-ink transition-colors cursor-pointer"
+                    className="rounded-md border border-border/40 bg-surface px-2 py-0.5 text-[11px] font-semibold text-ink-muted hover:border-border-control hover:text-ink transition-colors cursor-pointer"
                   >
                     {pct === 100 ? 'Max' : `${pct}%`}
                   </button>
@@ -294,7 +294,7 @@ export function TransferFundsModal({
         {/* Date & Description */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label htmlFor="input-transfer-date" className="block text-xs font-bold text-ink">
+            <label htmlFor="input-transfer-date" className="block text-xs font-semibold text-ink">
               Transfer Date
             </label>
             <Input
@@ -308,7 +308,7 @@ export function TransferFundsModal({
           </div>
 
           <div>
-            <label htmlFor="input-transfer-description" className="block text-xs font-bold text-ink">
+            <label htmlFor="input-transfer-description" className="block text-xs font-semibold text-ink">
               Memo / Notes
             </label>
             <Input
@@ -329,11 +329,11 @@ export function TransferFundsModal({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <BookOpen className="size-4 text-ink-muted" />
-              <h4 className="text-xs font-bold text-ink">Double-Entry Journal Preview</h4>
+              <h4 className="text-xs font-semibold text-ink">Double-Entry Journal Preview</h4>
             </div>
             <span
               data-testid="journal-balanced-badge"
-              className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 text-[10px] font-bold text-success"
+              className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 text-[11px] font-semibold text-success"
             >
               <CheckCircle2 className="size-3 text-success" />
               Balanced Entry
@@ -342,7 +342,7 @@ export function TransferFundsModal({
 
           {/* Ledger Table */}
           <div className="overflow-hidden rounded-lg border border-border/30 bg-surface text-xs">
-            <div className="grid grid-cols-12 border-b border-border/30 bg-surface-muted/60 px-3 py-2 font-bold text-ink-subtle text-[11px]">
+            <div className="grid grid-cols-12 border-b border-border/30 bg-surface-muted/60 px-3 py-2 font-semibold text-ink-subtle text-[11px]">
               <span className="col-span-6">Account Ledger</span>
               <span className="col-span-3 text-right">Debit (+)</span>
               <span className="col-span-3 text-right">Credit (-)</span>
@@ -355,9 +355,9 @@ export function TransferFundsModal({
             >
               <div className="col-span-6 truncate font-medium text-ink">
                 <span>{toAccount ? toAccount.name : 'Destination Account'}</span>
-                <span className="ml-1 text-[10px] text-ink-subtle font-mono">(Asset +)</span>
+                <span className="ml-1 text-[11px] text-ink-subtle font-mono">(Asset +)</span>
               </div>
-              <div className="col-span-3 text-right font-mono font-bold text-success">
+              <div className="col-span-3 text-right font-mono font-semibold text-success">
                 {toAccount ? formatFinanceCurrency(arriving, toAccount.currency) : '—'}
               </div>
               <div className="col-span-3 text-right font-mono text-ink-subtle">—</div>
@@ -370,10 +370,10 @@ export function TransferFundsModal({
             >
               <div className="col-span-6 truncate font-medium text-ink pl-3">
                 <span>{fromAccount ? fromAccount.name : 'Source Account'}</span>
-                <span className="ml-1 text-[10px] text-ink-subtle font-mono">(Asset -)</span>
+                <span className="ml-1 text-[11px] text-ink-subtle font-mono">(Asset -)</span>
               </div>
               <div className="col-span-3 text-right font-mono text-ink-subtle">—</div>
-              <div className="col-span-3 text-right font-mono font-bold text-danger">
+              <div className="col-span-3 text-right font-mono font-semibold text-danger">
                 {fromAccount ? formatFinanceCurrency(numericAmount, fromAccount.currency) : '—'}
               </div>
             </div>

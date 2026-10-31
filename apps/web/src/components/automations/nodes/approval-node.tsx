@@ -52,48 +52,48 @@ export function ApprovalNode({
         <div className="space-y-1.5 pt-0.5">
           {/* Approved */}
           <div className="relative flex items-center justify-between rounded-lg bg-success-soft/60 px-2.5 py-1 border border-success/20">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-success">
+            <span className="text-[11px] font-semibold text-success">
               Approved
             </span>
             <div className="relative flex items-center">
-              <span className="text-[9px] font-medium text-success mr-2">Passed</span>
+              <span className="text-[11px] font-medium text-success mr-2">Passed</span>
               <Handle
                 type="source"
                 position={Position.Right}
                 id="approved"
-                className="!w-3 !h-3 !bg-success !border-2 !border-surface transition-all hover:scale-125 !right-[-16px]"
+                className="!w-3 !h-3 !bg-success !border-2 !border-surface transition !right-[-16px]"
               />
             </div>
           </div>
 
           {/* Rejected */}
           <div className="relative flex items-center justify-between rounded-lg bg-danger-soft/60 px-2.5 py-1 border border-danger/20">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-danger">
+            <span className="text-[11px] font-semibold text-danger">
               Rejected
             </span>
             <div className="relative flex items-center">
-              <span className="text-[9px] font-medium text-danger mr-2">Denied</span>
+              <span className="text-[11px] font-medium text-danger mr-2">Denied</span>
               <Handle
                 type="source"
                 position={Position.Right}
                 id="rejected"
-                className="!w-3 !h-3 !bg-danger !border-2 !border-surface transition-all hover:scale-125 !right-[-16px]"
+                className="!w-3 !h-3 !bg-danger !border-2 !border-surface transition !right-[-16px]"
               />
             </div>
           </div>
 
           {/* Timeout */}
           <div className="relative flex items-center justify-between rounded-lg bg-brand-soft/60 px-2.5 py-1 border border-brand/30">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-ink">
+            <span className="text-[11px] font-semibold text-ink">
               Timeout
             </span>
             <div className="relative flex items-center">
-              <span className="text-[9px] font-medium text-ink-muted me-2">Expired</span>
+              <span className="text-[11px] font-medium text-ink-muted me-2">Expired</span>
               <Handle
                 type="source"
                 position={Position.Right}
                 id="timeout"
-                className="!w-3 !h-3 !bg-brand !border-2 !border-surface transition-all hover:scale-125 !right-[-16px]"
+                className="!w-3 !h-3 !bg-brand !border-2 !border-surface transition !right-[-16px]"
               />
             </div>
           </div>

@@ -23,7 +23,7 @@ function SummaryCell({
   const excluded = total ? describeExcluded(total) : null;
   return (
     <div data-testid={testId} className="px-5 py-4">
-      <p className="text-xs font-semibold uppercase tracking-wider text-ink-muted">{label}</p>
+      <p className="text-xs font-semibold text-ink-muted">{label}</p>
       <p data-testid={`${testId}-amount`} className="mt-1 text-lg font-semibold tabular-nums text-ink">
         {total && baseCurrency ? formatExpenseCurrency(total.amount, baseCurrency) : '—'}
       </p>

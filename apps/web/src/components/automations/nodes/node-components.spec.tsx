@@ -137,7 +137,9 @@ describe('Automation Node Components', () => {
         </ReactFlowProvider>,
       );
       expect(screen.getByText('Waiting')).toBeInTheDocument();
-      expect(screen.getByTestId('status-node').className).toContain('animate-pulse');
+      // Waiting is marked by the amber ring and the word, not by a pulse.
+      expect(screen.getByTestId('status-node').className).toContain('border-brand');
+      expect(screen.getByTestId('status-node').className).not.toContain('animate-pulse');
 
       rerender(
         <ReactFlowProvider>

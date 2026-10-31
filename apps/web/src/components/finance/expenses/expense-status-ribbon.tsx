@@ -232,7 +232,7 @@ export function ExpenseStatusRibbon({
                 >
                   <div
                     className={cn(
-                      'flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 transition-all text-xs',
+                      'flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 transition text-xs',
                       state === 'current' && 'bg-charcoal text-on-charcoal font-semibold',
                       state === 'completed' &&
                         'text-ink-muted font-medium hover:text-ink',

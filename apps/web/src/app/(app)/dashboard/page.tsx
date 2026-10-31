@@ -2,13 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import {
   ArrowRight,
-  ClipboardCheck,
-  Factory,
   FilePlus2,
-  ReceiptText,
   ShieldCheck,
-  Target,
-  type LucideIcon,
 } from 'lucide-react';
 import {
   CONTACT_STATUS_LABELS,
@@ -40,13 +35,6 @@ import {
 } from '@/components/dashboard/dashboard-figures';
 
 export const metadata: Metadata = { title: 'Dashboard' };
-
-function getGreeting(date: Date = new Date()): string {
-  const hour = date.getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 18) return 'Good afternoon';
-  return 'Good evening';
-}
 
 function getFormattedDate(date: Date = new Date()): string {
   return date.toLocaleDateString('en-GB', {
@@ -193,7 +181,6 @@ const listOf = <T,>(value: { items?: T[] } | T[] | null): T[] | null =>
 export default async function DashboardPage() {
   const session = await requireSession();
   const now = new Date();
-  const greeting = getGreeting(now);
   const formattedDate = getFormattedDate(now);
   const canApprove = can(session, { permission: PERMISSIONS.QUOTE_APPROVE });
   const canCreateQuote = can(session, { permission: PERMISSIONS.QUOTE_CREATE });
@@ -254,7 +241,6 @@ export default async function DashboardPage() {
           ? `${formatMoney(approvals.amount, baseCurrency, { decimals: 0 })}${otherCurrencies(approvals.otherCurrencies)}`
           : 'Nothing to approve',
       tone: approvals.count > 0 ? 'warning' : 'neutral',
-      icon: ClipboardCheck,
       href: '/quotes',
     });
   }
@@ -266,7 +252,6 @@ export default async function DashboardPage() {
       value: floor.count,
       detail: floor.overdue > 0 ? `${floor.overdue} past due date` : 'None past due date',
       tone: floor.overdue > 0 ? 'warning' : 'neutral',
-      icon: Factory,
       href: '/production',
     });
   }
@@ -281,7 +266,6 @@ export default async function DashboardPage() {
           ? `${formatMoney(overdue.amount, baseCurrency, { decimals: 0 })} owed${otherCurrencies(overdue.otherCurrencies)}`
           : 'Nothing overdue',
       tone: overdue.count > 0 ? 'danger' : 'neutral',
-      icon: ReceiptText,
       href: '/invoices',
     });
   }
@@ -294,7 +278,6 @@ export default async function DashboardPage() {
       value: `${winRate.percentage}%`,
       detail: `${winRate.won} won of ${winRate.decided} decided`,
       tone: 'neutral',
-      icon: Target,
       href: '/quotes',
     });
   }
@@ -304,10 +287,10 @@ export default async function DashboardPage() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-ink">
-            {greeting}, {session.user.firstName}
+            {formattedDate}
           </h1>
           <p className="mt-1 text-sm text-ink-muted">
-            {formattedDate} · {session.organization.name}
+            {session.organization.name}
           </p>
         </div>
 
@@ -377,11 +360,6 @@ export default async function DashboardPage() {
   );
 }
 
-const TILE_TONES = {
-  neutral: 'bg-surface-muted text-ink-muted',
-  warning: 'bg-warning-soft text-warning',
-  danger: 'bg-danger-soft text-danger',
-} as const;
 
 interface TileProps {
   id: string;
@@ -389,25 +367,21 @@ interface TileProps {
   value: number | string;
   /** The money or the detail behind the count, in words. */
   detail: string;
-  tone: keyof typeof TILE_TONES;
-  icon: LucideIcon;
+  tone: 'neutral' | 'warning' | 'danger';
   href: string;
 }
 
-function Tile({ label, value, detail, tone, icon: Icon, href }: TileProps) {
+function Tile({ label, value, detail, tone, href }: TileProps) {
   return (
     <Link
       href={href}
       data-testid="dashboard-tile"
       className="group rounded-2xl border border-border bg-surface p-4 shadow-xs transition-colors hover:bg-surface-muted"
     >
-      <div className="flex items-start gap-3.5">
-        <span className={`grid size-10 shrink-0 place-items-center rounded-xl ${TILE_TONES[tone]}`}>
-          <Icon className="size-5" aria-hidden />
-        </span>
+      <div>
         <div className="min-w-0">
-          <p className="text-xs font-semibold tracking-wide text-ink-muted uppercase">{label}</p>
-          <p className="mt-0.5 text-2xl font-bold tabular-nums tracking-tight text-ink">{value}</p>
+          <p className="text-xs font-semibold text-ink-muted">{label}</p>
+          <p className="mt-0.5 text-2xl font-semibold tabular-nums tracking-tight text-ink">{value}</p>
           <p className={cn('text-xs tabular-nums', tone === 'danger' ? 'font-medium text-danger' : 'text-ink-muted')}>
             {detail}
           </p>
@@ -506,7 +480,7 @@ function AccessCard({ session }: { session: SessionDto }) {
       </CardHeader>
       <CardBody className="space-y-4 px-5 py-4">
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-subtle">Assigned roles</p>
+          <p className="mb-2 text-xs font-semibold text-ink-subtle">Assigned roles</p>
           <div className="flex flex-wrap gap-1.5">
             {session.user.roles.map((role) => (
               <Badge key={role.id} tone="neutral" className="px-2.5 py-1 text-xs font-medium">
@@ -516,7 +490,7 @@ function AccessCard({ session }: { session: SessionDto }) {
           </div>
         </div>
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-subtle">
+          <p className="mb-2 text-xs font-semibold text-ink-subtle">
             What you can reach ({session.permissions.length} permissions)
           </p>
           <div className="grid gap-x-4 gap-y-1.5 sm:grid-cols-2">

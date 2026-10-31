@@ -107,7 +107,7 @@ export function QuoteTabsSection({
 
             {readOnly ? (
               <div className={READ_ONLY}>
-                {termsAndConditions || <span className="text-ink-muted italic">No terms set.</span>}
+                {termsAndConditions || <span className="text-ink-muted">No terms set.</span>}
               </div>
             ) : (
               <textarea
@@ -134,7 +134,7 @@ export function QuoteTabsSection({
 
             {readOnly ? (
               <div className={READ_ONLY}>
-                {notes || <span className="text-ink-muted italic">No notes.</span>}
+                {notes || <span className="text-ink-muted">No notes.</span>}
               </div>
             ) : (
               <textarea

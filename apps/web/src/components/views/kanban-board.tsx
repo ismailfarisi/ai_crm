@@ -66,7 +66,7 @@ export function KanbanBoard<T>({
                 await onMoveStage(itemId, col.key);
               }
             }}
-            className={`flex flex-col shrink-0 transition-all duration-200 rounded-xl border bg-surface/50 ${
+            className={`flex flex-col shrink-0 transition duration-200 rounded-xl border bg-surface/50 ${
               isCollapsed ? 'w-16' : 'w-76'
             } ${
               isOver ? 'border-brand ring-2 ring-brand/20 bg-brand/5' : 'border-border/60'
@@ -98,7 +98,7 @@ export function KanbanBoard<T>({
 
             {/* Cards List */}
             {!isCollapsed && (
-              <div className="flex flex-col gap-2 p-2.5 min-h-[350px]">
+              <div className="flex flex-col gap-2 p-2.5 min-h-[352px]">
                 {colItems.map((item) => {
                   const itemId = getItemId(item);
                   return (

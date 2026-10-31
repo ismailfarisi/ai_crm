@@ -9,7 +9,7 @@ import {
   Plus,
   Search,
   ShieldCheck,
-  Sparkles,
+  BellRing,
   Trash2,
   Zap,
 } from 'lucide-react';
@@ -43,10 +43,20 @@ import { useSession } from '@/lib/session-context';
 
 const TEMPLATE_ICONS: Record<AutomationTemplateId, React.ReactNode> = {
   'quote-accepted-notify': <CheckCircle2 className="size-4" />,
-  'invoice-overdue-reminder': <Sparkles className="size-4" />,
+  'invoice-overdue-reminder': <BellRing className="size-4" />,
 };
 
 const TRIGGER_FILTERS = ['ALL', 'WEBHOOK', 'SCHEDULE', 'CRM_EVENT', 'MANUAL'] as const;
+
+const TRIGGER_LABELS: Record<string, string> = {
+  WEBHOOK: 'Webhook',
+  SCHEDULE: 'Schedule',
+  CRM_EVENT: 'CRM event',
+  MANUAL: 'Manual',
+};
+
+/** DRAFT → Draft, for labels that arrive as enum values. */
+const sentenceCase = (value: string) => value.charAt(0) + value.slice(1).toLowerCase().replace(/_/g, ' ');
 
 const STATUS_TONE = {
   ACTIVE: 'success',
@@ -94,7 +104,7 @@ export default function AutomationsListPage() {
     <div data-testid="automations-list-page" className="space-y-6">
       <PageHeader
         title="Automations"
-        description="Event-driven workflows, scheduled routines and approval pipelines."
+        description="Steps that run on their own when something happens in Kerf, on a schedule, or when you start them."
         actions={
           <div className="flex items-center gap-2">
             {can(PERMISSIONS.AUTOMATION_APPROVE) && (
@@ -116,7 +126,7 @@ export default function AutomationsListPage() {
       />
 
       <section className="space-y-3">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-subtle">
+        <h2 className="text-xs font-semibold text-ink-subtle">
           Start from a template
         </h2>
         <div className="grid gap-4 md:grid-cols-2">
@@ -183,7 +193,7 @@ export default function AutomationsListPage() {
                   : 'border border-border bg-surface text-ink-muted hover:bg-surface-muted',
               )}
             >
-              {type === 'ALL' ? 'All triggers' : type.replace('_', ' ').toLowerCase()}
+              {type === 'ALL' ? 'All triggers' : TRIGGER_LABELS[type]}
             </button>
           ))}
         </div>
@@ -210,14 +220,14 @@ export default function AutomationsListPage() {
       ) : (
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
           {filteredWorkflows.map((wf) => (
-            <Card key={wf.id} className="group transition-colors hover:border-brand/40">
+            <Card key={wf.id} className="group transition-colors hover:border-border-strong">
               <CardBody className="flex h-full flex-col justify-between gap-4 px-5 py-4">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-2">
-                    <Badge tone="neutral">{wf.triggerType.replace('_', ' ').toLowerCase()}</Badge>
+                    <Badge tone="neutral">{TRIGGER_LABELS[wf.triggerType] ?? sentenceCase(wf.triggerType)}</Badge>
                     <div className="flex items-center gap-2">
                       <Badge tone={STATUS_TONE[wf.status as keyof typeof STATUS_TONE] ?? 'neutral'}>
-                        {wf.status.toLowerCase()}
+                        {sentenceCase(wf.status)}
                       </Badge>
                       <button
                         type="button"

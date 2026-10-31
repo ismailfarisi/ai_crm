@@ -21,7 +21,7 @@ export function FakeCheckout() {
 
   return (
     <div className="mx-auto max-w-md rounded-2xl border border-border/60 bg-surface px-6 py-5 shadow-[0_2px_10px_rgba(0,0,0,0.015)]">
-      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-warning">Test checkout — no card is charged</p>
+      <p className="mb-1 text-xs font-medium text-warning">Test checkout — no card is charged</p>
       <h1 className="text-xl font-semibold text-ink">{plan ? plan.name : 'Subscription'}</h1>
       {plan && (
         <p className="mt-2 text-sm text-ink-muted">

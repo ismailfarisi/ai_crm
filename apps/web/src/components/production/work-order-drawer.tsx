@@ -123,7 +123,7 @@ export function WorkOrderDrawer({ workOrderId, onClose }: WorkOrderDrawerProps) 
           <div className="border-b border-line px-6 py-4">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <span className="font-mono text-sm font-bold text-ink">
+                <span className="font-mono text-sm font-semibold text-ink">
                   {wo?.woNumber ?? 'Loading...'}
                 </span>
                 {wo && (
@@ -284,7 +284,7 @@ export function WorkOrderDrawer({ workOrderId, onClose }: WorkOrderDrawerProps) 
                       return (
                         <div
                           key={op.id}
-                          className={`rounded-lg border p-3.5 transition-all ${
+                          className={`rounded-lg border p-3.5 transition ${
                             isRunning
                               ? 'border-success bg-success-soft/20'
                               : 'border-line bg-surface'
@@ -297,7 +297,7 @@ export function WorkOrderDrawer({ workOrderId, onClose }: WorkOrderDrawerProps) 
                               </p>
                               <p className="text-xs text-ink-muted">{op.workCenterName}</p>
                               <div className="mt-1 flex items-center gap-2">
-                                <span className="text-[11px] font-medium uppercase tracking-wide text-ink-subtle">
+                                <span className="text-[11px] font-medium text-ink-subtle">
                                   {{
                                     PENDING: 'Not started',
                                     RUNNING: 'Running',
@@ -310,7 +310,7 @@ export function WorkOrderDrawer({ workOrderId, onClose }: WorkOrderDrawerProps) 
                             </div>
                             <div className="text-right">
                               <p
-                                className={`font-mono text-base font-bold tabular-nums ${
+                                className={`font-mono text-base font-semibold tabular-nums ${
                                   isOver ? 'text-warning' : isRunning ? 'text-success' : 'text-ink'
                                 }`}
                               >
@@ -408,7 +408,7 @@ export function WorkOrderDrawer({ workOrderId, onClose }: WorkOrderDrawerProps) 
                             </div>
                             <div className="mt-2 h-1.5 rounded-full bg-surface-sunk overflow-hidden">
                               <div
-                                className="h-full rounded-full bg-brand transition-all duration-300"
+                                className="h-full rounded-full bg-brand transition duration-300"
                                 style={{ width: `${pct}%` }}
                               />
                             </div>

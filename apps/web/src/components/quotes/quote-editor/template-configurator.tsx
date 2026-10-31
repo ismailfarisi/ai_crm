@@ -88,7 +88,7 @@ export function TemplateConfigurator({
           <ArrowLeft className="size-4" aria-hidden />
         </button>
         <div className="min-w-0">
-          <h2 className="truncate text-sm font-bold text-ink">{template.name}</h2>
+          <h2 className="truncate text-sm font-semibold text-ink">{template.name}</h2>
           <p className="truncate text-xs text-ink-muted">
             {template.description || 'Set the size and options, then pick a quantity.'}
           </p>
@@ -158,7 +158,7 @@ export function TemplateConfigurator({
           </div>
 
           <label className="block border-t border-border/30 pt-4">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted">
+            <span className="mb-1 block text-xs font-semibold text-ink-muted">
               Order quantity
             </span>
             <input
@@ -195,7 +195,7 @@ export function TemplateConfigurator({
           ) : (
             <>
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
+                <h3 className="text-xs font-semibold text-ink-muted">
                   Price breaks
                 </h3>
                 {isLoading && <Loader2 className="size-3.5 animate-spin text-ink-subtle" />}

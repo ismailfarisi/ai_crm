@@ -20,7 +20,7 @@ export function QuoteTotalsCard({
   return (
     <div className={cn(className)}>
       <div className="h-full rounded-2xl border border-border/60 bg-surface p-4 sm:p-5 shadow-[0_2px_10px_rgba(0,0,0,0.015)] space-y-2.5 text-sm">
-        <h3 className="text-xs font-bold text-ink-muted uppercase tracking-wider mb-4 border-b border-border/60 pb-2">
+        <h3 className="text-xs font-semibold text-ink-muted mb-4 border-b border-border/60 pb-2">
           Totals
         </h3>
 
@@ -68,7 +68,7 @@ export function QuoteTotalsCard({
             <dt className="text-base font-semibold text-ink">
               Total ({currency.toUpperCase()})
             </dt>
-            <dd className="text-xl font-bold tracking-tight text-ink tabular-nums">
+            <dd className="text-xl font-semibold tracking-tight text-ink tabular-nums">
               {formatCurrency(totalAmount, currency)}
             </dd>
           </div>

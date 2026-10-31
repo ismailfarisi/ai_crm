@@ -35,7 +35,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       <aside className="hidden border-s border-border bg-surface-muted lg:block">
         <div className="flex h-full flex-col justify-center gap-7 p-10 xl:p-12">
           <div>
-            <h2 className="max-w-md text-2xl font-bold leading-tight tracking-tight text-balance text-ink xl:text-3xl">
+            <h2 className="max-w-md text-2xl font-semibold leading-tight tracking-tight text-balance text-ink xl:text-3xl">
               Quote custom work from what it actually costs to make.
             </h2>
             <p className="mt-3 max-w-md text-sm leading-relaxed text-ink-muted">

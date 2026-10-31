@@ -3,7 +3,6 @@
 import React, { useState, useMemo } from 'react';
 import {
   Code,
-  Sparkles,
   Copy,
   Check,
   Search,
@@ -12,6 +11,7 @@ import {
   Database,
   Key,
   Info,
+  Braces,
 } from 'lucide-react';
 import clsx from 'clsx';
 import type { AutomationNode } from '@saas/shared';
@@ -280,10 +280,10 @@ export function ExpressionHelper({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5 font-semibold text-ink">
-          <Sparkles className="h-3.5 w-3.5 text-brand" />
+          <Braces className="h-3.5 w-3.5 text-ink-muted" />
           <span>Expression & Variable Helper</span>
         </div>
-        <span className="text-[10px] text-ink-subtle font-mono">
+        <span className="text-[11px] text-ink-subtle font-mono">
           Click pill to copy / insert
         </span>
       </div>
@@ -407,7 +407,7 @@ export function ExpressionHelper({
                     key={v.key}
                     data-testid={`variable-item-${v.key}`}
                     onClick={() => handleCopyOrSelect(v.expression)}
-                    className="group flex items-center justify-between p-1.5 rounded-lg border border-border/70 bg-surface-muted/50 hover:bg-brand-soft/60 hover:border-brand/40 transition-all cursor-pointer"
+                    className="group flex items-center justify-between p-1.5 rounded-lg border border-border/70 bg-surface-muted/50 hover:bg-brand-soft/60 hover:border-brand/40 transition cursor-pointer"
                   >
                     <div className="min-w-0 flex-1 pr-2">
                       <div className="flex items-center gap-1.5">
@@ -415,12 +415,12 @@ export function ExpressionHelper({
                           {v.expression}
                         </span>
                         {v.sampleValue !== undefined && (
-                          <span className="text-[10px] text-ink-subtle truncate max-w-[120px] font-mono">
+                          <span className="text-[11px] text-ink-subtle truncate max-w-[120px] font-mono">
                             = {typeof v.sampleValue === 'object' ? '{...}' : String(v.sampleValue)}
                           </span>
                         )}
                       </div>
-                      <p className="text-[10px] text-ink-muted truncate mt-0.5">
+                      <p className="text-[11px] text-ink-muted truncate mt-0.5">
                         {v.description}
                       </p>
                     </div>
@@ -468,7 +468,7 @@ export function ExpressionHelper({
                 type="button"
                 data-testid="copy-preview-btn"
                 onClick={() => handleCopyOrSelect(interpolatedPreview)}
-                className="text-[10px] text-ink hover:text-ink font-medium cursor-pointer"
+                className="text-[11px] text-ink hover:text-ink font-medium cursor-pointer"
               >
                 Copy Output
               </button>
@@ -477,7 +477,7 @@ export function ExpressionHelper({
               data-testid="expression-preview-output"
               className="p-2 rounded-lg bg-surface-muted text-ink font-mono text-[11px] min-h-[44px] break-all border border-border-strong shadow-inner"
             >
-              {interpolatedPreview || <span className="text-ink-muted italic">Empty output</span>}
+              {interpolatedPreview || <span className="text-ink-muted">Empty output</span>}
             </div>
           </div>
         </div>

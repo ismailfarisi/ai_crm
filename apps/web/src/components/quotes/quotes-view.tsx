@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
-import { Plus, FileText, Clock, CheckCircle, Banknote, Sparkles, type LucideIcon } from 'lucide-react';
+import { Plus, PenLine } from 'lucide-react';
 import { formatOrganizationAddress, PERMISSIONS, quoteDocumentTaxes } from '@saas/shared';
 import { useQuotes, type Quote } from '@/hooks/use-quotes';
 import { useCostingPolicy } from '@/hooks/use-catalog';
@@ -20,33 +20,20 @@ import { DataViewContainer } from '@/components/views/data-view-container';
 import { KanbanBoard, type KanbanColumnDef } from '@/components/views/kanban-board';
 import { toast } from 'sonner';
 
-const STAT_TONES = {
-  neutral: 'bg-surface-muted text-ink-muted',
-  warning: 'bg-warning-soft text-warning',
-  success: 'bg-success-soft text-success',
-} as const;
-
 function Stat({
   label,
   value,
   note,
-  icon: Icon,
-  tone = 'neutral',
 }: {
   label: string;
   value: string | number;
   /** What the figure leaves out, said under it rather than hidden. */
   note?: string;
-  icon: LucideIcon;
-  tone?: keyof typeof STAT_TONES;
 }) {
   return (
-    <div className="flex items-center gap-3">
-      <span className={`grid size-9 place-items-center rounded-xl ${STAT_TONES[tone]}`}>
-        <Icon className="size-4" aria-hidden />
-      </span>
+    <div>
       <div>
-        <p className="text-xs font-semibold tracking-wider text-ink-muted uppercase">{label}</p>
+        <p className="text-xs font-semibold text-ink-muted">{label}</p>
         <p className="text-2xl font-semibold tabular-nums text-ink tracking-tight">{value}</p>
         {note && <p className="text-xs text-ink-subtle">{note}</p>}
       </div>
@@ -223,13 +210,13 @@ export function QuotesView() {
               className="rounded-full px-4 text-xs"
               onClick={() => setIsModalOpen(true)}
             >
-              <Sparkles className="size-3.5 mr-1.5 text-ink-muted" aria-hidden />
+              <PenLine className="size-3.5 mr-1.5 text-ink-muted" aria-hidden />
               Draft with AI
             </Button>
             <Link href="/quotes/new">
               <Button variant="primary" className="rounded-full px-5 text-xs font-semibold">
                 <Plus className="size-3.5 mr-1.5" />
-                New Quotation
+                New quote
               </Button>
             </Link>
           </div>
@@ -237,14 +224,13 @@ export function QuotesView() {
       />
 
       <div className="flex flex-wrap items-center gap-x-12 gap-y-4 py-2">
-        <Stat label="Quotes" value={filteredQuotes.length} icon={FileText} />
-        <Stat label="Awaiting approval" value={awaitingApproval} icon={Clock} tone="warning" />
-        <Stat label="Approved, not accepted" value={approvedNotAccepted} icon={CheckCircle} tone="success" />
+        <Stat label="Quotes" value={filteredQuotes.length} />
+        <Stat label="Awaiting approval" value={awaitingApproval} />
+        <Stat label="Approved, not accepted" value={approvedNotAccepted} />
         <Stat
           label="Open value"
           value={formatMoney(openValue.total, baseCurrency)}
           note={otherCurrencyNote(openValue.otherCurrencies)}
-          icon={Banknote}
         />
       </div>
 

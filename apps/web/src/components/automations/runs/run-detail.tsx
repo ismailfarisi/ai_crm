@@ -14,7 +14,7 @@ export function StatusChip({ status }: { status: AutomationExecutionStatus }) {
     <span
       data-testid="run-status-chip"
       className={clsx(
-        'px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider shrink-0',
+        'px-2 py-0.5 rounded-md text-[11px] font-semibold shrink-0',
         status === 'COMPLETED' && 'bg-success-soft text-success',
         status === 'RUNNING' && 'bg-info-soft text-info',
         status === 'WAITING_APPROVAL' && 'bg-brand-soft text-ink',
@@ -162,11 +162,11 @@ export function RunDetail({ executionId, onBack }: RunDetailProps) {
                 <span className="font-semibold text-ink truncate">
                   {step.label || step.type || step.nodeId}
                 </span>
-                <span className="text-[10px] font-mono text-ink-subtle shrink-0">
+                <span className="text-[11px] font-mono text-ink-subtle shrink-0">
                   {step.durationMs !== undefined ? `${step.durationMs}ms` : ''}
                 </span>
               </div>
-              <p className="text-[10px] text-ink-muted">
+              <p className="text-[11px] text-ink-muted">
                 {step.type ?? '—'} · {step.status}
               </p>
               {step.error && <p className="text-[11px] text-danger break-words">{step.error}</p>}
@@ -175,13 +175,13 @@ export function RunDetail({ executionId, onBack }: RunDetailProps) {
                   <summary className="text-[11px] text-ink-muted cursor-pointer">Input / Output</summary>
                   {step.input !== undefined && (
                     <>
-                      <p className="text-[10px] font-semibold text-ink-muted mt-1">Input</p>
+                      <p className="text-[11px] font-semibold text-ink-muted mt-1">Input</p>
                       <JsonBlock value={step.input} />
                     </>
                   )}
                   {step.output !== undefined && (
                     <>
-                      <p className="text-[10px] font-semibold text-ink-muted mt-1">Output</p>
+                      <p className="text-[11px] font-semibold text-ink-muted mt-1">Output</p>
                       <JsonBlock value={step.output} />
                     </>
                   )}

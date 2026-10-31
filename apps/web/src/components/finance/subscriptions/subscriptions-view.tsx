@@ -81,7 +81,7 @@ function StatItem({
         <Icon className="size-4" />
       </span>
       <div>
-        <p className="text-xs font-semibold tracking-wider text-ink-muted uppercase">{label}</p>
+        <p className="text-xs font-semibold text-ink-muted">{label}</p>
         <p className="text-2xl font-semibold tabular-nums text-ink tracking-tight">{value}</p>
         {note}
       </div>

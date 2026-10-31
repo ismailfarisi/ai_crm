@@ -8,7 +8,6 @@ import {
   Maximize2,
   ExternalLink,
   Receipt,
-  Sparkles,
   FileText,
   Upload,
   Calendar,
@@ -17,6 +16,7 @@ import {
   DollarSign,
   ChevronDown,
   ChevronUp,
+  ScanText,
 } from 'lucide-react';
 import type { ExpenseClaimDto, ScannedReceiptResult } from '@saas/shared';
 import { cn } from '@/lib/utils';
@@ -105,7 +105,7 @@ export function ReceiptPreviewCard({
           <Receipt className="size-4 text-ink-muted" />
           <CardTitle className="text-sm font-semibold text-ink">Receipt Document</CardTitle>
           {hasReceipt && (
-            <Badge tone="neutral" className="text-[10px] uppercase font-mono tracking-wider">
+            <Badge tone="neutral" className="text-[11px] font-mono">
               {receiptKind}
             </Badge>
           )}
@@ -266,7 +266,7 @@ export function ReceiptPreviewCard({
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
-                <Sparkles className="size-3.5 text-ink-muted" aria-hidden />
+                <ScanText className="size-3.5 text-ink-muted" aria-hidden />
                 <span className="text-xs font-semibold text-ink">Extracted Receipt Metadata</span>
               </div>
               {confidence !== undefined && (
@@ -275,7 +275,6 @@ export function ReceiptPreviewCard({
                   tone={getConfidenceBadgeTone(confidence)}
                   className="gap-1 text-[11px] font-medium"
                 >
-                  <Sparkles className="size-2.5" />
                   {Math.round(confidence * 100)}% AI Match
                 </Badge>
               )}
@@ -359,7 +358,7 @@ export function ReceiptPreviewCard({
                 {showRawText && (
                   <pre
                     data-testid="ocr-raw-text"
-                    className="mt-2 max-h-32 overflow-auto rounded-xl border border-border bg-surface-muted p-2.5 font-mono text-[10px] text-ink-muted whitespace-pre-wrap"
+                    className="mt-2 max-h-32 overflow-auto rounded-xl border border-border bg-surface-muted p-2.5 font-mono text-[11px] text-ink-muted whitespace-pre-wrap"
                   >
                     {ocrData.rawText}
                   </pre>

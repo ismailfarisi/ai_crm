@@ -1,6 +1,6 @@
 'use client';
 
-import { Sparkles } from 'lucide-react';
+import { MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAssistant } from './assistant-provider';
 
@@ -15,7 +15,7 @@ export function AssistantLauncher() {
       aria-expanded={open}
       title="Assistant (Ctrl/⌘ J)"
     >
-      <Sparkles className="size-5" aria-hidden="true" />
+      <MessageCircle className="size-5" aria-hidden="true" />
     </Button>
   );
 }

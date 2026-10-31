@@ -47,7 +47,7 @@ export function DataTableCardGrid<TData>({
         return (
           <div
             key={row.id}
-            className={`flex flex-col justify-between rounded-2xl border p-4 transition-all ${
+            className={`flex flex-col justify-between rounded-2xl border p-4 transition ${
               isSelected
                 ? 'border-brand bg-brand-soft/40 shadow-xs'
                 : 'border-border/30 bg-surface/60 hover:border-brand/40 hover:shadow-xs'
@@ -82,7 +82,7 @@ export function DataTableCardGrid<TData>({
               <div className="grid grid-cols-2 gap-3 text-xs">
                 {contentCells.map((cell) => (
                   <div key={cell.id} className="space-y-0.5">
-                    <span className="text-xs font-medium uppercase tracking-wider text-ink-muted">
+                    <span className="text-xs font-medium text-ink-muted">
                       {columnLabel(cell.column)}
                     </span>
                     <div className="text-ink font-medium">

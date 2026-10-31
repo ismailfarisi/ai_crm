@@ -217,7 +217,7 @@ export function AccountBalanceGrid({
                 data-testid={`account-card-${account.id}`}
                 onClick={() => onSelectAccount?.(account)}
                 className={cn(
-                  'group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-border/40 bg-surface p-5 shadow-xs transition-all hover:border-border hover:shadow-sm',
+                  'group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-border/40 bg-surface p-5 shadow-xs transition hover:border-border hover:shadow-sm',
                   onSelectAccount ? 'cursor-pointer' : '',
                 )}
               >
@@ -225,7 +225,7 @@ export function AccountBalanceGrid({
                 <div className="flex items-start justify-between gap-2">
                   <div
                     className={cn(
-                      'grid size-10 place-items-center rounded-xl border transition-transform group-hover:scale-105',
+                      'grid size-10 place-items-center rounded-xl border transition-transform',
                       meta.colorClass,
                     )}
                   >
@@ -242,7 +242,7 @@ export function AccountBalanceGrid({
                         Default
                       </span>
                     )}
-                    <Badge tone={meta.badgeTone} className="text-[10px] uppercase font-bold tracking-wider">
+                    <Badge tone={meta.badgeTone} className="text-[11px] font-semibold">
                       {account.accountType}
                     </Badge>
                   </div>
@@ -252,7 +252,7 @@ export function AccountBalanceGrid({
                 <div className="mt-4">
                   <h3
                     data-testid={`account-name-${account.id}`}
-                    className="truncate text-sm font-bold text-ink transition-colors"
+                    className="truncate text-sm font-semibold text-ink transition-colors"
                     title={account.name}
                   >
                     {account.name}

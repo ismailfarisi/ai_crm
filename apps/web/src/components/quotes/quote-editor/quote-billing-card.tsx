@@ -60,7 +60,7 @@ export function QuoteBillingCard({ schedule, onChange, totals, currency, readOnl
   return (
     <section className="rounded-2xl border border-border/40 bg-surface p-4 shadow-2xs" aria-labelledby="billing-title">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 id="billing-title" className="text-sm font-bold uppercase tracking-wider text-ink">
+        <h2 id="billing-title" className="text-sm font-semibold text-ink">
           Billing
         </h2>
         {/* A locked quote states its schedule; a greyed-out dropdown reads as broken. */}

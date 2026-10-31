@@ -54,13 +54,13 @@ export function BaseNode({
     <div
       data-testid={testId || 'base-node'}
       className={clsx(
-        'w-64 rounded-xl border bg-surface p-3.5 shadow-sm transition-all duration-200 relative select-none',
+        'w-64 rounded-xl border bg-surface p-3.5 shadow-sm transition duration-200 relative select-none',
         selected
           ? 'border-brand ring-2 ring-brand/20 shadow-md'
           : 'border-border hover:border-border-strong',
         status === 'SUCCESS' && 'border-success ring-2 ring-success/15',
         status === 'FAILED' && 'border-danger ring-2 ring-danger/15',
-        (status === 'WAITING' || status === 'RUNNING') && 'border-brand ring-2 ring-brand/25 animate-pulse',
+        (status === 'WAITING' || status === 'RUNNING') && 'border-brand ring-2 ring-brand/25',
         status === 'SKIPPED' && 'border-dashed border-border-strong opacity-60',
         className,
       )}
@@ -72,7 +72,7 @@ export function BaseNode({
           position={inputHandlePosition}
           id={inputHandleId}
           isConnectable={isConnectable}
-          className="!w-3 !h-3 !bg-border-strong !border-2 !border-surface transition-all hover:scale-125 !left-[-6px]"
+          className="!w-3 !h-3 !bg-border-strong !border-2 !border-surface transition !left-[-6px]"
         />
       )}
 
@@ -90,7 +90,7 @@ export function BaseNode({
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-ink-muted truncate">
+              <span className="text-[11px] font-semibold text-ink-muted truncate">
                 {category}
               </span>
             </div>
@@ -111,22 +111,22 @@ export function BaseNode({
         ) : status !== 'IDLE' ? (
           <div className="shrink-0">
             {status === 'SUCCESS' && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-success-soft text-success border border-success/20">
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold bg-success-soft text-success border border-success/20">
                 Success
               </span>
             )}
             {status === 'FAILED' && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-danger-soft text-danger border border-danger/20">
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold bg-danger-soft text-danger border border-danger/20">
                 Failed
               </span>
             )}
             {(status === 'WAITING' || status === 'RUNNING') && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-brand-soft text-ink border border-brand/30 animate-pulse">
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold bg-brand-soft text-ink border border-brand/30">
                 {status === 'WAITING' ? 'Waiting' : 'Running'}
               </span>
             )}
             {status === 'SKIPPED' && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-surface-muted text-ink-muted border border-border">
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold bg-surface-muted text-ink-muted border border-border">
                 Skipped
               </span>
             )}
@@ -148,7 +148,7 @@ export function BaseNode({
           position={outputHandlePosition}
           id={outputHandleId}
           isConnectable={isConnectable}
-          className="!w-3 !h-3 !bg-brand !border-2 !border-surface transition-all hover:scale-125 !right-[-6px]"
+          className="!w-3 !h-3 !bg-brand !border-2 !border-surface transition !right-[-6px]"
         />
       )}
     </div>

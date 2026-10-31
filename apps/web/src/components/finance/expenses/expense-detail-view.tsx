@@ -116,7 +116,7 @@ export function ExpenseDetailView({ id }: ExpenseDetailViewProps) {
           data-testid="back-to-expenses-link"
           className="group inline-flex items-center gap-2 text-xs font-semibold text-ink-muted transition-colors hover:text-ink"
         >
-          <span className="grid size-7 place-items-center rounded-lg border border-border bg-surface-muted transition-transform group-hover:-translate-x-0.5">
+          <span className="grid size-7 place-items-center rounded-lg border border-border bg-surface-muted transition-transform">
             <ArrowLeft className="size-3.5" aria-hidden />
           </span>
           <span>Back to Expenses</span>
@@ -184,8 +184,8 @@ export function ExpenseDetailView({ id }: ExpenseDetailViewProps) {
         </div>
 
         <div className="text-end">
-          <span className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Claim total</span>
-          <div data-testid="claim-total-amount" className="text-2xl font-bold tracking-tight text-ink tabular-nums">
+          <span className="text-xs font-semibold text-ink-muted">Claim total</span>
+          <div data-testid="claim-total-amount" className="text-2xl font-semibold tracking-tight text-ink tabular-nums">
             {formatExpenseCurrency(claim.amount, claim.currency)}
           </div>
         </div>

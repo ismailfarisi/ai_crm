@@ -69,7 +69,7 @@ export function QuoteStatusPipeline({ status, accepted = false, className }: Quo
               >
                 <div
                   className={cn(
-                    'flex items-center gap-1.5 transition-all text-xs',
+                    'flex items-center gap-1.5 transition text-xs',
                     state === 'current' &&
                       'bg-ink text-surface font-semibold rounded-full px-3.5 py-1 shadow-xs',
                     state === 'completed' &&

@@ -217,7 +217,7 @@ export function RolesView() {
 
               {PERMISSION_GROUPS.map((group) => (
                 <fieldset key={group.key}>
-                  <legend className="mb-2 text-xs font-semibold tracking-wider text-ink-subtle uppercase">
+                  <legend className="mb-2 text-xs font-semibold text-ink-subtle">
                     {group.label}
                   </legend>
                   <div className="space-y-1">

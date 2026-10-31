@@ -12,13 +12,14 @@ import {
   Globe,
   Mail,
   Database,
-  Sparkles,
   ShieldAlert,
   Search,
   X,
   Plus,
   GripVertical,
   type LucideIcon,
+  MessageSquareText,
+  Route,
 } from 'lucide-react';
 import clsx from 'clsx';
 import type { AutomationNodeType } from '@saas/shared';
@@ -157,7 +158,7 @@ export const NODE_PALETTE_ITEMS: NodePaletteItem[] = [
     type: 'aiPromptNode',
     label: 'AI Prompt / LLM',
     category: 'AI',
-    icon: Sparkles,
+    icon: MessageSquareText,
     description: 'Execute LLM reasoning, draft generation, or summarization',
     badge: 'AI',
     iconBg: 'bg-info-soft',
@@ -167,7 +168,7 @@ export const NODE_PALETTE_ITEMS: NodePaletteItem[] = [
     type: 'aiAgentNode',
     label: 'Autonomous AI Agent',
     category: 'AI',
-    icon: Sparkles,
+    icon: Route,
     description: 'Autonomous multi-step ReAct agent with tool execution and HITL approvals',
     badge: 'Agent',
     iconBg: 'bg-brand-soft',
@@ -268,9 +269,9 @@ export function NodePaletteDrawer({
       <div className="p-4 border-b border-border/40 space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-bold text-ink flex items-center gap-1.5">
+            <h3 className="text-sm font-semibold text-ink flex items-center gap-1.5">
               <span>Node Palette</span>
-              <span className="text-[10px] font-semibold bg-brand-soft text-ink px-1.5 py-0.5 rounded-full border border-brand/30">
+              <span className="text-[11px] font-semibold bg-brand-soft text-ink px-1.5 py-0.5 rounded-full border border-brand/30">
                 {NODE_PALETTE_ITEMS.length}
               </span>
             </h3>
@@ -319,7 +320,7 @@ export function NodePaletteDrawer({
               data-testid={`category-filter-${cat.toLowerCase().replace(/\s+/g, '-')}`}
               onClick={() => setSelectedCategory(cat)}
               className={clsx(
-                'px-2.5 py-1 text-[11px] font-medium rounded-md whitespace-nowrap transition-all cursor-pointer',
+                'px-2.5 py-1 text-[11px] font-medium rounded-md whitespace-nowrap transition cursor-pointer',
                 selectedCategory === cat
                   ? 'bg-brand text-on-brand shadow-2xs font-semibold'
                   : 'bg-surface-muted text-ink-muted hover:bg-surface-muted hover:text-ink',
@@ -352,7 +353,7 @@ export function NodePaletteDrawer({
                 data-testid={`palette-item-${item.type}`}
                 onDragStart={(e) => handleDragStart(e, item)}
                 onClick={() => onAddNode?.(item.type)}
-                className="group relative flex items-start gap-2.5 p-2.5 bg-surface border border-border rounded-xl hover:border-brand hover:shadow-xs transition-all cursor-grab active:cursor-grabbing hover:bg-surface-muted/50"
+                className="group relative flex items-start gap-2.5 p-2.5 bg-surface border border-border rounded-xl hover:border-brand hover:shadow-xs transition cursor-grab active:cursor-grabbing hover:bg-surface-muted/50"
               >
                 {/* Drag Handle Indicator */}
                 <div className="pt-1 text-ink-subtle group-hover:text-ink-subtle">
@@ -377,7 +378,7 @@ export function NodePaletteDrawer({
                       {item.label}
                     </h4>
                     {item.badge && (
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-ink-muted bg-surface-muted px-1 py-0.2 rounded">
+                      <span className="text-[11px] font-semibold text-ink-muted bg-surface-muted px-1 py-0.2 rounded">
                         {item.badge}
                       </span>
                     )}
@@ -395,7 +396,7 @@ export function NodePaletteDrawer({
                     e.stopPropagation();
                     onAddNode?.(item.type);
                   }}
-                  className="absolute right-2 top-2 h-6 w-6 rounded-md bg-surface-muted text-ink-muted opacity-0 group-hover:opacity-100 hover:bg-brand hover:text-ink flex items-center justify-center transition-all shadow-2xs cursor-pointer"
+                  className="absolute right-2 top-2 h-6 w-6 rounded-md bg-surface-muted text-ink-muted opacity-0 group-hover:opacity-100 hover:bg-brand hover:text-ink flex items-center justify-center transition shadow-2xs cursor-pointer"
                   title="Add to canvas"
                   aria-label={`Add ${item.label}`}
                 >

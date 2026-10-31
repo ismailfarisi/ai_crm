@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Globe, Sparkles, Mail, Database } from 'lucide-react';
+import { Globe, Mail, Database, MessageSquareText } from 'lucide-react';
 import type { NodeProps, Node } from '@xyflow/react';
 import type { AutomationNodeData, AutomationNodeType } from '@saas/shared';
 import { BaseNode } from './base-node';
@@ -45,7 +45,7 @@ export function ActionNode({
       iconColor = 'text-info';
       previewContent = (
         <div className="flex items-center gap-1.5 font-mono text-[11px] truncate">
-          <span className="rounded bg-info-soft px-1 py-0.5 font-bold text-info text-[10px]">
+          <span className="rounded bg-info-soft px-1 py-0.5 font-semibold text-info text-[11px]">
             {config.method || 'GET'}
           </span>
           <span className="text-ink-muted truncate">{config.url || 'https://api.example.com'}</span>
@@ -54,7 +54,7 @@ export function ActionNode({
       break;
 
     case 'aiPromptNode':
-      Icon = Sparkles;
+      Icon = MessageSquareText;
       category = 'AI';
       defaultTitle = 'AI Prompt / LLM';
       iconBg = 'bg-info-soft';
@@ -63,11 +63,11 @@ export function ActionNode({
         <div className="space-y-1 text-[11px]">
           <div className="flex items-center justify-between text-ink-muted">
             <span>Model:</span>
-            <span className="font-mono text-[10px] font-semibold text-info bg-info-soft px-1.5 py-0.5 rounded border border-info/20">
+            <span className="font-mono text-[11px] font-semibold text-info bg-info-soft px-1.5 py-0.5 rounded border border-info/20">
               {config.model || 'gpt-4o-mini'}
             </span>
           </div>
-          <p className="text-ink-muted italic truncate font-sans text-[11px]">
+          <p className="text-ink-muted truncate font-sans text-[11px]">
             {config.prompt ? `"${config.prompt}"` : 'Generate completion...'}
           </p>
         </div>
@@ -86,7 +86,7 @@ export function ActionNode({
             To: <span className="text-ink-muted">{config.to || 'recipient@example.com'}</span>
           </div>
           {config.subject && (
-            <div className="text-ink-muted truncate text-[10px]">
+            <div className="text-ink-muted truncate text-[11px]">
               Sub: {config.subject}
             </div>
           )}
@@ -102,7 +102,7 @@ export function ActionNode({
       iconColor = 'text-ink';
       previewContent = (
         <div className="flex items-center gap-1.5 text-[11px]">
-          <span className="rounded bg-brand-soft px-1.5 py-0.5 font-mono text-[10px] font-bold text-ink uppercase tracking-tight">
+          <span className="rounded bg-brand-soft px-1.5 py-0.5 font-mono text-[11px] font-semibold text-ink uppercase tracking-tight">
             {config.action || 'CREATE_CONTACT'}
           </span>
           <span className="text-ink-muted truncate">CRM Entity</span>

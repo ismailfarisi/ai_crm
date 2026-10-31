@@ -208,12 +208,12 @@ export function AttributeEditorDrawer({
                               ({attr.slug})
                             </span>
                             {isPrimary && (
-                              <Badge tone="brand" className="text-[10px]">
+                              <Badge tone="brand" className="text-[11px]">
                                 Primary
                               </Badge>
                             )}
                             {attr.isRequired && (
-                              <Badge tone="neutral" className="text-[10px]">
+                              <Badge tone="neutral" className="text-[11px]">
                                 Required
                               </Badge>
                             )}

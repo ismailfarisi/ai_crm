@@ -187,11 +187,11 @@ export function ProductionKanban({
 
   return (
     <>
-      {/* Top Header with + Add Column button */}
+      {/* Board header with the Add column button */}
       <div className="flex items-center justify-between mb-4 px-1">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
-            Board Layout
+          <span className="text-xs font-semibold text-ink-muted">
+            Board layout
           </span>
           <span className="rounded-full bg-surface-sunk px-2 py-0.5 text-xs font-medium text-ink-subtle">
             {columns.length} stages
@@ -208,7 +208,7 @@ export function ProductionKanban({
             className="gap-1.5 font-medium"
           >
             <Plus className="size-3.5" />
-            + Add Column
+            Add column
           </Button>
         )}
       </div>
@@ -259,7 +259,7 @@ export function ProductionKanban({
                   handleDrop(column, workOrderId);
                 }
               }}
-              className={`flex flex-col rounded-2xl border transition-all duration-150 p-3 min-h-[350px] min-w-[280px] flex-1 ${
+              className={`flex flex-col rounded-2xl border transition duration-150 p-3 min-h-[352px] min-w-[280px] flex-1 ${
                 isOver
                   ? 'border-brand bg-brand-soft/40 ring-2 ring-brand/30'
                   : 'border-line/70 bg-surface-sunk/30'
@@ -271,7 +271,7 @@ export function ProductionKanban({
                   <span className={`size-2.5 rounded-full shrink-0 ${colorMeta.dot}`} />
                   <h2
                     id={`col-${column.id}`}
-                    className="text-xs font-semibold uppercase tracking-wider text-ink truncate"
+                    className="text-xs font-semibold text-ink truncate"
                     title={column.name}
                   >
                     {column.name}
@@ -303,7 +303,7 @@ export function ProductionKanban({
                         />
                         <div
                           role="menu"
-                          className="absolute right-0 top-7 z-30 w-44 rounded-xl border border-line bg-surface p-1 shadow-lg backdrop-blur-xs"
+                          className="absolute right-0 top-7 z-30 w-44 rounded-xl border border-line bg-surface p-1 shadow-lg"
                         >
                           <button
                             type="button"

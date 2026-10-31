@@ -3,7 +3,6 @@
 import React, { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import {
   Upload,
-  Sparkles,
   Plus,
   Trash2,
   Receipt,
@@ -12,6 +11,7 @@ import {
   X,
   Loader2,
   AlertCircle,
+  ScanText,
 } from 'lucide-react';
 import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -442,7 +442,7 @@ export function SubmitExpenseModal({
       >
         {/* Receipt */}
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Receipt</p>
+          <p className="text-xs font-semibold text-ink-muted">Receipt</p>
 
           <div
             data-testid="receipt-dropzone"
@@ -503,7 +503,7 @@ export function SubmitExpenseModal({
                     {isScanning ? (
                       <Loader2 className="size-4 animate-spin" aria-hidden />
                     ) : (
-                      <Sparkles className="size-4" aria-hidden />
+                      <ScanText className="size-4" aria-hidden />
                     )}
                     {isScanning ? 'Scanning…' : 'Scan with AI'}
                   </Button>
@@ -705,7 +705,7 @@ export function SubmitExpenseModal({
         {/* Line items */}
         <div className="space-y-2.5">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
+            <p className="text-xs font-semibold text-ink-muted">
               Line items ({items.length})
             </p>
             <Button

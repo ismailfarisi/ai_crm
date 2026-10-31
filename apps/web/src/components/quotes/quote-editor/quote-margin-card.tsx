@@ -60,7 +60,7 @@ export function QuoteMarginCard({ totals, violations, status, currency = 'USD' }
   return (
     <div className="space-y-3 rounded-2xl border border-border/60 bg-surface p-4 shadow-[0_2px_10px_rgba(0,0,0,0.015)]">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-ink-muted">
+        <h3 className="flex items-center gap-1.5 text-xs font-semibold text-ink-muted">
           <TrendingUp className="size-3.5" aria-hidden />
           Margin
         </h3>

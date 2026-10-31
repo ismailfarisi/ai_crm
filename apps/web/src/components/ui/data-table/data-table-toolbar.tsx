@@ -82,7 +82,7 @@ export function DataTableToolbar<TData>({
       {hasSelection && (
         <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-brand/30 bg-brand-soft/50 text-xs text-ink">
           <div className="flex items-center gap-2 font-medium">
-            <span className="size-2 rounded-full bg-brand animate-pulse" />
+            <span className="size-2 rounded-full bg-brand" />
             <span>{selectedRows.length} item(s) selected</span>
           </div>
           <div className="flex items-center gap-2">
@@ -141,8 +141,8 @@ export function DataTableToolbar<TData>({
                 <span>Columns</span>
               </Button>
               {showColumnDropdown && (
-                <div className="absolute right-0 mt-1 z-20 w-48 rounded-2xl border border-border/40 bg-surface/95 backdrop-blur-sm p-2 shadow-lg max-h-60 overflow-y-auto">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted px-2 py-1">
+                <div className="absolute right-0 mt-1 z-20 w-48 rounded-xl border border-border bg-surface p-2 shadow-lg max-h-60 overflow-y-auto">
+                  <div className="text-xs font-semibold text-ink-muted px-2 py-1">
                     Toggle Columns
                   </div>
                   {table
@@ -198,7 +198,7 @@ export function DataTableToolbar<TData>({
                 <span className="hidden sm:inline">Export</span>
               </Button>
               {showExportDropdown && (
-                <div className="absolute right-0 mt-1 z-20 w-36 rounded-2xl border border-border/40 bg-surface/95 backdrop-blur-sm p-1.5 shadow-lg">
+                <div className="absolute right-0 mt-1 z-20 w-36 rounded-xl border border-border bg-surface p-1.5 shadow-lg">
                   <button
                     type="button"
                     onClick={handleExportCSV}

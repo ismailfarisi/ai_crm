@@ -68,7 +68,7 @@ export function DashboardScheduleCards({
           {shown.map((group) => (
             <div key={group.key} data-testid={`waiting-${group.key}`}>
               <div className="flex items-center justify-between gap-2">
-                <h3 className="flex items-center gap-2 text-xs font-semibold tracking-wide text-ink-muted uppercase">
+                <h3 className="flex items-center gap-2 text-xs font-semibold text-ink-muted">
                   {group.title}
                   <Badge tone={group.tone ?? 'neutral'} className="tabular-nums normal-case">
                     {group.count}

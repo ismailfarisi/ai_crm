@@ -42,7 +42,7 @@ export function PeopleNav({ className }: { className?: string }) {
             href={item.href}
             aria-current={active ? 'page' : undefined}
             className={cn(
-              'inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all',
+              'inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition',
               active
                 ? 'bg-charcoal text-on-charcoal shadow-xs'
                 : 'text-ink-muted hover:bg-surface-muted/80 hover:text-ink',

@@ -3,15 +3,11 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
-  Activity,
-  AlertTriangle,
   BarChart3,
   Calendar,
   CalendarClock,
-  Clock,
   Kanban,
   Search,
-  Timer,
 } from 'lucide-react';
 import {
   PERMISSIONS,
@@ -132,7 +128,7 @@ export function ProductionBoard() {
     <div className="space-y-6">
       <PageHeader
         title="Production"
-        description="Shop floor command center: track running jobs, live clocks, and estimated vs actual time."
+        description="Jobs on the floor, the clocks running now, and estimated against actual time."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {/* View Switcher: Board vs Gantt */}
@@ -141,7 +137,7 @@ export function ProductionBoard() {
                 type="button"
                 onClick={() => setView('board')}
                 aria-label="Board view"
-                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
                   view === 'board'
                     ? 'bg-surface text-ink shadow-2xs'
                     : 'text-ink-muted hover:text-ink'
@@ -154,7 +150,7 @@ export function ProductionBoard() {
                 type="button"
                 onClick={() => setView('gantt')}
                 aria-label="Gantt view"
-                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
                   view === 'gantt'
                     ? 'bg-surface text-ink shadow-2xs'
                     : 'text-ink-muted hover:text-ink'
@@ -205,22 +201,21 @@ export function ProductionBoard() {
         }
       />
 
-      {/* KPI Summary Strip */}
-      <section aria-label="Production Key Performance Indicators" className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      {/* The floor in four numbers */}
+      <section aria-label="Production figures" className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         {/* Active Jobs */}
         <div data-testid="kpi-active-jobs" className="rounded-xl border border-line bg-surface p-4 shadow-2xs">
           <div className="flex items-center justify-between text-xs text-ink-muted">
-            <span>Active Jobs</span>
-            <Activity className="size-4 text-ink-muted" aria-hidden />
+            <span>Active jobs</span>
           </div>
-          <p className="mt-2 text-2xl font-bold tracking-tight text-ink">{kpis.activeJobs}</p>
-          <p className="mt-0.5 text-xs text-ink-subtle">Released &amp; In progress</p>
+          <p className="mt-2 text-2xl font-semibold tracking-tight text-ink">{kpis.activeJobs}</p>
+          <p className="mt-0.5 text-xs text-ink-subtle">Released or in progress</p>
         </div>
 
         {/* Running Clocks */}
         <div data-testid="kpi-running-clocks" className="rounded-xl border border-line bg-surface p-4 shadow-2xs">
           <div className="flex items-center justify-between text-xs text-ink-muted">
-            <span>Running Clocks</span>
+            <span>Running clocks</span>
             <div className="flex items-center gap-1">
               {kpis.runningClocks > 0 && (
                 <span className="relative flex size-2">
@@ -228,37 +223,34 @@ export function ProductionBoard() {
                   <span className="relative inline-flex rounded-full size-2 bg-success" />
                 </span>
               )}
-              <Timer className="size-4 text-success" />
             </div>
           </div>
-          <p className={`mt-2 text-2xl font-bold tracking-tight ${kpis.runningClocks > 0 ? 'text-success' : 'text-ink'}`}>
+          <p className={`mt-2 text-2xl font-semibold tracking-tight ${kpis.runningClocks > 0 ? 'text-success' : 'text-ink'}`}>
             {kpis.runningClocks}
           </p>
-          <p className="mt-0.5 text-xs text-ink-subtle">Timers ticking on floor</p>
+          <p className="mt-0.5 text-xs text-ink-subtle">Clocks running on the floor</p>
         </div>
 
         {/* Overdue Jobs */}
         <div data-testid="kpi-overdue-jobs" className="rounded-xl border border-line bg-surface p-4 shadow-2xs">
           <div className="flex items-center justify-between text-xs text-ink-muted">
-            <span>Overdue Jobs</span>
-            <AlertTriangle className={`size-4 ${kpis.overdueJobs > 0 ? 'text-danger' : 'text-ink-subtle'}`} />
+            <span>Overdue jobs</span>
           </div>
-          <p className={`mt-2 text-2xl font-bold tracking-tight ${kpis.overdueJobs > 0 ? 'text-danger' : 'text-ink'}`}>
+          <p className={`mt-2 text-2xl font-semibold tracking-tight ${kpis.overdueJobs > 0 ? 'text-danger' : 'text-ink'}`}>
             {kpis.overdueJobs}
           </p>
-          <p className="mt-0.5 text-xs text-ink-subtle">Past target completion date</p>
+          <p className="mt-0.5 text-xs text-ink-subtle">Past their target date</p>
         </div>
 
         {/* Total Actual vs Quoted Hours */}
         <div data-testid="kpi-variance" className="rounded-xl border border-line bg-surface p-4 shadow-2xs">
           <div className="flex items-center justify-between text-xs text-ink-muted">
-            <span>Quoted vs Actual</span>
-            <Clock className="size-4 text-ink-muted" />
+            <span>Actual against quoted</span>
           </div>
-          <p className="mt-2 text-xl font-bold tracking-tight text-ink font-mono">
+          <p className="mt-2 text-xl font-semibold tracking-tight text-ink font-mono">
             {kpis.totalActualHours}h <span className="text-xs font-normal text-ink-subtle">/ {kpis.totalQuotedHours}h</span>
           </p>
-          <p className="mt-0.5 text-xs text-ink-subtle">Actual vs Quoted hours</p>
+          <p className="mt-0.5 text-xs text-ink-subtle">Hours worked against hours quoted</p>
         </div>
       </section>
 

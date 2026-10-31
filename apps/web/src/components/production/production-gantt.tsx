@@ -289,7 +289,7 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
             onClick={() => setViewMode('work-order')}
             aria-label="By Work Order"
             aria-pressed={viewMode === 'work-order'}
-            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
               viewMode === 'work-order'
                 ? 'bg-surface text-ink shadow-2xs'
                 : 'text-ink-muted hover:text-ink'
@@ -303,7 +303,7 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
             onClick={() => setViewMode('work-center')}
             aria-label="By Work Centre"
             aria-pressed={viewMode === 'work-center'}
-            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
               viewMode === 'work-center'
                 ? 'bg-surface text-ink shadow-2xs'
                 : 'text-ink-muted hover:text-ink'
@@ -357,7 +357,7 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
             onClick={() => setTimeScale('day')}
             aria-label="Day zoom"
             aria-pressed={timeScale === 'day'}
-            className={`rounded-md px-2.5 py-1 text-xs font-medium transition-all cursor-pointer ${
+            className={`rounded-md px-2.5 py-1 text-xs font-medium transition cursor-pointer ${
               timeScale === 'day'
                 ? 'bg-surface text-ink shadow-2xs font-semibold'
                 : 'text-ink-muted hover:text-ink'
@@ -370,7 +370,7 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
             onClick={() => setTimeScale('week')}
             aria-label="Week zoom"
             aria-pressed={timeScale === 'week'}
-            className={`rounded-md px-2.5 py-1 text-xs font-medium transition-all cursor-pointer ${
+            className={`rounded-md px-2.5 py-1 text-xs font-medium transition cursor-pointer ${
               timeScale === 'week'
                 ? 'bg-surface text-ink shadow-2xs font-semibold'
                 : 'text-ink-muted hover:text-ink'
@@ -383,7 +383,7 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
             onClick={() => setTimeScale('month')}
             aria-label="Month zoom"
             aria-pressed={timeScale === 'month'}
-            className={`rounded-md px-2.5 py-1 text-xs font-medium transition-all cursor-pointer ${
+            className={`rounded-md px-2.5 py-1 text-xs font-medium transition cursor-pointer ${
               timeScale === 'month'
                 ? 'bg-surface text-ink shadow-2xs font-semibold'
                 : 'text-ink-muted hover:text-ink'
@@ -418,12 +418,12 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
                   <div
                     key={col.id}
                     className={`border-r border-line/40 p-2 text-center text-[11px] truncate ${
-                      col.isToday ? 'bg-brand-soft font-bold text-ink' : ''
+                      col.isToday ? 'bg-brand-soft font-semibold text-ink' : ''
                     }`}
                   >
                     <span>{col.label}</span>
                     {col.subLabel && (
-                      <span className="block text-[10px] text-ink-subtle">{col.subLabel}</span>
+                      <span className="block text-[11px] text-ink-subtle">{col.subLabel}</span>
                     )}
                   </div>
                 ))}
@@ -435,7 +435,7 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
                     className="absolute top-0 bottom-0 pointer-events-none border-l-2 border-brand"
                     style={{ left: `${todayOffsetPct}%` }}
                   >
-                    <span className="absolute -top-2 -translate-x-1/2 rounded bg-brand px-1 py-0.5 text-[11px] font-bold text-on-brand shadow-xs uppercase">
+                    <span className="absolute -top-2 -translate-x-1/2 rounded bg-brand px-1 py-0.5 text-[11px] font-semibold text-on-brand shadow-xs uppercase">
                       Today
                     </span>
                   </div>
@@ -510,11 +510,11 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
                         className="w-64 shrink-0 border-r border-line p-3 cursor-pointer select-none"
                       >
                         <div className="flex items-center justify-between gap-1">
-                          <span className="font-mono text-xs font-bold text-ink">
+                          <span className="font-mono text-xs font-semibold text-ink">
                             {wo.woNumber}
                           </span>
                           {isOverdue && (
-                            <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-danger">
+                            <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-danger">
                               <AlertTriangle className="size-3" />
                               Overdue
                             </span>
@@ -566,7 +566,7 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
                               onSelectWorkOrder(wo.id);
                             }
                           }}
-                          className={`relative z-10 flex h-9 items-center overflow-hidden rounded-lg shadow-2xs border transition-all cursor-pointer ${
+                          className={`relative z-10 flex h-9 items-center overflow-hidden rounded-lg shadow-2xs border transition cursor-pointer ${
                             isOverdue
                               ? 'border-2 border-danger ring-1 ring-danger/40'
                               : 'border-line'
@@ -583,15 +583,15 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
                           }}
                         >
                           {isPinnedPast ? (
-                            <div className="px-2 text-[10px] font-semibold truncate">
+                            <div className="px-2 text-[11px] font-semibold truncate">
                               &lt; Past ({wo.woNumber})
                             </div>
                           ) : isPinnedFuture ? (
-                            <div className="px-2 text-[10px] font-semibold truncate">
+                            <div className="px-2 text-[11px] font-semibold truncate">
                               {wo.woNumber} &gt;
                             </div>
                           ) : ops.length === 0 ? (
-                            <div className="px-2 text-[10px] font-semibold text-ink-muted truncate">
+                            <div className="px-2 text-[11px] font-semibold text-ink-muted truncate">
                               {wo.woNumber}
                             </div>
                           ) : (
@@ -613,17 +613,17 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
                                     : 0;
 
                               const statusClass = isDone
-                                ? 'bg-success/80 text-white'
+                                ? 'bg-success-soft text-success'
                                 : isRunning
-                                  ? 'bg-emerald-500 animate-pulse text-white'
+                                  ? 'bg-success-soft text-success ring-1 ring-inset ring-success/50'
                                   : isPaused
-                                    ? 'bg-amber-500/80 text-white'
+                                    ? 'bg-warning-soft text-warning'
                                     : 'bg-surface-sunk text-ink-muted border-r border-line';
 
                               return (
                                 <div
                                   key={op.id}
-                                  className={`relative h-full flex items-center justify-between px-1.5 text-[10px] font-medium overflow-hidden transition-colors ${statusClass}`}
+                                  className={`relative h-full flex items-center justify-between px-1.5 text-[11px] font-medium overflow-hidden transition-colors ${statusClass}`}
                                   style={{ width: `${weightPct}%` }}
                                   title={`WO: ${wo.woNumber}\nCustomer: ${
                                     wo.customerName ?? 'No customer'
@@ -644,7 +644,7 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
                                   {/* Progress fill */}
                                   {isRunning && progress > 0 && (
                                     <div
-                                      className="absolute inset-y-0 left-0 bg-white/20 pointer-events-none rounded-l"
+                                      className="absolute inset-y-0 left-0 bg-current/15 pointer-events-none rounded-l"
                                       style={{ width: `${progress}%` }}
                                     />
                                   )}
@@ -653,8 +653,8 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
                                   </span>
                                   {isRunning && (
                                     <span className="relative flex size-1.5 shrink-0 ml-1">
-                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
-                                      <span className="relative inline-flex rounded-full size-1.5 bg-white" />
+                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
+                                      <span className="relative inline-flex rounded-full size-1.5 bg-success" />
                                     </span>
                                   )}
                                 </div>
@@ -762,11 +762,11 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
                               : 0;
 
                         const statusClass = isDone
-                          ? 'bg-success/80 text-white'
+                          ? 'bg-success-soft text-success'
                           : isRunning
-                            ? 'bg-emerald-500 animate-pulse text-white'
+                            ? 'bg-success-soft text-success ring-1 ring-inset ring-success/50'
                             : isPaused
-                              ? 'bg-amber-500/80 text-white'
+                              ? 'bg-warning-soft text-warning'
                               : 'bg-surface-sunk text-ink-muted border border-line';
 
                         return (
@@ -782,7 +782,7 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
                                 onSelectWorkOrder(wo.id);
                               }
                             }}
-                            className={`absolute z-10 flex h-8 items-center px-2 rounded-lg text-[10px] font-medium shadow-2xs overflow-hidden transition-all cursor-pointer ${statusClass} ${
+                            className={`absolute z-10 flex h-8 items-center px-2 rounded-lg text-[11px] font-medium shadow-2xs overflow-hidden transition cursor-pointer ${statusClass} ${
                               isOverdue ? 'border-2 border-danger' : ''
                             }`}
                             style={{
@@ -808,7 +808,7 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
                             {/* Progress fill */}
                             {isRunning && progress > 0 && (
                               <div
-                                className="absolute inset-y-0 left-0 bg-white/20 pointer-events-none rounded-l"
+                                className="absolute inset-y-0 left-0 bg-current/15 pointer-events-none rounded-l"
                                 style={{ width: `${progress}%` }}
                               />
                             )}
@@ -819,7 +819,7 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
                               <span className="truncate">{wo.woNumber} &gt;</span>
                             ) : (
                               <div className="flex items-center gap-1 truncate relative z-10">
-                                <span className="font-mono font-bold shrink-0">
+                                <span className="font-mono font-semibold shrink-0">
                                   {wo.woNumber}
                                 </span>
                                 <span className="truncate">{op.label}</span>
@@ -849,13 +849,13 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
           }}
         >
           <div className="flex items-center justify-between gap-2 border-b border-line pb-1.5 mb-1.5">
-            <span className="font-mono font-bold text-ink">{hoveredOp.wo.woNumber}</span>
+            <span className="font-mono font-semibold text-ink">{hoveredOp.wo.woNumber}</span>
             <span
-              className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+              className={`px-1.5 py-0.5 rounded text-[11px] font-semibold ${
                 hoveredOp.op.status === 'RUNNING'
                   ? 'bg-success/15 text-success border border-success'
                   : hoveredOp.op.status === 'DONE'
-                    ? 'bg-success text-white'
+                    ? 'bg-success-soft text-success'
                     : hoveredOp.op.status === 'PAUSED'
                       ? 'bg-warning/20 text-warning border border-warning'
                       : 'bg-surface-sunk text-ink-muted border border-line'

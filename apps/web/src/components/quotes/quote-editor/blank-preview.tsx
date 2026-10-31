@@ -40,7 +40,7 @@ export function BlankPreview({
 
   return (
     <div className="rounded-xl border border-border/30 bg-surface-muted/20 p-3">
-      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
+      <p className="mb-2 text-[11px] font-semibold text-ink-muted">
         Flat blank
       </p>
 

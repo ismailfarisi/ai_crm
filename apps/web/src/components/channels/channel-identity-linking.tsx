@@ -77,10 +77,10 @@ export function ChannelIdentityLinking() {
 
         {generatedCode && countdown !== 'Expired' ? (
           <div className="rounded-xl border border-border/40 bg-surface-muted/40 p-4 space-y-2">
-            <p className="text-xs font-semibold tracking-wider text-ink-muted uppercase">
+            <p className="text-xs font-semibold text-ink-muted">
               Your linking code (expires in {countdown})
             </p>
-            <p className="font-mono text-2xl font-bold text-ink tracking-widest">{generatedCode.code}</p>
+            <p className="font-mono text-2xl font-semibold text-ink tracking-widest">{generatedCode.code}</p>
             <p className="text-xs text-ink-subtle">
               Send this exact code as a message on the Telegram, WhatsApp, or email channel you
               want to link — from the number/address you personally use.
@@ -100,7 +100,7 @@ export function ChannelIdentityLinking() {
 
         {identities.length > 0 && (
           <div className="space-y-1.5 pt-2 border-t border-border/25">
-            <p className="text-xs font-semibold tracking-wider text-ink-muted uppercase pt-2">
+            <p className="text-xs font-semibold text-ink-muted pt-2">
               Linked identities
             </p>
             {identities.map((identity) => (

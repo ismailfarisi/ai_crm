@@ -35,14 +35,15 @@ export function QuotesTable({ quotes, isLoading = false, onDecide, onPrint }: Qu
           <div>
             <Link
               href={`/quotes/${row.original.id}`}
-              className="font-medium text-ink hover:underline underline-offset-2 inline-flex items-center gap-1.5"
+              className="font-medium text-ink hover:underline underline-offset-2 inline-flex flex-col"
             >
+              <span>{row.original.title}</span>
+              {/* The reference is meta: one quiet line that never wraps. */}
               {row.original.quoteNumber && (
-                <span className="font-mono text-[11px] text-ink-muted bg-surface-muted/60 px-2 py-0.5 rounded-full border border-border/40">
+                <span className="whitespace-nowrap font-mono text-[11px] font-normal text-ink-muted">
                   {row.original.quoteNumber}
                 </span>
               )}
-              <span>{row.original.title}</span>
             </Link>
             {row.original.prompt && (
               <div className="mt-0.5 text-xs text-ink-subtle line-clamp-1 max-w-xs">
@@ -83,7 +84,7 @@ export function QuotesTable({ quotes, isLoading = false, onDecide, onPrint }: Qu
         cell: ({ row }) => {
           const itemsCount = row.original.items ? row.original.items.length : 0;
           return (
-            <span className="text-ink-muted">
+            <span className="whitespace-nowrap text-ink-muted">
               {itemsCount} {itemsCount === 1 ? 'item' : 'items'}
             </span>
           );

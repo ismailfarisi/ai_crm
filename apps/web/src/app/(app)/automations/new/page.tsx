@@ -130,7 +130,7 @@ export default function NewAutomationPage() {
               <div
                 key={t.type}
                 onClick={() => setTriggerType(t.type)}
-                className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer space-y-1.5 ${
+                className={`p-3.5 rounded-xl border text-left transition cursor-pointer space-y-1.5 ${
                   triggerType === t.type
                     ? 'border-brand bg-brand-soft/60 ring-2 ring-brand/10'
                     : 'border-border hover:border-border-strong'

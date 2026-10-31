@@ -81,7 +81,7 @@ export function AiBudgetView() {
           )}
         >
           <div className="flex items-baseline justify-between gap-2">
-            <span className="text-2xl font-extrabold tracking-tight tabular-nums text-ink">
+            <span className="text-2xl font-semibold tracking-tight tabular-nums text-ink">
               {formatBudgetCurrency(status.currentSpendUsd, 'USD')}
             </span>
             <span className="text-xs font-semibold text-ink-muted tabular-nums">
@@ -91,7 +91,7 @@ export function AiBudgetView() {
 
           <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-surface-muted border border-border/20">
             <div
-              className={cn('h-full rounded-full transition-all duration-500', budgetStatus?.meterColor)}
+              className={cn('h-full rounded-full transition duration-500', budgetStatus?.meterColor)}
               style={{ width: `${budgetStatus?.clampedPercentage ?? 0}%` }}
               role="progressbar"
               aria-valuenow={status.currentSpendUsd}
@@ -102,12 +102,12 @@ export function AiBudgetView() {
 
           <div className="mt-2 flex items-center justify-between text-xs">
             {budgetStatus?.isOverBudget ? (
-              <span className="inline-flex items-center gap-1 font-bold text-danger">
+              <span className="inline-flex items-center gap-1 font-semibold text-danger">
                 <ShieldAlert className="size-3.5" />
                 Over budget — AI calls are being blocked ({budgetStatus.percentage}%)
               </span>
             ) : budgetStatus?.isNearLimit ? (
-              <span className="inline-flex items-center gap-1 font-bold text-warning">
+              <span className="inline-flex items-center gap-1 font-semibold text-warning">
                 <AlertTriangle className="size-3.5" />
                 Near cap ({budgetStatus.percentage}%)
               </span>
@@ -133,11 +133,11 @@ export function AiBudgetView() {
           onSubmit={handleSubmit}
           className="space-y-4 rounded-2xl border border-border/40 bg-surface/85 p-5 shadow-xs"
         >
-          <h2 className="text-sm font-bold text-ink">Configure cap</h2>
+          <h2 className="text-sm font-semibold text-ink">Configure cap</h2>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label htmlFor="monthly-budget" className="block text-xs font-bold text-ink">
+              <label htmlFor="monthly-budget" className="block text-xs font-semibold text-ink">
                 Monthly budget ($)
               </label>
               <Input
@@ -153,7 +153,7 @@ export function AiBudgetView() {
             </div>
 
             <div>
-              <label htmlFor="alert-threshold" className="block text-xs font-bold text-ink">
+              <label htmlFor="alert-threshold" className="block text-xs font-semibold text-ink">
                 Alert threshold: {alertThresholdPercent}%
               </label>
               <input
@@ -211,7 +211,7 @@ export function AiBudgetView() {
       </Can>
 
       <div className="rounded-2xl border border-border/40 bg-surface/85 p-5 shadow-xs">
-        <h2 className="mb-3 text-sm font-bold text-ink">Recent usage</h2>
+        <h2 className="mb-3 text-sm font-semibold text-ink">Recent usage</h2>
         {isUsagePending ? (
           <Skeleton className="h-24 w-full rounded-xl" />
         ) : !usage?.length ? (

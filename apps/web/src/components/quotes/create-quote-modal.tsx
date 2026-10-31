@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { User, Plus, Trash2, Sparkles } from 'lucide-react';
+import { User, Plus, Trash2, PenLine } from 'lucide-react';
 import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input, Textarea } from '@/components/ui/field';
@@ -148,7 +148,7 @@ export function CreateQuoteModal({ open, onClose, onSubmit }: CreateQuoteModalPr
                 : 'border-transparent text-ink-muted hover:text-ink'
             }`}
           >
-            <Sparkles className="size-4" aria-hidden />
+            <PenLine className="size-4" aria-hidden />
             AI Agent Draft
           </button>
           <button

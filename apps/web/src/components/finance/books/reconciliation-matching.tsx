@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Check, Sparkles } from 'lucide-react';
+import { Check, Link2 } from 'lucide-react';
 import type { BankStatementLineDto, LedgerMovementDto, ReconciliationSuggestion } from '@saas/shared';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -67,7 +67,7 @@ export function SuggestionsPanel({
     <section aria-labelledby="suggestions-heading" className="rounded-xl border border-border/60 bg-surface">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
         <h2 id="suggestions-heading" className="flex items-center gap-2 text-sm font-semibold text-ink">
-          <Sparkles className="size-4 text-ink-muted" />
+          <Link2 className="size-4 text-ink-muted" />
           Suggested matches ({suggestions.length})
         </h2>
         {editable && certain > 0 && (

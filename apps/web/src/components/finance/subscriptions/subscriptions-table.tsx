@@ -20,7 +20,6 @@ import {
   MoreVertical,
   Edit2,
   Trash2,
-  Sparkles,
   Server,
   Cloud,
   Laptop,
@@ -139,7 +138,7 @@ function OccurrencesPanel({ id, currency }: { id: string; currency: string }) {
       ) : (
         <table className="w-full text-left text-xs">
           <thead>
-            <tr className="text-[11px] font-bold uppercase tracking-wider text-ink-subtle">
+            <tr className="text-[11px] font-semibold uppercase tracking-wider text-ink-subtle">
               <th className="py-1.5 pr-4">Period</th>
               <th className="py-1.5 pr-4">Amount</th>
               <th className="py-1.5 pr-4">Status</th>
@@ -154,7 +153,7 @@ function OccurrencesPanel({ id, currency }: { id: string; currency: string }) {
                 </td>
                 <td className="py-1.5 pr-4 font-mono tabular-nums">{formatFinanceCurrency(o.amount, currency)}</td>
                 <td className="py-1.5 pr-4">
-                  <Badge tone={o.status === 'FAILED' ? 'danger' : 'success'} className="text-[10px]">
+                  <Badge tone={o.status === 'FAILED' ? 'danger' : 'success'} className="text-[11px]">
                     {o.status === 'FAILED' ? 'Failed' : 'Generated'}
                   </Badge>
                   {o.error && <span className="ml-2 text-danger">{o.error}</span>}
@@ -312,7 +311,7 @@ export function SubscriptionsTable({
             <span className="grid size-7 place-items-center rounded-lg bg-surface-muted text-ink-muted">
               <Layers className="size-4" />
             </span>
-            <h2 className="text-lg font-bold tracking-tight text-ink sm:text-xl">
+            <h2 className="text-lg font-semibold tracking-tight text-ink sm:text-xl">
               Recurring Subscriptions & SaaS
             </h2>
           </div>
@@ -349,7 +348,7 @@ export function SubscriptionsTable({
           <div className="mt-2">
             <span
               data-testid="kpi-monthly-burn"
-              className="text-2xl font-extrabold tracking-tight text-ink tabular-nums"
+              className="text-2xl font-semibold tracking-tight text-ink tabular-nums"
             >
               {formatFinanceCurrency(metrics.monthly.base, base)}
             </span>
@@ -371,7 +370,7 @@ export function SubscriptionsTable({
           <div className="mt-2">
             <span
               data-testid="kpi-active-count"
-              className="text-2xl font-extrabold tracking-tight text-ink tabular-nums"
+              className="text-2xl font-semibold tracking-tight text-ink tabular-nums"
             >
               {metrics.activeCount}
             </span>
@@ -392,7 +391,7 @@ export function SubscriptionsTable({
           <div className="mt-2">
             <span
               data-testid="kpi-renewals-count"
-              className="text-2xl font-extrabold tracking-tight text-ink tabular-nums"
+              className="text-2xl font-semibold tracking-tight text-ink tabular-nums"
             >
               {metrics.upcomingDueCount}
             </span>
@@ -458,9 +457,9 @@ export function SubscriptionsTable({
                 data-testid={`status-tab-${st.toLowerCase()}`}
                 onClick={() => setStatusFilter(st)}
                 className={cn(
-                  'rounded-lg px-2.5 py-1 text-xs font-semibold transition-all cursor-pointer',
+                  'rounded-lg px-2.5 py-1 text-xs font-semibold transition cursor-pointer',
                   statusFilter === st
-                    ? 'bg-surface text-ink shadow-2xs font-bold'
+                    ? 'bg-surface text-ink shadow-2xs font-semibold'
                     : 'text-ink-muted hover:text-ink',
                 )}
               >
@@ -505,7 +504,7 @@ export function SubscriptionsTable({
           <div className="overflow-x-auto">
             <table data-testid="subscriptions-table" className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-border/30 bg-surface-muted/40 text-[11px] font-bold uppercase tracking-wider text-ink-subtle">
+                <tr className="border-b border-border/30 bg-surface-muted/40 text-[11px] font-semibold uppercase tracking-wider text-ink-subtle">
                   <th className="px-5 py-3.5">Vendor & Category</th>
                   <th className="px-5 py-3.5">Billing & Cost</th>
                   <th className="px-5 py-3.5">Payment Account</th>
@@ -553,7 +552,7 @@ export function SubscriptionsTable({
                           <div>
                             <span
                               data-testid={`sub-vendor-${sub.id}`}
-                              className="font-bold text-ink transition-colors"
+                              className="font-semibold text-ink transition-colors"
                             >
                               {sub.vendorName}
                             </span>
@@ -565,7 +564,7 @@ export function SubscriptionsTable({
                                 {sub.category}
                               </span>
                               {!sub.supplierId && (
-                                <Badge data-testid={`sub-badge-supplier-${sub.id}`} tone="warning" className="ml-2 text-[10px] py-0">
+                                <Badge data-testid={`sub-badge-supplier-${sub.id}`} tone="warning" className="ml-2 text-[11px] py-0">
                                   Link a supplier
                                 </Badge>
                               )}
@@ -580,19 +579,19 @@ export function SubscriptionsTable({
                           <div className="flex items-baseline gap-1">
                             <span
                               data-testid={`sub-amount-${sub.id}`}
-                              className="font-mono font-bold text-ink tabular-nums"
+                              className="font-mono font-semibold text-ink tabular-nums"
                             >
                               {formatFinanceCurrency(sub.amount, currencyOf(sub))}
                             </span>
-                            <span className="text-[10px] text-ink-subtle font-medium">
+                            <span className="text-[11px] text-ink-subtle font-medium">
                               / {INTERVAL_SUFFIX[sub.billingInterval]}
                             </span>
                           </div>
-                          <p data-testid={`sub-interval-${sub.id}`} className="text-[10px] text-ink-subtle">
+                          <p data-testid={`sub-interval-${sub.id}`} className="text-[11px] text-ink-subtle">
                             {INTERVAL_LABEL[sub.billingInterval]}
                           </p>
                           {sub.billingInterval !== 'MONTHLY' && (
-                            <p className="font-mono text-[10px] text-ink-muted">
+                            <p className="font-mono text-[11px] text-ink-muted">
                               ~{formatFinanceCurrency(normalizedMonthly, currencyOf(sub))}/mo
                             </p>
                           )}
@@ -612,7 +611,7 @@ export function SubscriptionsTable({
                         ) : (
                           <span
                             data-testid={`sub-account-${sub.id}`}
-                            className="text-ink-subtle italic"
+                            className="text-ink-subtle"
                           >
                             Unassigned
                           </span>
@@ -632,7 +631,7 @@ export function SubscriptionsTable({
                             <Badge
                               data-testid={`sub-renewal-badge-${sub.id}`}
                               tone={billingInfo.tone}
-                              className="text-[10px] py-0 font-semibold"
+                              className="text-[11px] py-0 font-semibold"
                             >
                               {billingInfo.badgeText}
                             </Badge>
@@ -651,17 +650,17 @@ export function SubscriptionsTable({
                               ? 'warning'
                               : 'neutral'
                           }
-                          className="text-[10px] uppercase font-bold tracking-wider"
+                          className="text-[11px] font-semibold"
                         >
                           {sub.status}
                         </Badge>
                         {sub.lastOccurrenceStatus === 'FAILED' && (
-                          <Badge data-testid={`sub-badge-failed-${sub.id}`} tone="danger" className="ml-1 text-[10px] py-0">
+                          <Badge data-testid={`sub-badge-failed-${sub.id}`} tone="danger" className="ml-1 text-[11px] py-0">
                             Failed
                           </Badge>
                         )}
                         {hasEnded(sub) && (
-                          <Badge data-testid={`sub-badge-ended-${sub.id}`} tone="neutral" className="ml-1 text-[10px] py-0">
+                          <Badge data-testid={`sub-badge-ended-${sub.id}`} tone="neutral" className="ml-1 text-[11px] py-0">
                             Ended
                           </Badge>
                         )}

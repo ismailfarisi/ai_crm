@@ -79,7 +79,7 @@ export function DashboardKpiChart({
             {title}
           </h2>
           <div className="mt-1 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-            <p className="text-2xl font-bold tracking-tight tabular-nums text-ink" data-testid="revenue-total">
+            <p className="text-2xl font-semibold tracking-tight tabular-nums text-ink" data-testid="revenue-total">
               {money(total)}
             </p>
             {growth !== null && (
@@ -151,7 +151,8 @@ export function DashboardKpiChart({
           >
             {bars.map((bar, i) => {
               const height = peak > 0 ? (bar.value / peak) * 100 : 0;
-              const isActive = activeIndex === i;
+              // The month in hand leads; pointing at another month moves the lead to it.
+              const isActive = activeIndex === null ? i === bars.length - 1 : activeIndex === i;
               const isComparison = i < firstCurrent;
               return (
                 <li key={bar.label} className="flex h-full min-w-0 flex-1 flex-col justify-end">
@@ -182,7 +183,7 @@ export function DashboardKpiChart({
                 key={bar.label}
                 className={cn(
                   'min-w-0 flex-1 truncate text-center text-[11px]',
-                  activeIndex === i ? 'font-semibold text-ink' : 'text-ink-subtle',
+                  (activeIndex === null ? i === bars.length - 1 : activeIndex === i) ? 'font-semibold text-ink' : 'text-ink-subtle',
                 )}
               >
                 {bar.month}

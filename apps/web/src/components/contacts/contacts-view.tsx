@@ -308,7 +308,7 @@ export function ContactsView() {
                         {c.phone && <p className="truncate">{c.phone}</p>}
                       </div>
                     )}
-                    <div className="flex items-center justify-between pt-1 border-t border-border/30 text-[10px] text-ink-subtle">
+                    <div className="flex items-center justify-between pt-1 border-t border-border/30 text-[11px] text-ink-subtle">
                       <span>{c.owner?.fullName ?? 'Unassigned'}</span>
                       <span>{formatRelative(c.createdAt)}</span>
                     </div>

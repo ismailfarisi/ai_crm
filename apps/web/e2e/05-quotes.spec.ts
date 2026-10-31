@@ -14,7 +14,7 @@ test.describe('Feature: Quotes & Workflow Orchestration', () => {
     await expect(page.getByText('Total Value')).toBeVisible();
 
     await expect(page.getByRole('button', { name: 'Quick AI Modal' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'New Quotation' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'New quote' })).toBeVisible();
   });
 
   test('opens quick AI modal and switches between AI and manual tabs', async ({ page }) => {
@@ -36,7 +36,7 @@ test.describe('Feature: Quotes & Workflow Orchestration', () => {
   });
 
   test('builds and saves a full quotation in Quote Editor', async ({ page }) => {
-    await page.getByRole('link', { name: 'New Quotation' }).click();
+    await page.getByRole('link', { name: 'New quote' }).click();
     await expect(page).toHaveURL(/\/quotes\/new/);
 
     const uniqueId = Date.now();
@@ -56,7 +56,7 @@ test.describe('Feature: Quotes & Workflow Orchestration', () => {
   });
 
   test('opens Print and PDF preview modal', async ({ page }) => {
-    await page.getByRole('link', { name: 'New Quotation' }).click();
+    await page.getByRole('link', { name: 'New quote' }).click();
     await page.waitForURL(/\/quotes\/new/);
 
     await page.getByRole('button', { name: 'Preview / Print' }).click();

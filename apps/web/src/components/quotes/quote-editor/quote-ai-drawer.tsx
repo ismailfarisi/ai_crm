@@ -222,7 +222,7 @@ export function QuoteAiDrawer({
                 <ClipboardList className="size-5" aria-hidden />
               </span>
               <div className="min-w-0">
-                <h2 id={titleId} className="text-sm font-bold tracking-tight text-ink">
+                <h2 id={titleId} className="text-sm font-semibold tracking-tight text-ink">
                   Draft lines from an enquiry
                 </h2>
                 <p className="text-xs text-ink-muted">
@@ -299,7 +299,7 @@ export function QuoteAiDrawer({
             {generatedDraft && totals && (
               <div className="space-y-4 rounded-2xl border border-border bg-surface-muted/30 p-4 sm:p-5">
                 <div className="flex items-center justify-between gap-2 border-b border-border pb-3">
-                  <span className="text-sm font-bold text-ink">Check before adding</span>
+                  <span className="text-sm font-semibold text-ink">Check before adding</span>
                   <span className="text-xs font-medium text-ink-muted">
                     {productCount} priced {productCount === 1 ? 'line' : 'lines'}
                   </span>
@@ -317,7 +317,7 @@ export function QuoteAiDrawer({
                     }
                     if (item.type === 'note') {
                       return (
-                        <div key={item.id} className="flex items-center gap-2 px-3 py-1.5 text-xs italic text-ink-muted">
+                        <div key={item.id} className="flex items-center gap-2 px-3 py-1.5 text-xs text-ink-muted">
                           <FileText className="size-3.5 text-ink-subtle shrink-0" aria-hidden />
                           <span>{item.description}</span>
                         </div>
@@ -342,7 +342,7 @@ export function QuoteAiDrawer({
                   })}
                 </div>
 
-                <div className="flex justify-between text-sm font-bold text-ink">
+                <div className="flex justify-between text-sm font-semibold text-ink">
                   <span>Adds before tax</span>
                   <span className="tabular-nums">{formatCurrency(totals.subtotalAmount, currentCurrency)}</span>
                 </div>

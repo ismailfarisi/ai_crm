@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Brain, Network, Settings, Sparkles, Star, TestTube } from 'lucide-react';
+import { Brain, Network, Settings, Star, TestTube, Cpu } from 'lucide-react';
 import { api, queryKeys, type AiConfigDto } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/client';
 import { Badge, Card, CardBody, CardHeader, CardTitle } from '@/components/ui/primitives';
@@ -16,12 +16,12 @@ interface AiProviderCardProps {
 
 const PROVIDER_INFO: Record<
   AiConfigDto['provider'],
-  { title: string; description: string; icon: typeof Sparkles }
+  { title: string; description: string; icon: typeof Cpu }
 > = {
   OPENAI: {
     title: 'OpenAI',
     description: 'GPT models — e.g. gpt-4o, gpt-4o-mini.',
-    icon: Sparkles,
+    icon: Cpu,
   },
   ANTHROPIC: {
     title: 'Anthropic',
@@ -40,7 +40,7 @@ export function AiProviderCard({ config, onConfigure }: AiProviderCardProps) {
   const info = PROVIDER_INFO[config.provider] ?? {
     title: config.provider,
     description: 'AI provider integration.',
-    icon: Sparkles,
+    icon: Cpu,
   };
   const Icon = info.icon;
 

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { History, Maximize2, MessageSquarePlus, Sparkles, X } from 'lucide-react';
+import { History, Maximize2, MessageSquarePlus, X, MessageCircle } from 'lucide-react';
 import { PERMISSIONS } from '@saas/shared';
 import { api, queryKeys } from '@/lib/api/endpoints';
 import { useSession } from '@/lib/session-context';
@@ -36,7 +36,7 @@ export function AssistantPanel() {
       className="fixed inset-0 z-50 flex flex-col border-l border-border bg-surface shadow-xl sm:inset-y-0 sm:left-auto sm:right-0 sm:w-[420px] print:hidden"
     >
       <header className="flex h-14 items-center gap-1 border-b border-border px-3">
-        <Sparkles className="size-4 text-brand" aria-hidden="true" />
+        <MessageCircle className="size-4 text-ink-muted" aria-hidden="true" />
         <span className="flex-1 truncate text-sm font-semibold">Assistant</span>
         <button
           type="button"
