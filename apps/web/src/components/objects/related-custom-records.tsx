@@ -48,7 +48,7 @@ export function RelatedCustomRecords({
               <Badge tone="brand">{object?.name ?? 'Record'}</Badge>
               <Link
                 href={`/objects/${object?.slug}/${record?.id}`}
-                className="font-medium text-xs text-ink hover:text-brand"
+                className="font-medium text-xs text-ink underline-offset-2 hover:underline"
               >
                 {title}
               </Link>

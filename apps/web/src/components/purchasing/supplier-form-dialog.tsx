@@ -48,7 +48,8 @@ const EMPTY: FormValues = {
   taxId: '',
   emirate: null,
   vatStatus: 'NOT_REGISTERED',
-  currency: 'USD',
+  // Filled with the organisation's base currency when the dialog opens.
+  currency: '',
   paymentTermsDays: 30,
   leadTimeDays: 7,
   isActive: true,
@@ -70,7 +71,10 @@ export function SupplierFormDialog({ open, onClose, supplier }: SupplierFormDial
   const update = useUpdateSupplier();
   // VAT status, emirate and TRN are UAE VAT ideas; elsewhere the form is the
   // plain one, and the API picks the status.
-  const orgIsUae = useOrganization().data?.country === 'AE';
+  const organization = useOrganization().data;
+  const orgIsUae = organization?.country === 'AE';
+  // Most suppliers bill in the currency the business keeps its books in.
+  const baseCurrency = organization?.baseCurrency ?? '';
 
   const {
     register,
@@ -115,15 +119,23 @@ export function SupplierFormDialog({ open, onClose, supplier }: SupplierFormDial
             emirate: supplier.emirate,
             // The stored status, not a recomputed one: opening a record must not change it.
             vatStatus: supplier.vatStatus ?? defaultVatStatus(supplier.country, supplier.taxId),
-            currency: supplier.currency ?? 'USD',
+            currency: supplier.currency ?? baseCurrency,
             paymentTermsDays: supplier.paymentTermsDays ?? 30,
             leadTimeDays: supplier.leadTimeDays ?? 7,
             isActive: supplier.isActive,
             notes: supplier.notes ?? '',
           }
-        : EMPTY,
+        : { ...EMPTY, currency: baseCurrency },
     );
+    // The base currency is read once per opening; it arriving late is handled below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, supplier, reset]);
+
+  // The organisation can still be loading when the dialog opens. Fill the
+  // currency once it arrives, unless someone has already typed one.
+  useEffect(() => {
+    if (open && baseCurrency && !getValues('currency')) setValue('currency', baseCurrency);
+  }, [open, baseCurrency, getValues, setValue]);
 
   const onSubmit = handleSubmit(async (values) => {
     try {
@@ -257,7 +269,7 @@ export function SupplierFormDialog({ open, onClose, supplier }: SupplierFormDial
           </div>
         )}
         {orgIsUae && vatStatus === 'REGISTERED' && !(taxId ?? '').trim() && (
-          <p role="alert" className="text-sm text-amber-600 dark:text-amber-400">
+          <p role="alert" className="text-sm text-warning">
             VAT on this supplier&apos;s bills cannot be recovered until a TRN is added.
           </p>
         )}
@@ -265,8 +277,8 @@ export function SupplierFormDialog({ open, onClose, supplier }: SupplierFormDial
         <div className="grid gap-4 sm:grid-cols-3">
           <Input
             label="Currency"
-            placeholder="USD"
-            hint="3-letter ISO code, used when ordering from this supplier."
+            placeholder={baseCurrency || undefined}
+            hint="3-letter code. Orders and bills from this supplier are priced in it."
             error={errors.currency?.message}
             {...register('currency')}
           />

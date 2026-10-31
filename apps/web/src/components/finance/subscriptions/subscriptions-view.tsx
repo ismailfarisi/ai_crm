@@ -18,7 +18,8 @@ import { FinanceNav } from '../finance-nav';
 import { SubscriptionsTable } from './subscriptions-table';
 import { SubscriptionFormModal } from './subscription-form-modal';
 import { Dialog } from '@/components/ui/dialog';
-import { formatFinanceCurrency } from '../dashboard/treasury-stat-cards';
+import { formatFinanceCurrency, OtherCurrencies, splitByBase, totalsByCurrency } from '../money';
+import { useOrganization } from '@/hooks/use-organization';
 import {
   useRecurringExpenses,
   useFinanceAccounts,
@@ -61,34 +62,28 @@ export function diffRecurringExpense(
   return changed as UpdateRecurringExpensePayload;
 }
 
-const STAT_TONES = {
-  brand: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-  info: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
-  warning: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-  success: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-} as const;
-
 function StatItem({
   label,
   value,
   icon: Icon,
-  tone = 'brand',
+  note,
   'data-testid': testId,
 }: {
   label: string;
   value: string | number;
   icon: LucideIcon;
-  tone?: keyof typeof STAT_TONES;
+  note?: React.ReactNode;
   'data-testid'?: string;
 }) {
   return (
-    <div data-testid={testId} className="flex items-center gap-3">
-      <span className={`grid size-9 shrink-0 place-items-center rounded-xl ${STAT_TONES[tone]}`}>
+    <div data-testid={testId} className="flex items-start gap-3">
+      <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-muted text-ink-muted">
         <Icon className="size-4" />
       </span>
       <div>
         <p className="text-xs font-semibold tracking-wider text-ink-muted uppercase">{label}</p>
         <p className="text-2xl font-semibold tabular-nums text-ink tracking-tight">{value}</p>
+        {note}
       </div>
     </div>
   );
@@ -116,18 +111,23 @@ export function SubscriptionsView() {
   const activeSubs = subscriptions.filter((s) => s.status === 'ACTIVE');
   const pausedOrCancelled = subscriptions.filter((s) => s.status !== 'ACTIVE');
 
-  const monthlyNormalized = activeSubs.reduce(
-    (acc, s) => acc + monthlyEquivalent(s.amount || 0, s.billingInterval),
-    0,
+  // A schedule is billed in its supplier's currency, or the base currency
+  // without one. Monthly costs are only added within a currency.
+  const base = useOrganization().data?.baseCurrency ?? '';
+  const monthly = splitByBase(
+    totalsByCurrency(
+      activeSubs,
+      (s) => monthlyEquivalent(s.amount || 0, s.billingInterval),
+      (s) => s.currency || base,
+    ),
+    base,
   );
-
-  const annualizedCost = monthlyNormalized * 12;
 
   return (
     <div data-testid="subscriptions-view" className="space-y-6">
       <PageHeader
-        title="Subscriptions & SaaS Tools"
-        description="Audit recurring cloud tools, prevent seat sprawl, and track renewal schedules across departments."
+        title="Subscriptions"
+        description="Rent, licences, utilities and other bills that come round on a schedule."
         actions={
           <Button
             type="button"
@@ -148,31 +148,29 @@ export function SubscriptionsView() {
       {/* Summary KPI Stats */}
       <div className="flex flex-wrap items-center gap-x-12 gap-y-4 py-1">
         <StatItem
-          label="Monthly SaaS Run Rate"
-          value={formatFinanceCurrency(monthlyNormalized)}
+          label="Monthly cost"
+          value={formatFinanceCurrency(monthly.base, base)}
           icon={DollarSign}
-          tone="brand"
+          note={<OtherCurrencies others={monthly.others} />}
           data-testid="stat-monthly-run-rate"
         />
         <StatItem
-          label="Annualized Spend"
-          value={formatFinanceCurrency(annualizedCost)}
+          label="Yearly cost"
+          value={formatFinanceCurrency(monthly.base * 12, base)}
           icon={TrendingUp}
-          tone="info"
+          note={<OtherCurrencies others={monthly.others.map((o) => ({ ...o, amount: o.amount * 12 }))} />}
           data-testid="stat-annualized-spend"
         />
         <StatItem
           label="Active Subscriptions"
           value={activeSubs.length}
           icon={Layers}
-          tone="success"
           data-testid="stat-active-subs-count"
         />
         <StatItem
           label="Paused / Inactive"
           value={pausedOrCancelled.length}
           icon={PauseCircle}
-          tone="warning"
           data-testid="stat-paused-subs-count"
         />
       </div>

@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
+import { RowActionMenu, type RowMenuAction } from '@/components/documents/row-action-menu';
 import { useCan } from '@/lib/session-context';
 import { formatMoney } from '@/lib/utils';
 
@@ -103,7 +104,7 @@ export function InvoicesTable({
         cell: ({ row }) => (
           <Link
             href={`/quotes/${row.original.quoteId}`}
-            className="font-mono text-xs text-brand hover:underline"
+            className="font-mono text-xs font-medium text-ink underline-offset-2 hover:underline"
           >
             {row.original.quoteNumber ?? 'Not yet numbered'}
           </Link>
@@ -113,7 +114,7 @@ export function InvoicesTable({
         accessorKey: 'amount',
         header: ({ column }) => <DataTableColumnHeader column={column} title="Amount" />,
         cell: ({ row }) => (
-          <span className="font-medium text-ink">
+          <span className="font-medium tabular-nums text-ink">
             {formatMoney(row.original.amount || 0, row.original.currency)}
           </span>
         ),
@@ -154,58 +155,55 @@ export function InvoicesTable({
           const isFinal = invoice.status === 'PAID' || invoice.status === 'CANCELLED';
           const isSending = sendingId === invoice.id;
 
+          // One visible action, the one that moves the invoice on. Everything
+          // else, voiding included, is in the menu: a filled red button on
+          // every unpaid row made the most destructive action the loudest.
+          const more: RowMenuAction[] = [];
+          if (onPrint) {
+            more.push({ key: 'print', label: 'Preview and print', icon: Printer, onSelect: () => onPrint(invoice) });
+          }
+          if (onDownload) {
+            more.push({ key: 'pdf', label: 'Download PDF', icon: Download, onSelect: () => onDownload(invoice) });
+          }
+          if (onViewHistory && (invoice.paidAmount ?? 0) > 0) {
+            more.push({ key: 'history', label: 'Payment history', icon: History, onSelect: () => onViewHistory(invoice) });
+          }
+          if (canManage && onSend && invoice.status !== 'CANCELLED') {
+            more.push({
+              key: 'send',
+              label: isSending ? 'Sending…' : 'Email to customer',
+              icon: Mail,
+              disabled: isSending || !invoice.customerEmail,
+              hint: invoice.customerEmail ? undefined : 'The customer has no email address',
+              onSelect: () => onSend(invoice),
+            });
+          }
+          if (canCredit && onCredit && invoice.status !== 'CANCELLED') {
+            more.push({
+              key: 'credit',
+              label: (invoice.creditedAmount ?? 0) > 0 ? 'Credits and refunds' : 'Credit or refund',
+              icon: Undo2,
+              onSelect: () => onCredit(invoice),
+            });
+          }
+          if (canManage && onVoid && invoice.status !== 'CANCELLED' && !(invoice.creditedAmount ?? 0)) {
+            more.push({ key: 'void', label: 'Void invoice', icon: Ban, tone: 'danger', onSelect: () => onVoid(invoice) });
+          }
+
           return (
             <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
-              {onPrint && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => onPrint(invoice)}
-                  title="Preview & Print Invoice"
-                  aria-label={`Preview & Print Invoice ${invoice.invoiceNumber}`}
-                >
-                  <Printer className="size-3.5" />
-                </Button>
-              )}
-              {onDownload && (
-                <Button size="sm" variant="ghost" onClick={() => onDownload(invoice)} title="Download PDF">
-                  <Download className="size-3.5" />
-                </Button>
-              )}
-              {onViewHistory && (invoice.paidAmount ?? 0) > 0 && (
-                <Button size="sm" variant="ghost" onClick={() => onViewHistory(invoice)}>
-                  <History className="size-3.5" />
-                </Button>
-              )}
-              {canManage && onSend && invoice.status !== 'CANCELLED' && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  loading={isSending}
-                  disabled={isSending || !invoice.customerEmail}
-                  title={invoice.customerEmail ? undefined : 'Invoice has no customer email'}
-                  onClick={() => onSend(invoice)}
-                >
-                  <Mail className="size-3.5" />
-                </Button>
-              )}
               {canManage && onRecordPayment && !isFinal && (
-                <Button size="sm" variant="primary" onClick={() => onRecordPayment(invoice)}>
-                  <Wallet className="size-3.5" />
-                  Record Payment
+                <Button
+                  size="sm"
+                  variant="outline"
+                  aria-label={`Record payment on ${invoice.invoiceNumber}`}
+                  onClick={() => onRecordPayment(invoice)}
+                >
+                  <Wallet className="size-3.5" aria-hidden />
+                  Record payment
                 </Button>
               )}
-              {canCredit && onCredit && invoice.status !== 'CANCELLED' && (
-                <Button size="sm" variant="ghost" onClick={() => onCredit(invoice)} title="Credits and refunds">
-                  <Undo2 className="size-3.5" />
-                  {(invoice.creditedAmount ?? 0) > 0 ? 'Credits' : 'Credit'}
-                </Button>
-              )}
-              {canManage && onVoid && invoice.status !== 'CANCELLED' && !(invoice.creditedAmount ?? 0) && (
-                <Button size="sm" variant="danger" onClick={() => onVoid(invoice)}>
-                  <Ban className="size-3.5" />
-                </Button>
-              )}
+              <RowActionMenu actions={more} label={invoice.invoiceNumber} />
             </div>
           );
         },

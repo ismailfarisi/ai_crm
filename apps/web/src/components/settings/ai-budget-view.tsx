@@ -72,20 +72,20 @@ export function AiBudgetView() {
       {status?.budget ? (
         <div
           className={cn(
-            'rounded-2xl border bg-surface/85 p-5 shadow-xs',
+            'rounded-2xl border bg-surface p-5 shadow-xs',
             budgetStatus?.isOverBudget
-              ? 'border-rose-500/30 bg-rose-500/5'
+              ? 'border-danger/30 bg-danger-soft'
               : budgetStatus?.isNearLimit
-              ? 'border-amber-500/30 bg-amber-500/5'
+              ? 'border-warning/30 bg-warning-soft'
               : 'border-border/40',
           )}
         >
           <div className="flex items-baseline justify-between gap-2">
             <span className="text-2xl font-extrabold tracking-tight tabular-nums text-ink">
-              {formatBudgetCurrency(status.currentSpendUsd)}
+              {formatBudgetCurrency(status.currentSpendUsd, 'USD')}
             </span>
             <span className="text-xs font-semibold text-ink-muted tabular-nums">
-              cap: {formatBudgetCurrency(status.budget.monthlyBudgetUsd)}
+              cap: {formatBudgetCurrency(status.budget.monthlyBudgetUsd, 'USD')}
             </span>
           </div>
 
@@ -102,18 +102,18 @@ export function AiBudgetView() {
 
           <div className="mt-2 flex items-center justify-between text-xs">
             {budgetStatus?.isOverBudget ? (
-              <span className="inline-flex items-center gap-1 font-bold text-rose-600 dark:text-rose-400">
+              <span className="inline-flex items-center gap-1 font-bold text-danger">
                 <ShieldAlert className="size-3.5" />
                 Over budget — AI calls are being blocked ({budgetStatus.percentage}%)
               </span>
             ) : budgetStatus?.isNearLimit ? (
-              <span className="inline-flex items-center gap-1 font-bold text-amber-600 dark:text-amber-400">
+              <span className="inline-flex items-center gap-1 font-bold text-warning">
                 <AlertTriangle className="size-3.5" />
                 Near cap ({budgetStatus.percentage}%)
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 text-ink-muted">
-                <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                <CheckCircle2 className="size-3.5 text-success" />
                 {budgetStatus?.percentage ?? 0}% spent
               </span>
             )}
@@ -164,7 +164,7 @@ export function AiBudgetView() {
                 step="5"
                 value={alertThresholdPercent}
                 onChange={(e) => setAlertThresholdPercent(parseInt(e.target.value, 10))}
-                className="mt-2.5 h-2 w-full cursor-pointer appearance-none rounded-lg bg-surface-muted accent-amber-500"
+                className="mt-2.5 h-2 w-full cursor-pointer appearance-none rounded-lg bg-surface-muted accent-[var(--color-brand)]"
               />
             </div>
           </div>
@@ -196,7 +196,7 @@ export function AiBudgetView() {
           </div>
 
           {!isEnabled && (
-            <div className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
+            <div className="flex items-center gap-2 rounded-xl border border-warning/20 bg-warning-soft px-3.5 py-2.5 text-xs font-semibold text-warning">
               <AlertCircle className="size-4 shrink-0" />
               <span>Disabled — AI calls will not be blocked even over this cap.</span>
             </div>
@@ -234,7 +234,7 @@ export function AiBudgetView() {
                     <td className="py-2 font-medium text-ink">{row.feature}</td>
                     <td className="py-2 text-ink-muted">{row.model}</td>
                     <td className="py-2 tabular-nums text-ink-muted">
-                      {formatBudgetCurrency(row.estimatedCostUsd)}
+                      {formatBudgetCurrency(row.estimatedCostUsd, 'USD')}
                     </td>
                     <td className="py-2">
                       <Badge tone={row.success ? 'success' : 'danger'}>

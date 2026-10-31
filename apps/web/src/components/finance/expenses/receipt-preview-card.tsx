@@ -6,7 +6,6 @@ import {
   ZoomOut,
   RotateCw,
   Maximize2,
-  Minimize2,
   ExternalLink,
   Receipt,
   Sparkles,
@@ -25,12 +24,16 @@ import { Badge, Card, CardBody, CardHeader, CardTitle } from '@/components/ui/pr
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { useReceiptSource } from '@/hooks/use-expenses';
+import { formatExpenseCurrency } from './expense-money';
+
+export { formatExpenseCurrency };
 
 export interface ReceiptPreviewCardProps {
   receiptUrl?: string | null;
   merchantName?: string | null;
   amount?: number | null;
-  currency?: string;
+  /** The claim's own currency. There is no default: a missing one shows the figure bare. */
+  currency?: string | null;
   expenseDate?: string | null;
   category?: string | null;
   ocrData?: ScannedReceiptResult | null;
@@ -41,28 +44,11 @@ export interface ReceiptPreviewCardProps {
   className?: string;
 }
 
-export function formatExpenseCurrency(
-  amount: number | null | undefined,
-  currency: string = 'USD',
-): string {
-  const value = typeof amount === 'number' && !isNaN(amount) ? amount : 0;
-  try {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency || 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(value);
-  } catch {
-    return `$${value.toFixed(2)}`;
-  }
-}
-
 export function ReceiptPreviewCard({
   receiptUrl,
   merchantName,
   amount,
-  currency = 'USD',
+  currency,
   expenseDate,
   category,
   ocrData,
@@ -89,7 +75,7 @@ export function ReceiptPreviewCard({
       : effectiveReceiptUrl.split('?')[0].split('.').pop()?.toUpperCase() || 'Attachment';
   const effectiveMerchant = merchantName ?? ocrData?.merchantName ?? claim?.merchantName ?? 'Unknown Merchant';
   const effectiveAmount = amount ?? ocrData?.amount ?? claim?.amount ?? 0;
-  const effectiveCurrency = currency ?? ocrData?.currency ?? claim?.currency ?? 'USD';
+  const effectiveCurrency = currency ?? ocrData?.currency ?? claim?.currency ?? null;
   const effectiveDate = expenseDate ?? ocrData?.expenseDate ?? claim?.expenseDate;
   const effectiveCategory = category ?? ocrData?.category ?? claim?.category;
   const confidence = ocrData?.confidence;
@@ -112,9 +98,9 @@ export function ReceiptPreviewCard({
   return (
     <Card
       data-testid="receipt-preview-card"
-      className={cn('flex flex-col overflow-hidden border border-border/40 shadow-xs bg-surface/90', className)}
+      className={cn('flex flex-col overflow-hidden', className)}
     >
-      <CardHeader className="flex flex-row items-center justify-between gap-2 border-b border-border/25 bg-surface-muted/20 px-4 py-3">
+      <CardHeader className="flex flex-row items-center justify-between gap-2 border-b border-border bg-surface-muted px-4 py-3">
         <div className="flex items-center gap-2">
           <Receipt className="size-4 text-ink-muted" />
           <CardTitle className="text-sm font-semibold text-ink">Receipt Document</CardTitle>
@@ -225,7 +211,7 @@ export function ReceiptPreviewCard({
         ) : effectiveReceiptUrl ? (
           <div
             data-testid="receipt-viewport"
-            className="relative flex min-h-[300px] max-h-[480px] w-full items-center justify-center overflow-auto bg-stone-900/5 p-4 scrollbar-thin dark:bg-stone-950/40"
+            className="relative flex min-h-[300px] max-h-[480px] w-full items-center justify-center overflow-auto bg-surface-muted p-4 scrollbar-thin"
           >
             <div
               data-testid="receipt-image-container"
@@ -248,9 +234,9 @@ export function ReceiptPreviewCard({
         ) : (
           <div
             data-testid="receipt-empty-state"
-            className="flex flex-col items-center justify-center p-8 text-center bg-surface-muted/10 min-h-[240px]"
+            className="flex flex-col items-center justify-center p-8 text-center min-h-[240px]"
           >
-            <div className="rounded-2xl bg-surface-muted/50 p-4 text-ink-subtle border border-border/30">
+            <div className="rounded-2xl bg-surface-muted p-4 text-ink-subtle border border-border">
               <FileText className="size-8 stroke-[1.5]" />
             </div>
             <h4 className="mt-3 text-sm font-semibold text-ink">No Receipt Attached</h4>
@@ -276,11 +262,11 @@ export function ReceiptPreviewCard({
         {showOcrMetadata && (ocrData || claim) && (
           <div
             data-testid="ocr-metadata-panel"
-            className="border-t border-border/25 bg-surface px-4 py-3.5 space-y-3"
+            className="border-t border-border bg-surface px-4 py-3.5 space-y-3"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
-                <Sparkles className="size-3.5 text-brand" />
+                <Sparkles className="size-3.5 text-ink-muted" aria-hidden />
                 <span className="text-xs font-semibold text-ink">Extracted Receipt Metadata</span>
               </div>
               {confidence !== undefined && (
@@ -296,7 +282,7 @@ export function ReceiptPreviewCard({
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
-              <div className="rounded-xl border border-border/30 bg-surface-muted/30 p-2">
+              <div className="rounded-xl border border-border bg-surface-muted p-2">
                 <div className="flex items-center gap-1 text-[11px] text-ink-muted mb-0.5">
                   <Building2 className="size-3 text-ink-subtle" />
                   Merchant
@@ -306,27 +292,27 @@ export function ReceiptPreviewCard({
                 </span>
               </div>
 
-              <div className="rounded-xl border border-border/30 bg-surface-muted/30 p-2">
+              <div className="rounded-xl border border-border bg-surface-muted p-2">
                 <div className="flex items-center gap-1 text-[11px] text-ink-muted mb-0.5">
                   <Calendar className="size-3 text-ink-subtle" />
                   Date
                 </div>
-                <span className="font-medium text-ink block">
+                <span className="font-medium tabular-nums text-ink block">
                   {effectiveDate ? new Date(effectiveDate).toLocaleDateString() : '—'}
                 </span>
               </div>
 
-              <div className="rounded-xl border border-border/30 bg-surface-muted/30 p-2">
+              <div className="rounded-xl border border-border bg-surface-muted p-2">
                 <div className="flex items-center gap-1 text-[11px] text-ink-muted mb-0.5">
                   <DollarSign className="size-3 text-ink-subtle" />
                   Amount
                 </div>
-                <span className="font-semibold text-ink block">
+                <span className="font-semibold tabular-nums text-ink block">
                   {formatExpenseCurrency(effectiveAmount, effectiveCurrency)}
                 </span>
               </div>
 
-              <div className="rounded-xl border border-border/30 bg-surface-muted/30 p-2">
+              <div className="rounded-xl border border-border bg-surface-muted p-2">
                 <div className="flex items-center gap-1 text-[11px] text-ink-muted mb-0.5">
                   <Tag className="size-3 text-ink-subtle" />
                   Category
@@ -346,11 +332,11 @@ export function ReceiptPreviewCard({
                     <span>Tax: {formatExpenseCurrency(ocrData.taxAmount, effectiveCurrency)}</span>
                   )}
                 </div>
-                <div className="divide-y divide-border/20 rounded-xl border border-border/30 bg-surface-muted/15 overflow-hidden">
+                <div className="divide-y divide-border rounded-xl border border-border overflow-hidden">
                   {ocrData.items.map((item, idx) => (
                     <div key={idx} className="flex items-center justify-between px-3 py-1.5 text-xs">
                       <span className="text-ink truncate mr-2">{item.description || `Item #${idx + 1}`}</span>
-                      <span className="font-mono text-ink-muted shrink-0">
+                      <span className="tabular-nums text-ink-muted shrink-0">
                         {formatExpenseCurrency(item.amount, effectiveCurrency)}
                       </span>
                     </div>
@@ -365,7 +351,7 @@ export function ReceiptPreviewCard({
                 <button
                   type="button"
                   onClick={() => setShowRawText(!showRawText)}
-                  className="flex items-center gap-1 text-[11px] font-medium text-brand hover:underline cursor-pointer"
+                  className="flex items-center gap-1 text-[11px] font-medium text-ink underline underline-offset-2 cursor-pointer"
                 >
                   {showRawText ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
                   {showRawText ? 'Hide OCR Raw Text' : 'View OCR Raw Text'}
@@ -373,7 +359,7 @@ export function ReceiptPreviewCard({
                 {showRawText && (
                   <pre
                     data-testid="ocr-raw-text"
-                    className="mt-2 max-h-32 overflow-auto rounded-xl border border-border/30 bg-surface-muted/40 p-2.5 font-mono text-[10px] text-ink-muted whitespace-pre-wrap"
+                    className="mt-2 max-h-32 overflow-auto rounded-xl border border-border bg-surface-muted p-2.5 font-mono text-[10px] text-ink-muted whitespace-pre-wrap"
                   >
                     {ocrData.rawText}
                   </pre>
@@ -394,7 +380,7 @@ export function ReceiptPreviewCard({
           size="lg"
         >
           <div className="flex flex-col items-center justify-center p-2">
-            <div className="flex items-center gap-2 mb-3 bg-surface-muted/40 p-1.5 rounded-xl border border-border/30">
+            <div className="flex items-center gap-2 mb-3 bg-surface-muted p-1.5 rounded-xl border border-border">
               <button
                 type="button"
                 onClick={handleZoomOut}
@@ -420,7 +406,7 @@ export function ReceiptPreviewCard({
                 <RotateCw className="size-4" />
               </button>
             </div>
-            <div className="max-h-[60vh] w-full overflow-auto rounded-xl bg-stone-900/5 p-4 flex items-center justify-center">
+            <div className="max-h-[60vh] w-full overflow-auto rounded-xl bg-surface-muted p-4 flex items-center justify-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={effectiveReceiptUrl}

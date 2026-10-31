@@ -11,6 +11,7 @@ import { ApiError } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/field';
 import { Alert } from '@/components/ui/primitives';
+import { UNREACHABLE_MESSAGE } from '@/components/auth/messages';
 
 export function AcceptInviteForm() {
   const router = useRouter();
@@ -32,7 +33,7 @@ export function AcceptInviteForm() {
     setFormError(null);
     try {
       await api.auth.acceptInvite(values);
-      window.location.href = '/dashboard';
+      window.location.assign('/dashboard');
     } catch (error) {
       if (error instanceof ApiError) {
         for (const [field, message] of Object.entries(error.fieldErrors)) {
@@ -40,7 +41,7 @@ export function AcceptInviteForm() {
         }
         setFormError(error.message);
       } else {
-        setFormError('Could not reach the server. Is the API running?');
+        setFormError(UNREACHABLE_MESSAGE);
       }
     }
   });
@@ -53,7 +54,7 @@ export function AcceptInviteForm() {
           This link needs an invite token. Ask the person who invited you to re-send it.
         </p>
         <p className="mt-6 text-sm text-ink-muted">
-          <Link href="/login" className="font-medium text-brand hover:underline">
+          <Link href="/login" className="font-medium text-ink underline underline-offset-2">
             Sign in instead
           </Link>
         </p>
@@ -90,7 +91,7 @@ export function AcceptInviteForm() {
 
       <p className="mt-6 text-sm text-ink-muted">
         Already have an account?{' '}
-        <Link href="/login" className="font-medium text-brand hover:underline">
+        <Link href="/login" className="font-medium text-ink underline underline-offset-2">
           Sign in
         </Link>
       </p>

@@ -144,11 +144,11 @@ export function CreateQuoteModal({ open, onClose, onSubmit }: CreateQuoteModalPr
             onClick={() => setTab('ai')}
             className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer ${
               tab === 'ai'
-                ? 'border-brand text-brand-hover font-semibold'
+                ? 'border-brand text-ink font-semibold'
                 : 'border-transparent text-ink-muted hover:text-ink'
             }`}
           >
-            <Sparkles className="size-4 text-brand-hover" />
+            <Sparkles className="size-4" aria-hidden />
             AI Agent Draft
           </button>
           <button
@@ -156,7 +156,7 @@ export function CreateQuoteModal({ open, onClose, onSubmit }: CreateQuoteModalPr
             onClick={() => setTab('manual')}
             className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer ${
               tab === 'manual'
-                ? 'border-brand text-brand-hover font-semibold'
+                ? 'border-brand text-ink font-semibold'
                 : 'border-transparent text-ink-muted hover:text-ink'
             }`}
           >

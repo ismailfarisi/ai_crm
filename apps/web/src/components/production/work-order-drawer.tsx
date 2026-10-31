@@ -200,7 +200,7 @@ export function WorkOrderDrawer({ workOrderId, onClose }: WorkOrderDrawerProps) 
                           toast.error(msg);
                         }
                       }}
-                      className="rounded-md border border-line bg-surface px-2 py-1 text-xs text-ink font-medium focus:outline-hidden focus:border-accent"
+                      className="rounded-md border border-line bg-surface px-2 py-1 text-xs text-ink font-medium focus:outline-hidden focus:border-brand-ring"
                     >
                       {columns
                         .filter((c) => c.status !== 'COMPLETE')
@@ -243,7 +243,7 @@ export function WorkOrderDrawer({ workOrderId, onClose }: WorkOrderDrawerProps) 
                   )}
                   <Link
                     href={`/production/${wo.id}`}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline ml-auto"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-ink underline underline-offset-2 ml-auto"
                   >
                     Open Bench Mode &rarr;
                   </Link>
@@ -408,7 +408,7 @@ export function WorkOrderDrawer({ workOrderId, onClose }: WorkOrderDrawerProps) 
                             </div>
                             <div className="mt-2 h-1.5 rounded-full bg-surface-sunk overflow-hidden">
                               <div
-                                className="h-full rounded-full bg-accent transition-all duration-300"
+                                className="h-full rounded-full bg-brand transition-all duration-300"
                                 style={{ width: `${pct}%` }}
                               />
                             </div>
@@ -430,7 +430,7 @@ export function WorkOrderDrawer({ workOrderId, onClose }: WorkOrderDrawerProps) 
               </span>
               <Link
                 href={`/production/${wo.id}`}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:underline"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-ink underline underline-offset-2"
               >
                 Open Bench Mode &rarr;
               </Link>

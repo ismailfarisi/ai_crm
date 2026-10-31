@@ -2,12 +2,7 @@
 
 import { useEffect } from 'react';
 import { API_PUBLIC_URL } from '@/lib/api/config';
-
-/** Only ever go somewhere inside this app — never to a URL a caller supplied. */
-function safeDestination(next: string | undefined): string {
-  if (!next || !next.startsWith('/') || next.startsWith('//')) return '/dashboard';
-  return next;
-}
+import { safeDestination } from '@/components/auth/safe-destination';
 
 /**
  * Spends the refresh cookie the server side cannot see, then carries on.
@@ -46,9 +41,9 @@ export function SessionContinue({ next }: { next?: string }) {
       <div
         className="size-6 animate-spin rounded-full border-2 border-border border-t-brand"
         role="status"
-        aria-label="Signing you back in"
+        aria-label="Opening Kerf"
       />
-      <p className="text-sm text-ink-muted">Signing you back in…</p>
+      <p className="text-sm text-ink-muted">Opening Kerf…</p>
     </div>
   );
 }

@@ -77,7 +77,7 @@ export function KanbanBoard<T>({
               <button
                 type="button"
                 onClick={() => toggleCollapse(col.key)}
-                className="flex items-center gap-1.5 font-semibold text-xs text-ink hover:text-brand"
+                className="flex items-center gap-1.5 font-semibold text-xs text-ink underline-offset-2 hover:underline"
               >
                 {isCollapsed ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}
                 {!isCollapsed && <span>{col.label}</span>}

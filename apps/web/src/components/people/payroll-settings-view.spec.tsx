@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { PayrollSettingsDto, PensionSchemeDto } from '@saas/shared';
 import { PayrollSettingsView } from './payroll-settings-view';
 
@@ -18,19 +18,24 @@ const scheme = (over: Partial<PensionSchemeDto>): PensionSchemeDto => ({
 });
 let schemes: PensionSchemeDto[];
 const saveSettings = vi.fn();
+const updateScheme = vi.fn();
+const deleteScheme = vi.fn();
+vi.mock('@/hooks/use-organization', () => ({ useOrganization: () => ({ data: { baseCurrency: 'AED' } }) }));
 
 vi.mock('@/hooks/use-payroll', () => ({
   usePayrollSettings: () => ({ data: settings, isPending: false, isError: false, error: null }),
   useSavePayrollSettings: () => ({ mutateAsync: saveSettings, isPending: false }),
   usePensionSchemes: () => ({ data: schemes, isPending: false, isError: false, error: null }),
   useCreatePensionScheme: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useUpdatePensionScheme: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
-  useDeletePensionScheme: () => ({ mutate: vi.fn(), isPending: false }),
+  useUpdatePensionScheme: () => ({ mutate: vi.fn(), mutateAsync: updateScheme, isPending: false }),
+  useDeletePensionScheme: () => ({ mutate: vi.fn(), mutateAsync: deleteScheme, isPending: false }),
 }));
 
 beforeEach(() => {
   granted = new Set(['payroll:read']);
   saveSettings.mockReset();
+  updateScheme.mockReset().mockResolvedValue(undefined);
+  deleteScheme.mockReset().mockResolvedValue(undefined);
   settings = { wpsEnabled: false, employerIdType: null, employerId: null, payerRoutingCode: null, annualLeaveDays: 30, monthlyStandardHours: 208 };
   schemes = [scheme({}), scheme({ id: 's2', name: 'Assigned fund', assignedCount: 3, isActive: true })];
   HTMLDialogElement.prototype.showModal ||= function (this: HTMLDialogElement) {
@@ -42,6 +47,36 @@ beforeEach(() => {
 });
 
 describe('PayrollSettingsView', () => {
+  it('asks before activating a scheme and says what it deducts', async () => {
+    granted.add('payroll:manage');
+    render(<PayrollSettingsView />);
+    fireEvent.click(screen.getByRole('button', { name: 'Activate' }));
+    expect(updateScheme).not.toHaveBeenCalled();
+    const dialog = screen.getByRole('dialog', { name: 'Activate GPSSA?' });
+    expect(dialog).toHaveTextContent(/deducts 5% from the pay/);
+    fireEvent.click(screen.getByRole('button', { name: 'Activate scheme' }));
+    await waitFor(() => expect(updateScheme).toHaveBeenCalledWith({ id: 's1', input: { isActive: true } }));
+  });
+
+  it('asks before deactivating, naming the employees it stops deducting for', async () => {
+    granted.add('payroll:manage');
+    render(<PayrollSettingsView />);
+    fireEvent.click(screen.getByRole('button', { name: 'Deactivate' }));
+    expect(screen.getByRole('dialog', { name: 'Deactivate Assigned fund?' })).toHaveTextContent('3 employees');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(updateScheme).not.toHaveBeenCalled();
+  });
+
+  it('asks before deleting a scheme', async () => {
+    granted.add('payroll:manage');
+    render(<PayrollSettingsView />);
+    const row = screen.getByTestId('scheme-s1');
+    fireEvent.click(within(row).getByRole('button', { name: 'Delete' }));
+    expect(deleteScheme).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete scheme' }));
+    await waitFor(() => expect(deleteScheme).toHaveBeenCalledWith('s1'));
+  });
+
   it('hides the WPS fields while WPS is off and shows them when it is ticked', () => {
     granted.add('payroll:manage');
     render(<PayrollSettingsView />);

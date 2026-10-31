@@ -371,7 +371,7 @@ export function CatalogView() {
           <div>
             <Link
               href={`/catalog/templates/${row.original.id}`}
-              className="font-medium text-ink hover:text-brand hover:underline"
+              className="font-medium text-ink hover:underline underline-offset-2"
             >
               {row.original.name}
             </Link>

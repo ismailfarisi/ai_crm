@@ -113,11 +113,11 @@ export function AiProviderCard({ config, onConfigure }: AiProviderCardProps) {
     <Card className="flex flex-col justify-between transition-shadow hover:shadow-md">
       <CardHeader className="flex items-start justify-between gap-3 pb-3">
         <div className="flex items-center gap-3">
-          <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand ring-1 ring-brand/20">
-            <Icon className="size-5" />
+          <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-brand-soft text-ink ring-1 ring-brand/20">
+            <Icon className="size-5" aria-hidden />
           </div>
           <div>
-            <CardTitle className="text-base font-semibold">{info.title}</CardTitle>
+            <CardTitle>{info.title}</CardTitle>
             <div className="mt-1 flex items-center gap-1.5">
               <Badge tone={badgeTone}>{badgeLabel}</Badge>
               {config.isDefault && <Badge tone="brand">Default</Badge>}
@@ -125,18 +125,25 @@ export function AiProviderCard({ config, onConfigure }: AiProviderCardProps) {
           </div>
         </div>
 
+        {/* A 40px hit area around the small switch; the name stays "Enable
+            OpenAI" and the switch's own checked state says whether it is. */}
         <label
-          className="relative inline-flex cursor-pointer items-center"
-          title={isUnconfigured ? 'Configure credentials first' : 'Toggle provider'}
+          className="-m-2 inline-flex min-h-10 min-w-10 shrink-0 cursor-pointer items-center justify-center p-2 has-[:disabled]:cursor-not-allowed"
+          title={isUnconfigured ? 'Configure credentials first' : undefined}
         >
           <input
             type="checkbox"
+            role="switch"
+            aria-label={`Enable ${info.title}`}
             className="peer sr-only"
             checked={config.isEnabled}
             disabled={isUnconfigured || toggleMutation.isPending}
             onChange={(e) => toggleMutation.mutate(e.target.checked)}
           />
-          <div className="peer h-5 w-9 rounded-full bg-surface-muted border border-border after:absolute after:top-[2px] after:left-[2px] after:h-4 after:w-4 after:rounded-full after:bg-white after:border after:border-border after:transition-all after:content-[''] peer-checked:bg-brand peer-checked:border-brand peer-checked:after:translate-x-full peer-checked:after:border-white peer-disabled:cursor-not-allowed peer-disabled:opacity-50" />
+          <span
+            aria-hidden
+            className="relative h-5 w-9 rounded-full border border-border-control bg-surface-muted transition-colors after:absolute after:top-[1px] after:left-[1px] after:size-4 after:rounded-full after:border after:border-border-control after:bg-surface after:transition-transform after:content-[''] peer-checked:border-brand peer-checked:bg-brand peer-checked:after:translate-x-4 peer-checked:after:border-surface peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand-ring peer-disabled:opacity-50"
+          />
         </label>
       </CardHeader>
 

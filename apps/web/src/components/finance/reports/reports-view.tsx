@@ -37,8 +37,11 @@ const TABS: { key: FinancialReport; label: string; range: 'period' | 'asOf' | 'm
   { key: 'labour-utilisation', label: 'Labour', range: 'month' },
 ];
 
-export function ReportsView() {
-  const [tab, setTab] = useState<FinancialReport>('profit-and-loss');
+/** `initialReport` is the page's `?report=`, so the Finance overview can link straight to a tab. */
+export function ReportsView({ initialReport }: { initialReport?: string } = {}) {
+  const [tab, setTab] = useState<FinancialReport>(
+    () => TABS.find((t) => t.key === initialReport)?.key ?? 'profit-and-loss',
+  );
   const [from, setFrom] = useState(`${new Date().getUTCFullYear()}-01-01`);
   const [to, setTo] = useState(iso(new Date()));
   const [asOf, setAsOf] = useState(iso(new Date()));

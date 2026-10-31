@@ -6,16 +6,16 @@ import { ColumnDef } from '@tanstack/react-table';
 import { PackageCheck } from 'lucide-react';
 import type { SalesOrderDto, SalesOrderStatus } from '@saas/shared';
 import { useSalesOrders } from '@/hooks/use-sales-orders';
-import { EmptyState, PageHeader } from '@/components/ui/primitives';
+import { Badge, EmptyState, PageHeader } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/data-table';
 import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
 
-const STATUS_STYLES: Record<SalesOrderStatus, string> = {
-  OPEN: 'bg-accent-soft text-accent',
-  IN_PRODUCTION: 'bg-warning-soft text-warning',
-  FULFILLED: 'bg-success-soft text-success',
-  CLOSED: 'bg-surface-sunk text-ink-muted',
-  CANCELLED: 'bg-surface-sunk text-ink-subtle line-through',
+const STATUS_TONES: Record<SalesOrderStatus, 'neutral' | 'info' | 'warning' | 'success'> = {
+  OPEN: 'info',
+  IN_PRODUCTION: 'warning',
+  FULFILLED: 'success',
+  CLOSED: 'neutral',
+  CANCELLED: 'neutral',
 };
 
 export const ORDER_STATUS_LABELS: Record<SalesOrderStatus, string> = {
@@ -28,9 +28,9 @@ export const ORDER_STATUS_LABELS: Record<SalesOrderStatus, string> = {
 
 export function OrderStatusPill({ status }: { status: SalesOrderStatus }) {
   return (
-    <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium whitespace-nowrap ${STATUS_STYLES[status]}`}>
+    <Badge tone={STATUS_TONES[status]} className={status === 'CANCELLED' ? 'line-through' : undefined}>
       {ORDER_STATUS_LABELS[status]}
-    </span>
+    </Badge>
   );
 }
 
@@ -47,7 +47,7 @@ export function OrdersView() {
         accessorKey: 'orderNumber',
         header: ({ column }) => <DataTableColumnHeader column={column} title="Order" />,
         cell: ({ row }) => (
-          <Link href={`/orders/${row.original.id}`} className="font-medium text-accent hover:underline">
+          <Link href={`/orders/${row.original.id}`} className="font-medium text-ink underline-offset-2 hover:underline">
             {row.original.orderNumber}
           </Link>
         ),
@@ -87,8 +87,12 @@ export function OrdersView() {
           const pct = totalAmount > 0 ? Math.min(100, (invoicedAmount / totalAmount) * 100) : 0;
           return (
             <div className="min-w-32">
-              <div className="h-1.5 rounded bg-surface-sunk" aria-hidden>
-                <div className="h-1.5 rounded bg-accent" style={{ width: `${pct}%` }} />
+              <div className="h-1.5 overflow-hidden rounded-full bg-surface-muted" aria-hidden>
+                <div
+                  data-testid="invoiced-bar"
+                  className="h-1.5 rounded-full bg-charcoal"
+                  style={{ width: `${pct}%` }}
+                />
               </div>
               <p className="mt-1 text-xs text-ink-muted tabular-nums">
                 {money(invoicedAmount)} · {billed} of {billingSchedule.length}{' '}
@@ -121,7 +125,7 @@ export function OrdersView() {
             aria-label="Filter by status"
             value={status}
             onChange={(e) => setStatus(e.target.value as SalesOrderStatus | '')}
-            className="rounded border border-line bg-surface px-3 py-2 text-sm text-ink"
+            className="h-10 rounded-xl border border-border-control bg-surface px-3 text-sm text-ink"
           >
             <option value="">All statuses</option>
             {Object.entries(ORDER_STATUS_LABELS).map(([value, label]) => (

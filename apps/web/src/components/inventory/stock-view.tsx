@@ -5,6 +5,8 @@ import { ColumnDef } from '@tanstack/react-table';
 import { AlertTriangle, BellRing, Boxes, Plus, Scale } from 'lucide-react';
 import { PERMISSIONS, needsReorder } from '@saas/shared';
 import { useReorderSuggestions, useStock } from '@/hooks/use-inventory';
+import { useOrganization } from '@/hooks/use-organization';
+import { formatMoney } from '@/lib/utils';
 import type { StockItemDto } from '@/lib/api/endpoints';
 import { Can } from '@/components/auth/can';
 import { Button } from '@/components/ui/button';
@@ -24,6 +26,8 @@ import { OpeningStockDialog } from './opening-stock-dialog';
 export function StockView() {
   const { data: stock = [], isPending, isError, error } = useStock();
   const { data: suggestions = [] } = useReorderSuggestions();
+  // Moving-average cost is kept in the currency the books are kept in.
+  const baseCurrency = useOrganization().data?.baseCurrency ?? null;
   const [enteringOpening, setEnteringOpening] = useState(false);
   const [acting, setActing] = useState<{ item: StockItemDto; mode: 'adjust' | 'reorder' } | null>(
     null,
@@ -78,7 +82,7 @@ export function StockView() {
           // Four places, because a unit cost gets divided before it is
           // multiplied back up by an order quantity.
           <span className="tabular-nums text-ink-muted">
-            {row.original.avgUnitCost.toFixed(4)}
+            {formatMoney(row.original.avgUnitCost, baseCurrency, { decimals: 4 })}
           </span>
         ),
       },
@@ -87,7 +91,7 @@ export function StockView() {
         header: ({ column }) => <DataTableColumnHeader column={column} title="Value" />,
         cell: ({ row }) => (
           <span className="tabular-nums text-ink">
-            {(row.original.qtyOnHand * row.original.avgUnitCost).toFixed(2)}
+            {formatMoney(row.original.qtyOnHand * row.original.avgUnitCost, baseCurrency)}
           </span>
         ),
       },
@@ -128,7 +132,7 @@ export function StockView() {
         ),
       },
     ],
-    [],
+    [baseCurrency],
   );
 
   const totalValue = stock.reduce((sum, s) => sum + s.qtyOnHand * s.avgUnitCost, 0);
@@ -139,7 +143,7 @@ export function StockView() {
         title="Stock"
         description={
           stock.length > 0
-            ? `${stock.length} material${stock.length === 1 ? '' : 's'} on hand, valued at ${totalValue.toFixed(2)} at moving-average cost.`
+            ? `${stock.length} material${stock.length === 1 ? '' : 's'} on hand, valued at ${formatMoney(totalValue, baseCurrency)} at moving-average cost.`
             : 'What is on the shelf, valued at moving-average cost.'
         }
         actions={

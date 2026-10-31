@@ -265,7 +265,7 @@ export function TimesheetWeekGrid() {
                             className={cn(
                               'h-9 w-full rounded-lg border border-border/50 bg-surface px-2 text-center text-sm tabular-nums',
                               readOnly && 'bg-surface-muted/60 text-ink-muted',
-                              edits[cellId(key, day)] !== undefined && !readOnly && 'border-amber-500/70',
+                              edits[cellId(key, day)] !== undefined && !readOnly && 'border-brand',
                             )}
                           />
                           {(locked || hasClock) && (

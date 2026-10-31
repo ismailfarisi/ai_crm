@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ComponentProps } from 'react';
 import Link from 'next/link';
 import { ColumnDef } from '@tanstack/react-table';
 import { ClipboardList, Plus } from 'lucide-react';
@@ -9,23 +9,25 @@ import { usePurchaseOrders } from '@/hooks/use-purchase-orders';
 import { formatRelative } from '@/lib/utils';
 import { Can } from '@/components/auth/can';
 import { Button } from '@/components/ui/button';
-import { EmptyState, PageHeader } from '@/components/ui/primitives';
+import { Badge, EmptyState, PageHeader } from '@/components/ui/primitives';
 import { PurchaseOrderFormDialog } from './purchase-order-form-dialog';
 import { DataTable } from '@/components/ui/data-table';
 import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
+
+type BadgeTone = NonNullable<ComponentProps<typeof Badge>['tone']>;
 
 /**
  * State reads at a glance, not just as a word: an order needing someone's
  * attention should not look the same as one that is finished.
  */
-const STATUS_STYLES: Record<PurchaseOrderStatus, string> = {
-  DRAFT: 'bg-surface-sunk text-ink-muted',
-  AWAITING_APPROVAL: 'bg-warning-soft text-warning',
-  APPROVED: 'bg-accent-soft text-accent',
-  SENT: 'bg-accent-soft text-accent',
-  PARTIALLY_RECEIVED: 'bg-warning-soft text-warning',
-  RECEIVED: 'bg-success-soft text-success',
-  CANCELLED: 'bg-surface-sunk text-ink-subtle line-through',
+const STATUS_TONES: Record<PurchaseOrderStatus, BadgeTone> = {
+  DRAFT: 'neutral',
+  AWAITING_APPROVAL: 'warning',
+  APPROVED: 'info',
+  SENT: 'info',
+  PARTIALLY_RECEIVED: 'warning',
+  RECEIVED: 'success',
+  CANCELLED: 'neutral',
 };
 
 const STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
@@ -40,11 +42,9 @@ const STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
 
 export function StatusPill({ status }: { status: PurchaseOrderStatus }) {
   return (
-    <span
-      className={`inline-block rounded px-2 py-0.5 text-xs font-medium whitespace-nowrap ${STATUS_STYLES[status]}`}
-    >
+    <Badge tone={STATUS_TONES[status]} className={status === 'CANCELLED' ? 'line-through' : undefined}>
       {STATUS_LABELS[status]}
-    </span>
+    </Badge>
   );
 }
 
@@ -70,7 +70,7 @@ export function PurchaseOrdersView() {
         cell: ({ row }) => (
           <Link
             href={`/purchasing/orders/${row.original.id}`}
-            className="font-medium text-accent hover:underline"
+            className="font-medium text-ink underline underline-offset-2"
           >
             {row.original.poNumber}
           </Link>

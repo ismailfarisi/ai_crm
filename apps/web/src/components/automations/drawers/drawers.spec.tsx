@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { NodeInspectorDrawer } from './node-inspector-drawer';
 import { TestRunDrawer } from './test-run-drawer';
 import { ExpressionHelper } from './expression-helper';
@@ -179,7 +179,7 @@ describe('Automation Drawers', () => {
     fireEvent.click(screen.getByTestId('execute-test-btn'));
     expect(await screen.findByTestId('pending-agent-approval')).toBeDefined();
     expect(screen.getByText('Approval required')).toBeDefined();
-    expect(screen.getByText(/Create quote QT-1/)).toBeDefined();
+    expect(within(screen.getByTestId('pending-agent-approval')).getByText(/Create quote QT-1/)).toBeDefined();
   });
 
   it('renders ExpressionHelper with tabs and variable insertion', () => {

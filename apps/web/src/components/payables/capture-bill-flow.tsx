@@ -182,7 +182,7 @@ function ReviewDialog({
 
         {result.duplicateOf && (
           <p className="text-sm">
-            <Link href={`/purchasing/bills/${result.duplicateOf.id}`} className="text-accent hover:underline">
+            <Link href={`/purchasing/bills/${result.duplicateOf.id}`} className="font-medium text-ink underline underline-offset-2">
               Open {result.duplicateOf.billNumber}
             </Link>
           </p>

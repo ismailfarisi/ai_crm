@@ -184,19 +184,33 @@ describe('Automation Node Components', () => {
       expect(screen.getByText('Cron: 0 9 * * 1-5')).toBeInTheDocument();
     });
 
-    it('renders crmEventTrigger with event type preview', () => {
+    it('renders crmEventTrigger with the event the inspector sets, by its label', () => {
       renderWithReactFlow(
         <TriggerNode
           type="crmEventTrigger"
           data={{
-            label: 'On Deal Won',
-            config: { eventType: 'deal.won' },
+            label: 'Big quote alert',
+            config: { event: 'quote.accepted' },
           }}
         />,
       );
 
-      expect(screen.getByText('On Deal Won')).toBeInTheDocument();
-      expect(screen.getByText('Event: deal.won')).toBeInTheDocument();
+      expect(screen.getByText('Big quote alert')).toBeInTheDocument();
+      expect(screen.getByText('Customer accepted a quote')).toBeInTheDocument();
+    });
+
+    it('still reads a legacy eventType', () => {
+      renderWithReactFlow(
+        <TriggerNode type="crmEventTrigger" data={{ label: 'Old', config: { eventType: 'invoice.overdue' } }} />,
+      );
+      expect(screen.getByText('Invoice overdue')).toBeInTheDocument();
+    });
+
+    it('flags a stored event that is not in the event list', () => {
+      renderWithReactFlow(
+        <TriggerNode type="crmEventTrigger" data={{ label: 'On Deal Won', config: { event: 'deal.won' } }} />,
+      );
+      expect(screen.getByTestId('trigger-unknown-event')).toHaveTextContent('Unknown event: deal.won');
     });
 
     it('renders manualTrigger with execution hint', () => {

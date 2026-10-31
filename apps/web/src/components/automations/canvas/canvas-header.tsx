@@ -23,7 +23,15 @@ export interface CanvasHeaderProps {
   workflowName: string;
   onNameChange: (name: string) => void;
   status: 'DRAFT' | 'ACTIVE' | 'PAUSED';
+  /** Asks to activate or deactivate; the page confirms and saves it. */
   onStatusToggle: () => void;
+  /** Disables Activate, with the reason as its title (e.g. an invalid schedule). */
+  statusBlockedReason?: string | null;
+  /**
+   * Runs before Back navigates. Call `event.preventDefault()` to stay, e.g. to
+   * ask about unsaved changes first.
+   */
+  onBackClick?: (event: React.MouseEvent<HTMLAnchorElement>) => void;
   isDirty: boolean;
   isSaving: boolean;
   /** Blocks Save (e.g. a trigger editor holds invalid input); explained by the title. */
@@ -45,6 +53,8 @@ export function CanvasHeader({
   onNameChange,
   status,
   onStatusToggle,
+  statusBlockedReason,
+  onBackClick,
   isDirty,
   isSaving,
   saveBlockedReason,
@@ -71,6 +81,8 @@ export function CanvasHeader({
         <Link
           href="/automations"
           data-testid="back-to-automations-link"
+          aria-label="Back to automations"
+          onClick={onBackClick}
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border text-ink-muted hover:bg-surface-muted hover:text-ink transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -151,25 +163,20 @@ export function CanvasHeader({
 
       {/* Right section: Active toggle, Test Run, Save */}
       <div className="flex items-center gap-2 shrink-0">
-        {/* Active Toggle Switch */}
+        {/* Activate / Deactivate: an explicit action, confirmed and saved by the page */}
         <button
           type="button"
           data-testid="status-toggle-btn"
           onClick={onStatusToggle}
-          className={clsx(
-            'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer',
-            status === 'ACTIVE'
-              ? 'border-success/40 bg-success-soft text-success'
-              : 'border-border bg-surface text-ink-muted hover:bg-surface-muted',
-          )}
+          disabled={status !== 'ACTIVE' && !!statusBlockedReason}
+          title={status !== 'ACTIVE' ? (statusBlockedReason ?? undefined) : undefined}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-surface hover:bg-surface-muted text-xs font-semibold text-ink shadow-xs transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
         >
           <span
-            className={clsx(
-              'h-2 w-2 rounded-full',
-              status === 'ACTIVE' ? 'bg-success animate-pulse' : 'bg-border-strong',
-            )}
+            aria-hidden
+            className={clsx('h-2 w-2 rounded-full', status === 'ACTIVE' ? 'bg-border-strong' : 'bg-success')}
           />
-          {status === 'ACTIVE' ? 'Active' : 'Inactive'}
+          {status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
         </button>
 
         {/* Runs Drawer Button */}
@@ -202,10 +209,10 @@ export function CanvasHeader({
           title={saveBlockedReason ?? undefined}
           onClick={onSave}
           className={clsx(
-            'flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-ink-inverted shadow-xs transition-all cursor-pointer',
+            'flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50',
             isDirty
-              ? 'bg-brand hover:bg-brand-hover active:scale-95'
-              : 'bg-brand-dark hover:bg-brand-dark',
+              ? 'bg-brand text-on-brand hover:bg-brand-hover active:scale-95'
+              : 'border border-border bg-surface text-ink-muted hover:bg-surface-muted',
           )}
         >
           <Save className="h-3.5 w-3.5" />

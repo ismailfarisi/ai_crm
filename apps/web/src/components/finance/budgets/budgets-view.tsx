@@ -17,32 +17,22 @@ import { FinanceNav } from '../finance-nav';
 import { BudgetGrid, formatBudgetCurrency } from './budget-meter-card';
 import { CreateBudgetModal } from './create-budget-modal';
 import { useCategoryBudgets, useCreateCategoryBudget } from '@/hooks/use-finance';
-import type { CategoryBudgetDto } from '@saas/shared';
-
-const STAT_TONES = {
-  brand: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-  info: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
-  warning: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-  success: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-  danger: 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
-} as const;
+import { useOrganization } from '@/hooks/use-organization';
 
 function StatItem({
   label,
   value,
   icon: Icon,
-  tone = 'brand',
   'data-testid': testId,
 }: {
   label: string;
   value: string | number;
   icon: LucideIcon;
-  tone?: keyof typeof STAT_TONES;
   'data-testid'?: string;
 }) {
   return (
     <div data-testid={testId} className="flex items-center gap-3">
-      <span className={`grid size-9 shrink-0 place-items-center rounded-xl ${STAT_TONES[tone]}`}>
+      <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-muted text-ink-muted">
         <Icon className="size-4" />
       </span>
       <div>
@@ -56,6 +46,8 @@ function StatItem({
 export function BudgetsView() {
   const { data: budgets = [], isLoading } = useCategoryBudgets();
   const createBudgetMutation = useCreateCategoryBudget();
+  // Budgets have no currency of their own; they are set in the base currency.
+  const base = useOrganization().data?.baseCurrency ?? '';
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
@@ -92,30 +84,26 @@ export function BudgetsView() {
       <div className="flex flex-wrap items-center gap-x-12 gap-y-4 py-1">
         <StatItem
           label="Total Allocated"
-          value={formatBudgetCurrency(totalAllocated)}
+          value={formatBudgetCurrency(totalAllocated, base)}
           icon={Target}
-          tone="brand"
           data-testid="stat-total-allocated"
         />
         <StatItem
           label="Total Spent"
-          value={formatBudgetCurrency(totalSpent)}
+          value={formatBudgetCurrency(totalSpent, base)}
           icon={TrendingDown}
-          tone="info"
           data-testid="stat-total-spent"
         />
         <StatItem
           label="Remaining Buffer"
-          value={formatBudgetCurrency(remainingBudget)}
+          value={formatBudgetCurrency(remainingBudget, base)}
           icon={CheckCircle2}
-          tone="success"
           data-testid="stat-remaining-buffer"
         />
         <StatItem
           label="Avg Utilization"
           value={`${overallUtilization}%`}
           icon={Percent}
-          tone={Number(overallUtilization) > 90 ? 'danger' : 'warning'}
           data-testid="stat-avg-utilization"
         />
       </div>
@@ -123,6 +111,7 @@ export function BudgetsView() {
       {/* Grid of Budget Cards */}
       <BudgetGrid
         budgets={budgets}
+        currency={base}
         isLoading={isLoading}
         onNewBudget={() => setIsCreateModalOpen(true)}
       />

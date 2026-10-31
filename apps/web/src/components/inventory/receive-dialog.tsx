@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { PurchaseOrderDto } from '@saas/shared';
 import { useReceiveGoods } from '@/hooks/use-inventory';
+import { formatMoney } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/field';
@@ -79,7 +80,7 @@ export function ReceiveDialog({ open, onClose, order }: ReceiveDialogProps) {
           >
             {receivable.length === 0
               ? 'Nothing to book in'
-              : `Book in ${total.toFixed(2)} ${order.currency}`}
+              : `Book in ${formatMoney(total, order.currency)}`}
           </Button>
         </>
       }

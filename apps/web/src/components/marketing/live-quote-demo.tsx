@@ -91,11 +91,8 @@ export function LiveQuoteDemo() {
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border/60 bg-surface shadow-xl shadow-black/5">
-      <div className="flex items-center gap-2 border-b border-border/50 bg-surface-muted/40 px-4 py-2.5">
-        <span className="size-2.5 rounded-full bg-danger/50" />
-        <span className="size-2.5 rounded-full bg-brand/60" />
-        <span className="size-2.5 rounded-full bg-emerald-500/50" />
-        <span className="ml-2 text-xs font-medium text-ink-subtle">
+      <div className="flex items-center border-b border-border/50 bg-surface-muted/40 px-4 py-2.5">
+        <span className="text-xs font-medium text-ink-muted">
           Rigid gift box — live cost model
         </span>
       </div>

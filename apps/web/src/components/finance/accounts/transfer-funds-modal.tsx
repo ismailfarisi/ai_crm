@@ -19,7 +19,7 @@ import { Input, Select, Textarea } from '@/components/ui/field';
 import { Badge } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 import type { FinanceAccountDto, TransferFundsPayload } from '@saas/shared';
-import { formatFinanceCurrency } from '../dashboard/treasury-stat-cards';
+import { formatFinanceCurrency } from '../money';
 import { formatAccountNumber } from '../dashboard/account-balance-grid';
 
 export interface TransferFundsModalProps {
@@ -114,7 +114,7 @@ export function TransferFundsModal({
       return;
     }
     if (isNaN(numericAmount) || numericAmount <= 0) {
-      setError('Transfer amount must be greater than $0.00.');
+      setError('Enter an amount above zero.');
       return;
     }
     if (crossCurrency && numericToAmount <= 0) {
@@ -151,14 +151,14 @@ export function TransferFundsModal({
       open={open}
       onClose={onClose}
       title="Transfer Funds Between Accounts"
-      description="Record an internal inter-account liquidity rebalance with automated double-entry ledger journals."
+      description="Move money between your own accounts. The journal entry is posted for you."
       size="md"
     >
       <form onSubmit={handleSubmit} noValidate data-testid="transfer-funds-form" className="space-y-4">
         {error && (
           <div
             data-testid="transfer-form-error"
-            className="flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3.5 py-2.5 text-xs font-semibold text-rose-600 dark:text-rose-400"
+            className="flex items-center gap-2 rounded-xl border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-xs font-semibold text-danger"
           >
             <AlertCircle className="size-4 shrink-0" />
             <span>{error}</span>
@@ -168,7 +168,7 @@ export function TransferFundsModal({
         {isSameAccount && (
           <div
             data-testid="same-account-warning"
-            className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs font-semibold text-amber-700 dark:text-amber-300"
+            className="flex items-center gap-2 rounded-xl border border-warning/30 bg-warning-soft px-3.5 py-2.5 text-xs font-semibold text-warning"
           >
             <AlertTriangle className="size-4 shrink-0" />
             <span>Cannot transfer to the same account. Please choose a different destination.</span>
@@ -234,7 +234,7 @@ export function TransferFundsModal({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <label htmlFor="input-transfer-amount" className="block text-xs font-bold text-ink">
-              Transfer Amount ($)
+              Amount{fromAccount ? ` (${fromAccount.currency})` : ''}
             </label>
             {fromAccount && fromAccount.balance > 0 && (
               <div className="flex items-center gap-1.5">
@@ -244,7 +244,7 @@ export function TransferFundsModal({
                     type="button"
                     data-testid={`quick-amount-${pct}`}
                     onClick={() => handleQuickPercent(pct)}
-                    className="rounded-md border border-border/40 bg-surface px-2 py-0.5 text-[10px] font-semibold text-ink-muted hover:border-amber-500 hover:text-amber-600 transition-colors cursor-pointer"
+                    className="rounded-md border border-border/40 bg-surface px-2 py-0.5 text-[10px] font-semibold text-ink-muted hover:border-border-control hover:text-ink transition-colors cursor-pointer"
                   >
                     {pct === 100 ? 'Max' : `${pct}%`}
                   </button>
@@ -268,10 +268,9 @@ export function TransferFundsModal({
           {isOverdrawn && (
             <p
               data-testid="overdrawn-notice"
-              className="text-[11px] font-semibold text-amber-600 dark:text-amber-400"
+              className="text-[11px] font-semibold text-warning"
             >
-              Note: Transfer exceeds available source balance ($
-              {sourceBalance.toFixed(2)}).
+              This is more than the {formatFinanceCurrency(sourceBalance, fromAccount?.currency ?? '')} in {fromAccount?.name}.
             </p>
           )}
 
@@ -315,7 +314,7 @@ export function TransferFundsModal({
             <Input
               id="input-transfer-description"
               data-testid="input-transfer-description"
-              placeholder="e.g. Treasury rebalance"
+              placeholder="e.g. Top up petty cash"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
@@ -329,14 +328,14 @@ export function TransferFundsModal({
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
-              <BookOpen className="size-4 text-amber-600 dark:text-amber-400" />
+              <BookOpen className="size-4 text-ink-muted" />
               <h4 className="text-xs font-bold text-ink">Double-Entry Journal Preview</h4>
             </div>
             <span
               data-testid="journal-balanced-badge"
-              className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300"
+              className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 text-[10px] font-bold text-success"
             >
-              <CheckCircle2 className="size-3 text-emerald-600 dark:text-emerald-400" />
+              <CheckCircle2 className="size-3 text-success" />
               Balanced Entry
             </span>
           </div>
@@ -358,8 +357,8 @@ export function TransferFundsModal({
                 <span>{toAccount ? toAccount.name : 'Destination Account'}</span>
                 <span className="ml-1 text-[10px] text-ink-subtle font-mono">(Asset +)</span>
               </div>
-              <div className="col-span-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                {numericAmount > 0 ? formatFinanceCurrency(numericAmount) : '$0.00'}
+              <div className="col-span-3 text-right font-mono font-bold text-success">
+                {toAccount ? formatFinanceCurrency(arriving, toAccount.currency) : '—'}
               </div>
               <div className="col-span-3 text-right font-mono text-ink-subtle">—</div>
             </div>
@@ -374,8 +373,8 @@ export function TransferFundsModal({
                 <span className="ml-1 text-[10px] text-ink-subtle font-mono">(Asset -)</span>
               </div>
               <div className="col-span-3 text-right font-mono text-ink-subtle">—</div>
-              <div className="col-span-3 text-right font-mono font-bold text-rose-600 dark:text-rose-400">
-                {numericAmount > 0 ? formatFinanceCurrency(numericAmount) : '$0.00'}
+              <div className="col-span-3 text-right font-mono font-bold text-danger">
+                {fromAccount ? formatFinanceCurrency(numericAmount, fromAccount.currency) : '—'}
               </div>
             </div>
           </div>

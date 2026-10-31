@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import Link from 'next/link';
 import { ColumnDef } from '@tanstack/react-table';
 import { Bot, User, Check, X, FileText, Download, Printer } from 'lucide-react';
@@ -15,26 +15,16 @@ import { formatMoney } from '@/lib/utils';
 interface QuotesTableProps {
   quotes: Quote[];
   isLoading?: boolean;
-  onSignal?: (id: string, action: 'APPROVE' | 'REJECT') => Promise<void>;
+  /**
+   * Opens the approve or reject confirmation. The row never signals on its
+   * own: a decision is always made looking at the total and the margin.
+   */
+  onDecide?: (quote: Quote, action: 'APPROVE' | 'REJECT') => void;
   onPrint?: (quote: Quote) => void;
 }
 
-export function QuotesTable({ quotes, isLoading = false, onSignal, onPrint }: QuotesTableProps) {
-  const [processingId, setProcessingId] = useState<string | null>(null);
-  const [processingAction, setProcessingAction] = useState<'APPROVE' | 'REJECT' | null>(null);
+export function QuotesTable({ quotes, isLoading = false, onDecide, onPrint }: QuotesTableProps) {
   const downloadPdf = useDownloadQuotePdf();
-
-  const handleAction = async (id: string, action: 'APPROVE' | 'REJECT') => {
-    if (!onSignal) return;
-    setProcessingId(id);
-    setProcessingAction(action);
-    try {
-      await onSignal(id, action);
-    } finally {
-      setProcessingId(null);
-      setProcessingAction(null);
-    }
-  };
 
   const columns = useMemo<ColumnDef<Quote, any>[]>(
     () => [
@@ -45,7 +35,7 @@ export function QuotesTable({ quotes, isLoading = false, onSignal, onPrint }: Qu
           <div>
             <Link
               href={`/quotes/${row.original.id}`}
-              className="font-medium text-ink hover:text-brand hover:underline inline-flex items-center gap-1.5"
+              className="font-medium text-ink hover:underline underline-offset-2 inline-flex items-center gap-1.5"
             >
               {row.original.quoteNumber && (
                 <span className="font-mono text-[11px] text-ink-muted bg-surface-muted/60 px-2 py-0.5 rounded-full border border-border/40">
@@ -104,7 +94,7 @@ export function QuotesTable({ quotes, isLoading = false, onSignal, onPrint }: Qu
         sortingFn: (rowA, rowB) => (Number(rowA.original.totalAmount) || 0) - (Number(rowB.original.totalAmount) || 0),
         header: ({ column }) => <DataTableColumnHeader column={column} title="Total Amount" />,
         cell: ({ row }) => (
-          <span className="font-medium text-ink">
+          <span className="font-medium tabular-nums text-ink">
             {formatMoney(Number(row.original.totalAmount) || 0, row.original.currency)}
           </span>
         ),
@@ -132,7 +122,7 @@ export function QuotesTable({ quotes, isLoading = false, onSignal, onPrint }: Qu
         id: 'actions',
         cell: ({ row }) => {
           const quote = row.original;
-          const isProcessing = processingId === quote.id;
+          const label = quote.quoteNumber || quote.title || 'quote';
 
           return (
             <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
@@ -158,24 +148,24 @@ export function QuotesTable({ quotes, isLoading = false, onSignal, onPrint }: Qu
                 <Download className="size-4" />
               </button>
 
-              {quote.status === 'AWAITING_APPROVAL' && onSignal && (
+              {/* Outline, not amber: a list of quotes would otherwise be a column of primary buttons. */}
+              {quote.status === 'AWAITING_APPROVAL' && onDecide && (
                 <>
                   <Button
                     size="sm"
-                    variant="primary"
-                    loading={isProcessing && processingAction === 'APPROVE'}
-                    disabled={isProcessing}
-                    onClick={() => handleAction(quote.id, 'APPROVE')}
+                    variant="outline"
+                    aria-label={`Approve ${label}`}
+                    onClick={() => onDecide(quote, 'APPROVE')}
                   >
                     <Check className="size-3.5" />
                     Approve
                   </Button>
                   <Button
                     size="sm"
-                    variant="danger"
-                    loading={isProcessing && processingAction === 'REJECT'}
-                    disabled={isProcessing}
-                    onClick={() => handleAction(quote.id, 'REJECT')}
+                    variant="ghost"
+                    className="text-danger hover:text-danger"
+                    aria-label={`Reject ${label}`}
+                    onClick={() => onDecide(quote, 'REJECT')}
                   >
                     <X className="size-3.5" />
                     Reject
@@ -187,7 +177,7 @@ export function QuotesTable({ quotes, isLoading = false, onSignal, onPrint }: Qu
         },
       },
     ],
-    [processingId, processingAction, onSignal, downloadPdf, onPrint]
+    [onDecide, downloadPdf, onPrint]
   );
 
   return (

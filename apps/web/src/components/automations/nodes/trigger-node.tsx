@@ -1,15 +1,18 @@
 'use client';
 
 import React from 'react';
-import { Webhook, Calendar, Zap, Play } from 'lucide-react';
+import { Webhook, Calendar, Zap, Play, AlertTriangle } from 'lucide-react';
 import type { NodeProps, Node } from '@xyflow/react';
 import type { AutomationNodeData, AutomationNodeType } from '@saas/shared';
 import { BaseNode } from './base-node';
+import { crmEventOf, findCrmEvent } from '../crm-events';
 
 export interface TriggerNodeData extends AutomationNodeData {
   config: {
     slug?: string;
     cron?: string;
+    event?: string;
+    /** Older builds saved the event here; still read. */
     eventType?: string;
     [key: string]: any;
   };
@@ -29,6 +32,8 @@ export function TriggerNode({
   let iconBg = 'bg-info-soft';
   let iconColor = 'text-info';
   let previewText = 'Manual Execution';
+  // A stored event this build doesn't know: it may never fire.
+  let unknownEvent: string | null = null;
 
   switch (type) {
     case 'webhookTrigger':
@@ -52,7 +57,13 @@ export function TriggerNode({
       defaultTitle = 'CRM Event Trigger';
       iconBg = 'bg-success-soft';
       iconColor = 'text-success';
-      previewText = config.eventType ? `Event: ${config.eventType}` : 'On CRM Event';
+      {
+        const event = crmEventOf(config);
+        const known = findCrmEvent(event);
+        if (known) previewText = known.label;
+        else if (event) unknownEvent = event;
+        else previewText = 'Choose an event';
+      }
       break;
 
     case 'manualTrigger':
@@ -80,9 +91,23 @@ export function TriggerNode({
       iconColor={iconColor}
       testId={`trigger-node-${type}`}
     >
-      <div className="flex items-center justify-between text-[11px] text-ink-muted font-mono bg-surface-muted px-2 py-1 rounded border border-border/40 truncate">
-        <span className="truncate">{previewText}</span>
-      </div>
+      {unknownEvent ? (
+        <div
+          data-testid="trigger-unknown-event"
+          className="flex items-center gap-1.5 text-[11px] text-warning bg-warning-soft px-2 py-1 rounded border border-warning/20"
+        >
+          <AlertTriangle aria-hidden className="h-3 w-3 shrink-0" />
+          <span className="truncate">Unknown event: {unknownEvent}</span>
+        </div>
+      ) : (
+        <div
+          className={`flex items-center justify-between text-[11px] text-ink-muted bg-surface-muted px-2 py-1 rounded border border-border/40 truncate ${
+            type === 'crmEventTrigger' ? '' : 'font-mono'
+          }`}
+        >
+          <span className="truncate">{previewText}</span>
+        </div>
+      )}
     </BaseNode>
   );
 }

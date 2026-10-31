@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ComponentProps } from 'react';
 import Link from 'next/link';
 import { ColumnDef } from '@tanstack/react-table';
 import { AlertTriangle, ReceiptText } from 'lucide-react';
@@ -12,19 +12,21 @@ import {
   type SupplierBillDto,
 } from '@saas/shared';
 import { useBillAging, useBills } from '@/hooks/use-bills';
-import { EmptyState, PageHeader } from '@/components/ui/primitives';
+import { Badge, EmptyState, PageHeader } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/data-table';
 import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
 import { Can } from '@/components/auth/can';
 import { CaptureBillFlow } from './capture-bill-flow';
 
-const STATUS_STYLES: Record<BillStatus, string> = {
-  DRAFT: 'bg-surface-sunk text-ink-muted',
-  DISPUTED: 'bg-danger-soft text-danger',
-  APPROVED: 'bg-accent-soft text-accent',
-  PARTIALLY_PAID: 'bg-warning-soft text-warning',
-  PAID: 'bg-success-soft text-success',
-  CANCELLED: 'bg-surface-sunk text-ink-subtle line-through',
+type BadgeTone = NonNullable<ComponentProps<typeof Badge>['tone']>;
+
+const STATUS_TONES: Record<BillStatus, BadgeTone> = {
+  DRAFT: 'neutral',
+  DISPUTED: 'danger',
+  APPROVED: 'info',
+  PARTIALLY_PAID: 'warning',
+  PAID: 'success',
+  CANCELLED: 'neutral',
 };
 
 const STATUS_LABELS: Record<BillStatus, string> = {
@@ -38,9 +40,9 @@ const STATUS_LABELS: Record<BillStatus, string> = {
 
 export function BillStatusPill({ status }: { status: BillStatus }) {
   return (
-    <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium whitespace-nowrap ${STATUS_STYLES[status]}`}>
+    <Badge tone={STATUS_TONES[status]} className={status === 'CANCELLED' ? 'line-through' : undefined}>
       {STATUS_LABELS[status]}
-    </span>
+    </Badge>
   );
 }
 
@@ -65,7 +67,7 @@ export function BillsView() {
         accessorKey: 'billNumber',
         header: ({ column }) => <DataTableColumnHeader column={column} title="Bill" />,
         cell: ({ row }) => (
-          <Link href={`/purchasing/bills/${row.original.id}`} className="font-medium text-accent hover:underline">
+          <Link href={`/purchasing/bills/${row.original.id}`} className="font-medium text-ink underline underline-offset-2">
             {row.original.billNumber}
           </Link>
         ),
@@ -87,9 +89,10 @@ export function BillsView() {
           <div className="flex items-center gap-1.5">
             <BillStatusPill status={row.original.status} />
             {row.original.matchStatus === 'VARIANCE' && row.original.status === 'DRAFT' && (
-              <span title="Does not match its order" className="text-warning">
-                <AlertTriangle className="size-3.5" />
-              </span>
+              <Badge tone="warning" className="gap-1" title="Does not match its order">
+                <AlertTriangle className="size-3" aria-hidden />
+                Mismatch
+              </Badge>
             )}
           </div>
         ),

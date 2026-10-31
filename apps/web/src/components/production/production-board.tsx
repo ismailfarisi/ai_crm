@@ -211,7 +211,7 @@ export function ProductionBoard() {
         <div data-testid="kpi-active-jobs" className="rounded-xl border border-line bg-surface p-4 shadow-2xs">
           <div className="flex items-center justify-between text-xs text-ink-muted">
             <span>Active Jobs</span>
-            <Activity className="size-4 text-accent" />
+            <Activity className="size-4 text-ink-muted" aria-hidden />
           </div>
           <p className="mt-2 text-2xl font-bold tracking-tight text-ink">{kpis.activeJobs}</p>
           <p className="mt-0.5 text-xs text-ink-subtle">Released &amp; In progress</p>
@@ -271,7 +271,7 @@ export function ProductionBoard() {
             placeholder="Search WO #, description, customer..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-line bg-surface pl-9 pr-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:outline-hidden focus:border-accent transition-colors"
+            className="w-full h-10 rounded-xl border border-border-control bg-surface pl-9 pr-3 text-sm text-ink placeholder:text-ink-subtle focus:outline-hidden focus:border-brand-ring focus:ring-1 focus:ring-brand-ring transition-colors"
             aria-label="Search work orders"
           />
         </div>

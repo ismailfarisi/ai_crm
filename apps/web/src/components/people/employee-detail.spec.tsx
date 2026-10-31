@@ -11,6 +11,7 @@ vi.mock('@/lib/session-context', () => ({
   useCan: (rule: { permission: string }) => granted.has(rule.permission),
 }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/people/employees/e1' }));
+vi.mock('@/hooks/use-organization', () => ({ useOrganization: () => ({ data: { baseCurrency: 'AED' } }) }));
 
 const employee: EmployeeDto = {
   id: 'e1', employeeNumber: 'EMP-0001', firstName: 'Amina', lastName: 'Khan', fullName: 'Amina Khan',
@@ -96,6 +97,22 @@ describe('EmployeeDetail', () => {
     current = { ...employee, isNational: true };
     render(<EmployeeDetail id="e1" />);
     expect(screen.getByRole('tab', { name: 'Pension' })).toBeInTheDocument();
+  });
+
+  it('opens a linked tab, marking the active one in ink rather than amber', () => {
+    granted.add('payroll:read');
+    render(<EmployeeDetail id="e1" initialTab="salary" />);
+    const tab = screen.getByRole('tab', { name: 'Salary history' });
+    expect(tab).toHaveAttribute('aria-selected', 'true');
+    expect(tab).toHaveClass('text-ink', 'border-ink');
+    expect(tab.className).not.toMatch(/brand/);
+    expect(screen.getByTestId('salary-tab')).toBeInTheDocument();
+  });
+
+  it('falls back to the profile when the linked tab is not available', () => {
+    render(<EmployeeDetail id="e1" initialTab="salary" />);
+    expect(screen.getByRole('tab', { name: 'Profile' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('profile-tab')).toBeInTheDocument();
   });
 
   it('hides the Pension tab from a national without payroll:read', () => {

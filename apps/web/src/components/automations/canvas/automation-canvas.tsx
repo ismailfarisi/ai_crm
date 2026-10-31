@@ -90,15 +90,15 @@ export function AutomationCanvas({
         fitView
         defaultEdgeOptions={{
           animated: true,
-          style: { stroke: '#d97706', strokeWidth: 2 },
+          style: { stroke: 'var(--color-brand)', strokeWidth: 2 },
         }}
       >
-        <Background variant={BackgroundVariant.Dots} color="#d6d3d1" gap={18} size={1.5} />
+        <Background variant={BackgroundVariant.Dots} color="var(--color-border-strong)" gap={18} size={1.5} />
         <Controls className="!bg-surface !border-border !shadow-sm !rounded-xl overflow-hidden" />
         <MiniMap
           className="!bg-surface !border-border !rounded-xl !shadow-sm overflow-hidden"
-          nodeColor={(n) => (n.selected ? '#d97706' : '#a8a29e')}
-          maskColor="rgba(245, 245, 244, 0.7)"
+          nodeColor={(n) => (n.selected ? 'var(--color-brand)' : 'var(--color-border-strong)')}
+          maskColor="color-mix(in oklch, var(--color-surface-muted) 70%, transparent)"
         />
       </ReactFlow>
     </div>

@@ -58,7 +58,7 @@ export function ContactDetailView({ params }: { params: Promise<{ id: string }> 
           <Card className="p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex items-center gap-4">
-                <div className="grid size-14 place-items-center rounded-full bg-brand-soft text-lg font-semibold text-brand ring-1 ring-brand/20">
+                <div className="grid size-14 place-items-center rounded-full bg-brand-soft text-lg font-semibold text-ink ring-1 ring-brand/20">
                   {initials(contact.fullName, '')}
                 </div>
                 <div>
@@ -100,7 +100,7 @@ export function ContactDetailView({ params }: { params: Promise<{ id: string }> 
                 onClick={() => setActiveTab('messages')}
                 className={`flex items-center gap-2 border-b-2 pb-3 pt-1 text-sm font-medium transition-colors ${
                   activeTab === 'messages'
-                    ? 'border-brand text-brand'
+                    ? 'border-brand text-ink'
                     : 'border-transparent text-ink-subtle hover:border-border hover:text-ink'
                 }`}
               >
@@ -111,7 +111,7 @@ export function ContactDetailView({ params }: { params: Promise<{ id: string }> 
                 onClick={() => setActiveTab('details')}
                 className={`flex items-center gap-2 border-b-2 pb-3 pt-1 text-sm font-medium transition-colors ${
                   activeTab === 'details'
-                    ? 'border-brand text-brand'
+                    ? 'border-brand text-ink'
                     : 'border-transparent text-ink-subtle hover:border-border hover:text-ink'
                 }`}
               >

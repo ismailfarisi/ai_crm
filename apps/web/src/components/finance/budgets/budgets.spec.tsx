@@ -45,6 +45,9 @@ vi.mock('@/lib/session-context', () => ({
   useCan: () => canApprove,
 }));
 
+// Budgets and schedules without a supplier currency are in the base currency.
+vi.mock('@/hooks/use-organization', () => ({ useOrganization: () => ({ data: { baseCurrency: 'AED' } }) }));
+
 vi.mock('@/hooks/use-suppliers', () => ({
   useSuppliers: () => ({
     data: { items: [{ id: 'sup-1', companyName: 'Landlord LLC' }], meta: { total: 1, page: 1, limit: 100, totalPages: 1 } },
@@ -270,41 +273,41 @@ const mockSubscriptions: RecurringExpenseDto[] = [
 // ==========================================
 describe('BudgetMeterCard Component', () => {
   it('renders normal healthy budget (<85% spent) correctly', () => {
-    render(<BudgetMeterCard budget={mockBudgets[0]} />);
+    render(<BudgetMeterCard currency="AED" budget={mockBudgets[0]} />);
 
     expect(screen.getByTestId('budget-meter-card-budget-1')).toBeInTheDocument();
     expect(screen.getByTestId('budget-category-budget-1')).toHaveTextContent('Marketing');
-    expect(screen.getByTestId('budget-spent-amount-budget-1')).toHaveTextContent('$4,500.00');
-    expect(screen.getByTestId('budget-total-amount-budget-1')).toHaveTextContent('cap: $10,000.00');
+    expect(screen.getByTestId('budget-spent-amount-budget-1')).toHaveTextContent('AED 4,500.00');
+    expect(screen.getByTestId('budget-total-amount-budget-1')).toHaveTextContent('cap: AED 10,000.00');
     expect(screen.getByTestId('budget-period-badge-budget-1')).toHaveTextContent('MONTHLY');
     expect(screen.getByTestId('status-badge-healthy-budget-1')).toHaveTextContent('45% spent');
-    expect(screen.getByTestId('budget-remaining-budget-1')).toHaveTextContent('$5,500.00 left');
+    expect(screen.getByTestId('budget-remaining-budget-1')).toHaveTextContent('AED 5,500.00 left');
 
     const progressBar = screen.getByTestId('budget-progress-bar-budget-1');
     expect(progressBar).toHaveStyle({ width: '45%' });
   });
 
   it('renders warning threshold budget (>85% spent) with amber styling', () => {
-    render(<BudgetMeterCard budget={mockBudgets[1]} />);
+    render(<BudgetMeterCard currency="AED" budget={mockBudgets[1]} />);
 
     expect(screen.getByTestId('budget-meter-card-budget-2')).toBeInTheDocument();
     expect(screen.getByTestId('status-badge-warning-budget-2')).toHaveTextContent('Near Cap (92%)');
-    expect(screen.getByTestId('budget-remaining-budget-2')).toHaveTextContent('$400.00 left');
+    expect(screen.getByTestId('budget-remaining-budget-2')).toHaveTextContent('AED 400.00 left');
 
     const progressBar = screen.getByTestId('budget-progress-bar-budget-2');
-    expect(progressBar).toHaveClass('bg-amber-500');
+    expect(progressBar).toHaveClass('bg-warning');
     expect(progressBar).toHaveStyle({ width: '92%' });
   });
 
   it('renders exceeded budget (>=100% spent) with danger styling and overspend text', () => {
-    render(<BudgetMeterCard budget={mockBudgets[2]} />);
+    render(<BudgetMeterCard currency="AED" budget={mockBudgets[2]} />);
 
     expect(screen.getByTestId('budget-meter-card-budget-3')).toBeInTheDocument();
     expect(screen.getByTestId('status-badge-overbudget-budget-3')).toHaveTextContent('Over Budget (115%)');
-    expect(screen.getByTestId('budget-remaining-budget-3')).toHaveTextContent('+$1,200.00 over');
+    expect(screen.getByTestId('budget-remaining-budget-3')).toHaveTextContent('+AED 1,200.00 over');
 
     const progressBar = screen.getByTestId('budget-progress-bar-budget-3');
-    expect(progressBar).toHaveClass('bg-rose-500');
+    expect(progressBar).toHaveClass('bg-danger');
     expect(progressBar).toHaveStyle({ width: '100%' }); // clamped to 100% visually
   });
 
@@ -315,6 +318,7 @@ describe('BudgetMeterCard Component', () => {
 
     render(
       <BudgetMeterCard
+        currency="AED"
         budget={mockBudgets[0]}
         onEdit={handleEdit}
         onDelete={handleDelete}
@@ -336,14 +340,14 @@ describe('BudgetMeterCard Component', () => {
   });
 
   it('renders loading skeleton when isLoading is true', () => {
-    render(<BudgetMeterCard budget={mockBudgets[0]} isLoading={true} />);
+    render(<BudgetMeterCard currency="AED" budget={mockBudgets[0]} isLoading={true} />);
     expect(screen.getByTestId('budget-meter-loading')).toBeInTheDocument();
   });
 });
 
 describe('BudgetGrid Component', () => {
   it('renders grid with multiple budget cards', () => {
-    render(<BudgetGrid budgets={mockBudgets} />);
+    render(<BudgetGrid currency="AED" budgets={mockBudgets} />);
 
     expect(screen.getByTestId('budget-grid')).toBeInTheDocument();
     expect(screen.getByTestId('budget-meter-card-budget-1')).toBeInTheDocument();
@@ -353,7 +357,7 @@ describe('BudgetGrid Component', () => {
 
   it('renders empty state when no budgets exist and triggers onNewBudget', () => {
     const handleNew = vi.fn();
-    render(<BudgetGrid budgets={[]} onNewBudget={handleNew} />);
+    render(<BudgetGrid currency="AED" budgets={[]} onNewBudget={handleNew} />);
 
     expect(screen.getByTestId('budget-grid-empty')).toBeInTheDocument();
     expect(screen.getByText('No category budgets created')).toBeInTheDocument();
@@ -364,16 +368,18 @@ describe('BudgetGrid Component', () => {
   });
 
   it('renders loading skeleton when isLoading is true', () => {
-    render(<BudgetGrid budgets={[]} isLoading={true} />);
+    render(<BudgetGrid currency="AED" budgets={[]} isLoading={true} />);
     expect(screen.getByTestId('budget-grid-loading')).toBeInTheDocument();
   });
 });
 
 describe('Budget Utility Helpers', () => {
   it('formats currency correctly', () => {
-    expect(formatBudgetCurrency(12500)).toBe('$12,500.00');
-    expect(formatBudgetCurrency(0)).toBe('$0.00');
-    expect(formatBudgetCurrency(null)).toBe('$0.00');
+    // Always in the currency given: budgets are set in the base currency.
+    const plain = (s: string) => s.replace(/\s/g, ' ');
+    expect(plain(formatBudgetCurrency(12500, 'AED'))).toBe('AED 12,500.00');
+    expect(plain(formatBudgetCurrency(null, 'AED'))).toBe('AED 0.00');
+    expect(formatBudgetCurrency(0, 'USD')).toBe('$0.00');
   });
 
   it('formats date range string correctly', () => {
@@ -574,7 +580,7 @@ describe('CreateAccountModal Component', () => {
     // Click Credit Card option
     const creditCardBtn = screen.getByTestId('account-type-option-CREDIT_CARD');
     fireEvent.click(creditCardBtn);
-    expect(creditCardBtn).toHaveClass('border-amber-500');
+    expect(creditCardBtn).toHaveClass('border-brand-ring');
 
     // Type account name
     const nameInput = screen.getByTestId('input-account-name');
@@ -619,7 +625,8 @@ describe('CreateAccountModal Component', () => {
     expect(handleSubmit).toHaveBeenCalledWith({
       name: 'Mercury Treasury Reserve',
       accountType: 'BANK',
-      currency: 'USD',
+      // A new account starts in the base currency, not dollars.
+      currency: 'AED',
       balance: 50000,
       accountNumber: '9876543210',
       isDefault: false,
@@ -787,18 +794,27 @@ describe('SubscriptionsTable Component', () => {
     expect(screen.getByTestId('subscriptions-container')).toBeInTheDocument();
     expect(screen.getByTestId('subscriptions-table')).toBeInTheDocument();
 
-    // Active subs: AWS ($1200/mo) + GitHub ($2400/yr -> $200/mo) = $1400/mo
-    expect(screen.getByTestId('kpi-monthly-burn')).toHaveTextContent('$1,400.00');
+    // No supplier currency, so both are in base (AED): 1,200 a month + 2,400 a year = 1,400 a month.
+    expect(screen.getByTestId('kpi-monthly-burn')).toHaveTextContent('AED 1,400.00');
     expect(screen.getByTestId('kpi-active-count')).toHaveTextContent('2');
 
     // Rows
     expect(screen.getByTestId('subscription-row-sub-1')).toBeInTheDocument();
     expect(screen.getByTestId('sub-vendor-sub-1')).toHaveTextContent('AWS Cloud Infrastructure');
-    expect(screen.getByTestId('sub-amount-sub-1')).toHaveTextContent('$1,200.00');
+    expect(screen.getByTestId('sub-amount-sub-1')).toHaveTextContent('AED 1,200.00');
 
     // Annual sub row normalized
     expect(screen.getByTestId('sub-vendor-sub-2')).toHaveTextContent('GitHub Enterprise');
-    expect(screen.getByText('~$200.00/mo')).toBeInTheDocument();
+    expect(screen.getByText(/^~AED.200\.00\/mo$/)).toBeInTheDocument();
+  });
+
+  it('keeps a schedule billed in another currency out of the base-currency monthly cost', () => {
+    const inDollars = mockSubscriptions.map((s, i) => (i === 0 ? { ...s, currency: 'USD' } : s));
+    render(<SubscriptionsTable subscriptions={inDollars} accounts={mockAccounts} />);
+    // Only GitHub (2,400 a year) is in AED; AWS's 1,200 a month is in dollars and listed apart.
+    expect(screen.getByTestId('kpi-monthly-burn')).toHaveTextContent('AED 200.00');
+    expect(screen.getByText(/Not in this total/)).toHaveTextContent('$1,200.00');
+    expect(screen.getByTestId('sub-amount-' + inDollars[0].id)).toHaveTextContent('$1,200.00');
   });
 
   it('filters subscriptions by search input', () => {

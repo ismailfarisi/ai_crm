@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import {
   Upload,
   Sparkles,
@@ -8,12 +8,7 @@ import {
   Trash2,
   Receipt,
   CheckCircle2,
-  Calendar,
-  Building2,
-  DollarSign,
-  Tag,
-  User,
-  FileText,
+  Camera,
   X,
   Loader2,
   AlertCircle,
@@ -22,6 +17,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input, Select, Textarea } from '@/components/ui/field';
 import { Badge } from '@/components/ui/primitives';
+import { cn } from '@/lib/utils';
 import type {
   CreateExpenseClaimPayload,
   ExpenseItemDto,
@@ -31,12 +27,16 @@ import {
   BILL_CAPTURE_MAX_BYTES as RECEIPT_SCAN_MAX_BYTES,
   CURRENCY_OPTIONS as SHARED_CURRENCIES,
   EXPENSE_CATEGORIES as SHARED_EXPENSE_CATEGORIES,
+  EXPENSE_CATEGORY_GROUPS,
+  EXPENSE_NOTES_MAX_LENGTH,
   currencyLabel,
+  isBillCaptureContentType,
   normaliseExpenseCategory,
 } from '@saas/shared';
 import { useScanReceipt } from '@/hooks/use-expenses';
 import { useOrganization } from '@/hooks/use-organization';
-import { fileFromDataUrl, receiptScanInput, type ReceiptScanInput } from '@/lib/receipt-scan-input';
+import { receiptScanInput, type ReceiptScanInput } from '@/lib/receipt-scan-input';
+import { formatExpenseCurrency } from './expense-money';
 
 export interface SubmitExpenseModalProps {
   open: boolean;
@@ -71,8 +71,32 @@ interface FormLineItem extends ExpenseItemDto {
   id: string;
 }
 
-const SAMPLE_RECEIPT_IMAGE =
-  'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600"><rect width="400" height="600" fill="%23fdfbf7"/><text x="200" y="60" font-family="sans-serif" font-size="20" font-weight="bold" text-anchor="middle" fill="%232d3748">ACME CLOUD CORP</text><text x="200" y="90" font-family="sans-serif" font-size="12" text-anchor="middle" fill="%23718096">100 Tech Boulevard, Suite 400</text><line x1="40" y1="120" x2="360" y2="120" stroke="%23cbd5e0" stroke-dasharray="4"/><text x="40" y="160" font-family="sans-serif" font-size="14" fill="%234a5568">Pro Enterprise Plan (1 Mo)</text><text x="360" y="160" font-family="sans-serif" font-size="14" text-anchor="end" fill="%232d3748">$240.00</text><text x="40" y="200" font-family="sans-serif" font-size="14" fill="%234a5568">API Add-on Capacity</text><text x="360" y="200" font-family="sans-serif" font-size="14" text-anchor="end" fill="%232d3748">$45.00</text><line x1="40" y1="240" x2="360" y2="240" stroke="%23cbd5e0"/><text x="40" y="280" font-family="sans-serif" font-size="16" font-weight="bold" fill="%232d3748">TOTAL AMOUNT</text><text x="360" y="280" font-family="sans-serif" font-size="18" font-weight="bold" text-anchor="end" fill="%23d97706">$285.00</text><text x="200" y="340" font-family="sans-serif" font-size="12" text-anchor="middle" fill="%23a0aec0">Date: 2026-08-15 • Tax Included: $23.50</text></svg>';
+type FieldName = 'merchantName' | 'category' | 'expenseDate' | 'amount';
+type FieldErrors = Partial<Record<FieldName, string>>;
+
+/** In the order the fields appear, so focus goes to the first one wrong. */
+const FIELD_ORDER: FieldName[] = ['merchantName', 'category', 'expenseDate', 'amount'];
+
+const COARSE_POINTER = '(pointer: coarse)';
+
+function subscribeToPointer(onChange: () => void) {
+  const query = typeof window !== 'undefined' ? window.matchMedia?.(COARSE_POINTER) : undefined;
+  query?.addEventListener?.('change', onChange);
+  return () => query?.removeEventListener?.('change', onChange);
+}
+
+/** A touch screen, where a straight-to-camera button is worth offering. */
+function useCoarsePointer(): boolean {
+  return useSyncExternalStore(
+    subscribeToPointer,
+    () => window.matchMedia?.(COARSE_POINTER).matches ?? false,
+    () => false,
+  );
+}
+
+const emptyItem = (): FormLineItem => ({ id: '1', description: '', quantity: 1, unitPrice: 0, amount: 0 });
+
+const today = () => new Date().toISOString().split('T')[0];
 
 export function SubmitExpenseModal({
   open,
@@ -84,18 +108,25 @@ export function SubmitExpenseModal({
 }: SubmitExpenseModalProps) {
   const scanReceiptMutation = useScanReceipt();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const isTouch = useCoarsePointer();
+
+  const merchantRef = useRef<HTMLInputElement>(null);
+  const categoryRef = useRef<HTMLSelectElement>(null);
+  const dateRef = useRef<HTMLInputElement>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
+  const categoryId = useId();
 
   // Form State
   const [employeeName, setEmployeeName] = useState(initialData?.employeeName || '');
   const [merchantName, setMerchantName] = useState(initialData?.merchantName || '');
-  const [category, setCategory] = useState(initialData?.category || 'Software & SaaS');
-  const [expenseDate, setExpenseDate] = useState(
-    initialData?.expenseDate || new Date().toISOString().split('T')[0],
-  );
+  // No default: the category picks the account the cost posts to, so it is a choice.
+  const [category, setCategory] = useState(initialData?.category || '');
+  const [expenseDate, setExpenseDate] = useState(initialData?.expenseDate || today());
   // A claim is converted into base currency when it posts, so defaulting to
   // anything else would ask for an exchange rate nobody meant to use.
   const baseCurrency = useOrganization().data?.baseCurrency;
-  const [currency, setCurrency] = useState(initialData?.currency || baseCurrency || 'USD');
+  const [currency, setCurrency] = useState(initialData?.currency || baseCurrency || '');
   const currencyTouched = useRef(Boolean(initialData?.currency));
   useEffect(() => {
     if (baseCurrency && !currencyTouched.current) setCurrency(baseCurrency);
@@ -103,7 +134,7 @@ export function SubmitExpenseModal({
   const [amount, setAmount] = useState<string>(
     initialData?.amount !== undefined ? String(initialData.amount) : '',
   );
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState(initialData?.notes || '');
 
   // Receipt File State
   const [receiptUrl, setReceiptUrl] = useState<string | null>(initialData?.receiptUrl || null);
@@ -115,32 +146,42 @@ export function SubmitExpenseModal({
   // OCR Scan State
   const [isScanning, setIsScanning] = useState(false);
   const [scanResult, setScanResult] = useState<ScannedReceiptResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+
+  // Each problem shows where it is: under its field, under the scanner, or by the buttons.
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Line items state
   const [items, setItems] = useState<FormLineItem[]>(
     initialData?.items && initialData.items.length > 0
       ? initialData.items.map((it, idx) => ({ ...it, id: String(idx + 1) }))
-      : [{ id: '1', description: '', quantity: 1, unitPrice: 0, amount: 0 }],
+      : [emptyItem()],
   );
+
+  const clearFieldError = (field: FieldName) => {
+    if (fieldErrors[field]) setFieldErrors((prev) => ({ ...prev, [field]: undefined }));
+  };
 
   const resetForm = () => {
     setEmployeeName(initialData?.employeeName || '');
     setMerchantName(initialData?.merchantName || '');
-    setCategory(initialData?.category || 'Software & SaaS');
-    setExpenseDate(initialData?.expenseDate || new Date().toISOString().split('T')[0]);
-    setCurrency(initialData?.currency || baseCurrency || 'USD');
+    setCategory(initialData?.category || '');
+    setExpenseDate(initialData?.expenseDate || today());
+    setCurrency(initialData?.currency || baseCurrency || '');
     currencyTouched.current = Boolean(initialData?.currency);
     setAmount(initialData?.amount !== undefined ? String(initialData.amount) : '');
-    setNotes('');
+    setNotes(initialData?.notes || '');
     setReceiptUrl(initialData?.receiptUrl || null);
     setReceiptFileName(null);
     setReceiptFile(null);
     setIsDragging(false);
     setIsScanning(false);
     setScanResult(null);
-    setError(null);
-    setItems([{ id: '1', description: '', quantity: 1, unitPrice: 0, amount: 0 }]);
+    setFieldErrors({});
+    setScanError(null);
+    setSubmitError(null);
+    setItems([emptyItem()]);
   };
 
   const handleClose = () => {
@@ -169,11 +210,13 @@ export function SubmitExpenseModal({
       // Auto calculate total if items have amounts
       const calculatedSum = updated.reduce((sum, it) => sum + (it.amount || 0), 0);
       if (calculatedSum > 0) {
-        setAmount(String(calculatedSum));
+        setAmount(String(Math.round(calculatedSum * 100) / 100));
       }
 
       return updated;
     });
+    if (field === 'description') clearFieldError('merchantName');
+    if (field === 'quantity' || field === 'unitPrice') clearFieldError('amount');
   };
 
   const handleAddItem = () => {
@@ -185,14 +228,14 @@ export function SubmitExpenseModal({
 
   const handleRemoveItem = (id: string) => {
     if (items.length <= 1) {
-      setItems([{ id: '1', description: '', quantity: 1, unitPrice: 0, amount: 0 }]);
+      setItems([emptyItem()]);
       return;
     }
     setItems((prev) => {
       const updated = prev.filter((it) => it.id !== id);
       const calculatedSum = updated.reduce((sum, it) => sum + (it.amount || 0), 0);
       if (calculatedSum > 0) {
-        setAmount(String(calculatedSum));
+        setAmount(String(Math.round(calculatedSum * 100) / 100));
       }
       return updated;
     });
@@ -200,7 +243,7 @@ export function SubmitExpenseModal({
 
   // Handle Receipt Upload
   const handleFile = (file: File) => {
-    setError(null);
+    setScanError(null);
     setReceiptFileName(file.name);
     setReceiptFile(file);
 
@@ -229,26 +272,32 @@ export function SubmitExpenseModal({
     }
   };
 
-  const handleLoadSampleReceipt = () => {
-    setReceiptUrl(SAMPLE_RECEIPT_IMAGE);
-    setReceiptFileName('sample-enterprise-receipt.svg');
-    setReceiptFile(null);
+  const pickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      handleFile(e.target.files[0]);
+    }
+    // The same photo can be picked again after it is removed.
+    e.target.value = '';
   };
 
   // Trigger AI OCR Scan
   const handleScanReceipt = async () => {
     if (!receiptUrl) {
-      setError('Please upload a receipt file first to scan.');
+      setScanError('Add the receipt first, then scan it.');
       return;
     }
     if (receiptFile && receiptFile.size > RECEIPT_SCAN_MAX_BYTES) {
-      setError('That file is over 20 MB. Upload a smaller scan or a photo of the receipt.');
+      setScanError('That file is over 20 MB. Upload a smaller scan or a photo of the receipt.');
+      return;
+    }
+    if (receiptFile && !isBillCaptureContentType(receiptFile.type)) {
+      setScanError('The scanner reads JPEG, PNG, WebP or PDF. This file can still go on the claim; type the details in.');
       return;
     }
 
     try {
       setIsScanning(true);
-      setError(null);
+      setScanError(null);
 
       const input = receiptScanInput(receiptUrl, receiptFile);
       const result: ScannedReceiptResult = onScanReceipt
@@ -260,7 +309,10 @@ export function SubmitExpenseModal({
       // Auto populate fields
       if (result.merchantName) setMerchantName(result.merchantName);
       if (result.amount) setAmount(String(result.amount));
-      if (result.currency) setCurrency(result.currency);
+      if (result.currency) {
+        currencyTouched.current = true;
+        setCurrency(result.currency);
+      }
       if (result.expenseDate) setExpenseDate(result.expenseDate.split('T')[0]);
       if (result.category) {
         // match category or fallback
@@ -270,6 +322,7 @@ export function SubmitExpenseModal({
         );
         setCategory(matched ? matched.value : suggested);
       }
+      setFieldErrors({});
 
       if (result.items && result.items.length > 0) {
         setItems(
@@ -282,64 +335,100 @@ export function SubmitExpenseModal({
           })),
         );
       }
-    } catch (err: any) {
-      setError(err?.message || 'Failed to scan receipt. Please check input and try again.');
+    } catch (err: unknown) {
+      setScanError(
+        err instanceof Error && err.message
+          ? err.message
+          : 'The scan did not go through. Try again, or type the details in.',
+      );
     } finally {
       setIsScanning(false);
     }
   };
 
+  const validate = (status: 'DRAFT' | 'SUBMITTED'): FieldErrors => {
+    const errors: FieldErrors = {};
+    if (!merchantName.trim() && items.every((i) => !i.description.trim())) {
+      errors.merchantName = 'Enter the merchant, or describe at least one line item.';
+    }
+    // A draft can wait for its category; a submitted claim posts to one.
+    if (status === 'SUBMITTED' && !category) {
+      errors.category = 'Choose a category.';
+    }
+    if (!expenseDate) {
+      errors.expenseDate = 'Enter the date it was spent.';
+    }
+    const numericAmount = parseFloat(amount);
+    if (isNaN(numericAmount) || numericAmount <= 0) {
+      errors.amount = 'Enter an amount above zero.';
+    }
+    return errors;
+  };
+
   // Submission handler
   const handleFormSubmit = async (status: 'DRAFT' | 'SUBMITTED') => {
-    setError(null);
+    setSubmitError(null);
 
-    const numericAmount = parseFloat(amount);
-    if (!merchantName.trim() && items.every((i) => !i.description.trim())) {
-      setError('Merchant name or at least one line item description is required.');
+    const errors = validate(status);
+    setFieldErrors(errors);
+    const firstWrong = FIELD_ORDER.find((field) => errors[field]);
+    if (firstWrong) {
+      const field = {
+        merchantName: merchantRef,
+        category: categoryRef,
+        expenseDate: dateRef,
+        amount: amountRef,
+      }[firstWrong];
+      field.current?.focus();
       return;
     }
 
-    if (isNaN(numericAmount) || numericAmount <= 0) {
-      setError('Please enter a valid expense amount greater than zero.');
-      return;
-    }
-
-    // A receipt that only exists in the page (picked, or the sample) is
-    // uploaded as a file after the claim is created; one already stored is
-    // kept as the link it is.
-    const receipt =
-      receiptFile ??
-      (receiptUrl?.startsWith('data:') ? fileFromDataUrl(receiptUrl, receiptFileName || 'receipt') : null);
+    // A picked receipt is uploaded as a file after the claim is created; one
+    // already stored is kept as the link it is.
     const keptReceiptUrl = receiptUrl && !receiptUrl.startsWith('data:') ? receiptUrl : null;
 
     const payload: CreateExpenseClaimPayload = {
-      employeeName: employeeName.trim() || 'Current User',
+      // Blank means the person signed in, which the API fills in.
+      employeeName: employeeName.trim() || undefined,
       merchantName: merchantName.trim() || null,
       category,
       expenseDate,
-      currency,
-      amount: numericAmount,
-      receiptUrl: receipt ? null : keptReceiptUrl,
+      // Blank only while the organisation loads; the API then uses the base currency.
+      currency: currency || undefined,
+      amount: parseFloat(amount),
+      receiptUrl: receiptFile ? null : keptReceiptUrl,
+      notes: notes.trim() || null,
       status,
       items: items
         .filter((it) => it.description.trim() || it.amount > 0)
-        .map(({ id, ...it }) => it),
+        .map((it) => ({
+          description: it.description,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+          amount: it.amount,
+        })),
     };
 
     try {
-      await onSubmit(payload, receipt);
+      await onSubmit(payload, receiptFile);
       handleClose();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to submit expense claim.');
+    } catch (err: unknown) {
+      setSubmitError(
+        err instanceof Error && err.message ? err.message : 'The claim was not saved. Try again.',
+      );
     }
   };
+
+  const categoryListed = !category || SHARED_EXPENSE_CATEGORIES.includes(category);
+  const lineControl =
+    'h-10 w-full rounded-xl border border-border-control bg-surface px-3 text-sm text-ink placeholder:text-ink-subtle focus:outline-hidden focus:border-brand-ring focus:ring-1 focus:ring-brand-ring';
 
   return (
     <Dialog
       open={open}
       onClose={handleClose}
       title="Submit Expense Claim"
-      description="Upload a receipt for AI auto-extraction or fill the claim details manually."
+      description="Add the receipt and let the scanner fill in the details, or type them in."
       size="lg"
     >
       <form
@@ -351,59 +440,54 @@ export function SubmitExpenseModal({
         data-testid="submit-expense-form"
         className="space-y-6 pb-2"
       >
-        {error && (
-          <div
-            data-testid="form-error-alert"
-            className="flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-700 dark:text-rose-300"
-          >
-            <AlertCircle className="size-4 shrink-0 text-rose-600" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {/* Receipt Drag and Drop Upload Zone */}
+        {/* Receipt */}
         <div className="space-y-2">
-          <label className="block text-xs font-semibold uppercase tracking-wider text-ink-muted">
-            Receipt Document & AI Scanner
-          </label>
+          <p className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Receipt</p>
 
           <div
             data-testid="receipt-dropzone"
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={`relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-5 text-center transition-all ${
+            className={cn(
+              'relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-5 text-center transition-colors',
               isDragging
-                ? 'border-brand bg-brand-soft/40 scale-[0.99]'
+                ? 'border-brand-ring bg-brand-soft'
                 : receiptUrl
-                  ? 'border-emerald-500/40 bg-emerald-500/5'
-                  : 'border-border/60 bg-surface-muted/20 hover:border-border-strong hover:bg-surface-muted/30'
-            }`}
+                  ? 'border-success/40 bg-success-soft'
+                  : 'border-border-control bg-surface-muted',
+            )}
           >
+            {/* image/* so a phone offers its camera as well as its files. */}
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/jpeg,image/png,image/webp,application/pdf"
+              accept="image/*,application/pdf"
               data-testid="receipt-file-input"
               className="hidden"
-              onChange={(e) => {
-                if (e.target.files && e.target.files[0]) {
-                  handleFile(e.target.files[0]);
-                }
-              }}
+              onChange={pickFile}
+            />
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              data-testid="receipt-camera-input"
+              className="hidden"
+              onChange={pickFile}
             />
 
             {receiptUrl ? (
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 w-full px-2">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-xl bg-emerald-500/10 p-2.5 text-emerald-600 border border-emerald-500/20 shrink-0">
-                    <Receipt className="size-6" />
+              <div className="flex w-full flex-col items-center justify-between gap-4 px-2 sm:flex-row">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="shrink-0 rounded-xl border border-success/20 bg-surface p-2.5 text-success">
+                    <Receipt className="size-6" aria-hidden />
                   </div>
-                  <div className="text-left">
-                    <p className="text-sm font-medium text-ink truncate max-w-[200px] sm:max-w-xs">
-                      {receiptFileName || 'Receipt Image Attached'}
+                  <div className="min-w-0 text-start">
+                    <p className="max-w-[200px] truncate text-sm font-medium text-ink sm:max-w-xs">
+                      {receiptFileName || 'Receipt attached'}
                     </p>
-                    <p className="text-xs text-ink-muted">Ready for AI parsing & submission</p>
+                    <p className="text-xs text-ink-muted">Attached. Scan it to fill in the details.</p>
                   </div>
                 </div>
 
@@ -411,18 +495,17 @@ export function SubmitExpenseModal({
                   <Button
                     type="button"
                     variant="outline"
-                    size="sm"
+                    size="lg"
                     data-testid="btn-scan-receipt"
                     disabled={isScanning}
                     onClick={handleScanReceipt}
-                    className="gap-1.5 bg-brand-soft/80 border-brand/40 text-ink font-semibold hover:bg-brand-soft shadow-xs"
                   >
                     {isScanning ? (
-                      <Loader2 className="size-3.5 animate-spin text-ink" />
+                      <Loader2 className="size-4 animate-spin" aria-hidden />
                     ) : (
-                      <Sparkles className="size-3.5 text-brand" />
+                      <Sparkles className="size-4" aria-hidden />
                     )}
-                    {isScanning ? 'Scanning...' : 'Scan with AI'}
+                    {isScanning ? 'Scanning…' : 'Scan with AI'}
                   </Button>
 
                   <button
@@ -432,108 +515,167 @@ export function SubmitExpenseModal({
                       setReceiptFileName(null);
                       setReceiptFile(null);
                       setScanResult(null);
+                      setScanError(null);
                     }}
                     aria-label="Remove receipt"
                     data-testid="btn-remove-receipt"
-                    className="rounded-lg p-1.5 text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors cursor-pointer"
+                    className="grid size-11 cursor-pointer place-items-center rounded-full text-ink-muted transition-colors hover:bg-surface hover:text-ink"
                   >
-                    <X className="size-4" />
+                    <X className="size-4" aria-hidden />
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col items-center">
-                <div className="rounded-2xl bg-surface-muted/60 p-3 text-ink-subtle border border-border/30">
-                  <Upload className="size-6 stroke-[1.8]" />
-                </div>
-                <p className="mt-2 text-sm font-medium text-ink">
-                  Drag and drop receipt here, or{' '}
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="text-brand font-semibold hover:underline cursor-pointer"
-                  >
-                    browse files
-                  </button>
-                </p>
-                <p className="text-xs text-ink-subtle mt-0.5">Supports PNG, JPG, WEBP, or PDF scans</p>
-
-                <div className="mt-3 flex items-center gap-2">
+              <div className="flex flex-col items-center gap-3">
+                <Upload className="size-6 stroke-[1.8] text-ink-subtle" aria-hidden />
+                <p className="text-sm text-ink-muted">Drop the receipt here, or</p>
+                <div className="flex flex-wrap justify-center gap-2">
                   <Button
                     type="button"
-                    variant="ghost"
-                    size="sm"
-                    data-testid="btn-load-sample"
-                    onClick={handleLoadSampleReceipt}
-                    className="text-xs text-ink-muted hover:text-ink gap-1"
+                    variant="outline"
+                    size="lg"
+                    data-testid="btn-choose-receipt"
+                    onClick={() => fileInputRef.current?.click()}
                   >
-                    <Sparkles className="size-3 text-brand" />
-                    Load Sample Receipt
+                    <Upload className="size-4" aria-hidden />
+                    Take photo or choose file
                   </Button>
+                  {isTouch && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="lg"
+                      data-testid="btn-take-photo"
+                      onClick={() => cameraInputRef.current?.click()}
+                    >
+                      <Camera className="size-4" aria-hidden />
+                      Take photo
+                    </Button>
+                  )}
                 </div>
+                <p className="text-xs text-ink-muted">A photo or a PDF. The scanner reads JPEG, PNG, WebP and PDF.</p>
               </div>
             )}
           </div>
 
-          {/* AI Extraction Banner */}
+          {scanError && (
+            <p
+              data-testid="scan-error"
+              role="alert"
+              className="flex items-start gap-2 rounded-xl border border-danger/25 bg-danger-soft px-3 py-2 text-sm text-ink"
+            >
+              <AlertCircle className="mt-0.5 size-4 shrink-0 text-danger" aria-hidden />
+              <span>{scanError}</span>
+            </p>
+          )}
+
           {scanResult && (
             <div
               data-testid="ai-scan-success-banner"
-              className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2 text-xs text-emerald-800 dark:text-emerald-300"
+              className="flex items-center justify-between gap-2 rounded-xl border border-success/25 bg-success-soft px-3.5 py-2 text-xs text-ink"
             >
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+                <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden />
                 <span>
-                  <strong>AI Scan Completed:</strong> Auto-extracted {scanResult.merchantName} ({scanResult.items?.length || 0} items)
+                  Scanned: filled in {scanResult.merchantName || 'the details'} ({scanResult.items?.length || 0}{' '}
+                  {scanResult.items?.length === 1 ? 'item' : 'items'}). Check them before you submit.
                 </span>
               </div>
-              <Badge tone="success" className="font-semibold text-[10px]">
-                {Math.round((scanResult.confidence || 0.95) * 100)}% Confidence
-              </Badge>
+              {typeof scanResult.confidence === 'number' && (
+                <Badge tone="success" className="tabular-nums">
+                  {Math.round(scanResult.confidence * 100)}% sure
+                </Badge>
+              )}
             </div>
           )}
         </div>
 
-        {/* Claim Core Information Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Claim details */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Input
             label="Employee / Submitter"
             data-testid="input-employee-name"
-            placeholder="e.g. Alex Morgan"
+            placeholder="You, if left blank"
             value={employeeName}
             onChange={(e) => setEmployeeName(e.target.value)}
           />
 
           <Input
+            ref={merchantRef}
             label="Merchant / Vendor"
             data-testid="input-merchant-name"
             required
-            placeholder="e.g. Acme Corp, Delta Air, Uber"
+            placeholder="e.g. ENOC, Dragon Mart, Ace Hardware"
             value={merchantName}
-            onChange={(e) => setMerchantName(e.target.value)}
+            error={fieldErrors.merchantName}
+            onChange={(e) => {
+              setMerchantName(e.target.value);
+              clearFieldError('merchantName');
+            }}
           />
 
-          <Select
-            label="Expense Category"
-            data-testid="select-category"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            options={EXPENSE_CATEGORIES}
-          />
+          {/* Native select, grouped as the shared list groups them. */}
+          <div className="space-y-1.5">
+            <label htmlFor={categoryId} className="block text-sm font-medium text-ink">
+              Expense Category
+              <span className="ms-0.5 text-danger" aria-hidden>
+                *
+              </span>
+            </label>
+            <select
+              ref={categoryRef}
+              id={categoryId}
+              data-testid="select-category"
+              value={category}
+              aria-invalid={fieldErrors.category ? true : undefined}
+              aria-describedby={fieldErrors.category ? `${categoryId}-message` : undefined}
+              onChange={(e) => {
+                setCategory(e.target.value);
+                clearFieldError('category');
+              }}
+              className={cn(
+                'h-10 w-full appearance-none rounded-xl border bg-surface px-3 pe-8 text-sm text-ink transition-colors focus:outline-hidden focus:ring-1 focus:ring-brand-ring focus:border-brand-ring',
+                fieldErrors.category ? 'border-danger' : 'border-border-control hover:border-ink-subtle',
+              )}
+            >
+              <option value="">Choose a category</option>
+              {!categoryListed && <option value={category}>{category}</option>}
+              {EXPENSE_CATEGORY_GROUPS.map((group) => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.categories.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            {fieldErrors.category && (
+              <p id={`${categoryId}-message`} className="text-xs text-danger" role="alert">
+                {fieldErrors.category}
+              </p>
+            )}
+          </div>
 
           <Input
+            ref={dateRef}
             label="Expense Date"
             type="date"
             data-testid="input-expense-date"
             required
             value={expenseDate}
-            onChange={(e) => setExpenseDate(e.target.value)}
+            error={fieldErrors.expenseDate}
+            onChange={(e) => {
+              setExpenseDate(e.target.value);
+              clearFieldError('expenseDate');
+            }}
           />
 
           <Select
             label="Currency"
             data-testid="select-currency"
             value={currency}
+            placeholder={currency ? undefined : 'Base currency'}
             onChange={(e) => {
               currencyTouched.current = true;
               setCurrency(e.target.value);
@@ -542,102 +684,109 @@ export function SubmitExpenseModal({
           />
 
           <Input
+            ref={amountRef}
             label="Total Amount"
             type="number"
+            inputMode="decimal"
             step="0.01"
             required
             data-testid="input-amount"
             placeholder="0.00"
+            className="tabular-nums"
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            error={fieldErrors.amount}
+            onChange={(e) => {
+              setAmount(e.target.value);
+              clearFieldError('amount');
+            }}
           />
         </div>
 
-        {/* Line Items Table */}
+        {/* Line items */}
         <div className="space-y-2.5">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
-              Line Items Breakdown ({items.length})
-            </label>
+            <p className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
+              Line items ({items.length})
+            </p>
             <Button
               type="button"
               variant="ghost"
-              size="sm"
               data-testid="btn-add-line-item"
               onClick={handleAddItem}
-              className="text-xs gap-1 text-ink-muted hover:text-ink"
             >
-              <Plus className="size-3.5" />
-              Add Item
+              <Plus className="size-4" aria-hidden />
+              Add item
             </Button>
           </div>
 
           <div
             data-testid="line-items-container"
-            className="space-y-2 rounded-2xl border border-border/30 bg-surface-muted/15 p-3"
+            className="space-y-2 rounded-2xl border border-border bg-surface-muted p-3"
           >
             {items.map((item, index) => (
               <div
                 key={item.id}
                 data-testid={`line-item-row-${index}`}
-                className="grid grid-cols-12 gap-2 items-center bg-surface p-2 rounded-xl border border-border/30"
+                className="grid grid-cols-12 items-center gap-2 rounded-xl border border-border bg-surface p-2"
               >
                 <div className="col-span-12 sm:col-span-5">
                   <input
                     type="text"
-                    placeholder="Description (e.g. Team Lunch)"
+                    placeholder="Description (e.g. Cutting discs)"
                     aria-label={`Item ${index + 1} description`}
                     data-testid={`line-item-desc-${index}`}
                     value={item.description}
                     onChange={(e) => handleItemChange(item.id, 'description', e.target.value)}
-                    className="w-full rounded-lg border border-border/70 bg-transparent px-2.5 py-1.5 text-xs text-ink placeholder:text-ink-subtle focus:outline-hidden focus:border-brand"
+                    className={lineControl}
                   />
                 </div>
 
-                <div className="col-span-4 sm:col-span-2">
+                <div className="col-span-3 sm:col-span-2">
                   <input
                     type="number"
+                    inputMode="decimal"
                     min="1"
                     placeholder="Qty"
                     aria-label={`Item ${index + 1} quantity`}
                     data-testid={`line-item-qty-${index}`}
                     value={item.quantity}
                     onChange={(e) => handleItemChange(item.id, 'quantity', Number(e.target.value))}
-                    className="w-full rounded-lg border border-border/70 bg-transparent px-2.5 py-1.5 text-xs text-ink text-right focus:outline-hidden focus:border-brand"
+                    className={cn(lineControl, 'text-end tabular-nums')}
                   />
                 </div>
 
                 <div className="col-span-4 sm:col-span-2">
                   <input
                     type="number"
+                    inputMode="decimal"
                     step="0.01"
                     placeholder="Price"
                     aria-label={`Item ${index + 1} unit price`}
                     data-testid={`line-item-price-${index}`}
                     value={item.unitPrice || ''}
                     onChange={(e) => handleItemChange(item.id, 'unitPrice', Number(e.target.value))}
-                    className="w-full rounded-lg border border-border/70 bg-transparent px-2.5 py-1.5 text-xs text-ink text-right focus:outline-hidden focus:border-brand"
+                    className={cn(lineControl, 'text-end tabular-nums')}
                   />
                 </div>
 
-                <div className="col-span-3 sm:col-span-2 text-right pr-1">
+                <div className="col-span-3 text-end sm:col-span-2">
                   <span
                     data-testid={`line-item-total-${index}`}
-                    className="font-mono text-xs font-semibold text-ink"
+                    className="text-sm font-semibold tabular-nums text-ink"
                   >
-                    ${(item.amount || 0).toFixed(2)}
+                    {formatExpenseCurrency(item.amount || 0, currency)}
                   </span>
                 </div>
 
-                <div className="col-span-1 flex justify-end">
+                <div className="col-span-2 flex justify-end sm:col-span-1">
                   <button
                     type="button"
                     onClick={() => handleRemoveItem(item.id)}
                     aria-label={`Remove item ${index + 1}`}
                     data-testid={`btn-remove-line-item-${index}`}
-                    className="rounded-lg p-1 text-ink-subtle hover:text-danger hover:bg-danger-soft/50 transition-colors cursor-pointer"
+                    className="grid size-10 cursor-pointer place-items-center rounded-full text-ink-muted transition-colors hover:bg-danger-soft hover:text-danger"
                   >
-                    <Trash2 className="size-3.5" />
+                    <Trash2 className="size-4" aria-hidden />
                   </button>
                 </div>
               </div>
@@ -645,17 +794,28 @@ export function SubmitExpenseModal({
           </div>
         </div>
 
-        {/* Notes & Justification */}
         <Textarea
-          label="Business Purpose / Notes (Optional)"
+          label="Business purpose / notes (optional)"
           data-testid="input-notes"
-          placeholder="Add business justification or client details..."
+          placeholder="What it was for, and for which job or customer"
+          maxLength={EXPENSE_NOTES_MAX_LENGTH}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
 
-        {/* Modal Actions */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-border/25">
+        {submitError && (
+          <p
+            data-testid="form-error-alert"
+            role="alert"
+            className="flex items-start gap-2 rounded-xl border border-danger/25 bg-danger-soft px-3 py-2 text-sm text-ink"
+          >
+            <AlertCircle className="mt-0.5 size-4 shrink-0 text-danger" aria-hidden />
+            <span>{submitError}</span>
+          </p>
+        )}
+
+        {/* Actions */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
           <Button
             type="button"
             variant="ghost"
@@ -674,7 +834,7 @@ export function SubmitExpenseModal({
               disabled={isLoading || isScanning}
               onClick={() => handleFormSubmit('DRAFT')}
             >
-              Save as Draft
+              Save as draft
             </Button>
 
             <Button
@@ -684,7 +844,7 @@ export function SubmitExpenseModal({
               loading={isLoading}
               disabled={isScanning}
             >
-              Submit Claim
+              Submit claim
             </Button>
           </div>
         </div>

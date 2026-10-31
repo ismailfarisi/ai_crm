@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, use, useMemo } from 'react';
+import React, { useEffect, useState, use } from 'react';
 import { notFound, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
@@ -17,6 +17,8 @@ import { NodePaletteDrawer } from '@/components/automations/drawers/node-palette
 import { NodeInspectorDrawer } from '@/components/automations/drawers/node-inspector-drawer';
 import { TestRunDrawer } from '@/components/automations/drawers/test-run-drawer';
 import { RunsDrawer } from '@/components/automations/runs/runs-drawer';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { crmEventOf, normalizeTriggerNodes, runsWhenPhrase } from '@/components/automations/crm-events';
 import { useSession } from '@/lib/session-context';
 import { AUTOMATION_PERMISSIONS } from '@saas/shared';
 import type { AutomationNodeType, AutomationNode, AutomationWorkflowDto } from '@saas/shared';
@@ -78,6 +80,7 @@ interface AutomationStudioProps {
 }
 
 function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
+  const router = useRouter();
   const updateWorkflowMutation = useUpdateAutomationWorkflow();
   const testRunMutation = useTestRunAutomation();
   const regenerateWebhook = useRegenerateAutomationWebhook();
@@ -86,7 +89,13 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
   const { data: settings } = useAutomationSettings();
 
   const [workflowName, setWorkflowName] = useState<string>(workflow.name);
+  const [savedName, setSavedName] = useState<string>(workflow.name);
+  // The saved status. It changes only through the confirmed Activate /
+  // Deactivate action, which saves at once: never a pending local toggle
+  // that looks done but isn't.
   const [workflowStatus, setWorkflowStatus] = useState<'DRAFT' | 'ACTIVE' | 'PAUSED'>(workflow.status);
+  const [statusConfirmOpen, setStatusConfirmOpen] = useState(false);
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
 
   // Workflow-level trigger settings edited since the last save. Null means untouched, and
   // an untouched trigger is never sent: the API treats any triggerConfig on an ACTIVE
@@ -120,37 +129,73 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
     redo,
     getGraphPayload,
   } = useAutomationCanvas({
-    initialNodes: workflow.nodes || [],
+    // Older trigger nodes carry their event as `eventType`; read it as `event`.
+    initialNodes: normalizeTriggerNodes(workflow.nodes || []),
     initialEdges: workflow.edges || [],
   });
 
+  const name = workflowName || workflow.name;
+  const hasUnsavedChanges = isDirty || editedTriggerConfig !== null || name !== savedName;
+
+  // Leaving the tab with unsaved changes asks first, as Back does.
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [hasUnsavedChanges]);
+
+  const editsPayload = () => {
+    const graphPayload = getGraphPayload();
+    return {
+      name,
+      nodes: normalizeTriggerNodes(graphPayload.nodes),
+      edges: graphPayload.edges,
+      ...(editedTriggerConfig ? triggerPatch(editedTriggerConfig) : {}),
+    };
+  };
+
+  const afterEditsSaved = () => {
+    markClean();
+    setEditedTriggerConfig(null);
+    setTriggerInvalid(false);
+    setSavedName(name);
+    refresh?.();
+  };
+
+  // Save keeps the status as it is; only Activate / Deactivate changes it.
   const handleSave = async () => {
     try {
-      const graphPayload = getGraphPayload();
-      await updateWorkflowMutation.mutateAsync({
-        id: workflow.id,
-        input: {
-          name: workflowName || workflow.name,
-          status: workflowStatus,
-          nodes: graphPayload.nodes,
-          edges: graphPayload.edges,
-          ...(editedTriggerConfig ? triggerPatch(editedTriggerConfig) : {}),
-        },
-      });
-      markClean();
-      setEditedTriggerConfig(null);
-      setTriggerInvalid(false);
-      toast.success('Automation workflow saved successfully');
-      refresh?.();
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to save workflow');
+      await updateWorkflowMutation.mutateAsync({ id: workflow.id, input: editsPayload() });
+      afterEditsSaved();
+    } catch {
+      // The mutation's own toast says what went wrong.
     }
   };
 
-  const handleStatusToggle = () => {
-    const nextStatus = workflowStatus === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
-    setWorkflowStatus(nextStatus);
+  const activating = workflowStatus !== 'ACTIVE';
+  const triggerNode = nodes.find((n) => n.type === 'crmEventTrigger');
+  const triggerEvent = crmEventOf((triggerNode?.data as { config?: Record<string, unknown> } | undefined)?.config);
+  const missingEvent = workflow.triggerType === 'CRM_EVENT' && !triggerEvent;
+
+  const handleStatusChange = async () => {
+    if (activating && missingEvent) {
+      throw new Error('Choose the CRM event that starts this automation first: open the trigger and pick one.');
+    }
+    const nextStatus = activating ? 'ACTIVE' : 'PAUSED';
+    const saved = await updateWorkflowMutation.mutateAsync({
+      id: workflow.id,
+      // Unsaved edits go with it, so what runs is what is on the canvas.
+      input: hasUnsavedChanges ? { ...editsPayload(), status: nextStatus } : { status: nextStatus },
+    });
+    if (hasUnsavedChanges) afterEditsSaved();
+    else refresh?.();
+    setWorkflowStatus(saved?.status ?? nextStatus);
   };
+
+  const statusDescription = activating
+    ? `It runs ${runsWhenPhrase(workflow.triggerType, triggerEvent)}. Its steps run with your permissions.`
+    : 'It stops running until someone activates it again.';
 
   const handleAddNodeFromPalette = (type: AutomationNodeType) => {
     addNode({ type });
@@ -179,8 +224,14 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
         workflowName={workflowName || workflow.name}
         onNameChange={setWorkflowName}
         status={workflowStatus}
-        onStatusToggle={handleStatusToggle}
-        isDirty={isDirty || editedTriggerConfig !== null}
+        onStatusToggle={() => setStatusConfirmOpen(true)}
+        statusBlockedReason={triggerInvalid ? 'Fix the schedule before activating' : null}
+        onBackClick={(event) => {
+          if (!hasUnsavedChanges) return;
+          event.preventDefault();
+          setLeaveConfirmOpen(true);
+        }}
+        isDirty={hasUnsavedChanges}
         isSaving={updateWorkflowMutation.isPending}
         saveBlockedReason={triggerInvalid ? 'Fix the schedule before saving' : null}
         onSave={handleSave}
@@ -251,6 +302,28 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
         {/* Runs Drawer */}
         {isRunsOpen && <RunsDrawer workflowId={workflow.id} onClose={() => setIsRunsOpen(false)} />}
       </div>
+
+      <ConfirmDialog
+        open={statusConfirmOpen}
+        onClose={() => setStatusConfirmOpen(false)}
+        onConfirm={handleStatusChange}
+        title={`${activating ? 'Activate' : 'Deactivate'} “${name}”?`}
+        description={
+          hasUnsavedChanges ? `${statusDescription} Your unsaved changes are saved with it.` : statusDescription
+        }
+        confirmLabel={activating ? 'Activate automation' : 'Deactivate automation'}
+        tone={activating ? 'primary' : 'danger'}
+      />
+
+      <ConfirmDialog
+        open={leaveConfirmOpen}
+        onClose={() => setLeaveConfirmOpen(false)}
+        onConfirm={() => router.push('/automations')}
+        title="Leave without saving?"
+        description={`Your changes to “${name}” since the last save will be lost.`}
+        confirmLabel="Leave without saving"
+        tone="danger"
+      />
     </div>
   );
 }

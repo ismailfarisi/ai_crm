@@ -5,11 +5,12 @@ import type { EmployeeDto } from '@saas/shared';
 import { usePensionSchemes } from '@/hooks/use-payroll';
 import { Badge, Card, CardBody, EmptyState } from '@/components/ui/primitives';
 import { PENSION_BASE_LABELS } from './payroll-settings-view';
-import { money } from './payroll-format';
+import { money, usePayrollCurrency } from './payroll-format';
 
 /** Nationals only: the scheme they contribute to, with its rates. Changing it is an employee edit. */
 export function EmployeePensionTab({ employee }: { employee: EmployeeDto }) {
   const { data, isPending, isError, error } = usePensionSchemes();
+  const cur = usePayrollCurrency();
 
   if (isPending) return <p className="text-ink-muted">Loading…</p>;
   if (isError || !data) {
@@ -18,8 +19,8 @@ export function EmployeePensionTab({ employee }: { employee: EmployeeDto }) {
   const scheme = data.find((s) => s.id === employee.pensionSchemeId) ?? null;
   const limits = scheme
     ? [
-        scheme.minSalary != null ? `min ${money(scheme.minSalary)}` : null,
-        scheme.maxSalary != null ? `max ${money(scheme.maxSalary)}` : null,
+        scheme.minSalary != null ? `min ${money(scheme.minSalary, cur)}` : null,
+        scheme.maxSalary != null ? `max ${money(scheme.maxSalary, cur)}` : null,
       ].filter(Boolean)
     : [];
 
@@ -55,7 +56,7 @@ export function EmployeePensionTab({ employee }: { employee: EmployeeDto }) {
             No pension scheme assigned. Pick one when editing this employee, or payroll will flag them.
           </p>
         )}
-        <Link href="/people/settings" className="text-sm font-medium text-accent hover:underline">
+        <Link href="/people/settings" className="text-sm font-medium text-ink underline underline-offset-2">
           Pension schemes in Settings
         </Link>
       </CardBody>

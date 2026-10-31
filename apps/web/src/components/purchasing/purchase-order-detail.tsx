@@ -17,8 +17,10 @@ import {
   usePurchaseOrderAction,
   usePurchaseOrderGuardrails,
 } from '@/hooks/use-purchase-orders';
+import { useSupplier } from '@/hooks/use-suppliers';
 import { Can } from '@/components/auth/can';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog } from '@/components/ui/dialog';
 import { EmptyState, PageHeader } from '@/components/ui/primitives';
 import { Textarea } from '@/components/ui/field';
@@ -38,7 +40,13 @@ export function PurchaseOrderDetail({ id }: { id: string }) {
   const [cancelling, setCancelling] = useState(false);
   const [receiving, setReceiving] = useState(false);
   const [billing, setBilling] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [closingShort, setClosingShort] = useState(false);
   const [reason, setReason] = useState('');
+  // Only needed to show who the email goes to, so only fetched once asked.
+  const { data: supplier, isPending: supplierPending } = useSupplier(
+    sending && order ? order.supplierId : null,
+  );
 
   if (isPending) return <p className="text-ink-muted">Loading…</p>;
   if (isError || !order) {
@@ -52,6 +60,10 @@ export function PurchaseOrderDetail({ id }: { id: string }) {
 
   const status = order.status as PurchaseOrderStatus;
   const can = (to: PurchaseOrderStatus) => canTransition(status, to);
+  const outstandingLines = (order.lines ?? [])
+    .map((line) => ({ ...line, outstanding: Math.max(0, line.qtyOrdered - line.qtyReceived) }))
+    .filter((line) => line.outstanding > 0);
+  const noEmail = sending && supplier != null && !supplier.email;
 
   return (
     <>
@@ -99,7 +111,7 @@ export function PurchaseOrderDetail({ id }: { id: string }) {
 
             {can('SENT') && (
               <Can permission={PERMISSIONS.PURCHASE_ORDER_UPDATE}>
-                <Button loading={act.isPending} onClick={() => act.mutate({ id, action: 'send' })}>
+                <Button onClick={() => setSending(true)}>
                   <Send className="size-4" />
                   Email to supplier
                 </Button>
@@ -128,9 +140,8 @@ export function PurchaseOrderDetail({ id }: { id: string }) {
               <Can permission={PERMISSIONS.PURCHASE_ORDER_UPDATE}>
                 <Button
                   variant="secondary"
-                  loading={act.isPending}
                   title="The balance is not coming — close the order and release it from stock on order"
-                  onClick={() => act.mutate({ id, action: 'closeShort' })}
+                  onClick={() => setClosingShort(true)}
                 >
                   <CircleSlash className="size-4" />
                   Close short
@@ -212,6 +223,73 @@ export function PurchaseOrderDetail({ id }: { id: string }) {
 
       <ReceiveDialog open={receiving} order={order} onClose={() => setReceiving(false)} />
       <EnterBillDialog open={billing} order={order} onClose={() => setBilling(false)} />
+
+      {noEmail ? (
+        <Dialog
+          open
+          onClose={() => setSending(false)}
+          size="sm"
+          title={`${order.supplierName} has no email address`}
+          description="Add one to the supplier, then send the order from here."
+          footer={
+            <Button variant="outline" onClick={() => setSending(false)}>
+              Close
+            </Button>
+          }
+        >
+          <p className="text-sm text-ink-muted">Nothing has been sent.</p>
+        </Dialog>
+      ) : (
+        <ConfirmDialog
+          open={sending}
+          onClose={() => setSending(false)}
+          onConfirm={() => act.mutateAsync({ id, action: 'send' })}
+          title={`Email ${order.poNumber} to ${order.supplierName}?`}
+          description="The order goes as a PDF attachment, and it is marked sent."
+          confirmLabel="Email order"
+        >
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+            <dt className="text-ink-muted">To</dt>
+            <dd className="min-w-0 break-words text-ink">
+              {supplier?.email
+                ? supplier.contactName
+                  ? `${supplier.contactName} <${supplier.email}>`
+                  : supplier.email
+                : supplierPending
+                  ? 'Looking up their email address…'
+                  : `The email address on ${order.supplierName}’s record`}
+            </dd>
+            <dt className="text-ink-muted">Order total</dt>
+            <dd className="font-medium tabular-nums text-ink">
+              {money(order.totalAmount, order.currency)}
+            </dd>
+          </dl>
+        </ConfirmDialog>
+      )}
+
+      <ConfirmDialog
+        open={closingShort}
+        onClose={() => setClosingShort(false)}
+        onConfirm={() => act.mutateAsync({ id, action: 'closeShort' })}
+        title={`Close ${order.poNumber} short?`}
+        description="The order is closed with these quantities still to come. They stop counting as stock on order, and nothing more can be booked in against it."
+        confirmLabel="Close short"
+      >
+        {outstandingLines.length > 0 ? (
+          <ul className="divide-y divide-border rounded-xl border border-border text-sm">
+            {outstandingLines.map((line) => (
+              <li key={line.id} className="flex items-baseline justify-between gap-3 px-3 py-2">
+                <span className="min-w-0 text-ink">{line.description}</span>
+                <span className="shrink-0 tabular-nums text-ink-muted">
+                  {line.outstanding} {line.uom.toLowerCase()} not received
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-ink-muted">Every line has been received in full.</p>
+        )}
+      </ConfirmDialog>
 
       <Dialog
         open={cancelling}

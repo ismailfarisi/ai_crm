@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import type { ExpenseClaimDto, ScannedReceiptResult } from '@saas/shared';
 import {
   ExpenseStatusBadge,
@@ -10,13 +10,20 @@ import {
   ReceiptPreviewCard,
   formatExpenseCurrency,
 } from './receipt-preview-card';
-import {
-  SubmitExpenseModal,
-  EXPENSE_CATEGORIES,
-} from './submit-expense-modal';
+import { SubmitExpenseModal } from './submit-expense-modal';
 import {
   ExpenseClaimsTable,
 } from './expense-claims-table';
+import { ExpenseSummary } from './expense-summary';
+import { ExpenseDetailView } from './expense-detail-view';
+import { reimbursementAccount, summariseClaims } from './expense-money';
+
+const mocks = vi.hoisted(() => ({
+  baseCurrency: 'USD',
+  allowed: true,
+  useExpense: vi.fn(),
+  accounts: [] as unknown[],
+}));
 
 // Polyfill HTMLDialogElement for jsdom if needed
 beforeEach(() => {
@@ -36,11 +43,39 @@ beforeEach(() => {
 
 // The modal defaults a claim's currency to the company's base currency.
 vi.mock('@/hooks/use-organization', () => ({
-  useOrganization: () => ({ data: { baseCurrency: 'USD' } }),
+  useOrganization: () => ({ data: { baseCurrency: mocks.baseCurrency } }),
 }));
+
+// Approve, reject and reimburse sit behind expense:approve.
+vi.mock('@/lib/session-context', () => ({
+  useSession: () => ({ check: () => mocks.allowed }),
+}));
+
+vi.mock('@/hooks/use-finance', () => ({
+  useFinanceAccounts: () => ({ data: mocks.accounts }),
+}));
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
+vi.mock('@/components/platform/attachments-panel', () => ({
+  AttachmentsPanel: () => null,
+}));
+vi.mock('@/components/platform/activity-timeline', () => ({
+  ActivityTimeline: () => null,
+}));
+
+beforeEach(() => {
+  mocks.baseCurrency = 'USD';
+  mocks.allowed = true;
+  mocks.accounts = [];
+  mocks.useExpense.mockReset();
+});
 
 // Mock hook useScanReceipt
 vi.mock('@/hooks/use-expenses', () => ({
+  useExpense: (id: string) => mocks.useExpense(id),
   useReceiptSource: (url?: string | null) => ({ src: url ?? null, isPdf: /\.pdf$/i.test(url ?? ''), isLoading: false }),
   useScanReceipt: () => ({
     mutateAsync: vi.fn().mockResolvedValue({
@@ -217,7 +252,7 @@ describe('ExpenseStatusRibbon Component', () => {
     );
 
     expect(screen.getByTestId('reimbursement-info-banner')).toBeInTheDocument();
-    expect(screen.getByText(/Payment settled & disbursed/i)).toBeInTheDocument();
+    expect(screen.getByText(/Reimbursed on/i)).toBeInTheDocument();
   });
 
   it('renders rejection banner with reason when status is REJECTED', () => {
@@ -370,49 +405,51 @@ describe('SubmitExpenseModal Component', () => {
     expect(screen.getByTestId('receipt-dropzone')).toBeInTheDocument();
   });
 
-  it('loads sample receipt and triggers AI scan to auto-populate fields', async () => {
+  it('scans a picked photo and fills in the fields', async () => {
     const mockScan = vi.fn().mockResolvedValue({
-      merchantName: 'Acme Cloud Corp',
-      amount: 285.0,
-      currency: 'USD',
-      expenseDate: '2026-08-15',
-      category: 'Software & SaaS',
+      merchantName: 'ENOC',
+      amount: 120,
+      currency: 'AED',
+      expenseDate: '2026-10-15',
+      category: 'Travel',
       confidence: 0.96,
-      taxAmount: 23.5,
-      items: [
-        { description: 'Pro Plan', quantity: 1, unitPrice: 240, amount: 240 },
-        { description: 'API Addon', quantity: 1, unitPrice: 45, amount: 45 },
-      ],
+      items: [{ description: 'Diesel', quantity: 1, unitPrice: 120, amount: 120 }],
     });
 
-    render(
-      <SubmitExpenseModal
-        open={true}
-        onClose={vi.fn()}
-        onSubmit={vi.fn()}
-        onScanReceipt={mockScan}
-      />,
-    );
+    render(<SubmitExpenseModal open={true} onClose={vi.fn()} onSubmit={vi.fn()} onScanReceipt={mockScan} />);
 
-    // Click Load Sample Receipt
-    const loadSampleBtn = screen.getByTestId('btn-load-sample');
-    fireEvent.click(loadSampleBtn);
+    const photo = new File(['jpeg'], 'enoc.jpg', { type: 'image/jpeg' });
+    fireEvent.change(screen.getByTestId('receipt-file-input'), { target: { files: [photo] } });
+    fireEvent.click(await screen.findByTestId('btn-scan-receipt'));
 
-    // Click Scan with AI
-    const scanBtn = screen.getByTestId('btn-scan-receipt');
-    fireEvent.click(scanBtn);
-
-    await waitFor(() => {
-      expect(mockScan).toHaveBeenCalledTimes(1);
-    });
-
-    // Form inputs should be auto-populated
-    expect(screen.getByTestId('input-merchant-name')).toHaveValue('Acme Cloud Corp');
-    expect(screen.getByTestId('input-amount')).toHaveValue(285);
-    expect(screen.getByTestId('input-expense-date')).toHaveValue('2026-08-15');
+    await waitFor(() => expect(mockScan).toHaveBeenCalledWith({ file: photo }));
+    expect(screen.getByTestId('input-merchant-name')).toHaveValue('ENOC');
+    expect(screen.getByTestId('input-amount')).toHaveValue(120);
+    expect(screen.getByTestId('input-expense-date')).toHaveValue('2026-10-15');
+    // The legacy short value resolves to the listed category.
+    expect(screen.getByTestId('select-category')).toHaveValue('Travel & Lodging');
+    expect(screen.getByTestId('select-currency')).toHaveValue('AED');
     expect(screen.getByTestId('ai-scan-success-banner')).toBeInTheDocument();
-    // The sample is an SVG: it goes as the words on it, which a model can read.
-    expect(mockScan).toHaveBeenCalledWith({ rawText: expect.stringContaining('ACME CLOUD CORP') });
+  });
+
+  it('offers no sample receipt to file as evidence', () => {
+    render(<SubmitExpenseModal open={true} onClose={vi.fn()} onSubmit={vi.fn()} />);
+    expect(screen.queryByTestId('btn-load-sample')).toBeNull();
+    expect(screen.queryByText(/sample/i)).toBeNull();
+  });
+
+  it('picks a receipt with a thumb-sized button that takes photos and PDFs', () => {
+    render(<SubmitExpenseModal open={true} onClose={vi.fn()} onSubmit={vi.fn()} />);
+    const input = screen.getByTestId('receipt-file-input');
+    const click = vi.spyOn(input, 'click');
+
+    const button = screen.getByRole('button', { name: 'Take photo or choose file' });
+    expect(button.className).toContain('h-11');
+    expect(input).toHaveAttribute('accept', 'image/*,application/pdf');
+    fireEvent.click(button);
+    expect(click).toHaveBeenCalled();
+    // The camera input exists for touch screens, straight to the back camera.
+    expect(screen.getByTestId('receipt-camera-input')).toHaveAttribute('capture', 'environment');
   });
 
   it('submits a picked receipt as a file, never inline in the claim', async () => {
@@ -429,22 +466,6 @@ describe('SubmitExpenseModal Component', () => {
     await waitFor(() =>
       expect(handleSubmit).toHaveBeenCalledWith(expect.objectContaining({ receiptUrl: null }), pdf),
     );
-  });
-
-  it('stores the sample receipt as a file too', async () => {
-    const handleSubmit = vi.fn().mockResolvedValue(undefined);
-    render(<SubmitExpenseModal open={true} onClose={vi.fn()} onSubmit={handleSubmit} />);
-
-    fireEvent.click(screen.getByTestId('btn-load-sample'));
-    fireEvent.change(screen.getByTestId('input-merchant-name'), { target: { value: 'Acme' } });
-    fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '285' } });
-    fireEvent.click(screen.getByTestId('btn-save-draft'));
-
-    await waitFor(() => expect(handleSubmit).toHaveBeenCalled());
-    const [payload, receipt] = handleSubmit.mock.calls[0];
-    expect(payload.receiptUrl).toBeNull();
-    expect(receipt).toBeInstanceOf(File);
-    expect((receipt as File).type).toBe('image/svg+xml');
   });
 
   it('scans an uploaded PDF by sending the file itself', async () => {
@@ -491,6 +512,10 @@ describe('SubmitExpenseModal Component', () => {
     expect(screen.getByTestId('line-item-total-0')).toHaveTextContent('$100.00');
     expect(screen.getByTestId('input-amount')).toHaveValue(100);
 
+    // A line total is in the claim's currency, not a hard-coded dollar.
+    fireEvent.change(screen.getByTestId('select-currency'), { target: { value: 'AED' } });
+    expect(screen.getByTestId('line-item-total-0')).toHaveTextContent('AED 100.00');
+
     // Click Add Line Item
     const addBtn = screen.getByTestId('btn-add-line-item');
     fireEvent.click(addBtn);
@@ -524,36 +549,73 @@ describe('SubmitExpenseModal Component', () => {
           amount: 45.5,
           status: 'DRAFT',
           receiptUrl: null,
+          notes: null,
         }),
         null,
       );
     });
   });
 
-  it('displays error alert if validation fails', () => {
-    render(
-      <SubmitExpenseModal
-        open={true}
-        onClose={vi.fn()}
-        onSubmit={vi.fn()}
-      />,
+  it('sends the notes with the claim', async () => {
+    const handleSubmit = vi.fn();
+    render(<SubmitExpenseModal open={true} onClose={vi.fn()} onSubmit={handleSubmit} />);
+
+    fireEvent.change(screen.getByTestId('input-merchant-name'), { target: { value: 'Ace Hardware' } });
+    fireEvent.change(screen.getByTestId('select-category'), { target: { value: 'Consumables' } });
+    fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '86' } });
+    fireEvent.change(screen.getByTestId('input-notes'), {
+      target: { value: '  Sanding discs for the Marina kitchen job  ' },
+    });
+    fireEvent.click(screen.getByTestId('btn-submit-claim'));
+
+    await waitFor(() =>
+      expect(handleSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          notes: 'Sanding discs for the Marina kitchen job',
+          category: 'Consumables',
+          status: 'SUBMITTED',
+        }),
+        null,
+      ),
     );
+  });
 
-    // Submitting with empty merchant/amount
-    const submitBtn = screen.getByTestId('btn-submit-claim');
-    fireEvent.click(submitBtn);
+  it('has no category picked until one is chosen, grouped as the shared list groups them', () => {
+    render(<SubmitExpenseModal open={true} onClose={vi.fn()} onSubmit={vi.fn()} />);
+    const select = screen.getByTestId('select-category');
+    expect(select).toHaveValue('');
+    const groups = Array.from(select.querySelectorAll('optgroup')).map((g) => g.label);
+    expect(groups).toEqual(['Cost of sales', 'Operations', 'People', 'Overheads']);
+  });
 
-    expect(screen.getByTestId('form-error-alert')).toBeInTheDocument();
+  it('shows each problem under its field and moves focus to the first', () => {
+    const handleSubmit = vi.fn();
+    render(<SubmitExpenseModal open={true} onClose={vi.fn()} onSubmit={handleSubmit} />);
+
+    fireEvent.click(screen.getByTestId('btn-submit-claim'));
+
+    expect(handleSubmit).not.toHaveBeenCalled();
+    expect(screen.getByText('Enter the merchant, or describe at least one line item.')).toBeInTheDocument();
+    expect(screen.getByText('Choose a category.')).toBeInTheDocument();
+    expect(screen.getByText('Enter an amount above zero.')).toBeInTheDocument();
+    expect(screen.getByTestId('input-merchant-name')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByTestId('input-merchant-name')).toHaveFocus();
+    // No banner at the top for problems that belong to fields.
+    expect(screen.queryByTestId('form-error-alert')).toBeNull();
+
+    // Fixing a field clears its message.
+    fireEvent.change(screen.getByTestId('input-merchant-name'), { target: { value: 'ENOC' } });
+    expect(screen.queryByText('Enter the merchant, or describe at least one line item.')).toBeNull();
   });
 });
 
 describe('ExpenseClaimsTable Component', () => {
-  it('renders summary KPI strip and claims table rows', () => {
+  it('renders the claims table rows, with no second row of totals', () => {
     render(<ExpenseClaimsTable claims={mockClaims} />);
 
     expect(screen.getByTestId('expense-claims-table-container')).toBeInTheDocument();
-    expect(screen.getByTestId('kpi-total-claims')).toHaveTextContent('5');
-    expect(screen.getByTestId('kpi-pending-count')).toHaveTextContent('1');
+    expect(screen.queryByTestId('kpi-total-claims')).toBeNull();
+    expect(screen.queryByTestId('btn-new-claim')).toBeNull();
     expect(screen.getByTestId('expense-claims-table')).toBeInTheDocument();
 
     // Check row renders
@@ -594,51 +656,78 @@ describe('ExpenseClaimsTable Component', () => {
     expect(screen.queryByText('EXP-103')).toBeNull();
   });
 
-  it('handles Approve quick action for submitted claim', async () => {
+  it('asks before approving, naming the claimant, the amount and what posts', async () => {
     const handleApprove = vi.fn().mockResolvedValue(undefined);
     render(<ExpenseClaimsTable claims={mockClaims} onApprove={handleApprove} />);
 
-    const approveBtn = screen.getByTestId('btn-approve-claim-exp-1');
-    await act(async () => {
-      fireEvent.click(approveBtn);
-    });
+    fireEvent.click(screen.getByTestId('btn-approve-claim-exp-1'));
+    expect(handleApprove).not.toHaveBeenCalled();
 
+    expect(screen.getByText('Approve $450.00 for Sarah Connor?')).toBeInTheDocument();
+    expect(screen.getByText(/posts the cost to the books under Travel/)).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Approve claim' }));
+    });
     expect(handleApprove).toHaveBeenCalledWith(mockClaims[0]);
   });
 
-  it('handles Reject action and modal confirmation', async () => {
+  it('will not reject without a reason, and rejects with one', async () => {
     const handleReject = vi.fn().mockResolvedValue(undefined);
     render(<ExpenseClaimsTable claims={mockClaims} onReject={handleReject} />);
 
-    // Click Reject button on row
-    const rejectBtn = screen.getByTestId('btn-reject-claim-exp-1');
-    fireEvent.click(rejectBtn);
-
-    // Modal should appear
+    fireEvent.click(screen.getByTestId('btn-reject-claim-exp-1'));
     expect(screen.getByTestId('input-rejection-reason')).toBeInTheDocument();
+    expect(screen.getByTestId('btn-confirm-reject').className).toContain('bg-danger');
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('btn-confirm-reject'));
+    });
+    expect(handleReject).not.toHaveBeenCalled();
+    expect(screen.getByText(/Say why the claim is rejected/)).toBeInTheDocument();
 
     fireEvent.change(screen.getByTestId('input-rejection-reason'), {
-      target: { value: 'Policy limit exceeded' },
+      target: { value: '  Policy limit exceeded ' },
     });
-
-    const confirmRejectBtn = screen.getByTestId('btn-confirm-reject');
     await act(async () => {
-      fireEvent.click(confirmRejectBtn);
+      fireEvent.click(screen.getByTestId('btn-confirm-reject'));
     });
-
     expect(handleReject).toHaveBeenCalledWith(mockClaims[0], 'Policy limit exceeded');
   });
 
-  it('handles Reimburse action for approved claim', async () => {
+  it('asks before reimbursing, naming the account the money leaves', async () => {
     const handleReimburse = vi.fn().mockResolvedValue(undefined);
-    render(<ExpenseClaimsTable claims={mockClaims} onReimburse={handleReimburse} />);
+    render(
+      <ExpenseClaimsTable
+        claims={mockClaims}
+        onReimburse={handleReimburse}
+        reimbursementAccountName="Petty Cash"
+      />,
+    );
 
-    const reimburseBtn = screen.getByTestId('btn-reimburse-claim-exp-2');
+    fireEvent.click(screen.getByTestId('btn-reimburse-claim-exp-2'));
+    expect(handleReimburse).not.toHaveBeenCalled();
+    expect(screen.getByText('Reimburse $125.50 to John Doe?')).toBeInTheDocument();
+    expect(screen.getByText('This records the payment from Petty Cash.')).toBeInTheDocument();
+
     await act(async () => {
-      fireEvent.click(reimburseBtn);
+      fireEvent.click(screen.getByRole('button', { name: 'Reimburse claim' }));
     });
-
     expect(handleReimburse).toHaveBeenCalledWith(mockClaims[1]);
+  });
+
+  it('hides approve, reject and reimburse from someone who cannot approve', () => {
+    mocks.allowed = false;
+    render(<ExpenseClaimsTable claims={mockClaims} onApprove={vi.fn()} onReimburse={vi.fn()} />);
+    expect(screen.queryByTestId('btn-approve-claim-exp-1')).toBeNull();
+    expect(screen.queryByTestId('btn-reject-claim-exp-1')).toBeNull();
+    expect(screen.queryByTestId('btn-reimburse-claim-exp-2')).toBeNull();
+  });
+
+  it('shows each amount in its own currency', () => {
+    const aed = { ...mockClaims[0], id: 'exp-aed', claimNumber: 'EXP-200', currency: 'AED', amount: 120 };
+    render(<ExpenseClaimsTable claims={[aed]} />);
+    expect(screen.getByTestId('claim-row-exp-aed')).toHaveTextContent('AED 120.00');
   });
 
   it('renders loading skeletons when isLoading is true', () => {
@@ -656,5 +745,141 @@ describe('ExpenseClaimsTable Component', () => {
     const newClaimBtn = screen.getByTestId('btn-empty-new-claim');
     fireEvent.click(newClaimBtn);
     expect(handleNewClaim).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ExpenseSummary', () => {
+  const claim = (over: Partial<ExpenseClaimDto>): ExpenseClaimDto => ({
+    ...mockClaims[0],
+    id: Math.random().toString(36).slice(2),
+    ...over,
+  });
+  const now = new Date('2026-10-30T12:00:00Z');
+
+  it('totals in the base currency and says which claims it leaves out', () => {
+    const claims = [
+      claim({ status: 'SUBMITTED', currency: 'AED', amount: 120 }),
+      claim({ status: 'SUBMITTED', currency: 'AED', amount: 80.5 }),
+      claim({ status: 'SUBMITTED', currency: 'USD', amount: 100 }),
+      claim({ status: 'APPROVED', currency: 'AED', amount: 300 }),
+    ];
+    render(<ExpenseSummary claims={claims} baseCurrency="AED" now={now} />);
+
+    // 120 + 80.50, never 300.50 with the dollars added at face value.
+    expect(screen.getByTestId('stat-pending-amount')).toHaveTextContent('AED 200.50');
+    expect(screen.getByTestId('stat-pending-caption')).toHaveTextContent('3 claims');
+    expect(screen.getByTestId('stat-pending-caption')).toHaveTextContent('Leaves out 1 in USD');
+    expect(screen.getByTestId('stat-approved-unpaid-amount')).toHaveTextContent('AED 300.00');
+    expect(screen.getByTestId('stat-approved-unpaid-caption')).not.toHaveTextContent('Leaves out');
+  });
+
+  it('counts paid claims in the month they were paid', () => {
+    const summary = summariseClaims(
+      [
+        claim({ status: 'PAID', currency: 'AED', amount: 50, reimbursedAt: '2026-10-02T09:00:00Z' }),
+        claim({ status: 'PAID', currency: 'AED', amount: 70, reimbursedAt: '2026-09-28T09:00:00Z' }),
+      ],
+      'AED',
+      now,
+    );
+    expect(summary.paidThisMonth).toEqual({ count: 1, amount: 50, excluded: [] });
+  });
+
+  it('shows no figure until the base currency is known', () => {
+    render(<ExpenseSummary claims={mockClaims} baseCurrency={undefined} />);
+    expect(screen.getByTestId('stat-pending-amount')).toHaveTextContent('—');
+  });
+});
+
+describe('formatExpenseCurrency', () => {
+  it('never assumes dollars', () => {
+    expect(formatExpenseCurrency(120, 'AED')).toMatch(/^AED\s120\.00$/);
+    expect(formatExpenseCurrency(120, undefined)).toBe('120.00');
+  });
+});
+
+describe('reimbursementAccount', () => {
+  it('picks the default account, as the API does', () => {
+    const account = (over: object) => ({
+      id: 'a',
+      tenantId: 't',
+      name: 'Bank',
+      accountType: 'BANK' as const,
+      currency: 'AED',
+      balance: 0,
+      isDefault: false,
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      ...over,
+    });
+    expect(
+      reimbursementAccount([account({ id: 'old', name: 'Emirates NBD' }), account({ id: 'pc', name: 'Petty Cash', isDefault: true })])
+        ?.name,
+    ).toBe('Petty Cash');
+    expect(reimbursementAccount([])).toBeNull();
+  });
+});
+
+describe('ExpenseDetailView', () => {
+  const signalClaim = vi.fn().mockResolvedValue(undefined);
+  const withClaim = (over: Partial<ExpenseClaimDto>) =>
+    mocks.useExpense.mockReturnValue({
+      claim: { ...mockClaims[0], ...over },
+      isLoading: false,
+      isError: false,
+      signalClaim,
+      isSignaling: false,
+    });
+
+  beforeEach(() => signalClaim.mockClear());
+
+  it('shows the notes the claimant wrote', () => {
+    withClaim({ notes: 'Flight to the Riyadh fit-out survey' });
+    render(<ExpenseDetailView id="exp-1" />);
+    expect(screen.getByTestId('claim-notes')).toHaveTextContent('Flight to the Riyadh fit-out survey');
+    expect(screen.queryByText(/expense incurred by/)).toBeNull();
+  });
+
+  it('says "None given" rather than making a justification up', () => {
+    withClaim({ notes: null });
+    render(<ExpenseDetailView id="exp-1" />);
+    expect(screen.getByTestId('claim-notes')).toHaveTextContent('None given');
+    expect(screen.queryByText(/expense incurred by/)).toBeNull();
+  });
+
+  it('confirms before reimbursing, from the account it names', async () => {
+    mocks.accounts = [
+      {
+        id: 'pc',
+        tenantId: 't',
+        name: 'Petty Cash',
+        accountType: 'CASH',
+        currency: 'AED',
+        balance: 500,
+        isDefault: true,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+    ];
+    withClaim({ status: 'APPROVED', currency: 'AED', amount: 120, employeeName: 'Rashid' });
+    render(<ExpenseDetailView id="exp-1" />);
+
+    fireEvent.click(screen.getByTestId('detail-reimburse-btn'));
+    expect(signalClaim).not.toHaveBeenCalled();
+    expect(screen.getByText(/^Reimburse AED\s120\.00 to Rashid\?$/)).toBeInTheDocument();
+    expect(screen.getByText('This records the payment from Petty Cash.')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reimburse claim' }));
+    });
+    expect(signalClaim).toHaveBeenCalledWith({ action: 'REIMBURSE', accountId: 'pc' });
+  });
+
+  it('hides the approval actions without expense:approve', () => {
+    mocks.allowed = false;
+    withClaim({ status: 'SUBMITTED' });
+    render(<ExpenseDetailView id="exp-1" />);
+    expect(screen.queryByTestId('detail-approve-btn')).toBeNull();
+    expect(screen.queryByTestId('detail-reject-btn')).toBeNull();
   });
 });

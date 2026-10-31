@@ -149,7 +149,7 @@ function CustomerHeader({ customer }: { customer: CustomerDto }) {
     <Card className="p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="grid size-14 place-items-center rounded-2xl bg-brand-soft text-brand ring-1 ring-brand/20">
+          <div className="grid size-14 place-items-center rounded-2xl bg-brand-soft text-ink ring-1 ring-brand/20">
             <Building2 className="size-6" />
           </div>
           <div>
@@ -280,7 +280,7 @@ function DocumentList({
               <li key={doc.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
                 <Link
                   href={href(doc)}
-                  className="font-mono text-xs font-semibold text-brand hover:underline"
+                  className="font-mono text-xs font-semibold text-ink underline underline-offset-2"
                 >
                   {doc.number ?? 'Not yet numbered'}
                 </Link>

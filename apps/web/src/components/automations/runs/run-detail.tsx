@@ -50,7 +50,7 @@ export function formatDuration(ms: number): string {
 
 function JsonBlock({ value }: { value: unknown }) {
   return (
-    <pre className="p-2 rounded-lg bg-brand-dark text-success font-mono text-[11px] overflow-x-auto max-h-56 border border-border-strong">
+    <pre className="p-2 rounded-lg bg-surface-muted text-ink font-mono text-[11px] overflow-x-auto max-h-56 border border-border-strong">
       {JSON.stringify(value, null, 2)}
     </pre>
   );

@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { useAdjustStock, useSetReorderLevels } from '@/hooks/use-inventory';
+import { useOrganization } from '@/hooks/use-organization';
+import { formatMoney } from '@/lib/utils';
 import type { StockItemDto } from '@/lib/api/endpoints';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -23,6 +25,8 @@ interface StockActionsDialogProps {
 export function StockActionsDialog({ open, onClose, item, mode }: StockActionsDialogProps) {
   const adjust = useAdjustStock();
   const setLevels = useSetReorderLevels();
+  // Stock is costed in the currency the books are kept in.
+  const baseCurrency = useOrganization().data?.baseCurrency ?? null;
 
   const [counted, setCounted] = useState('');
   const [note, setNote] = useState('');
@@ -162,7 +166,11 @@ export function StockActionsDialog({ open, onClose, item, mode }: StockActionsDi
             {delta < 0 && (
               <>
                 {' '}
-                — a write-off of {(Math.abs(delta) * item.avgUnitCost).toFixed(2)} against cost of
+                — a write-off of{' '}
+                <span className="tabular-nums">
+                  {formatMoney(Math.abs(delta) * item.avgUnitCost, baseCurrency)}
+                </span>{' '}
+                against cost of
                 sales.
               </>
             )}

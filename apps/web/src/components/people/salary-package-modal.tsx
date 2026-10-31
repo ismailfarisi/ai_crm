@@ -9,11 +9,11 @@ import { createSalaryPackageSchema, packageGross, type CreateSalaryPackagePayloa
 import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/field';
+import { money, usePayrollCurrency } from './payroll-format';
 
 type FormIn = z.input<typeof createSalaryPackageSchema>;
 type FormOut = z.output<typeof createSalaryPackageSchema>;
 
-const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -29,6 +29,7 @@ export interface SalaryPackageModalProps {
 }
 
 export function SalaryPackageModal({ open, onClose, onSubmit, isLoading = false }: SalaryPackageModalProps) {
+  const cur = usePayrollCurrency();
   const form = useForm<FormIn, unknown, FormOut>({
     resolver: zodResolver(createSalaryPackageSchema),
     defaultValues: { ...EMPTY, effectiveFrom: today() },
@@ -105,7 +106,7 @@ export function SalaryPackageModal({ open, onClose, onSubmit, isLoading = false 
         </div>
 
         <p data-testid="package-gross" className="text-sm text-ink-muted">
-          Gross per month: <span className="font-medium tabular-nums text-ink">{money(gross)}</span>
+          Gross per month: <span className="font-medium tabular-nums text-ink">{money(gross, cur)}</span>
         </p>
 
         <div className="flex justify-end gap-2">

@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type {
   FinanceAccountDto,
@@ -251,6 +251,28 @@ vi.mock('@/hooks/use-finance', () => ({
   useRecurringOccurrences: () => ({ data: [], isLoading: false, isError: false }),
 }));
 
+// The overview's own reports: what customers owe, supplier bills and VAT.
+vi.mock('@/hooks/use-organization', () => ({ useOrganization: () => ({ data: { baseCurrency: 'AED', country: 'AE' } }) }));
+vi.mock('@/hooks/use-platform', () => ({
+  useFinancialReport: () => ({
+    data: { asOf: '2026-10-30', baseCurrency: 'AED', rows: [], buckets: { CURRENT: 0 }, total: 0, ledgerBalance: 0, difference: 0 },
+    isLoading: false,
+    isError: false,
+  }),
+}));
+vi.mock('@/hooks/use-bills', () => ({
+  useBillAging: () => ({
+    data: { asOf: '2026-10-30', buckets: { CURRENT: 0 }, total: 0, ledgerBalance: 0, difference: 0, bills: [] },
+    isLoading: false,
+    isError: false,
+  }),
+}));
+vi.mock('@/hooks/use-books', () => ({ useVatReturn: () => ({ data: { payableTax: 1250, warnings: [] }, isLoading: false, isError: false }) }));
+vi.mock('@/hooks/use-credits', () => ({
+  useUaeVatStatus: () => ({ data: { enabled: true, settings: null }, isLoading: false }),
+  useTaxReport: () => ({ data: undefined, isLoading: false, isError: false }),
+}));
+
 vi.mock('@/hooks/use-suppliers', () => ({
   useSuppliers: () => ({ data: { items: [], meta: { total: 0, page: 1, limit: 100, totalPages: 0 } } }),
 }));
@@ -311,6 +333,22 @@ describe('Finance Routes & Views Suite', () => {
       });
     });
 
+    it('groups the tabs into money, books and reports, without a hidden scroll strip', () => {
+      renderWithClient(<FinanceNav />);
+      expect(screen.getByRole('group', { name: 'Money' }).textContent).toContain('Subscriptions');
+      expect(screen.getByRole('group', { name: 'Books' }).textContent).toContain('Tax');
+      expect(screen.getByTestId('finance-nav').className).toContain('flex-wrap');
+      expect(screen.getByTestId('finance-nav').className).not.toContain('scrollbar-none');
+    });
+
+    it('marks the current page in charcoal tokens in both themes', () => {
+      mockPathname = '/finance/tax';
+      renderWithClient(<FinanceNav />);
+      const tax = screen.getByTestId('finance-nav-item--finance-tax');
+      expect(tax.className).toContain('bg-charcoal');
+      expect(tax.className).not.toMatch(/amber|dark:/);
+    });
+
     it('highlights active tab according to pathname', () => {
       mockPathname = '/finance/expenses';
       renderWithClient(<FinanceNav />);
@@ -323,13 +361,38 @@ describe('Finance Routes & Views Suite', () => {
   });
 
   describe('FinanceOverviewView (/finance)', () => {
-    it('renders overview header, stat cards, trend chart, and accounts grid', () => {
+    it('leads with cash, what customers owe, VAT due and bills to pay, each linking to its page', () => {
       renderWithClient(<FinanceOverviewView />);
       expect(screen.getByTestId('finance-overview-view')).toBeDefined();
-      expect(screen.getByText('Finance & Treasury')).toBeDefined();
-      expect(screen.getByTestId('treasury-stat-cards')).toBeDefined();
-      expect(screen.getByTestId('cashflow-trend-chart')).toBeDefined();
-      expect(screen.getByTestId('account-balance-grid')).toBeDefined();
+      expect(screen.getByRole('heading', { level: 1, name: 'Finance' })).toBeDefined();
+      const headlines = screen.getByTestId('finance-headlines');
+      expect([...headlines.querySelectorAll('h2')].map((h) => h.textContent)).toEqual([
+        'Cash',
+        'Customers owe you',
+        'VAT due',
+        'Bills to pay',
+      ]);
+      expect(screen.getByRole('link', { name: 'See receivables aging' })).toBeDefined();
+      expect(screen.getByRole('link', { name: 'See the VAT return' })).toBeDefined();
+      expect(screen.getByRole('link', { name: 'See supplier bills' })).toBeDefined();
+      expect(screen.getByTestId('cash-by-account')).toBeDefined();
+      expect(screen.getByTestId('cash-forecast')).toBeDefined();
+      // No burn-rate or runway copy.
+      expect(screen.queryByText(/burn|runway|self-sustaining|velocity/i)).toBeNull();
+    });
+
+    it('never adds the dollar accounts into AED cash', () => {
+      renderWithClient(<FinanceOverviewView />);
+      // Both mock accounts are in USD and the base currency is AED.
+      expect(screen.getByTestId('headline-cash-figure').textContent?.replace(/\s/g, ' ')).toBe('AED 0.00');
+      expect(screen.getByTestId('cash-other-currencies').textContent).toContain('$465,000.00');
+    });
+
+    it('keeps one amber action on the page', () => {
+      renderWithClient(<FinanceOverviewView />);
+      // Closed dialogs stay in the DOM with their own submit buttons; only the page counts.
+      const onPage = [...document.querySelectorAll('.bg-brand')].filter((el) => !el.closest('dialog'));
+      expect(onPage.length).toBeLessThanOrEqual(1);
     });
 
     it('opens transfer funds modal from header quick action', async () => {
@@ -351,7 +414,7 @@ describe('Finance Routes & Views Suite', () => {
     it('renders expenses summary KPIs and claims table', () => {
       renderWithClient(<ExpensesView />);
       expect(screen.getByTestId('expenses-view')).toBeDefined();
-      expect(screen.getByTestId('stat-total-claims')).toBeDefined();
+      expect(screen.getByTestId('stat-pending')).toBeDefined();
       expect(screen.getByTestId('expense-claims-table')).toBeDefined();
       expect(screen.getByText('EXP-1001')).toBeDefined();
       expect(screen.getByText('EXP-1002')).toBeDefined();
@@ -382,25 +445,32 @@ describe('Finance Routes & Views Suite', () => {
       expect(screen.getAllByText('Sarah Connor').length).toBeGreaterThan(0);
     });
 
-    it('approves a submitted claim when clicking approve button', async () => {
+    /** Approving posts to the books, so it asks first. */
+    it('approves a submitted claim once the approval is confirmed', async () => {
       renderWithClient(<ExpenseDetailView id="exp-1" />);
-      const approveBtn = screen.getByTestId('detail-approve-btn');
-      fireEvent.click(approveBtn);
-      expect(mockSignalClaim).toHaveBeenCalledWith({ action: 'APPROVE' });
+      fireEvent.click(screen.getByTestId('detail-approve-btn'));
+      expect(mockSignalClaim).not.toHaveBeenCalled();
+      fireEvent.click(within(document.querySelector('dialog[open]') as HTMLElement).getByRole('button', { name: 'Approve claim' }));
+      await waitFor(() =>
+        expect(mockSignalClaim).toHaveBeenCalledWith(expect.objectContaining({ action: 'APPROVE' })),
+      );
     });
 
     it('shows reject dialog when clicking reject button', async () => {
       renderWithClient(<ExpenseDetailView id="exp-1" />);
       const rejectBtn = screen.getByTestId('detail-reject-btn');
       fireEvent.click(rejectBtn);
-      expect(screen.getAllByText('Reject Expense Claim').length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/^Reject .+?$/).length).toBeGreaterThan(0);
     });
 
-    it('allows reimbursing an approved claim', async () => {
+    it('reimburses an approved claim once the payment is confirmed', async () => {
       renderWithClient(<ExpenseDetailView id="exp-2" />);
-      const reimburseBtn = screen.getByTestId('detail-reimburse-btn');
-      fireEvent.click(reimburseBtn);
-      expect(mockSignalClaim).toHaveBeenCalledWith({ action: 'REIMBURSE' });
+      fireEvent.click(screen.getByTestId('detail-reimburse-btn'));
+      expect(mockSignalClaim).not.toHaveBeenCalled();
+      fireEvent.click(within(document.querySelector('dialog[open]') as HTMLElement).getByRole('button', { name: 'Reimburse claim' }));
+      await waitFor(() =>
+        expect(mockSignalClaim).toHaveBeenCalledWith(expect.objectContaining({ action: 'REIMBURSE' })),
+      );
     });
 
     it('renders not found state for invalid id', () => {
@@ -434,6 +504,14 @@ describe('Finance Routes & Views Suite', () => {
       expect(screen.getByTestId('stat-total-liquidity')).toBeDefined();
       expect(screen.getByTestId('account-balance-grid')).toBeDefined();
       expect(screen.getAllByText('SVB Operating').length).toBeGreaterThan(0);
+    });
+
+    it('totals cash in the base currency and lists dollar balances apart', () => {
+      renderWithClient(<AccountsView />);
+      const stat = screen.getByTestId('stat-total-liquidity');
+      expect(stat.textContent).toContain('Cash in AED');
+      expect(stat.textContent?.replace(/\s/g, ' ')).toContain('AED 0.00');
+      expect(screen.getByTestId('stat-other-currencies').textContent).toContain('$465,000.00');
     });
 
     it('opens create account modal when clicking new account', () => {

@@ -94,7 +94,7 @@ function EmptyState({ onStart }: { onStart: () => void }) {
     return (
       <div className="p-6 text-sm text-ink-muted">
         The assistant needs an AI provider. An admin can set one up in{' '}
-        <Link href="/settings/ai" className="text-brand underline">
+        <Link href="/settings/ai" className="text-ink underline underline-offset-2">
           Settings → AI
         </Link>
         .

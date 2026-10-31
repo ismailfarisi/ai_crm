@@ -16,6 +16,7 @@ import { ApiError } from '@/lib/api/client';
 import { useCan, useSession } from '@/lib/session-context';
 import { Can } from '@/components/auth/can';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/field';
 import { Badge, Card, CardBody, CardHeader, CardTitle, PageHeader, Skeleton } from '@/components/ui/primitives';
@@ -29,6 +30,10 @@ export function RolesView() {
   const [draft, setDraft] = useState<Set<Permission>>(new Set());
   const [creating, setCreating] = useState(false);
   const [newRoleName, setNewRoleName] = useState('');
+  // A role picked while the current one has unsaved changes: held until the
+  // editor says to discard them.
+  const [pendingSwitch, setPendingSwitch] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const { data: roles, isPending } = useQuery({
     queryKey: queryKeys.roles,
@@ -37,15 +42,15 @@ export function RolesView() {
 
   const selected = roles?.find((role) => role.id === selectedId) ?? roles?.[0] ?? null;
 
-  // Reset the draft whenever the selected role changes or the server sends new
-  // data. Adjusted during render (React re-renders before committing) rather
-  // than in an effect, so no stale draft is ever painted.
-  const [lastReset, setLastReset] = useState<{ id?: string; permissions?: Permission[] }>({});
-  if (
-    selected &&
-    (selected.id !== lastReset.id || selected.permissions !== lastReset.permissions)
-  ) {
-    setLastReset({ id: selected.id, permissions: selected.permissions });
+  // Reset the draft whenever the selected role changes or the server's
+  // permissions for it change. Compared by content, so a background refetch
+  // with the same permissions doesn't wipe ticks still being made. Adjusted
+  // during render (React re-renders before committing) rather than in an
+  // effect, so no stale draft is ever painted.
+  const serverKey = selected ? [...selected.permissions].sort().join(' ') : '';
+  const [lastReset, setLastReset] = useState<{ id?: string; key?: string }>({});
+  if (selected && (selected.id !== lastReset.id || serverKey !== lastReset.key)) {
+    setLastReset({ id: selected.id, key: serverKey });
     setDraft(new Set(selected.permissions));
   }
 
@@ -82,8 +87,6 @@ export function RolesView() {
       setSelectedId(null);
       toast.success('Role deleted');
     },
-    onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : 'Could not delete the role'),
   });
 
   if (isPending) {
@@ -105,10 +108,19 @@ export function RolesView() {
   const outranksMe = selected ? selected.level <= currentLevel(session.user.roles) : false;
   const readOnly = isOwnerRole || outranksMe || !canEditRoles;
 
-  const dirty =
-    selected &&
-    (draft.size !== selected.permissions.length ||
-      selected.permissions.some((p) => !draft.has(p)));
+  // Each permission ticked or unticked since the last save counts once.
+  const changeCount = selected
+    ? [...draft].filter((p) => !selected.permissions.includes(p)).length +
+      selected.permissions.filter((p) => !draft.has(p)).length
+    : 0;
+  const dirty = changeCount > 0 && !readOnly;
+
+  const selectRole = (id: string) => {
+    if (id === selected?.id) return;
+    if (dirty) setPendingSwitch(id);
+    else setSelectedId(id);
+  };
+  const switchTo = roles?.find((role) => role.id === pendingSwitch);
 
   return (
     <>
@@ -117,7 +129,7 @@ export function RolesView() {
         description="Every role belongs to your organization — editing one here affects nobody else's workspace."
         actions={
           <Can permission={PERMISSIONS.ROLE_CREATE}>
-            <Button onClick={() => setCreating(true)}>
+            <Button variant="outline" onClick={() => setCreating(true)}>
               <Plus className="size-4" />
               New role
             </Button>
@@ -134,11 +146,12 @@ export function RolesView() {
             {roles?.map((role) => (
               <li key={role.id}>
                 <button
-                  onClick={() => setSelectedId(role.id)}
+                  type="button"
+                  onClick={() => selectRole(role.id)}
                   aria-current={selected?.id === role.id ? 'true' : undefined}
-                  className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                  className={`flex min-h-10 w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-start text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-ring ${
                     selected?.id === role.id
-                      ? 'bg-brand-soft text-brand'
+                      ? 'bg-brand-soft text-ink'
                       : 'text-ink-muted hover:bg-surface-muted hover:text-ink'
                   }`}
                 >
@@ -181,23 +194,13 @@ export function RolesView() {
                           ? `${selected.userCount} team member(s) still hold this role. Reassign them first.`
                           : undefined
                       }
-                      onClick={() => remove.mutate(selected.id)}
+                      onClick={() => setConfirmingDelete(true)}
                     >
                       <Trash2 className="size-4 text-danger" />
                       Delete
                     </Button>
                   </Can>
                 )}
-                <Can permission={PERMISSIONS.ROLE_UPDATE}>
-                  <Button
-                    size="sm"
-                    disabled={!dirty || readOnly}
-                    loading={save.isPending}
-                    onClick={() => save.mutate({ id: selected.id, permissions: [...draft] })}
-                  >
-                    Save changes
-                  </Button>
-                </Can>
               </div>
             </CardHeader>
 
@@ -282,9 +285,64 @@ export function RolesView() {
                 </fieldset>
               ))}
             </CardBody>
+
+            {!readOnly && (
+              // Sticky, so Save stays in reach at the bottom of a long list of
+              // permissions instead of at the top of the card.
+              <div
+                data-testid="role-save-bar"
+                className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 rounded-b-2xl border-t border-border bg-surface px-6 py-3"
+              >
+                <p className="text-sm text-ink-muted tabular-nums" aria-live="polite">
+                  {changeCount === 0
+                    ? 'No unsaved changes'
+                    : `${changeCount} unsaved ${changeCount === 1 ? 'change' : 'changes'} to ${selected.name}`}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    disabled={!dirty || save.isPending}
+                    onClick={() => setDraft(new Set(selected.permissions))}
+                  >
+                    Discard
+                  </Button>
+                  <Button
+                    disabled={!dirty}
+                    loading={save.isPending}
+                    onClick={() => save.mutate({ id: selected.id, permissions: [...draft] })}
+                  >
+                    Save changes
+                  </Button>
+                </div>
+              </div>
+            )}
           </Card>
         )}
       </div>
+
+      <ConfirmDialog
+        open={pendingSwitch !== null}
+        onClose={() => setPendingSwitch(null)}
+        onConfirm={() => {
+          if (pendingSwitch) setSelectedId(pendingSwitch);
+        }}
+        title={`Discard changes to ${selected?.name ?? 'this role'}?`}
+        description={`You have ${changeCount} unsaved permission ${changeCount === 1 ? 'change' : 'changes'}. Opening ${switchTo?.name ?? 'another role'} throws ${changeCount === 1 ? 'it' : 'them'} away.`}
+        confirmLabel="Discard changes"
+        tone="danger"
+      />
+
+      {selected && !selected.isSystem && (
+        <ConfirmDialog
+          open={confirmingDelete}
+          onClose={() => setConfirmingDelete(false)}
+          onConfirm={() => remove.mutateAsync(selected.id)}
+          title={`Delete the ${selected.name} role?`}
+          description="Nobody holds it now. It is removed from this workspace for good, and can't be brought back."
+          confirmLabel="Delete role"
+          tone="danger"
+        />
+      )}
 
       <Dialog
         open={creating}

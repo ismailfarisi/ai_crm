@@ -1,7 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
-import type { PayrollRunDto, PayrollRunLineDto, PayslipDto } from '@saas/shared';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { computeLine, type OpeningGratuityPreviewDto, type PayrollRunDto, type PayrollRunLineDto, type PayslipDto } from '@saas/shared';
 import { PayrollRunDetail } from './payroll-run-detail';
 import { Payslip } from './payslip-view';
 import { OpeningGratuityView } from './opening-gratuity-view';
@@ -49,6 +49,8 @@ let runsList: PayrollRunDto[] = [];
 let leaveCutover: string | null = null;
 let wpsEnabled = true;
 let pensionPeriod: unknown = null;
+const AMINA = { employeeId: 'e1', employeeName: 'Amina Khan', joiningDate: '2024-01-01', basic: 5000, serviceDays: 100, calculated: 1200 };
+let gratuityLines: OpeningGratuityPreviewDto['lines'] = [AMINA];
 const runSif = vi.fn();
 const updateLine = vi.fn();
 const deleteRun = vi.fn();
@@ -68,7 +70,7 @@ vi.mock('@/hooks/use-payroll', () => {
     useOpeningGratuityPreview: () => ({
       data: {
         cutoverDate: '2026-09-30',
-        lines: [{ employeeId: 'e1', employeeName: 'Amina Khan', joiningDate: '2024-01-01', basic: 5000, serviceDays: 100, calculated: 1200 }],
+        lines: gratuityLines,
       },
       isPending: false,
       isError: false,
@@ -102,6 +104,7 @@ beforeEach(() => {
   leaveCutover = null;
   wpsEnabled = true;
   pensionPeriod = null;
+  gratuityLines = [AMINA];
   runSif.mockReset();
   updateLine.mockReset();
   deleteRun.mockReset();
@@ -272,6 +275,24 @@ describe('PayrollRunDetail actions', () => {
       '/people/payroll/r1/payslips/l1',
     );
   });
+
+  it('shows the totals and the Net column in the base currency', () => {
+    render(<PayrollRunDetail id="r1" />);
+    expect(screen.getByTestId('total-net')).toHaveTextContent('AED 7,500.00');
+    expect(screen.getByTestId('total-salary-cost')).toHaveTextContent('AED 7,500.00');
+    expect(screen.getByRole('columnheader', { name: 'Net (AED)' })).toBeInTheDocument();
+  });
+
+  it('keeps Employee, Net and the payslip link pinned while the editable columns scroll', () => {
+    render(<PayrollRunDetail id="r1" />);
+    const table = screen.getByTestId('lines-table');
+    // The scroll box is the containing block for the visually hidden Payslip header.
+    expect(table.parentElement).toHaveClass('relative', 'overflow-x-auto');
+    const row = screen.getByTestId('line-EMP-0001');
+    expect(row.querySelector('td')).toHaveClass('sticky', 'start-0');
+    expect(within(row).getByTestId('line-net')).toHaveClass('sticky');
+    expect(screen.getByRole('link', { name: /payslip for amina khan/i }).closest('td')).toHaveClass('sticky', 'end-0');
+  });
 });
 
 describe('PayrollRunDetail SIF and pension', () => {
@@ -340,6 +361,12 @@ describe('PensionPanel', () => {
 });
 
 describe('OpeningLeaveView', () => {
+  it('says the prefilled days assume no leave was taken', () => {
+    granted = new Set(['payroll:read']);
+    render(<OpeningLeaveView />);
+    expect(screen.getByTestId('opening-leave-assumption')).toHaveTextContent(/assume nobody took any leave/i);
+  });
+
   it('disables Post without payroll:approve and enables it with', () => {
     granted = new Set(['payroll:read', 'payroll:manage']);
     const first = render(<OpeningLeaveView />);
@@ -381,6 +408,54 @@ describe('Payslip', () => {
     expect(screen.getByText('Acme LLC')).toBeInTheDocument();
     expect(screen.getByText('Advance recovery')).toBeInTheDocument();
   });
+
+  /** "-1,234.50" → -1234.5 */
+  const figure = (el: Element) => Number((el.textContent ?? '').replace(/[^0-9.-]/g, ''));
+
+  it('lists half pay and the employee pension, so earnings less deductions is the printed net', () => {
+    // A part month (25 of 30 days) with overtime, a bonus, 4 half-pay days, 1 unpaid day,
+    // an employee pension share, an advance and another deduction.
+    const input = {
+      gross: 9300, basic: 6000, daysEmployed: 25, daysInMonth: 30, overtimeHours: 6, overtimeHoursPremium: 2,
+      bonusAmount: 450, unpaidLeaveDays: 1, advanceRecovery: 300, otherDeductionAmount: 75.5, halfPayDays: 4,
+      pensionEmployee: 412.75,
+    };
+    const got = computeLine(input);
+    const halfPayLine: PayrollRunLineDto = {
+      ...line, basic: 6000, housing: 2500, transport: 500, otherAllowances: [{ label: 'Phone', amount: 300 }], gross: 9300,
+      daysEmployed: 25, daysInMonth: 30, proratedGross: got.proratedGross,
+      overtimeHours: 6, overtimeHoursPremium: 2, overtimeAmount: got.overtimeAmount,
+      bonusAmount: 450, bonusLabel: 'Site bonus', unpaidLeaveDays: 1, unpaidLeaveAmount: got.unpaidLeaveAmount,
+      halfPayDays: 4, halfPayAmount: got.halfPayAmount, pensionSchemeName: 'GPSSA', pensionEmployee: 412.75,
+      advanceRecovery: 300, otherDeductionAmount: 75.5, otherDeductionLabel: 'Uniform',
+      salaryCost: got.salaryCost, netPay: got.netPay,
+    };
+    render(<Payslip slip={{ ...slip, line: halfPayLine }} />);
+
+    expect(screen.getByText('Half-pay leave (4 days at half pay)')).toBeInTheDocument();
+    expect(screen.getByText('Pension: GPSSA (employee share)')).toBeInTheDocument();
+    const earnings = within(screen.getByRole('heading', { name: /earnings/i }).parentElement!).getAllByRole('row');
+    const deductions = within(screen.getByRole('heading', { name: /deductions/i }).parentElement!).getAllByRole('row');
+    const amountOf = (row: Element) => figure(row.querySelectorAll('td')[1]);
+    const earned = earnings.slice(0, -1).reduce((sum, r) => sum + amountOf(r), 0);
+    const deducted = deductions.slice(0, -1).reduce((sum, r) => sum + amountOf(r), 0);
+
+    const gross = figure(screen.getByTestId('payslip-gross'));
+    const totalDeductions = figure(screen.getByTestId('payslip-deductions'));
+    const net = figure(screen.getByTestId('payslip-net'));
+    expect(gross).toBeCloseTo(earned, 2);
+    expect(totalDeductions).toBeCloseTo(deducted, 2);
+    expect(net).toBe(got.netPay);
+    expect(Math.round((gross - totalDeductions) * 100) / 100).toBe(net);
+    expect(screen.getByTestId('payslip-net')).toHaveTextContent(/^AED /);
+  });
+
+  it('leaves out deductions that are zero', () => {
+    render(<Payslip slip={{ ...slip, line: { ...line, netPay: 7500 } }} />);
+    expect(screen.queryByText(/half-pay leave/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/pension/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId('payslip-gross')).toHaveTextContent('7,500.00');
+  });
 });
 
 describe('OpeningGratuityView', () => {
@@ -416,6 +491,34 @@ describe('OpeningGratuityView', () => {
     granted = new Set(['payroll:read', 'payroll:manage', 'payroll:approve']);
     render(<OpeningGratuityView />);
     expect(screen.getByRole('button', { name: /post opening balances/i })).toBeEnabled();
+  });
+
+  it('flags an employee with service but no salary package and will not post their 0.00', () => {
+    granted = new Set(['payroll:read', 'payroll:manage', 'payroll:approve']);
+    gratuityLines = [AMINA, { employeeId: 'e2', employeeName: 'Omar Ali', joiningDate: '2023-05-01', basic: 0, serviceDays: 880, calculated: 0 }];
+    render(<OpeningGratuityView />);
+    const row = screen.getByTestId('opening-row-e2');
+    expect(within(row).getByTestId('opening-no-package')).toHaveTextContent('No salary package: add one first');
+    expect(within(row).getByRole('link', { name: 'Salary history' })).toHaveAttribute('href', '/people/employees/e2?tab=salary');
+    expect(screen.getByRole('button', { name: /post opening balances/i })).toBeDisabled();
+    expect(screen.getByTestId('opening-blocked')).toHaveTextContent('1 employee has no salary package');
+    // A balance typed in from the old system is postable.
+    fireEvent.change(screen.getByLabelText('Opening balance for Omar Ali'), { target: { value: '4200' } });
+    expect(screen.getByRole('button', { name: /post opening balances/i })).toBeEnabled();
+  });
+
+  it('refuses a 0.00 override for someone with service', () => {
+    granted = new Set(['payroll:read', 'payroll:manage', 'payroll:approve']);
+    render(<OpeningGratuityView />);
+    fireEvent.change(screen.getByLabelText('Opening balance for Amina Khan'), { target: { value: '0' } });
+    expect(screen.getByRole('button', { name: /post opening balances/i })).toBeDisabled();
+    expect(screen.getByRole('alert')).toHaveTextContent(/can't be 0.00 after 100 days/i);
+  });
+
+  it('shows the total in the base currency', () => {
+    granted = new Set(['payroll:read']);
+    render(<OpeningGratuityView />);
+    expect(screen.getByTestId('opening-total')).toHaveTextContent('AED 1,200.00');
   });
 });
 

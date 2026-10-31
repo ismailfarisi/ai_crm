@@ -109,7 +109,7 @@ export function DocumentPrintModal({
         {/* Top Control Bar (Hidden during print) */}
         <div className="flex items-center justify-between gap-3 border-b border-border bg-surface-muted/50 px-4 py-3 sm:px-6 sm:py-4 print:hidden">
           <div className="flex min-w-0 items-center gap-2">
-            <Printer className="size-5 shrink-0 text-brand" />
+            <Printer className="size-5 shrink-0 text-ink-muted" aria-hidden />
             <h2 className="truncate text-sm font-bold text-ink sm:text-base">
               {documentType.replace('_', ' ')} <span className="hidden sm:inline">Document</span> Preview
             </h2>

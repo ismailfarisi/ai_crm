@@ -11,7 +11,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/field';
 import { Alert, Badge, Card, CardBody, EmptyState, PageHeader, Skeleton } from '@/components/ui/primitives';
 import { PeopleNav } from './people-nav';
-import { STATUS_LABELS, STATUS_TONES, defaultNextPeriod, money, periodLabel } from './payroll-format';
+import { STATUS_LABELS, STATUS_TONES, defaultNextPeriod, inCurrency, money, periodLabel, usePayrollCurrency } from './payroll-format';
 
 const POSTED_STATUSES: PayrollRunDto['status'][] = ['APPROVED', 'PARTIALLY_PAID', 'PAID'];
 
@@ -76,6 +76,7 @@ function NewRunModal({
 
 export function PayrollRunsView() {
   const { data, isPending, isError, error } = usePayrollRuns();
+  const cur = usePayrollCurrency();
   const [adding, setAdding] = useState(false);
   const runs = data?.runs ?? [];
   const cutover = data?.openingGratuityCutover ?? null;
@@ -151,15 +152,15 @@ export function PayrollRunsView() {
                   <th className="py-2 font-medium">Period</th>
                   <th className="py-2 font-medium">Number</th>
                   <th className="py-2 font-medium">Status</th>
-                  <th className="py-2 text-right font-medium">Net pay</th>
-                  <th className="py-2 text-right font-medium">Gratuity accrual</th>
+                  <th className="py-2 text-right font-medium">{inCurrency('Net pay', cur)}</th>
+                  <th className="py-2 text-right font-medium">{inCurrency('Gratuity accrual', cur)}</th>
                 </tr>
               </thead>
               <tbody>
                 {runs.map((r) => (
                   <tr key={r.id} className="border-t border-border/40">
                     <td className="py-2">
-                      <Link href={`/people/payroll/${r.id}`} className="font-medium text-accent hover:underline">
+                      <Link href={`/people/payroll/${r.id}`} className="font-medium text-ink underline-offset-2 hover:underline">
                         {periodLabel(r.period)}
                       </Link>
                     </td>

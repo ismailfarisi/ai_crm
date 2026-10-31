@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Input, Select } from '@/components/ui/field';
 import { Badge, Card, CardBody } from '@/components/ui/primitives';
-import { money, periodLabel } from './payroll-format';
+import { money, periodLabel, usePayrollCurrency } from './payroll-format';
 
 function RemitModal({ period, amount, onClose }: { period: string; amount: number; onClose: () => void }) {
   const { data: accounts = [] } = useFinanceAccounts();
@@ -34,7 +34,7 @@ function RemitModal({ period, amount, onClose }: { period: string; amount: numbe
       open
       onClose={onClose}
       title="Remit pension contributions"
-      description={`Records ${money(amount)} paid to the pension fund for ${periodLabel(period)}.`}
+      description={`Records ${money(amount, baseCurrency)} paid to the pension fund for ${periodLabel(period)}.`}
     >
       <form
         data-testid="remit-pension-form"
@@ -83,6 +83,7 @@ function RemitModal({ period, amount, onClose }: { period: string; amount: numbe
 export function PensionPanel({ period }: { period: string }) {
   const canPay = useCan({ permission: PERMISSIONS.PAYROLL_PAY });
   const { data } = usePensionPeriod(period);
+  const cur = usePayrollCurrency();
   const voidRemittance = useVoidPension();
   const [remitting, setRemitting] = useState(false);
   const [confirmingVoid, setConfirmingVoid] = useState(false);
@@ -120,19 +121,19 @@ export function PensionPanel({ period }: { period: string }) {
           <div>
             <dt className="text-xs text-ink-subtle">Employee share</dt>
             <dd data-testid="pension-employee" className="font-semibold tabular-nums text-ink">
-              {money(data.employeeTotal)}
+              {money(data.employeeTotal, cur)}
             </dd>
           </div>
           <div>
             <dt className="text-xs text-ink-subtle">Employer share</dt>
             <dd data-testid="pension-employer" className="font-semibold tabular-nums text-ink">
-              {money(data.employerTotal)}
+              {money(data.employerTotal, cur)}
             </dd>
           </div>
           <div>
             <dt className="text-xs text-ink-subtle">Due to the fund</dt>
             <dd data-testid="pension-due" className="font-semibold tabular-nums text-ink">
-              {money(data.due)}
+              {money(data.due, cur)}
             </dd>
           </div>
           <div>

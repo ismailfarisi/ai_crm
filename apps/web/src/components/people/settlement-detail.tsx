@@ -34,7 +34,7 @@ import { ConfirmDialog } from './payroll-run-detail';
 import { PayRunModal } from './pay-run-modal';
 import { SettlementStatusBadge, REASON_OPTIONS } from './settlements-view';
 import { downloadSif } from './download-sif';
-import { SETTLEMENT_REASON_LABELS, money, serviceLabel } from './payroll-format';
+import { SETTLEMENT_REASON_LABELS, inCurrency, money, serviceLabel, usePayrollCurrency } from './payroll-format';
 
 const optionalNumber = (v: unknown) => (v === '' || v == null || Number.isNaN(v) ? undefined : Number(v));
 /** A cleared notice or recovery field means none, which the server only learns from an explicit 0. */
@@ -207,6 +207,7 @@ function SettlementEditor({ settlement, onDirty }: { settlement: SettlementDto; 
 
 export function SettlementDetail({ id }: { id: string }) {
   const { data: s, isPending, isError, error, isFetching } = useSettlement(id);
+  const cur = usePayrollCurrency();
   const router = useRouter();
   const canManage = useCan({ permission: PERMISSIONS.PAYROLL_MANAGE });
   const canApprove = useCan({ permission: PERMISSIONS.PAYROLL_APPROVE });
@@ -352,10 +353,10 @@ export function SettlementDetail({ id }: { id: string }) {
         <CardBody>
           <dl className="grid grid-cols-2 gap-4 sm:grid-cols-5">
             <Stat label="Service" value={serviceLabel(s.serviceDays)} testId="settlement-service" />
-            <Stat label="Basic" value={money(s.basic)} testId="settlement-basic" />
-            <Stat label="Gross" value={money(s.gross)} testId="settlement-gross" />
+            <Stat label="Basic" value={money(s.basic, cur)} testId="settlement-basic" />
+            <Stat label="Gross" value={money(s.gross, cur)} testId="settlement-gross" />
             <Stat label="Leave balance (days)" value={String(s.leaveBalanceDays)} testId="settlement-leave-balance" />
-            <Stat label="Net settlement" value={money(s.netPay)} testId="settlement-net" />
+            <Stat label="Net settlement" value={money(s.netPay, cur)} testId="settlement-net" />
           </dl>
           {showSif && wpsOff && (
             <p className="mt-3 text-sm text-ink-muted" data-testid="sif-disabled-reason">
@@ -372,8 +373,8 @@ export function SettlementDetail({ id }: { id: string }) {
               <tr className="text-left text-xs text-ink-subtle">
                 <th className="py-2 font-medium">Line</th>
                 <th className="py-2 text-right font-medium">Days</th>
-                <th className="py-2 text-right font-medium">Rate</th>
-                <th className="py-2 text-right font-medium">Amount</th>
+                <th className="py-2 text-right font-medium">{inCurrency('Rate', cur)}</th>
+                <th className="py-2 text-right font-medium">{inCurrency('Amount', cur)}</th>
               </tr>
             </thead>
             <tbody>
@@ -410,7 +411,7 @@ export function SettlementDetail({ id }: { id: string }) {
       <ConfirmDialog
         open={confirm === 'approve'}
         title="Approve this settlement?"
-        description={`This posts ${s.settlementNumber} to the books with a net settlement of ${money(s.netPay)} and clears ${s.employeeName}'s gratuity and leave balances.`}
+        description={`This posts ${s.settlementNumber} to the books with a net settlement of ${money(s.netPay, cur)} and clears ${s.employeeName}'s gratuity and leave balances.`}
         confirmLabel="Approve settlement"
         loading={approve.isPending}
         blockedReason={dirty ? 'You have unsaved changes. Save them first, so the net shown here is the one approved.' : isFetching ? 'Refreshing…' : null}
@@ -467,7 +468,7 @@ export function SettlementDetail({ id }: { id: string }) {
           method={s.paymentMethod}
           amount={s.netPay}
           title="Pay the settlement"
-          description={`Records ${money(s.netPay)} paid to ${s.employeeName}.`}
+          description={`Records ${money(s.netPay, cur)} paid to ${s.employeeName}.`}
           isLoading={pay.isPending}
           onClose={() => setPaying(false)}
           onSubmit={async ({ financeAccountId, paidAt }) => {

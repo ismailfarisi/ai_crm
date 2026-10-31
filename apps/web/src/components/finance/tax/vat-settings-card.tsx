@@ -53,11 +53,11 @@ function Problems({ problems, intro }: { problems: string[]; intro: string }) {
       </ul>
       <p className="text-ink-muted">
         Fix these under{' '}
-        <Link href="/settings/company" className="text-accent underline">
+        <Link href="/settings/company" className="text-ink underline underline-offset-2">
           Company settings
         </Link>{' '}
         and{' '}
-        <Link href="/settings/branches" className="text-accent underline">
+        <Link href="/settings/branches" className="text-ink underline underline-offset-2">
           Branches
         </Link>
         .

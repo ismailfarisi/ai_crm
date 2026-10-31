@@ -35,7 +35,7 @@ export function TransformNode({
       iconColor="text-success"
       testId="transform-node"
     >
-      <div className="rounded-md bg-brand-dark px-2.5 py-1.5 font-mono text-[11px] text-success truncate shadow-inner">
+      <div className="rounded-md bg-surface-muted px-2.5 py-1.5 font-mono text-[11px] text-ink truncate shadow-inner">
         <span className="text-ink-muted mr-1.5 select-none">$</span>
         <span className="truncate">{scriptSnippet}</span>
       </div>

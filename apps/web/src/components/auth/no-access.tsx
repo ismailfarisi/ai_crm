@@ -54,7 +54,7 @@ export function NoAccess({ rule, title = "You don't have access to this", showHo
         {showHomeLink && (
           <Link
             href="/dashboard"
-            className="mt-6 text-sm font-medium text-brand hover:underline"
+            className="mt-6 text-sm font-medium text-ink underline underline-offset-2"
           >
             Back to dashboard
           </Link>

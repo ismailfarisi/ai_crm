@@ -171,7 +171,7 @@ export function DataTable<TData, TValue>({
 
   if (isLoading) {
     return (
-      <div className="space-y-3 p-4 border border-border/30 rounded-2xl bg-surface/85 backdrop-blur-xs shadow-[0_2px_12px_rgba(0,0,0,0.015)]">
+      <div className="space-y-3 p-4 border border-border/60 rounded-2xl bg-surface shadow-[0_2px_10px_rgba(0,0,0,0.015)]">
         <Skeleton className="h-10 w-full" />
         <Skeleton className="h-16 w-full" />
         <Skeleton className="h-16 w-full" />
@@ -181,7 +181,7 @@ export function DataTable<TData, TValue>({
   }
 
   return (
-    <div className={`bg-surface/85 backdrop-blur-xs rounded-2xl border border-border/30 shadow-[0_2px_12px_rgba(0,0,0,0.015)] overflow-hidden ${className}`}>
+    <div className={`bg-surface rounded-2xl border border-border/60 shadow-[0_2px_10px_rgba(0,0,0,0.015)] overflow-hidden ${className}`}>
       {/* Header Toolbar */}
       <DataTableToolbar
         table={table}

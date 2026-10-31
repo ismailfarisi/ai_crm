@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Table, flexRender } from '@tanstack/react-table';
+import { columnLabel } from './column-label';
 
 interface DataTableCardGridProps<TData> {
   table: Table<TData>;
@@ -34,8 +35,9 @@ export function DataTableCardGrid<TData>({
 
         const visibleCells = row.getVisibleCells();
         const selectCell = visibleCells.find((c) => c.column.id === 'select');
+        // The title field is already the card's heading; don't repeat it below.
         const contentCells = visibleCells.filter(
-          (c) => c.column.id !== 'select' && c.column.id !== 'actions'
+          (c) => c.column.id !== 'select' && c.column.id !== 'actions' && c.column.id !== cardTitleKey
         );
         const actionsCell = visibleCells.find((c) => c.column.id === 'actions');
 
@@ -81,9 +83,7 @@ export function DataTableCardGrid<TData>({
                 {contentCells.map((cell) => (
                   <div key={cell.id} className="space-y-0.5">
                     <span className="text-xs font-medium uppercase tracking-wider text-ink-muted">
-                      {typeof cell.column.columnDef.header === 'string'
-                        ? cell.column.columnDef.header
-                        : cell.column.id}
+                      {columnLabel(cell.column)}
                     </span>
                     <div className="text-ink font-medium">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

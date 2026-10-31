@@ -8,9 +8,12 @@ import { toast } from 'sonner';
 import { Check, Copy, MailPlus, UserPlus } from 'lucide-react';
 import {
   PERMISSIONS,
+  PERMISSION_DESCRIPTIONS,
   inviteUserSchema,
   type InvitationDto,
   type InviteUserInput,
+  type Permission,
+  type RoleDto,
   type TeamDto,
   type UserDto,
 } from '@saas/shared';
@@ -20,14 +23,30 @@ import { useSession } from '@/lib/session-context';
 import { formatRelative, initials } from '@/lib/utils';
 import { Can } from '@/components/auth/can';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/field';
 import { Badge, Card, EmptyState, PageHeader, Skeleton } from '@/components/ui/primitives';
+
+/** A change to someone's access, held until it is confirmed. */
+export type AccessChange =
+  | { kind: 'role'; member: UserDto; roleId: string }
+  | { kind: 'team'; member: UserDto; teamId: string | null }
+  | { kind: 'active'; member: UserDto; isActive: boolean };
 
 export function TeamView() {
   const queryClient = useQueryClient();
   const { session, can } = useSession();
   const [inviting, setInviting] = useState(false);
+  // Picking a role or team, or pressing Deactivate, only asks; nothing is
+  // saved until the dialog is confirmed. `change` outlives `confirming` so the
+  // dialog keeps its words while it closes.
+  const [change, setChange] = useState<AccessChange | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const ask = (next: AccessChange) => {
+    setChange(next);
+    setConfirming(true);
+  };
   const [inviteLinks, setInviteLinks] = useState<Record<string, string>>({});
 
   const { data: members, isPending } = useQuery({
@@ -88,8 +107,6 @@ export function TeamView() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.users });
       toast.success(`${user.fullName} ${user.isActive ? 'reactivated' : 'deactivated'}`);
     },
-    onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : 'Could not update the member'),
   });
 
   const assignRoles = useMutation({
@@ -99,8 +116,6 @@ export function TeamView() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.users });
       toast.success(`Updated roles for ${user.fullName}`);
     },
-    onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : 'Could not change roles'),
   });
 
   const assignTeam = useMutation({
@@ -111,9 +126,19 @@ export function TeamView() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.teams });
       toast.success(`Updated team for ${user.fullName}`);
     },
-    onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : 'Could not change team'),
   });
+
+  // Errors reject into the confirmation dialog, which shows them in place.
+  const applyChange = async () => {
+    if (!change) return;
+    if (change.kind === 'role') {
+      await assignRoles.mutateAsync({ id: change.member.id, roleIds: [change.roleId] });
+    } else if (change.kind === 'team') {
+      await assignTeam.mutateAsync({ id: change.member.id, teamId: change.teamId });
+    } else {
+      await setActive.mutateAsync({ id: change.member.id, isActive: change.isActive });
+    }
+  };
 
   return (
     <>
@@ -149,14 +174,25 @@ export function TeamView() {
                 roles={roles ?? []}
                 teams={teams ?? []}
                 canAssignTeam={can(PERMISSIONS.USER_UPDATE)}
-                onToggleActive={(isActive) => setActive.mutate({ id: member.id, isActive })}
-                onAssignRoles={(roleIds) => assignRoles.mutate({ id: member.id, roleIds })}
-                onAssignTeam={(teamId) => assignTeam.mutate({ id: member.id, teamId })}
+                onToggleActive={(isActive) => ask({ kind: 'active', member, isActive })}
+                onAssignRoles={(roleIds) => ask({ kind: 'role', member, roleId: roleIds[0] })}
+                onAssignTeam={(teamId) => ask({ kind: 'team', member, teamId })}
               />
             ))}
           </ul>
         )}
       </Card>
+
+      {change && (
+        <AccessChangeDialog
+          open={confirming}
+          change={change}
+          roles={roles ?? []}
+          teams={teams ?? []}
+          onClose={() => setConfirming(false)}
+          onConfirm={applyChange}
+        />
+      )}
 
       <InviteDialog open={inviting} onClose={() => setInviting(false)} roles={roles ?? []} teams={teams ?? []} />
 
@@ -213,7 +249,7 @@ function PendingInviteRow({
 
   return (
     <li className="flex flex-wrap items-center gap-4 px-4 py-3">
-      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-brand-soft text-xs font-semibold text-brand">
+      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-brand-soft text-xs font-semibold text-ink">
         {initials(invitation.firstName, invitation.lastName)}
       </span>
 
@@ -230,7 +266,7 @@ function PendingInviteRow({
             <button
               type="button"
               onClick={copy}
-              className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-brand hover:underline cursor-pointer"
+              className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-ink underline-offset-2 hover:underline cursor-pointer"
             >
               {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
               {copied ? 'Copied' : 'Copy link'}
@@ -270,7 +306,7 @@ function MemberRow({
 }: {
   member: UserDto;
   isSelf: boolean;
-  roles: { id: string; name: string; level: number }[];
+  roles: Pick<RoleDto, 'id' | 'name' | 'level'>[];
   teams: TeamDto[];
   canAssignTeam: boolean;
   onToggleActive: (isActive: boolean) => void;
@@ -281,7 +317,7 @@ function MemberRow({
 
   return (
     <li className="flex flex-wrap items-center gap-4 px-4 py-3">
-      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-brand-soft text-xs font-semibold text-brand">
+      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-brand-soft text-xs font-semibold text-ink">
         {initials(member.firstName, member.lastName)}
       </span>
 
@@ -312,10 +348,12 @@ function MemberRow({
       >
         <select
           aria-label={`Role for ${member.fullName}`}
-          className="h-9 rounded-lg border border-border bg-surface px-2 text-sm disabled:opacity-60"
+          className="h-10 rounded-xl border border-border-control bg-surface px-2 text-sm text-ink disabled:opacity-60"
           value={currentRoleId}
           disabled={isSelf}
-          onChange={(event) => onAssignRoles([event.target.value])}
+          onChange={(event) => {
+            if (event.target.value && event.target.value !== currentRoleId) onAssignRoles([event.target.value]);
+          }}
         >
           {roles.map((role) => (
             <option key={role.id} value={role.id}>
@@ -328,10 +366,13 @@ function MemberRow({
       {canAssignTeam ? (
         <select
           aria-label={`Team for ${member.fullName}`}
-          className="h-9 rounded-lg border border-border bg-surface px-2 text-sm disabled:opacity-60"
+          className="h-10 rounded-xl border border-border-control bg-surface px-2 text-sm text-ink disabled:opacity-60"
           value={member.teamId ?? ''}
           disabled={isSelf}
-          onChange={(event) => onAssignTeam(event.target.value || null)}
+          onChange={(event) => {
+            const teamId = event.target.value || null;
+            if (teamId !== member.teamId) onAssignTeam(teamId);
+          }}
         >
           <option value="">No team</option>
           {teams.map((team) => (
@@ -355,6 +396,131 @@ function MemberRow({
         </Button>
       </Can>
     </li>
+  );
+}
+
+/** What a role change adds and takes away, from the roles' own permission lists. */
+export function permissionChange(
+  member: Pick<UserDto, 'roles'>,
+  roleId: string,
+  roles: Pick<RoleDto, 'id' | 'permissions'>[],
+): { gained: Permission[]; lost: Permission[] } {
+  const byId = new Map(roles.map((role) => [role.id, role]));
+  const before = new Set(member.roles.flatMap((role) => byId.get(role.id)?.permissions ?? []));
+  const after = new Set(byId.get(roleId)?.permissions ?? []);
+  return {
+    gained: [...after].filter((permission) => !before.has(permission)),
+    lost: [...before].filter((permission) => !after.has(permission)),
+  };
+}
+
+const SHOWN_PERMISSIONS = 6;
+
+function PermissionList({ title, permissions }: { title: string; permissions: Permission[] }) {
+  if (!permissions.length) return null;
+  const shown = permissions.slice(0, SHOWN_PERMISSIONS);
+  const more = permissions.length - shown.length;
+  return (
+    <div>
+      <p className="text-xs font-semibold text-ink">
+        {title} ({permissions.length})
+      </p>
+      <ul className="mt-1 list-disc space-y-0.5 ps-5 text-sm text-ink-muted">
+        {shown.map((permission) => (
+          <li key={permission}>{PERMISSION_DESCRIPTIONS[permission] ?? permission}</li>
+        ))}
+        {more > 0 && <li className="list-none text-ink-subtle">and {more} more</li>}
+      </ul>
+    </div>
+  );
+}
+
+function AccessChangeDialog({
+  open,
+  change,
+  roles,
+  teams,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  change: AccessChange;
+  roles: RoleDto[];
+  teams: TeamDto[];
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+}) {
+  const { member } = change;
+  const name = member.fullName;
+
+  if (change.kind === 'role') {
+    const from = member.roles.map((role) => role.name).join(', ') || 'no role';
+    const to = roles.find((role) => role.id === change.roleId)?.name ?? 'the new role';
+    const { gained, lost } = permissionChange(member, change.roleId, roles);
+    return (
+      <ConfirmDialog
+        open={open}
+        onClose={onClose}
+        onConfirm={onConfirm}
+        title={`Make ${name} ${to}?`}
+        description={`They move from ${from} to ${to}. It applies from their next click.`}
+        confirmLabel="Change role"
+        tone={lost.length ? 'danger' : 'primary'}
+      >
+        <div className="space-y-3">
+          <PermissionList title="They gain" permissions={gained} />
+          <PermissionList title="They lose" permissions={lost} />
+          {!gained.length && !lost.length && (
+            <p className="text-sm text-ink-muted">What they can do stays the same.</p>
+          )}
+        </div>
+      </ConfirmDialog>
+    );
+  }
+
+  if (change.kind === 'team') {
+    const teamName = (id: string | null) =>
+      id ? (teams.find((team) => team.id === id)?.name ?? 'their team') : null;
+    const from = teamName(member.teamId);
+    const to = teamName(change.teamId);
+    return (
+      <ConfirmDialog
+        open={open}
+        onClose={onClose}
+        onConfirm={onConfirm}
+        title={to ? `Move ${name} to ${to}?` : `Take ${name} off ${from ?? 'their team'}?`}
+        description={[
+          from ? `They leave ${from}.` : null,
+          to
+            ? `People who see contacts by team will find theirs under ${to}, and they see ${to}'s if their role allows it.`
+            : "They stop seeing their old team's contacts, and that team stops seeing theirs.",
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        confirmLabel={to ? 'Move to team' : 'Remove from team'}
+      />
+    );
+  }
+
+  return change.isActive ? (
+    <ConfirmDialog
+      open={open}
+      onClose={onClose}
+      onConfirm={onConfirm}
+      title={`Reactivate ${name}?`}
+      description="They can sign in again, with the role they had before."
+      confirmLabel="Reactivate"
+    />
+  ) : (
+    <ConfirmDialog
+      open={open}
+      onClose={onClose}
+      onConfirm={onConfirm}
+      title={`Deactivate ${name}?`}
+      description="They are signed out straight away and can no longer sign in. Their customers, quotes and history stay, and you can reactivate them later."
+      confirmLabel="Deactivate"
+      tone="danger"
+    />
   );
 }
 

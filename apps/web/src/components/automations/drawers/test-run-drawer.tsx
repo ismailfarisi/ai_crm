@@ -176,7 +176,7 @@ export function TestRunDrawer({
           disabled={isRunning}
           onClick={handleRun}
           className={clsx(
-            'w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-ink-inverted shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer',
+            'w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-on-brand shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer',
             isRunning
               ? 'bg-brand cursor-not-allowed'
               : 'bg-brand hover:bg-brand-hover active:scale-[0.99]',
@@ -189,7 +189,7 @@ export function TestRunDrawer({
             </>
           ) : (
             <>
-              <Play className="h-3.5 w-3.5 fill-surface" />
+              <Play className="h-3.5 w-3.5 fill-current" />
               Run Test Now
             </>
           )}
@@ -291,7 +291,7 @@ export function TestRunDrawer({
                 </label>
                 <pre
                   data-testid="selected-node-output-json"
-                  className="p-2.5 rounded-lg bg-brand-dark text-success font-mono text-[11px] overflow-x-auto max-h-56 border border-border-strong"
+                  className="p-2.5 rounded-lg bg-surface-muted text-ink font-mono text-[11px] overflow-x-auto max-h-56 border border-border-strong"
                 >
                   {JSON.stringify(
                     executionResult.nodeResults[selectedNodeResultKey].output ||

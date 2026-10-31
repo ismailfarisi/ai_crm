@@ -11,6 +11,11 @@ import { money } from './payroll-format';
 import { formatHours } from './timesheet-format';
 import { usePayrollLinesRegistry } from './payroll-lines-context';
 
+/** The Employee column, and Net and the payslip link, stay in view while the editable middle scrolls. */
+export const STICKY_START = 'sticky start-0 z-10 bg-surface shadow-[1px_0_0_var(--color-border)]';
+export const STICKY_NET = 'sticky end-10 z-10 bg-surface shadow-[-1px_0_0_var(--color-border)]';
+export const STICKY_END = 'sticky end-0 z-10 w-10 min-w-10 bg-surface';
+
 export const FLAG_LABELS: Record<string, string> = {
   NATIONAL_NO_PENSION_SCHEME: 'No pension scheme',
   LEAVE_IN_ADVANCE: 'Leave in advance',
@@ -187,7 +192,7 @@ export function PayrollLineEditor({
   return (
     <>
       <tr className="border-t border-border/40 align-top" data-testid={`line-${line.employeeNumber}`}>
-        <td className="py-2 pr-3">
+        <td className={`${STICKY_START} max-w-36 py-2 pr-3 sm:max-w-none`}>
           <div className="font-medium text-ink">{line.employeeName}</div>
           <div className="text-xs text-ink-subtle">
             {line.employeeNumber} · {line.paymentMethod === 'BANK' ? 'Bank' : 'Cash'}
@@ -202,7 +207,7 @@ export function PayrollLineEditor({
             </div>
           )}
         </td>
-        <td className="py-2 pr-3 text-right tabular-nums">{money(line.proratedGross)}</td>
+        <td className="py-2 pr-3 ps-3 text-right tabular-nums">{money(line.proratedGross)}</td>
         {NUMERIC_FIELDS.map((f) => (
           <td key={f.key} className="py-2 pr-2 text-right">
             {editable ? (
@@ -253,7 +258,7 @@ export function PayrollLineEditor({
                 type="button"
                 onClick={useLeaveRecords}
                 aria-label={`Use leave records for ${line.employeeName}`}
-                className="mt-1 block w-full text-right text-xs text-accent hover:underline"
+                className="mt-1 block w-full text-right text-xs font-medium text-ink underline underline-offset-2"
               >
                 Use leave records
               </button>
@@ -275,11 +280,13 @@ export function PayrollLineEditor({
         <td className="py-2 pr-2 text-right tabular-nums text-ink-muted" data-testid="labour-absorbed">
           {showLabour ? money(line.labourAbsorbed) : '—'}
         </td>
-        <td className="py-2 pr-3 text-right font-medium tabular-nums">{money(line.netPay)}</td>
-        <td className="py-2 text-right">
+        <td className={`${STICKY_NET} py-2 pe-3 ps-3 text-right font-medium tabular-nums`} data-testid="line-net">
+          {money(line.netPay)}
+        </td>
+        <td className={`${STICKY_END} py-1 text-right`}>
           <Link
             href={`/people/payroll/${runId}/payslips/${line.id}`}
-            className="inline-flex items-center gap-1 text-accent hover:underline"
+            className="inline-flex size-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
             aria-label={`Payslip for ${line.employeeName}`}
           >
             <FileText className="size-4" />

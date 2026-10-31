@@ -22,12 +22,13 @@ import {
 import { Can } from '@/components/auth/can';
 import { AttachmentsPanel } from '@/components/platform/attachments-panel';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/field';
 import { Badge, Card, CardBody, EmptyState } from '@/components/ui/primitives';
 import { useCan } from '@/lib/session-context';
 import { LEAVE_TYPE_LABELS, LeaveRecordModal } from './leave-record-modal';
-import { money } from './payroll-format';
+import { inCurrency, money, usePayrollCurrency } from './payroll-format';
 
 const ENTRY_LABELS: Record<LeaveEntryKind, string> = {
   OPENING: 'Opening balance',
@@ -97,6 +98,8 @@ export function EmployeeLeaveTab({ employeeId }: { employeeId: string }) {
   const [modal, setModal] = useState<{ record: LeaveRecordDto | null } | null>(null);
   const [adjusting, setAdjusting] = useState(false);
   const [filesFor, setFilesFor] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<LeaveRecordDto | null>(null);
+  const cur = usePayrollCurrency();
 
   if (isPending) return <p className="text-ink-muted">Loading…</p>;
   if (isError || !data) {
@@ -121,7 +124,7 @@ export function EmployeeLeaveTab({ employeeId }: { employeeId: string }) {
             <div>
               <dt className="text-xs text-ink-subtle">Leave provision</dt>
               <dd data-testid="leave-provision" className="text-lg font-semibold tabular-nums text-ink-muted">
-                {money(data.provision)}
+                {money(data.provision, cur)}
               </dd>
             </div>
           )}
@@ -188,12 +191,7 @@ export function EmployeeLeaveTab({ employeeId }: { employeeId: string }) {
                           <Button
                             size="sm"
                             variant="ghost"
-                            disabled={remove.isPending}
-                            onClick={() => {
-                              if (window.confirm('Delete this leave record?')) {
-                                remove.mutate({ id: employeeId, recordId: r.id });
-                              }
-                            }}
+                            onClick={() => setDeleting(r)}
                           >
                             Delete
                           </Button>
@@ -220,7 +218,7 @@ export function EmployeeLeaveTab({ employeeId }: { employeeId: string }) {
                   <th className="py-2 font-medium">Movement</th>
                   <th className="py-2 font-medium">Note</th>
                   <th className="py-2 text-right font-medium">Days</th>
-                  {data.provision !== undefined && <th className="py-2 text-right font-medium">Amount</th>}
+                  {data.provision !== undefined && <th className="py-2 text-right font-medium">{inCurrency('Amount', cur)}</th>}
                 </tr>
               </thead>
               <tbody>
@@ -252,6 +250,17 @@ export function EmployeeLeaveTab({ employeeId }: { employeeId: string }) {
               ? update.mutateAsync({ id: employeeId, recordId: modal.record.id, input })
               : create.mutateAsync({ id: employeeId, input })
           }
+        />
+      )}
+      {canManage && deleting && (
+        <ConfirmDialog
+          open
+          onClose={() => setDeleting(null)}
+          title={`Delete ${LEAVE_TYPE_LABELS[deleting.type].toLowerCase()} leave, ${day(deleting.startDate)} to ${day(deleting.endDate)}?`}
+          description={`The record of ${days(deleting.days)} ${deleting.days === 1 ? 'day' : 'days'} is removed and payroll stops counting it. Any draft payroll run for those months is worked out again.`}
+          confirmLabel="Delete leave"
+          tone="danger"
+          onConfirm={() => remove.mutateAsync({ id: employeeId, recordId: deleting.id })}
         />
       )}
       <Can permission={PERMISSIONS.PAYROLL_APPROVE}>

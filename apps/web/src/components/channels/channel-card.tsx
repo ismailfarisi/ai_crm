@@ -15,25 +15,29 @@ interface ChannelCardProps {
 
 const PROVIDER_INFO: Record<
   ChannelConfigDto['provider'],
-  { title: string; description: string; icon: typeof MessageSquare }
+  { title: string; shortName: string; description: string; icon: typeof MessageSquare }
 > = {
   WHATSAPP_META: {
     title: 'Meta WhatsApp Cloud API',
+    shortName: 'WhatsApp',
     description: 'Send & receive WhatsApp messages using Meta Cloud API.',
     icon: MessageSquare,
   },
   TELEGRAM: {
     title: 'Telegram Bot',
+    shortName: 'Telegram',
     description: 'Receive messages and reply to customers via a Telegram Bot.',
     icon: Send,
   },
   EMAIL_SMTP: {
     title: 'SMTP Email',
+    shortName: 'SMTP email',
     description: 'Custom SMTP server for outbound email communications.',
     icon: Mail,
   },
   EMAIL_RESEND: {
     title: 'Resend Email',
+    shortName: 'Resend email',
     description: 'Transactional email driver powered by Resend API.',
     icon: Zap,
   },
@@ -43,6 +47,7 @@ export function ChannelCard({ config, onConfigure }: ChannelCardProps) {
   const queryClient = useQueryClient();
   const info = PROVIDER_INFO[config.provider] ?? {
     title: config.provider,
+    shortName: config.provider,
     description: 'Channel provider integration.',
     icon: MessageSquare,
   };
@@ -110,7 +115,7 @@ export function ChannelCard({ config, onConfigure }: ChannelCardProps) {
     <Card className="flex flex-col justify-between transition-shadow hover:shadow-md">
       <CardHeader className="flex items-start justify-between gap-3 pb-3">
         <div className="flex items-center gap-3">
-          <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand ring-1 ring-brand/20">
+          <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-surface-muted text-ink ring-1 ring-border">
             <Icon className="size-5" />
           </div>
           <div>
@@ -121,18 +126,24 @@ export function ChannelCard({ config, onConfigure }: ChannelCardProps) {
           </div>
         </div>
 
+        {/* The label is the 44px hit area; the track inside it is what shows. */}
         <label
-          className="relative inline-flex cursor-pointer items-center"
-          title={isUnconfigured ? 'Configure credentials first' : 'Toggle channel'}
+          className="inline-flex h-11 shrink-0 cursor-pointer items-center has-disabled:cursor-not-allowed"
+          title={isUnconfigured ? 'Add the credentials first' : undefined}
         >
           <input
             type="checkbox"
+            role="switch"
+            aria-label={`Enable ${info.shortName}`}
             className="peer sr-only"
             checked={config.isEnabled}
             disabled={isUnconfigured || toggleMutation.isPending}
             onChange={(e) => toggleMutation.mutate(e.target.checked)}
           />
-          <div className="peer h-5 w-9 rounded-full bg-surface-muted border border-border after:absolute after:top-[2px] after:left-[2px] after:h-4 after:w-4 after:rounded-full after:bg-white after:border after:border-border after:transition-all after:content-[''] peer-checked:bg-brand peer-checked:border-brand peer-checked:after:translate-x-full peer-checked:after:border-white peer-disabled:cursor-not-allowed peer-disabled:opacity-50" />
+          <span
+            aria-hidden
+            className="relative h-6 w-11 rounded-full border border-border-control bg-surface-muted transition-colors after:absolute after:top-[2px] after:left-[2px] after:size-[18px] after:rounded-full after:border after:border-border-control after:bg-surface after:transition-transform after:content-[''] peer-checked:border-brand peer-checked:bg-brand peer-checked:after:translate-x-5 peer-checked:after:border-brand peer-focus-visible:ring-2 peer-focus-visible:ring-brand-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-surface peer-disabled:opacity-50"
+          />
         </label>
       </CardHeader>
 

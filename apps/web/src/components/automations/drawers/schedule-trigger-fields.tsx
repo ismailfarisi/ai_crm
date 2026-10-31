@@ -229,7 +229,7 @@ export function ScheduleTriggerFields({
           </ul>
         </div>
       ) : parsed ? (
-        <p data-testid="schedule-error" role="alert" className="text-[11px] text-red-600">
+        <p data-testid="schedule-error" role="alert" className="text-[11px] text-danger">
           {parsed.error.issues[0]?.message}
         </p>
       ) : null}

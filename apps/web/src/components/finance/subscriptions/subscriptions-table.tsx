@@ -36,7 +36,8 @@ import { Input, Select } from '@/components/ui/field';
 import { monthlyEquivalent, type RecurringExpenseDto, type RecurringInterval, type FinanceAccountDto } from '@saas/shared';
 import { useRecurringOccurrences } from '@/hooks/use-finance';
 import { INTERVAL_LABEL } from './subscription-form-modal';
-import { formatFinanceCurrency } from '../dashboard/treasury-stat-cards';
+import { useOrganization } from '@/hooks/use-organization';
+import { formatFinanceCurrency, OtherCurrencies, splitByBase, totalsByCurrency } from '../money';
 
 export interface SubscriptionsTableProps {
   subscriptions?: RecurringExpenseDto[];
@@ -124,7 +125,7 @@ export function hasEnded(sub: RecurringExpenseDto): boolean {
   return Boolean(sub.endDate) && sub.endDate! <= sub.nextBillingDate;
 }
 
-function OccurrencesPanel({ id }: { id: string }) {
+function OccurrencesPanel({ id, currency }: { id: string; currency: string }) {
   const { data = [], isLoading, isError } = useRecurringOccurrences(id);
 
   return (
@@ -151,7 +152,7 @@ function OccurrencesPanel({ id }: { id: string }) {
                 <td className="py-1.5 pr-4">
                   {o.periodStart} to {o.periodEnd}
                 </td>
-                <td className="py-1.5 pr-4 font-mono tabular-nums">{formatFinanceCurrency(o.amount)}</td>
+                <td className="py-1.5 pr-4 font-mono tabular-nums">{formatFinanceCurrency(o.amount, currency)}</td>
                 <td className="py-1.5 pr-4">
                   <Badge tone={o.status === 'FAILED' ? 'danger' : 'success'} className="text-[10px]">
                     {o.status === 'FAILED' ? 'Failed' : 'Generated'}
@@ -160,7 +161,7 @@ function OccurrencesPanel({ id }: { id: string }) {
                 </td>
                 <td className="py-1.5">
                   {o.billId ? (
-                    <Link href={`/purchasing/bills/${o.billId}`} className="font-medium text-accent hover:underline">
+                    <Link href={`/purchasing/bills/${o.billId}`} className="font-medium text-ink hover:underline">
                       {o.billNumber ?? 'View bill'}
                     </Link>
                   ) : (
@@ -191,6 +192,9 @@ export function SubscriptionsTable({
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'PAUSED' | 'CANCELLED'>('ALL');
   const [intervalFilter, setIntervalFilter] = useState<'ALL' | RecurringInterval>('ALL');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // A schedule bills in its supplier's currency, or the base currency without one.
+  const base = useOrganization().data?.baseCurrency ?? '';
+  const currencyOf = (sub: RecurringExpenseDto) => sub.currency || base;
 
   // Accounts lookup map
   const accountsMap = useMemo(() => {
@@ -230,7 +234,6 @@ export function SubscriptionsTable({
 
   // Metrics / KPIs
   const metrics = useMemo(() => {
-    let monthlyRunRate = 0;
     let activeCount = 0;
     let upcomingDueCount = 0;
     const now = new Date();
@@ -239,7 +242,6 @@ export function SubscriptionsTable({
     subscriptions.forEach((sub) => {
       if (sub.status === 'ACTIVE') {
         activeCount++;
-        monthlyRunRate += calculateNormalizedMonthlyCost(sub.amount, sub.billingInterval);
 
         try {
           const billingDate = new Date(sub.nextBillingDate);
@@ -252,14 +254,23 @@ export function SubscriptionsTable({
       }
     });
 
+    // Monthly costs are only added within a currency.
+    const monthly = splitByBase(
+      totalsByCurrency(
+        subscriptions.filter((s) => s.status === 'ACTIVE'),
+        (s) => calculateNormalizedMonthlyCost(s.amount, s.billingInterval),
+        (s) => s.currency || base,
+      ),
+      base,
+    );
+
     return {
-      monthlyRunRate,
-      annualRunRate: monthlyRunRate * 12,
+      monthly,
       activeCount,
       totalCount: subscriptions.length,
       upcomingDueCount,
     };
-  }, [subscriptions]);
+  }, [subscriptions, base]);
 
   if (isLoading) {
     return (
@@ -267,7 +278,7 @@ export function SubscriptionsTable({
         {/* KPI Skeleton */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           {Array.from({ length: 3 }).map((_, idx) => (
-            <div key={idx} className="rounded-2xl border border-border/40 bg-surface/85 p-4 space-y-2">
+            <div key={idx} className="rounded-2xl border border-border/40 bg-surface p-4 space-y-2">
               <Skeleton className="h-4 w-28" />
               <Skeleton className="h-7 w-36" />
             </div>
@@ -283,7 +294,7 @@ export function SubscriptionsTable({
         {/* Rows Skeleton */}
         <div className="space-y-2">
           {Array.from({ length: 4 }).map((_, idx) => (
-            <div key={idx} className="h-16 rounded-xl border border-border/40 bg-surface/85 p-4">
+            <div key={idx} className="h-16 rounded-xl border border-border/40 bg-surface p-4">
               <Skeleton className="h-full w-full" />
             </div>
           ))}
@@ -298,7 +309,7 @@ export function SubscriptionsTable({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="grid size-7 place-items-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+            <span className="grid size-7 place-items-center rounded-lg bg-surface-muted text-ink-muted">
               <Layers className="size-4" />
             </span>
             <h2 className="text-lg font-bold tracking-tight text-ink sm:text-xl">
@@ -306,7 +317,7 @@ export function SubscriptionsTable({
             </h2>
           </div>
           <p className="mt-1 text-xs text-ink-muted sm:text-sm">
-            Track vendor renewals, billing schedules, and monthly software burn rates.
+            Each schedule raises a supplier bill on its billing date.
           </p>
         </div>
 
@@ -328,10 +339,10 @@ export function SubscriptionsTable({
       {/* KPI Metric Strip */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {/* Monthly Recurring Cost */}
-        <div className="rounded-2xl border border-border/40 bg-surface/85 p-4 shadow-xs backdrop-blur-xs">
+        <div className="rounded-2xl border border-border/40 bg-surface p-4 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-ink-muted">Monthly SaaS Burn</span>
-            <span className="grid size-8 place-items-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+            <span className="text-xs font-semibold text-ink-muted">Monthly cost</span>
+            <span className="grid size-8 place-items-center rounded-lg bg-surface-muted text-ink-muted">
               <DollarSign className="size-4" />
             </span>
           </div>
@@ -340,19 +351,20 @@ export function SubscriptionsTable({
               data-testid="kpi-monthly-burn"
               className="text-2xl font-extrabold tracking-tight text-ink tabular-nums"
             >
-              {formatFinanceCurrency(metrics.monthlyRunRate)}
+              {formatFinanceCurrency(metrics.monthly.base, base)}
             </span>
-            <p className="text-[11px] text-ink-subtle mt-0.5">
-              Annualized: {formatFinanceCurrency(metrics.annualRunRate)}/yr
+            <p className="text-[11px] text-ink-subtle mt-0.5 tabular-nums">
+              {formatFinanceCurrency(metrics.monthly.base * 12, base)} a year
             </p>
+            <OtherCurrencies others={metrics.monthly.others} className="mt-0.5 text-[11px] text-ink-muted" />
           </div>
         </div>
 
         {/* Active Tools */}
-        <div className="rounded-2xl border border-border/40 bg-surface/85 p-4 shadow-xs backdrop-blur-xs">
+        <div className="rounded-2xl border border-border/40 bg-surface p-4 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-ink-muted">Active Subscriptions</span>
-            <span className="grid size-8 place-items-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+            <span className="grid size-8 place-items-center rounded-lg bg-surface-muted text-ink-muted">
               <Layers className="size-4" />
             </span>
           </div>
@@ -370,10 +382,10 @@ export function SubscriptionsTable({
         </div>
 
         {/* Upcoming Renewals */}
-        <div className="rounded-2xl border border-border/40 bg-surface/85 p-4 shadow-xs backdrop-blur-xs">
+        <div className="rounded-2xl border border-border/40 bg-surface p-4 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-ink-muted">Renewals in 30 Days</span>
-            <span className="grid size-8 place-items-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+            <span className="grid size-8 place-items-center rounded-lg bg-surface-muted text-ink-muted">
               <Clock className="size-4" />
             </span>
           </div>
@@ -465,7 +477,7 @@ export function SubscriptionsTable({
           data-testid="subscriptions-empty-state"
           className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/70 bg-surface/40 px-6 py-12 text-center"
         >
-          <div className="grid size-12 place-items-center rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+          <div className="grid size-12 place-items-center rounded-2xl bg-surface-muted text-ink-muted">
             <Layers className="size-6" />
           </div>
           <h3 className="mt-3 text-sm font-semibold text-ink">No subscriptions found</h3>
@@ -489,7 +501,7 @@ export function SubscriptionsTable({
           )}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-border/40 bg-surface/85 shadow-xs backdrop-blur-xs">
+        <div className="overflow-hidden rounded-2xl border border-border/40 bg-surface shadow-xs">
           <div className="overflow-x-auto">
             <table data-testid="subscriptions-table" className="w-full text-left border-collapse">
               <thead>
@@ -535,13 +547,13 @@ export function SubscriptionsTable({
                           >
                             {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
                           </button>
-                          <div className="grid size-9 place-items-center rounded-xl border border-border/30 bg-surface-muted/60 text-ink-muted group-hover:border-amber-500/40 transition-colors">
+                          <div className="grid size-9 place-items-center rounded-xl border border-border/30 bg-surface-muted/60 text-ink-muted group-hover:border-border-strong transition-colors">
                             <Icon className="size-4" />
                           </div>
                           <div>
                             <span
                               data-testid={`sub-vendor-${sub.id}`}
-                              className="font-bold text-ink group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors"
+                              className="font-bold text-ink transition-colors"
                             >
                               {sub.vendorName}
                             </span>
@@ -570,7 +582,7 @@ export function SubscriptionsTable({
                               data-testid={`sub-amount-${sub.id}`}
                               className="font-mono font-bold text-ink tabular-nums"
                             >
-                              {formatFinanceCurrency(sub.amount)}
+                              {formatFinanceCurrency(sub.amount, currencyOf(sub))}
                             </span>
                             <span className="text-[10px] text-ink-subtle font-medium">
                               / {INTERVAL_SUFFIX[sub.billingInterval]}
@@ -581,7 +593,7 @@ export function SubscriptionsTable({
                           </p>
                           {sub.billingInterval !== 'MONTHLY' && (
                             <p className="font-mono text-[10px] text-ink-muted">
-                              ~{formatFinanceCurrency(normalizedMonthly)}/mo
+                              ~{formatFinanceCurrency(normalizedMonthly, currencyOf(sub))}/mo
                             </p>
                           )}
                         </div>
@@ -673,9 +685,9 @@ export function SubscriptionsTable({
                               className="rounded-lg p-1.5 text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors cursor-pointer"
                             >
                               {sub.status === 'ACTIVE' ? (
-                                <PauseCircle className="size-4 text-amber-600 dark:text-amber-400" />
+                                <PauseCircle className="size-4 text-warning" />
                               ) : (
-                                <PlayCircle className="size-4 text-emerald-600 dark:text-emerald-400" />
+                                <PlayCircle className="size-4 text-success" />
                               )}
                             </button>
                           )}
@@ -698,7 +710,7 @@ export function SubscriptionsTable({
                               data-testid={`btn-delete-sub-${sub.id}`}
                               onClick={() => onDeleteSubscription(sub)}
                               aria-label="Cancel subscription"
-                              className="rounded-lg p-1.5 text-ink-subtle hover:bg-surface-muted hover:text-rose-600 transition-colors cursor-pointer"
+                              className="rounded-lg p-1.5 text-ink-subtle hover:bg-surface-muted hover:text-danger transition-colors cursor-pointer"
                             >
                               <Trash2 className="size-4" />
                             </button>
@@ -709,7 +721,7 @@ export function SubscriptionsTable({
                     {expanded && (
                       <tr data-testid={`subscription-expanded-${sub.id}`} className="bg-surface-muted/20">
                         <td colSpan={6}>
-                          <OccurrencesPanel id={sub.id} />
+                          <OccurrencesPanel id={sub.id} currency={currencyOf(sub)} />
                         </td>
                       </tr>
                     )}

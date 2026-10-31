@@ -48,6 +48,13 @@ export function BillDetail({ id }: { id: string }) {
 
   const outstanding = Math.round((bill.totalAmount - bill.paidAmount) * 100) / 100;
   const can = (to: Parameters<typeof canTransitionBill>[1]) => canTransitionBill(bill.status, to);
+  const variances = bill.status === 'DRAFT' ? (match?.variances ?? []) : [];
+  // A quantity overrun is goods not in the building or already billed. No
+  // permission accepts that; only a corrected receipt or a credit note fixes it.
+  const blocked = variances.some((v) => !v.overridable);
+  // APPROVED is also reachable from PARTIALLY_PAID (a payment reversed), which
+  // is not something a person does with this button.
+  const canApprove = bill.status === 'DRAFT' && !blocked;
 
   return (
     <>
@@ -57,7 +64,7 @@ export function BillDetail({ id }: { id: string }) {
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <BillStatusPill status={bill.status} />
-            {can('APPROVED') && (
+            {canApprove && (
               <Can permission={PERMISSIONS.BILL_APPROVE}>
                 <Button loading={act.isPending} onClick={() => act.mutate({ id, action: 'approve' })}>
                   <ShieldCheck className="size-4" />
@@ -75,7 +82,7 @@ export function BillDetail({ id }: { id: string }) {
             )}
             {can('DISPUTED') && (
               <Can permission={PERMISSIONS.BILL_UPDATE}>
-                <Button variant="secondary" onClick={() => setDisputing(true)}>
+                <Button variant={blocked ? 'primary' : 'secondary'} onClick={() => setDisputing(true)}>
                   <PauseCircle className="size-4" />
                   Dispute
                 </Button>
@@ -101,18 +108,22 @@ export function BillDetail({ id }: { id: string }) {
         }
       />
 
-      {bill.status === 'DRAFT' && match && match.variances.length > 0 && (
+      {variances.length > 0 && (
         <div className="mb-6 rounded border border-warning/40 bg-warning-soft/40 p-4 text-sm">
           <p className="mb-2 flex items-center gap-2 font-medium text-warning">
             <AlertTriangle className="size-4" />
             Does not match {bill.purchaseOrderId ? 'its order' : 'an order'}
           </p>
           <ul className="space-y-1 text-ink-muted">
-            {match.variances.map((v, i) => (
+            {variances.map((v, i) => (
               <li key={i}>{v.message}</li>
             ))}
           </ul>
-          <p className="mt-2 text-xs text-ink-subtle">Approving this needs permission to accept a variance.</p>
+          <p className="mt-2 text-sm text-ink">
+            {blocked
+              ? 'This bill can’t be approved until the delivery is booked in correctly or the supplier sends a credit note. Dispute it to put it on hold meanwhile.'
+              : 'The price is outside tolerance, so it needs variance approval.'}
+          </p>
         </div>
       )}
 
@@ -139,7 +150,7 @@ export function BillDetail({ id }: { id: string }) {
       {bill.purchaseOrderId && (
         <p className="mb-3 text-sm text-ink-muted">
           Against{' '}
-          <Link className="text-accent hover:underline" href={`/purchasing/orders/${bill.purchaseOrderId}`}>
+          <Link className="font-medium text-ink underline underline-offset-2" href={`/purchasing/orders/${bill.purchaseOrderId}`}>
             the purchase order
           </Link>
           {bill.varianceApproved && ' · approved with a variance'}

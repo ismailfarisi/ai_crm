@@ -38,12 +38,15 @@ function FieldShell({ label, error, hint, required, htmlFor, children, className
         </label>
       )}
       {children}
+      {/* The control's aria-describedby points here, so the hint or the error is read with it. */}
       {error ? (
-        <p className="text-xs text-danger" role="alert">
+        <p id={htmlFor ? `${htmlFor}-message` : undefined} className="text-xs text-danger" role="alert">
           {error}
         </p>
       ) : hint ? (
-        <p className="text-xs text-ink-subtle">{hint}</p>
+        <p id={htmlFor ? `${htmlFor}-message` : undefined} className="text-xs text-ink-subtle">
+          {hint}
+        </p>
       ) : null}
     </div>
   );
@@ -77,7 +80,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         id={fieldId}
         required={required}
         aria-invalid={error ? true : undefined}
-        aria-describedby={error ? `${fieldId}-error` : undefined}
+        aria-describedby={error || hint ? `${fieldId}-message` : undefined}
         className={controlClasses(!!error, 'h-10', className)}
         {...props}
       />
@@ -113,6 +116,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
         id={fieldId}
         required={required}
         aria-invalid={error ? true : undefined}
+        aria-describedby={error || hint ? `${fieldId}-message` : undefined}
         className={controlClasses(!!error, 'min-h-24 py-2 leading-relaxed', className)}
         {...props}
       />
@@ -150,6 +154,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
         id={fieldId}
         required={required}
         aria-invalid={error ? true : undefined}
+        aria-describedby={error || hint ? `${fieldId}-message` : undefined}
         className={controlClasses(!!error, 'h-10 appearance-none pr-8', className)}
         {...props}
       >

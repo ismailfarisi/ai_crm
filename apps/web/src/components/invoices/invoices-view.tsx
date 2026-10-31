@@ -23,34 +23,53 @@ import { api } from '@/lib/api/endpoints';
 import { formatMoney } from '@/lib/utils';
 
 const STAT_TONES = {
-  brand: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-  info: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
-  warning: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-  success: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+  neutral: 'bg-surface-muted text-ink-muted',
+  success: 'bg-success-soft text-success',
 } as const;
 
 function Stat({
   label,
   value,
+  note,
   icon: Icon,
-  tone = 'brand',
+  tone = 'neutral',
 }: {
   label: string;
   value: string | number;
+  /** What the figure leaves out, said under it rather than hidden. */
+  note?: string;
   icon: LucideIcon;
   tone?: keyof typeof STAT_TONES;
 }) {
   return (
     <div className="flex items-center gap-3">
       <span className={`grid size-9 shrink-0 place-items-center rounded-xl ${STAT_TONES[tone]}`}>
-        <Icon className="size-4" />
+        <Icon className="size-4" aria-hidden />
       </span>
       <div>
         <p className="text-xs font-semibold tracking-wider text-ink-muted uppercase">{label}</p>
         <p className="text-2xl font-semibold tabular-nums text-ink tracking-tight">{value}</p>
+        {note && <p className="text-xs text-ink-subtle">{note}</p>}
       </div>
     </div>
   );
+}
+
+/**
+ * What the invoices add up to. A voided invoice bills nothing, so it is left
+ * out; one in another currency cannot be added without a rate, so it is
+ * counted and named instead of being summed as if it were the base currency.
+ */
+export function summariseInvoices(invoices: InvoiceDto[], baseCurrency: string | null | undefined) {
+  const live = invoices.filter((inv) => inv.status !== 'CANCELLED');
+  const inBase = live.filter((inv) => !baseCurrency || !inv.currency || inv.currency === baseCurrency);
+  return {
+    liveCount: live.length,
+    voidedCount: invoices.length - live.length,
+    issued: inBase.reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0),
+    paid: inBase.reduce((acc, inv) => acc + (Number(inv.paidAmount) || 0), 0),
+    otherCurrencies: live.length - inBase.length,
+  };
 }
 
 export function InvoicesView() {
@@ -78,13 +97,11 @@ export function InvoicesView() {
   const creditingInvoice = invoices.find((i) => i.id === creditingId) ?? null;
   const [sendingId, setSendingId] = useState<string | null>(null);
 
-  const issuedInvoicesCount = invoices.length;
-  const totalIssuedAmount = invoices.reduce((acc, inv) => acc + (inv.amount || 0), 0);
-  const paidAmount = invoices.reduce((acc, inv) => acc + (inv.paidAmount || 0), 0);
-
-  const formattedTotalIssued = formatMoney(totalIssuedAmount, baseCurrency);
-
-  const formattedPaidAmount = formatMoney(paidAmount, baseCurrency);
+  const summary = summariseInvoices(invoices, baseCurrency);
+  const otherCurrencyNote =
+    summary.otherCurrencies > 0
+      ? `Plus ${summary.otherCurrencies} in other currencies`
+      : undefined;
 
   const handleSend = async (invoice: InvoiceDto) => {
     setSendingId(invoice.id);
@@ -99,13 +116,29 @@ export function InvoicesView() {
     <div className="space-y-6">
       <PageHeader
         title="Invoices"
-        description="Track issued and paid invoices generated from approved quotes."
+        description="Invoices raised from sales orders, once customers accept their quotes."
       />
 
       <div className="flex flex-wrap items-center gap-x-12 gap-y-4 py-2">
-        <Stat label="Issued Invoices" value={issuedInvoicesCount} icon={Receipt} tone="brand" />
-        <Stat label="Total Issued Amount" value={formattedTotalIssued} icon={Banknote} tone="info" />
-        <Stat label="Paid Amount" value={formattedPaidAmount} icon={CheckCircle} tone="success" />
+        <Stat
+          label="Invoices"
+          value={summary.liveCount}
+          note={summary.voidedCount > 0 ? `${summary.voidedCount} voided, not counted` : undefined}
+          icon={Receipt}
+        />
+        <Stat
+          label="Invoiced"
+          value={formatMoney(summary.issued, baseCurrency)}
+          note={otherCurrencyNote}
+          icon={Banknote}
+        />
+        <Stat
+          label="Paid"
+          value={formatMoney(summary.paid, baseCurrency)}
+          note={otherCurrencyNote}
+          icon={CheckCircle}
+          tone="success"
+        />
       </div>
 
       <InvoicesTable
@@ -163,7 +196,7 @@ export function InvoicesView() {
             status: printingInvoice.status,
             issuedAt: printingInvoice.issuedAt,
             dueDate: printingInvoice.dueDate || undefined,
-            currency: printingInvoice.currency || baseCurrency || 'USD',
+            currency: printingInvoice.currency || baseCurrency || '',
             organization: {
               name: orgName,
               address: orgAddress,

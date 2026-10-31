@@ -2,302 +2,195 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { ArrowUpRight, TrendingUp, Zap } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { ArrowUpRight, Minus, TrendingDown, TrendingUp } from 'lucide-react';
+import { Badge } from '@/components/ui/primitives';
+import { cn, formatMoney } from '@/lib/utils';
+import type { RevenueMonth } from './dashboard-figures';
 
-interface DataPoint {
-  month: string;
-  value: number;
-}
+const PERIODS = [
+  { key: '1M', label: 'This month', months: 1, previous: 'last month' },
+  { key: '3M', label: '3 months', months: 3, previous: 'the 3 months before' },
+  { key: '12M', label: '12 months', months: 12, previous: 'the 12 months before' },
+] as const;
 
-/** How many trailing months each period shows of the series it is given. */
-const PERIOD_MONTHS: Record<'30D' | '90D' | '1Y', number> = {
-  '30D': 1,
-  '90D': 3,
-  '1Y': 12,
-};
+type PeriodKey = (typeof PERIODS)[number]['key'];
 
 export interface DashboardKpiChartProps {
   /**
-   * Real monthly figures, oldest first. There is no sample fallback: this
-   * chart used to draw an invented Jan–Aug curve rising to 72.4% for every
-   * account, including one created seconds earlier with no revenue at all.
+   * Real monthly figures, oldest first, in the base currency. Give it twice
+   * the longest period (24 months) so each period has one to compare against.
+   * There is no sample fallback: this chart used to draw an invented curve for
+   * every account, including one created seconds earlier.
    */
-  series?: DataPoint[];
+  series?: RevenueMonth[];
+  currency?: string | null;
   title?: string;
-  metricLabel?: string;
-  metricValue?: string;
-  growthLabel?: string;
+  /** What the figures leave out, such as invoices in other currencies. */
+  note?: string;
   className?: string;
 }
 
+const sum = (months: RevenueMonth[]) => months.reduce((acc, m) => acc + m.value, 0);
+
+/**
+ * Invoiced revenue by month, as bars: one bar per month, its value read out on
+ * hover or keyboard focus, and the period's total with the change on the
+ * period before it. The badge is green only when the figure went up.
+ */
 export function DashboardKpiChart({
   series = [],
-  title = 'Revenue',
-  metricLabel,
-  metricValue,
-  growthLabel,
+  currency,
+  title = 'Invoiced revenue',
+  note,
   className,
 }: DashboardKpiChartProps) {
-  const [period, setPeriod] = useState<'30D' | '90D' | '1Y'>('1Y');
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [periodKey, setPeriodKey] = useState<PeriodKey>('12M');
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const period = PERIODS.find((p) => p.key === periodKey) ?? PERIODS[2];
 
-  const data = series.slice(-PERIOD_MONTHS[period]);
-  const hasData = data.some((d) => d.value !== 0);
-  const width = 600;
-  const height = 180;
-  const paddingX = 30;
-  const paddingY = 25;
+  const current = series.slice(-period.months);
+  const previous = series.slice(-period.months * 2, -period.months);
+  const total = sum(current);
+  const previousTotal = sum(previous);
+  const growth =
+    previous.length === period.months && previousTotal > 0
+      ? Math.round(((total - previousTotal) / previousTotal) * 1000) / 10
+      : null;
 
-  const chartWidth = width - paddingX * 2;
-  const chartHeight = height - paddingY * 2;
+  // "This month" alone is one bar, so last month stands beside it for scale.
+  const bars = period.months === 1 ? series.slice(-2) : current;
+  const firstCurrent = bars.length - current.length;
+  const peak = Math.max(...bars.map((b) => b.value), 0);
+  const hasData = series.some((m) => m.value !== 0);
+  const money = (n: number) => formatMoney(n, currency, { decimals: 0 });
+  const active = activeIndex !== null ? bars[activeIndex] : null;
 
-  // Scaled to the data rather than to a fixed 20–90 band, so real figures of
-  // any size fill the chart instead of running off it.
-  const peak = Math.max(...data.map((d) => d.value), 0);
-  const scaleMax = peak > 0 ? peak * 1.15 : 1;
-
-  const points = data.map((d, i) => {
-    const x =
-      data.length === 1
-        ? paddingX + chartWidth / 2
-        : paddingX + (i / (data.length - 1)) * chartWidth;
-    const y = paddingY + (1 - d.value / scaleMax) * chartHeight;
-    return { x, y, ...d };
-  });
-
-  // Generate cubic bezier smooth curve
-  const generateSplinePath = (pts: { x: number; y: number }[]) => {
-    if (pts.length === 0) return '';
-    let path = `M ${pts[0].x} ${pts[0].y}`;
-    for (let i = 0; i < pts.length - 1; i++) {
-      const p0 = pts[i === 0 ? 0 : i - 1];
-      const p1 = pts[i];
-      const p2 = pts[i + 1];
-      const p3 = pts[i + 2 >= pts.length ? pts.length - 1 : i + 2];
-
-      const cp1x = p1.x + (p2.x - p0.x) / 6;
-      const cp1y = p1.y + (p2.y - p0.y) / 6;
-      const cp2x = p2.x - (p3.x - p1.x) / 6;
-      const cp2y = p2.y - (p3.y - p1.y) / 6;
-
-      path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
-    }
-    return path;
-  };
-
-  const linePath = generateSplinePath(points);
-  const areaPath = points.length > 0
-    ? `${linePath} L ${points[points.length - 1].x} ${height} L ${points[0].x} ${height} Z`
-    : '';
-
-  const activePoint = hoveredIndex !== null ? points[hoveredIndex] : points[points.length - 1];
+  const GrowthIcon = growth === null || growth === 0 ? Minus : growth > 0 ? TrendingUp : TrendingDown;
+  const growthTone = growth === null || growth === 0 ? 'neutral' : growth > 0 ? 'success' : 'danger';
 
   return (
-    <div
-      className={cn(
-        'relative flex flex-col justify-between overflow-hidden rounded-2xl border border-border bg-surface p-5 shadow-xs transition-all',
-        className,
-      )}
+    <section
+      aria-labelledby="revenue-chart-title"
+      className={cn('flex flex-col rounded-2xl border border-border bg-surface p-5 shadow-xs', className)}
     >
-      {/* Header Row */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="grid size-7 place-items-center rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400">
-              <Zap className="size-3.5" />
-            </span>
-            <span className="text-xs font-semibold uppercase tracking-wider text-ink-subtle">
-              {title}
-            </span>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 id="revenue-chart-title" className="text-sm font-semibold text-ink">
+            {title}
+          </h2>
+          <div className="mt-1 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+            <p className="text-2xl font-bold tracking-tight tabular-nums text-ink" data-testid="revenue-total">
+              {money(total)}
+            </p>
+            {growth !== null && (
+              <Badge tone={growthTone} className="gap-1" data-testid="revenue-growth">
+                <GrowthIcon className="size-3" aria-hidden />
+                {growth > 0 ? '+' : ''}
+                {growth}% on {period.previous}
+              </Badge>
+            )}
           </div>
-
-          <div className="mt-1 flex items-baseline gap-2.5">
-            <h3 className="text-3xl font-extrabold tracking-tight text-ink tabular-nums">
-              {metricValue ?? '—'}
-            </h3>
-            {growthLabel ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                <TrendingUp className="size-3" />
-                {growthLabel}
-              </span>
-            ) : null}
-            {metricLabel ? (
-              <span className="hidden text-xs text-ink-muted sm:inline">• {metricLabel}</span>
-            ) : null}
-          </div>
+          <p className="mt-0.5 text-xs text-ink-muted">
+            {period.months === 1 ? 'Invoiced this month' : `Invoiced in the last ${period.label}`}
+            {note ? `. ${note}` : ''}
+          </p>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Time range pills */}
-          <div className="flex items-center rounded-xl border border-border bg-surface-muted/60 p-0.5">
-            {(['30D', '90D', '1Y'] as const).map((t) => (
+          <div role="group" aria-label="Period" className="flex items-center rounded-full border border-border bg-surface-muted p-0.5">
+            {PERIODS.map((p) => (
               <button
-                key={t}
+                key={p.key}
                 type="button"
-                onClick={() => setPeriod(t)}
+                aria-pressed={periodKey === p.key}
+                onClick={() => {
+                  setPeriodKey(p.key);
+                  setActiveIndex(null);
+                }}
                 className={cn(
-                  'rounded-lg px-2.5 py-1 text-xs font-semibold transition-all',
-                  period === t
-                    ? 'bg-surface text-ink shadow-2xs'
-                    : 'text-ink-muted hover:text-ink',
+                  'min-h-8 rounded-full px-3 text-xs font-semibold transition-colors cursor-pointer',
+                  periodKey === p.key ? 'bg-surface text-ink shadow-2xs' : 'text-ink-muted hover:text-ink',
                 )}
               >
-                {t}
+                {p.label}
               </button>
             ))}
           </div>
-
-          {/* Jump Action Button */}
           <Link
-            href="/quotes"
-            className="grid size-8 place-items-center rounded-xl border border-border bg-surface-muted/60 text-ink-muted transition-all hover:border-brand hover:bg-brand-soft hover:text-brand"
-            aria-label="View quotation analytics"
+            href="/invoices"
+            aria-label="Open invoices"
+            title="Open invoices"
+            className="grid size-8 place-items-center rounded-full border border-border bg-surface text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
           >
-            <ArrowUpRight className="size-4" />
+            <ArrowUpRight className="size-4" aria-hidden />
           </Link>
         </div>
       </div>
 
-      {/* Golden Wave SVG Chart */}
-      <div className="relative mt-4 w-full">
-        {!hasData ? (
-          <div
-            data-testid="kpi-chart-empty"
-            className="flex h-44 flex-col items-center justify-center gap-1 text-center"
-          >
-            <p className="text-sm font-medium text-ink">Nothing invoiced yet</p>
-            <p className="max-w-xs text-xs text-ink-muted">
-              Revenue appears here once your first invoice is issued.
-            </p>
-          </div>
-        ) : (
-        <>
-        <svg
-          viewBox={`0 0 ${width} ${height}`}
-          className="h-44 w-full overflow-visible"
-          preserveAspectRatio="none"
-        >
-          <defs>
-            <linearGradient id="goldenAreaGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#F59E0B" stopOpacity="0.35" />
-              <stop offset="60%" stopColor="#F59E0B" stopOpacity="0.10" />
-              <stop offset="100%" stopColor="#F59E0B" stopOpacity="0.0" />
-            </linearGradient>
-            <linearGradient id="goldenStrokeGradient" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#F59E0B" />
-              <stop offset="50%" stopColor="#FBBF24" />
-              <stop offset="100%" stopColor="#D97706" />
-            </linearGradient>
-          </defs>
-
-          {/* Subtle Horizontal Grid lines */}
-          <line
-            x1="0"
-            y1={paddingY}
-            x2={width}
-            y2={paddingY}
-            className="stroke-border/40"
-            strokeDasharray="4 4"
-            strokeWidth="1"
-          />
-          <line
-            x1="0"
-            y1={paddingY + chartHeight / 2}
-            x2={width}
-            y2={paddingY + chartHeight / 2}
-            className="stroke-border/40"
-            strokeDasharray="4 4"
-            strokeWidth="1"
-          />
-          <line
-            x1="0"
-            y1={paddingY + chartHeight}
-            x2={width}
-            y2={paddingY + chartHeight}
-            className="stroke-border/60"
-            strokeWidth="1"
-          />
-
-          {/* Gradient Area Fill */}
-          <path d={areaPath} fill="url(#goldenAreaGradient)" />
-
-          {/* Spline Stroke Line */}
-          <path
-            d={linePath}
-            fill="none"
-            stroke="url(#goldenStrokeGradient)"
-            strokeWidth="3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="transition-all duration-300"
-          />
-
-          {/* Highlight/Active Point */}
-          {activePoint && (
-            <g className="transition-all duration-200">
-              {/* Vertical guideline */}
-              <line
-                x1={activePoint.x}
-                y1={paddingY}
-                x2={activePoint.x}
-                y2={paddingY + chartHeight}
-                className="stroke-amber-500/40"
-                strokeDasharray="3 3"
-                strokeWidth="1.5"
-              />
-              {/* Outer pulsing ring */}
-              <circle
-                cx={activePoint.x}
-                cy={activePoint.y}
-                r="10"
-                className="fill-amber-400/30 animate-pulse"
-              />
-              {/* Inner core circle */}
-              <circle
-                cx={activePoint.x}
-                cy={activePoint.y}
-                r="5"
-                className="fill-amber-500 stroke-2 stroke-surface"
-              />
-            </g>
-          )}
-
-          {/* Interactive touch/hover invisible hit areas */}
-          {points.map((pt, i) => (
-            <rect
-              key={pt.month}
-              x={pt.x - chartWidth / (data.length * 2)}
-              y={0}
-              width={chartWidth / data.length}
-              height={height}
-              fill="transparent"
-              className="cursor-pointer"
-              onMouseEnter={() => setHoveredIndex(i)}
-              onMouseLeave={() => setHoveredIndex(null)}
-            />
-          ))}
-        </svg>
-
-        {/* X-Axis Month Chips */}
-        <div className="mt-2 flex items-center justify-between px-2 text-[11px] font-medium text-ink-subtle">
-          {data.map((d, i) => (
-            <span
-              key={d.month}
-              className={cn(
-                'transition-colors',
-                (hoveredIndex === i || (hoveredIndex === null && i === data.length - 1))
-                  ? 'font-bold text-amber-700 dark:text-amber-400'
-                  : 'text-ink-subtle',
-              )}
-            >
-              {d.month}
-            </span>
-          ))}
+      {!hasData ? (
+        <div data-testid="kpi-chart-empty" className="flex h-44 flex-col items-center justify-center gap-1 text-center">
+          <p className="text-sm font-medium text-ink">Nothing invoiced yet</p>
+          <p className="max-w-xs text-xs text-ink-muted">Revenue appears here once your first invoice is issued.</p>
         </div>
-        </>
-        )}
-      </div>
-    </div>
+      ) : (
+        <div className="mt-4">
+          {/* The value of the bar under the pointer or the keyboard. */}
+          <p aria-live="polite" className="h-5 text-xs text-ink-muted tabular-nums" data-testid="revenue-readout">
+            {active ? (
+              <>
+                <span className="font-medium text-ink">{active.label}</span> · {money(active.value)}
+              </>
+            ) : (
+              'Point at or tab to a month to see its figure.'
+            )}
+          </p>
+          <ul
+            aria-label={`${title} by month`}
+            className="mt-2 flex h-40 items-end gap-0.5 border-b border-border-strong"
+            onMouseLeave={() => setActiveIndex(null)}
+          >
+            {bars.map((bar, i) => {
+              const height = peak > 0 ? (bar.value / peak) * 100 : 0;
+              const isActive = activeIndex === i;
+              const isComparison = i < firstCurrent;
+              return (
+                <li key={bar.label} className="flex h-full min-w-0 flex-1 flex-col justify-end">
+                  <button
+                    type="button"
+                    aria-label={`${bar.label}: ${money(bar.value)}${isComparison ? ' (last month, for comparison)' : ''}`}
+                    onMouseEnter={() => setActiveIndex(i)}
+                    onFocus={() => setActiveIndex(i)}
+                    onBlur={() => setActiveIndex(null)}
+                    className="group flex h-full w-full flex-col justify-end px-px cursor-default focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-ring rounded-t"
+                  >
+                    <span
+                      className={cn(
+                        'block w-full rounded-t transition-colors',
+                        bar.value > 0 && 'min-h-0.5',
+                        isActive ? 'bg-ink' : isComparison ? 'bg-border-strong' : 'bg-ink-subtle',
+                      )}
+                      style={{ height: `${height}%` }}
+                    />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="mt-1.5 flex gap-0.5" aria-hidden>
+            {bars.map((bar, i) => (
+              <span
+                key={bar.label}
+                className={cn(
+                  'min-w-0 flex-1 truncate text-center text-[11px]',
+                  activeIndex === i ? 'font-semibold text-ink' : 'text-ink-subtle',
+                )}
+              >
+                {bar.month}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }

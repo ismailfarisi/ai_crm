@@ -13,7 +13,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { Select } from '@/components/ui/field';
 import { Alert, Badge, Card, CardBody, EmptyState, PageHeader, Skeleton } from '@/components/ui/primitives';
 import { PeopleNav } from './people-nav';
-import { SETTLEMENT_REASON_LABELS, SETTLEMENT_STATUS_LABELS, SETTLEMENT_STATUS_TONES, money } from './payroll-format';
+import { SETTLEMENT_REASON_LABELS, SETTLEMENT_STATUS_LABELS, SETTLEMENT_STATUS_TONES, inCurrency, money, usePayrollCurrency } from './payroll-format';
 
 export function SettlementStatusBadge({ status }: { status: SettlementStatus }) {
   return <Badge tone={SETTLEMENT_STATUS_TONES[status]}>{SETTLEMENT_STATUS_LABELS[status]}</Badge>;
@@ -101,6 +101,7 @@ function NewSettlementModal({
 
 export function SettlementsView() {
   const { data, isPending, isError, error } = useSettlements();
+  const cur = usePayrollCurrency();
   const [adding, setAdding] = useState(false);
   const settlements = data ?? [];
 
@@ -144,14 +145,14 @@ export function SettlementsView() {
                   <th className="py-2 font-medium">Leaving date</th>
                   <th className="py-2 font-medium">Reason</th>
                   <th className="py-2 font-medium">Status</th>
-                  <th className="py-2 text-right font-medium">Net</th>
+                  <th className="py-2 text-right font-medium">{inCurrency('Net', cur)}</th>
                 </tr>
               </thead>
               <tbody>
                 {settlements.map((s) => (
                   <tr key={s.id} className="border-t border-border/40">
                     <td className="py-2">
-                      <Link href={`/people/settlements/${s.id}`} className="font-medium text-accent hover:underline">
+                      <Link href={`/people/settlements/${s.id}`} className="font-medium text-ink underline-offset-2 hover:underline">
                         {s.settlementNumber}
                       </Link>
                     </td>

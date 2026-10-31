@@ -35,16 +35,7 @@ import { WebhookTriggerFields } from './webhook-trigger-fields';
 import { ScheduleTriggerFields } from './schedule-trigger-fields';
 import { ExpressionHelper } from './expression-helper';
 import { CrmStepFields } from './crm-step-fields';
-
-const CRM_EVENTS = [
-  { value: 'contact.created', label: 'Contact created' },
-  { value: 'contact.updated', label: 'Contact updated' },
-  { value: 'quote.created', label: 'Quote created' },
-  { value: 'quote.updated', label: 'Quote updated' },
-  { value: 'quote.accepted', label: 'Customer accepted a quote' },
-  { value: 'invoice.issued', label: 'Invoice issued' },
-  { value: 'invoice.overdue', label: 'Invoice overdue' },
-];
+import { CRM_EVENTS, crmEventOf, findCrmEvent, normalizeCrmEventConfig } from '../crm-events';
 
 /** The trigger node that belongs to each automation trigger type. */
 const TRIGGER_NODE_TYPE: Record<AutomationTriggerType, string> = {
@@ -116,6 +107,8 @@ export function NodeInspectorDrawer({
 
   const config = node.data?.config || {};
   const triggerEditor = triggerEditorFor(node.type, workflow?.triggerType);
+  const storedEvent = node.type === 'crmEventTrigger' ? crmEventOf(config) : null;
+  const unknownEvent = storedEvent && !findCrmEvent(storedEvent) ? storedEvent : null;
 
   const aiHint =
     node.type === 'sendEmailNode' &&
@@ -529,20 +522,40 @@ export function NodeInspectorDrawer({
 
             {triggerEditor === 'CRM_EVENT' && (
               <div className="space-y-2 pt-2 border-t border-border/40">
-                <label className="text-[11px] font-medium text-ink">CRM Event Trigger</label>
+                <label htmlFor={`crm-event-${node.id}`} className="text-[11px] font-medium text-ink">
+                  CRM Event Trigger
+                </label>
                 <select
+                  id={`crm-event-${node.id}`}
                   data-testid="crm-event-select"
-                  value={config.event || ''}
-                  onChange={(e) => handleConfigChange('event', e.target.value)}
-                  className="w-full rounded-lg border border-border px-2 py-1.5 text-xs text-ink font-semibold bg-surface-muted"
+                  value={storedEvent ?? ''}
+                  aria-describedby={unknownEvent ? `crm-event-unknown-${node.id}` : undefined}
+                  onChange={(e) =>
+                    onUpdate(node.id, {
+                      // One field: `event`, which the API reads. A legacy
+                      // `eventType` is dropped as soon as the event is set.
+                      config: normalizeCrmEventConfig({ ...config, event: e.target.value }),
+                    })
+                  }
+                  className="w-full rounded-lg border border-border-control px-2 py-1.5 text-xs text-ink font-semibold bg-surface-muted"
                 >
                   <option value="">Choose an event</option>
+                  {unknownEvent && <option value={unknownEvent}>Unknown event: {unknownEvent}</option>}
                   {CRM_EVENTS.map((ev) => (
                     <option key={ev.value} value={ev.value}>
                       {ev.label}
                     </option>
                   ))}
                 </select>
+                {unknownEvent && (
+                  <p
+                    id={`crm-event-unknown-${node.id}`}
+                    data-testid="crm-event-unknown"
+                    className="rounded-lg border border-warning/20 bg-warning-soft px-2 py-1.5 text-[11px] text-warning"
+                  >
+                    &quot;{unknownEvent}&quot; is not an event Kerf sends, so this automation may never run. Choose one from the list.
+                  </p>
+                )}
               </div>
             )}
 
@@ -572,7 +585,7 @@ export function NodeInspectorDrawer({
                 data-testid="continue-on-fail-checkbox"
                 checked={Boolean(node.data?.continueOnFail)}
                 onChange={(e) => onUpdate(node.id, { continueOnFail: e.target.checked })}
-                className="h-4 w-4 rounded text-brand focus:ring-brand cursor-pointer"
+                className="h-4 w-4 rounded accent-[var(--color-brand)] cursor-pointer"
               />
             </div>
 

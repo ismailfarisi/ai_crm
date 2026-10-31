@@ -1,87 +1,62 @@
 'use client';
 
 import React, { useState } from 'react';
-import {
-  Landmark,
-  Receipt,
-  ArrowLeftRight,
-  Plus,
-  DollarSign,
-  TrendingUp,
-  ShieldCheck,
-  Building2,
-} from 'lucide-react';
+import { Receipt, ArrowLeftRight } from 'lucide-react';
+import { PERMISSIONS } from '@saas/shared';
 import { PageHeader } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/button';
+import { useCan } from '@/lib/session-context';
+import { useOrganization } from '@/hooks/use-organization';
 import { FinanceNav } from './finance-nav';
-import { TreasuryStatCards } from './dashboard/treasury-stat-cards';
-import { CashflowTrendChart } from './dashboard/cashflow-trend-chart';
-import { CashForecastChart } from './dashboard/cash-forecast-chart';
-import { AccountBalanceGrid } from './dashboard/account-balance-grid';
-import {
-  useFinanceOverview,
-  useCashForecast,
-  useFinanceAccounts,
-  useCreateFinanceAccount,
-  useTransferFunds,
-  useCreateCategoryBudget,
-} from '@/hooks/use-finance';
+import { CashHeadline, PayablesHeadline, ReceivablesHeadline, VatHeadline } from './dashboard/finance-headlines';
+import { CashByAccount } from './dashboard/cash-by-account';
+import { CashForecastTable } from './dashboard/cash-forecast-table';
+import { useCashForecast, useFinanceAccounts, useTransferFunds } from '@/hooks/use-finance';
 import { useExpenses } from '@/hooks/use-expenses';
-import { CreateAccountModal } from './accounts/create-account-modal';
 import { TransferFundsModal } from './accounts/transfer-funds-modal';
 import { SubmitExpenseModal } from './expenses/submit-expense-modal';
-import { CreateBudgetModal } from './budgets/create-budget-modal';
 
+/**
+ * The owner's four questions, each with its figure and the page that explains
+ * it: how much cash there is, what customers owe, what VAT is due and which
+ * supplier bills are due. Below them, cash by account and the months ahead.
+ */
 export function FinanceOverviewView() {
-  const { data: overview, isLoading: isOverviewLoading } = useFinanceOverview();
+  const base = useOrganization().data?.baseCurrency;
   const { data: accounts = [], isLoading: isAccountsLoading } = useFinanceAccounts();
   const { data: forecast, isLoading: isForecastLoading } = useCashForecast(6);
   const { createClaim } = useExpenses();
-
-  const createAccountMutation = useCreateFinanceAccount();
   const transferFundsMutation = useTransferFunds();
-  const createBudgetMutation = useCreateCategoryBudget();
+  const canSeeBills = useCan({ permission: PERMISSIONS.BILL_READ });
+  const canSeeTax = useCan({ permission: PERMISSIONS.TAX_READ });
 
-  // Modal states
   const [isSubmitExpenseOpen, setIsSubmitExpenseOpen] = useState(false);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
-  const [isNewAccountModalOpen, setIsNewAccountModalOpen] = useState(false);
-  const [isNewBudgetModalOpen, setIsNewBudgetModalOpen] = useState(false);
-  const [selectedTransferFromId, setSelectedTransferFromId] = useState<string | undefined>(undefined);
-
-  const handleOpenTransfer = (fromAccountId?: string) => {
-    setSelectedTransferFromId(fromAccountId);
-    setIsTransferModalOpen(true);
-  };
 
   return (
     <div data-testid="finance-overview-view" className="space-y-6">
       <PageHeader
-        title="Finance & Treasury"
-        description="Monitor liquidity, burn velocity, runway projections, and inter-account treasury movements."
+        title="Finance"
+        description={`Cash, what customers owe, VAT and supplier bills${base ? `, in ${base}` : ''}.`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
               variant="outline"
-              size="sm"
               data-testid="overview-quick-transfer-btn"
-              onClick={() => handleOpenTransfer()}
-              className="font-semibold shadow-2xs"
+              onClick={() => setIsTransferModalOpen(true)}
             >
-              <ArrowLeftRight className="size-3.5" />
-              Transfer Funds
+              <ArrowLeftRight className="size-4" />
+              Transfer money
             </Button>
             <Button
               type="button"
               variant="primary"
-              size="sm"
               data-testid="overview-quick-expense-btn"
               onClick={() => setIsSubmitExpenseOpen(true)}
-              className="font-semibold shadow-xs"
             >
-              <Receipt className="size-3.5" />
-              Submit Expense
+              <Receipt className="size-4" />
+              Submit expense
             </Button>
           </div>
         }
@@ -89,31 +64,17 @@ export function FinanceOverviewView() {
 
       <FinanceNav />
 
-      {/* Primary KPI Stats */}
-      <TreasuryStatCards
-        overview={overview}
-        isLoading={isOverviewLoading}
-      />
-
-      {/* Charts & Analytical Breakdown */}
-      <div className="grid grid-cols-1 gap-6">
-        <CashflowTrendChart
-          series={overview?.recentCashflowSeries ?? []}
-          currency={overview?.currency || 'USD'}
-          isLoading={isOverviewLoading}
-        />
-        <CashForecastChart forecast={forecast} isLoading={isForecastLoading} />
+      <div data-testid="finance-headlines" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <CashHeadline accounts={accounts} base={base} isLoading={isAccountsLoading} />
+        <ReceivablesHeadline />
+        {canSeeTax && <VatHeadline base={base} />}
+        {canSeeBills && <PayablesHeadline base={base} />}
       </div>
 
-      {/* Bank & Cash Accounts Grid */}
-      <AccountBalanceGrid
-        accounts={accounts}
-        isLoading={isAccountsLoading}
-        onTransfer={handleOpenTransfer}
-        onNewAccount={() => setIsNewAccountModalOpen(true)}
-      />
+      <CashByAccount accounts={accounts} base={base} isLoading={isAccountsLoading} />
 
-      {/* Modals */}
+      <CashForecastTable forecast={forecast} isLoading={isForecastLoading} />
+
       <SubmitExpenseModal
         open={isSubmitExpenseOpen}
         onClose={() => setIsSubmitExpenseOpen(false)}
@@ -125,38 +86,13 @@ export function FinanceOverviewView() {
 
       <TransferFundsModal
         open={isTransferModalOpen}
-        onClose={() => {
-          setIsTransferModalOpen(false);
-          setSelectedTransferFromId(undefined);
-        }}
+        onClose={() => setIsTransferModalOpen(false)}
         accounts={accounts}
-        defaultFromAccountId={selectedTransferFromId}
         onSubmit={async (payload) => {
           await transferFundsMutation.mutateAsync(payload);
           setIsTransferModalOpen(false);
-          setSelectedTransferFromId(undefined);
         }}
         isLoading={transferFundsMutation.isPending}
-      />
-
-      <CreateAccountModal
-        open={isNewAccountModalOpen}
-        onClose={() => setIsNewAccountModalOpen(false)}
-        onSubmit={async (payload) => {
-          await createAccountMutation.mutateAsync(payload);
-          setIsNewAccountModalOpen(false);
-        }}
-        isLoading={createAccountMutation.isPending}
-      />
-
-      <CreateBudgetModal
-        open={isNewBudgetModalOpen}
-        onClose={() => setIsNewBudgetModalOpen(false)}
-        onSubmit={async (payload) => {
-          await createBudgetMutation.mutateAsync(payload);
-          setIsNewBudgetModalOpen(false);
-        }}
-        isLoading={createBudgetMutation.isPending}
       />
     </div>
   );

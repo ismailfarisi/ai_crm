@@ -12,11 +12,11 @@ import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/field';
 import { Card, CardBody, EmptyState } from '@/components/ui/primitives';
+import { inCurrency, money, usePayrollCurrency } from './payroll-format';
 
 type FormIn = z.input<typeof gratuityAdjustmentSchema>;
 type FormOut = z.output<typeof gratuityAdjustmentSchema>;
 
-const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const KIND_LABELS: Record<GratuityEntryKind, string> = {
   OPENING: 'Opening balance',
@@ -30,6 +30,7 @@ const EMPTY: FormIn = { amount: '', note: '' };
 
 export function EmployeeGratuityTab({ employeeId }: { employeeId: string }) {
   const { data, isPending, isError, error } = useEmployeeGratuity(employeeId);
+  const cur = usePayrollCurrency();
   const adjust = useAdjustGratuity();
   const [open, setOpen] = useState(false);
   const form = useForm<FormIn, unknown, FormOut>({
@@ -53,15 +54,15 @@ export function EmployeeGratuityTab({ employeeId }: { employeeId: string }) {
         <dl className="grid grid-cols-3 gap-6 text-sm">
           <div>
             <dt className="text-xs text-ink-subtle">Provision balance</dt>
-            <dd className="text-lg font-semibold tabular-nums text-ink">{money(data.balance)}</dd>
+            <dd className="text-lg font-semibold tabular-nums text-ink">{money(data.balance, cur)}</dd>
           </div>
           <div>
             <dt className="text-xs text-ink-subtle">Entitled today</dt>
-            <dd className="text-lg font-semibold tabular-nums text-ink-muted">{money(data.entitlementToday)}</dd>
+            <dd className="text-lg font-semibold tabular-nums text-ink-muted">{money(data.entitlementToday, cur)}</dd>
             {data.statutoryEntitlementToday !== undefined &&
               data.statutoryEntitlementToday !== data.entitlementToday && (
                 <p className="text-xs text-ink-subtle">
-                  {money(data.statutoryEntitlementToday)} statutory, adjustments on top
+                  {money(data.statutoryEntitlementToday, cur)} statutory, adjustments on top
                 </p>
               )}
           </div>
@@ -89,7 +90,7 @@ export function EmployeeGratuityTab({ employeeId }: { employeeId: string }) {
                   <th className="py-2 font-medium">As of</th>
                   <th className="py-2 font-medium">Movement</th>
                   <th className="py-2 font-medium">Note</th>
-                  <th className="py-2 text-right font-medium">Amount</th>
+                  <th className="py-2 text-right font-medium">{inCurrency('Amount', cur)}</th>
                 </tr>
               </thead>
               <tbody>

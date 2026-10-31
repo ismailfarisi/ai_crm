@@ -58,14 +58,14 @@ export function VoidInvoiceModal({
     >
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {error && (
-          <div className="flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3.5 py-2.5 text-xs font-semibold text-rose-600 dark:text-rose-400">
+          <div className="flex items-center gap-2 rounded-xl border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-xs font-semibold text-danger">
             <AlertTriangle className="size-4 shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
         {hasPayments && (
-          <div className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
+          <div className="flex items-center gap-2 rounded-xl border border-warning/30 bg-warning-soft px-3.5 py-2.5 text-xs font-semibold text-ink">
             <AlertTriangle className="size-4 shrink-0" />
             <span>
               This invoice has recorded payments — voiding it will automatically reverse them and

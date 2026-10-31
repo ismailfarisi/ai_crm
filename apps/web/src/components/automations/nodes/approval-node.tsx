@@ -88,7 +88,7 @@ export function ApprovalNode({
               Timeout
             </span>
             <div className="relative flex items-center">
-              <span className="text-[9px] font-medium text-brand mr-2">Expired</span>
+              <span className="text-[9px] font-medium text-ink-muted me-2">Expired</span>
               <Handle
                 type="source"
                 position={Position.Right}

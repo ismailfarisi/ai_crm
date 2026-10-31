@@ -15,8 +15,9 @@ const automationState: { current: { data: AutomationWorkflowDto | null; isLoadin
   current: { data: null, isLoading: true },
 };
 
+const push = vi.fn();
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push }),
   notFound: vi.fn(),
 }));
 
@@ -178,6 +179,85 @@ describe('AutomationStudioPage', () => {
       fireEvent.click(screen.getByTestId('save-workflow-btn'));
       await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(2));
       expect(mutateAsync.mock.calls[1][0].input).not.toHaveProperty('triggerConfig');
+    });
+  });
+
+  describe('activating', () => {
+    const quoteAlert: AutomationWorkflowDto = {
+      ...savedWorkflow,
+      name: 'Big quote alert',
+      status: 'DRAFT',
+      triggerType: 'CRM_EVENT',
+      triggerConfig: { event: 'quote.accepted' },
+      nodes: [
+        // Saved by an older build, with the event under `eventType`.
+        { id: 't', type: 'crmEventTrigger', position: { x: 0, y: 0 }, data: { label: 'Quote in', config: { eventType: 'quote.accepted' } } },
+      ],
+      edges: [],
+    };
+
+    const open = async (wf: AutomationWorkflowDto) => {
+      mutateAsync.mockReset();
+      push.mockReset();
+      automationState.current = { data: wf, isLoading: false };
+      const params = Promise.resolve({ id: 'wf-1' });
+      await act(async () =>
+        render(
+          <Suspense fallback={null}>
+            <AutomationStudioPage params={params} />
+          </Suspense>,
+        ),
+      );
+      await screen.findByTestId('canvas');
+    };
+
+    it('asks first, naming what it runs on, then saves only the status', async () => {
+      await open(quoteAlert);
+      mutateAsync.mockResolvedValue({ ...quoteAlert, status: 'ACTIVE' });
+      fireEvent.click(screen.getByTestId('status-toggle-btn'));
+      expect(mutateAsync).not.toHaveBeenCalled();
+      expect(screen.getByText('Activate “Big quote alert”?')).toBeInTheDocument();
+      expect(screen.getByText(/It runs every time a customer accepts a quote./)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Activate automation' }));
+      await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
+      expect(mutateAsync.mock.calls[0][0].input).toEqual({ status: 'ACTIVE' });
+      await waitFor(() => expect(screen.getByTestId('status-toggle-btn')).toHaveTextContent('Deactivate'));
+      expect(screen.getByTestId('workflow-status-badge')).toHaveTextContent('ACTIVE');
+    });
+
+    it('saves pending edits with the status, and writes the event as `event`', async () => {
+      await open(quoteAlert);
+      mutateAsync.mockResolvedValue({ ...quoteAlert, status: 'ACTIVE' });
+      fireEvent.change(screen.getByTestId('workflow-name-input'), { target: { value: 'Big quote alert 2' } });
+      expect(screen.getByTestId('save-workflow-btn')).toHaveTextContent('Save Changes*');
+      fireEvent.click(screen.getByTestId('status-toggle-btn'));
+      expect(screen.getByText(/Your unsaved changes are saved with it./)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Activate automation' }));
+      await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
+      const input = mutateAsync.mock.calls[0][0].input;
+      expect(input.status).toBe('ACTIVE');
+      expect(input.name).toBe('Big quote alert 2');
+      expect(input.nodes[0].data.config).toEqual({ event: 'quote.accepted' });
+    });
+
+    it('Save never changes the status', async () => {
+      await open(quoteAlert);
+      mutateAsync.mockResolvedValue(quoteAlert);
+      fireEvent.change(screen.getByTestId('workflow-name-input'), { target: { value: 'Renamed' } });
+      fireEvent.click(screen.getByTestId('save-workflow-btn'));
+      await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
+      expect(mutateAsync.mock.calls[0][0].input).not.toHaveProperty('status');
+    });
+
+    it('Back asks before dropping unsaved changes', async () => {
+      await open(quoteAlert);
+      fireEvent.change(screen.getByTestId('workflow-name-input'), { target: { value: 'Renamed' } });
+      fireEvent.click(screen.getByTestId('back-to-automations-link'));
+      expect(screen.getByText('Leave without saving?')).toBeInTheDocument();
+      expect(push).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Leave without saving' }));
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/automations'));
     });
   });
 });

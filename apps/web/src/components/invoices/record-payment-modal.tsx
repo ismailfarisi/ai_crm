@@ -94,7 +94,7 @@ export function RecordPaymentModal({
     >
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {error && (
-          <div className="flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3.5 py-2.5 text-xs font-semibold text-rose-600 dark:text-rose-400">
+          <div className="flex items-center gap-2 rounded-xl border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-xs font-semibold text-danger">
             <AlertCircle className="size-4 shrink-0" />
             <span>{error}</span>
           </div>
@@ -103,19 +103,19 @@ export function RecordPaymentModal({
         <div className="grid grid-cols-3 gap-3 rounded-xl border border-border/40 bg-surface-muted/40 p-3 text-xs">
           <div>
             <p className="text-ink-subtle">Total</p>
-            <p className="font-mono font-semibold text-ink">
+            <p className="font-mono font-semibold tabular-nums text-ink">
               {formatFinanceCurrency(invoice.amount, invoice.currency)}
             </p>
           </div>
           <div>
             <p className="text-ink-subtle">Already Paid</p>
-            <p className="font-mono font-semibold text-ink">
+            <p className="font-mono font-semibold tabular-nums text-ink">
               {formatFinanceCurrency(invoice.paidAmount ?? 0, invoice.currency)}
             </p>
           </div>
           <div>
             <p className="text-ink-subtle">Remaining</p>
-            <p className="font-mono font-semibold text-ink">
+            <p className="font-mono font-semibold tabular-nums text-ink">
               {formatFinanceCurrency(remaining, invoice.currency)}
             </p>
           </div>
@@ -135,7 +135,7 @@ export function RecordPaymentModal({
              */
             <div
               data-testid="record-payment-no-accounts"
-              className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-xs text-ink"
+              className="rounded-xl border border-warning/30 bg-warning-soft px-3.5 py-3 text-xs text-ink"
             >
               <p className="font-semibold">No bank or cash account exists yet.</p>
               <p className="mt-1 text-ink-muted">
@@ -144,7 +144,7 @@ export function RecordPaymentModal({
               </p>
               <Link
                 href="/finance/accounts"
-                className="mt-2 inline-flex items-center gap-1 font-semibold text-brand hover:underline"
+                className="mt-2 inline-flex items-center gap-1 font-semibold text-ink underline underline-offset-2"
               >
                 Go to Finance &rarr; Bank &amp; Cash Accounts
                 <ArrowRight className="size-3" />

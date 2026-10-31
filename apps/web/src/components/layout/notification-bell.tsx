@@ -69,7 +69,7 @@ export function NotificationBell() {
               <button
                 type="button"
                 onClick={() => act.mutate({ kind: 'readAll' })}
-                className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
+                className="inline-flex items-center gap-1 text-xs text-ink underline underline-offset-2"
               >
                 <CheckCheck className="size-3.5" />
                 Mark all read
@@ -89,7 +89,7 @@ export function NotificationBell() {
                       setOpen(false);
                       if (n.link) router.push(n.link);
                     }}
-                    className={`block w-full px-3 py-2.5 text-left hover:bg-surface-muted ${n.readAt ? '' : 'bg-accent-soft/30'}`}
+                    className={`block w-full px-3 py-2.5 text-left hover:bg-surface-muted ${n.readAt ? '' : 'bg-brand-soft/40'}`}
                   >
                     <p className={`text-sm ${n.readAt ? 'text-ink-muted' : 'font-medium text-ink'}`}>{n.title}</p>
                     {n.body && <p className="mt-0.5 line-clamp-2 text-xs text-ink-subtle">{n.body}</p>}

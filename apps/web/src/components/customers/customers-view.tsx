@@ -41,7 +41,7 @@ export function CustomersView() {
             */}
             <Link
               href={`/customers/${row.original.id}`}
-              className="font-medium text-ink hover:text-brand hover:underline"
+              className="font-medium text-ink hover:underline underline-offset-2"
             >
               {row.original.companyName}
             </Link>

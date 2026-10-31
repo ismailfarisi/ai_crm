@@ -9,13 +9,13 @@ import {
   Building2,
   CheckCircle2,
   LucideIcon,
-  ShieldCheck,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/button';
 import { FinanceNav } from '../finance-nav';
 import { AccountBalanceGrid } from '../dashboard/account-balance-grid';
-import { formatFinanceCurrency } from '../dashboard/treasury-stat-cards';
+import { formatFinanceCurrency, OtherCurrencies, splitByBase, totalsByCurrency } from '../money';
+import { useOrganization } from '@/hooks/use-organization';
 import { CreateAccountModal } from './create-account-modal';
 import { TransferFundsModal } from './transfer-funds-modal';
 import {
@@ -28,34 +28,28 @@ import { PERMISSIONS, type FinanceAccountDto } from '@saas/shared';
 import { useRouter } from 'next/navigation';
 import { useCan } from '@/lib/session-context';
 
-const STAT_TONES = {
-  brand: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-  info: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
-  warning: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-  success: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-} as const;
-
 function StatItem({
   label,
   value,
   icon: Icon,
-  tone = 'brand',
+  note,
   'data-testid': testId,
 }: {
   label: string;
   value: string | number;
   icon: LucideIcon;
-  tone?: keyof typeof STAT_TONES;
+  note?: React.ReactNode;
   'data-testid'?: string;
 }) {
   return (
-    <div data-testid={testId} className="flex items-center gap-3">
-      <span className={`grid size-9 shrink-0 place-items-center rounded-xl ${STAT_TONES[tone]}`}>
+    <div data-testid={testId} className="flex items-start gap-3">
+      <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-muted text-ink-muted">
         <Icon className="size-4" />
       </span>
       <div>
         <p className="text-xs font-semibold tracking-wider text-ink-muted uppercase">{label}</p>
         <p className="text-2xl font-semibold tabular-nums text-ink tracking-tight">{value}</p>
+        {note}
       </div>
     </div>
   );
@@ -73,8 +67,13 @@ export function AccountsView() {
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [selectedTransferFromId, setSelectedTransferFromId] = useState<string | undefined>(undefined);
 
-  // Computed summary metrics
-  const totalBalance = accounts.reduce((acc, a) => acc + (a.balance || 0), 0);
+  // Balances are only added within a currency: the total is the base-currency
+  // accounts, and anything held in another currency is listed under it.
+  const base = useOrganization().data?.baseCurrency;
+  const cash = splitByBase(
+    totalsByCurrency(accounts, (a) => a.balance, (a) => a.currency),
+    base ?? '',
+  );
   const bankAccountsCount = accounts.filter((a) => a.accountType === 'BANK').length;
   const cashOrClearingCount = accounts.filter(
     (a) => a.accountType === 'CASH' || a.accountType === 'CLEARING',
@@ -89,8 +88,8 @@ export function AccountsView() {
   return (
     <div data-testid="accounts-view" className="space-y-6">
       <PageHeader
-        title="Treasury & Bank Accounts"
-        description="Monitor liquidity balances across connected corporate bank accounts, cash floats, and gateway processors."
+        title="Accounts"
+        description="Bank, petty cash and card accounts, each in its own currency."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -102,7 +101,7 @@ export function AccountsView() {
               className="font-semibold shadow-2xs"
             >
               <ArrowLeftRight className="size-3.5" />
-              Transfer Funds
+              Transfer money
             </Button>
             <Button
               type="button"
@@ -113,7 +112,7 @@ export function AccountsView() {
               className="font-semibold shadow-xs"
             >
               <Plus className="size-3.5" />
-              New Account
+              New account
             </Button>
           </div>
         }
@@ -124,31 +123,28 @@ export function AccountsView() {
       {/* Summary KPI Stats */}
       <div className="flex flex-wrap items-center gap-x-12 gap-y-4 py-1">
         <StatItem
-          label="Total Liquidity"
-          value={formatFinanceCurrency(totalBalance)}
+          label={base ? `Cash in ${base}` : 'Cash'}
+          value={base ? formatFinanceCurrency(cash.base, base) : '…'}
           icon={Wallet}
-          tone="brand"
+          note={base ? <OtherCurrencies others={cash.others} data-testid="stat-other-currencies" /> : null}
           data-testid="stat-total-liquidity"
         />
         <StatItem
           label="Bank Accounts"
           value={bankAccountsCount}
           icon={Landmark}
-          tone="info"
           data-testid="stat-bank-accounts-count"
         />
         <StatItem
           label="Cash & Gateways"
           value={cashOrClearingCount}
           icon={Building2}
-          tone="warning"
           data-testid="stat-cash-clearing-count"
         />
         <StatItem
           label="Default Account"
           value={defaultAccount ? defaultAccount.name : 'None set'}
           icon={CheckCircle2}
-          tone="success"
           data-testid="stat-default-account"
         />
       </div>

@@ -60,7 +60,7 @@ export function CustomObjectRecordsView({ slug }: CustomObjectRecordsViewProps) 
           return (
             <Link
               href={`/objects/${slug}/${row.original.id}`}
-              className="font-medium text-ink hover:text-brand transition-colors"
+              className="font-medium text-ink underline-offset-2 hover:underline"
             >
               {val != null ? String(val) : '—'}
             </Link>
@@ -116,7 +116,7 @@ export function CustomObjectRecordsView({ slug }: CustomObjectRecordsViewProps) 
                 <div className="flex flex-col gap-1">
                   <Link
                     href={`/objects/${slug}/${r.id}`}
-                    className="font-medium text-xs text-ink hover:text-brand line-clamp-1"
+                    className="font-medium text-xs text-ink underline-offset-2 hover:underline line-clamp-1"
                   >
                     {String(
                       r.values?.[object?.primaryAttributeSlug ?? ''] ?? 'Untitled'

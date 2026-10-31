@@ -21,20 +21,20 @@ import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Card, CardBody, EmptyState, PageHeader, Skeleton } from '@/components/ui/primitives';
 import { PeopleNav } from './people-nav';
-import { PayrollLineEditor } from './payroll-line-editor';
+import { PayrollLineEditor, STICKY_END, STICKY_NET, STICKY_START } from './payroll-line-editor';
 import { PayrollLinesProvider, usePayrollLines } from './payroll-lines-context';
 import { PayRunModal } from './pay-run-modal';
 import { PensionPanel } from './pension-panel';
 import { downloadSif } from './download-sif';
 import { RunStatusBadge } from './payroll-runs-view';
-import { money, periodLabel } from './payroll-format';
+import { inCurrency, money, periodLabel, usePayrollCurrency } from './payroll-format';
 
-function Stat({ label, value, testId }: { label: string; value: number; testId: string }) {
+function Stat({ label, value, currency, testId }: { label: string; value: number; currency?: string; testId: string }) {
   return (
     <div>
       <dt className="text-xs text-ink-subtle">{label}</dt>
       <dd data-testid={testId} className="text-lg font-semibold tabular-nums text-ink">
-        {money(value)}
+        {money(value, currency)}
       </dd>
     </div>
   );
@@ -102,6 +102,7 @@ export function PayrollRunDetail({ id }: { id: string }) {
   const settings = usePayrollSettings();
   const saving = usePayrollLinesSaving(id);
   const lineEdits = usePayrollLines();
+  const cur = usePayrollCurrency();
   const [confirm, setConfirm] = useState<'approve' | 'void' | 'delete' | null>(null);
   const [paying, setPaying] = useState<PaymentMethod | null>(null);
 
@@ -221,17 +222,17 @@ export function PayrollRunDetail({ id }: { id: string }) {
       <Card>
         <CardBody>
           <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <Stat label="Salary cost" value={run.totals.salaryCost} testId="total-salary-cost" />
-            <Stat label="Net pay" value={run.totals.net} testId="total-net" />
-            <Stat label="Bank net" value={run.totals.bankNet} testId="total-bank-net" />
-            <Stat label="Cash net" value={run.totals.cashNet} testId="total-cash-net" />
-            <Stat label="Gratuity accrual" value={run.totals.gratuityAccrual} testId="total-gratuity" />
-            <Stat label="Half pay" value={run.totals.halfPay} testId="total-half-pay" />
-            <Stat label="Pension (employee)" value={run.totals.pensionEmployee} testId="total-pension-employee" />
-            <Stat label="Pension (employer)" value={run.totals.pensionEmployer} testId="total-pension-employer" />
-            <Stat label="Leave provision" value={run.totals.leaveProvision} testId="total-leave-provision" />
+            <Stat label="Salary cost" value={run.totals.salaryCost} currency={cur} testId="total-salary-cost" />
+            <Stat label="Net pay" value={run.totals.net} currency={cur} testId="total-net" />
+            <Stat label="Bank net" value={run.totals.bankNet} currency={cur} testId="total-bank-net" />
+            <Stat label="Cash net" value={run.totals.cashNet} currency={cur} testId="total-cash-net" />
+            <Stat label="Gratuity accrual" value={run.totals.gratuityAccrual} currency={cur} testId="total-gratuity" />
+            <Stat label="Half pay" value={run.totals.halfPay} currency={cur} testId="total-half-pay" />
+            <Stat label="Pension (employee)" value={run.totals.pensionEmployee} currency={cur} testId="total-pension-employee" />
+            <Stat label="Pension (employer)" value={run.totals.pensionEmployer} currency={cur} testId="total-pension-employer" />
+            <Stat label="Leave provision" value={run.totals.leaveProvision} currency={cur} testId="total-leave-provision" />
             {posted && (
-              <Stat label="Labour charged to jobs" value={run.totals.labourAbsorbed} testId="total-labour-absorbed" />
+              <Stat label="Labour charged to jobs" value={run.totals.labourAbsorbed} currency={cur} testId="total-labour-absorbed" />
             )}
           </dl>
           {showSif && wpsOff && (
@@ -251,15 +252,16 @@ export function PayrollRunDetail({ id }: { id: string }) {
       {posted && hasPension && <PensionPanel period={run.period} />}
 
       <Card>
-        <CardBody className="overflow-x-auto">
+        {/* `relative` keeps the visually hidden header text inside the scroll box. */}
+        <CardBody className="relative overflow-x-auto px-4 sm:px-6">
           {!isDraft && run.status !== 'VOIDED' && (
             <p className="mb-3 text-xs text-ink-subtle">Only draft runs can be edited.</p>
           )}
           <table className="w-full text-sm" data-testid="lines-table">
             <thead>
               <tr className="text-left text-xs text-ink-subtle">
-                <th className="py-2 font-medium">Employee</th>
-                <th className="py-2 pr-3 text-right font-medium">Gross</th>
+                <th className={`${STICKY_START} py-2 pr-3 font-medium`}>Employee</th>
+                <th className="py-2 pr-3 ps-3 text-right font-medium">{inCurrency('Gross', cur)}</th>
                 <th className="py-2 pr-2 text-right font-medium">OT hrs</th>
                 <th className="py-2 pr-2 text-right font-medium">Premium OT hrs</th>
                 <th className="py-2 pr-2 text-right font-medium">Bonus</th>
@@ -274,8 +276,8 @@ export function PayrollRunDetail({ id }: { id: string }) {
                 <th className="py-2 pr-2 text-right font-medium">Logged h</th>
                 <th className="py-2 pr-2 text-right font-medium">Direct h</th>
                 <th className="py-2 pr-2 text-right font-medium">Absorbed</th>
-                <th className="py-2 pr-3 text-right font-medium">Net</th>
-                <th className="py-2 text-right font-medium">
+                <th className={`${STICKY_NET} py-2 pe-3 ps-3 text-right font-medium`}>{inCurrency('Net', cur)}</th>
+                <th className={`${STICKY_END} py-2 text-right font-medium`}>
                   <span className="sr-only">Payslip</span>
                 </th>
               </tr>
@@ -301,7 +303,7 @@ export function PayrollRunDetail({ id }: { id: string }) {
       <ConfirmDialog
         open={confirm === 'approve'}
         title="Approve this payroll run?"
-        description={`This posts ${money(run.totals.salaryCost)} of salary cost, ${money(run.totals.net)} net pay and a ${money(run.totals.gratuityAccrual)} gratuity accrual to the books. Runs must be approved in month order.`}
+        description={`This posts ${money(run.totals.salaryCost, cur)} of salary cost, ${money(run.totals.net, cur)} net pay and a ${money(run.totals.gratuityAccrual, cur)} gratuity accrual to the books. Runs must be approved in month order.`}
         confirmLabel="Approve run"
         loading={approve.isPending}
         blockedReason={blockedReason}

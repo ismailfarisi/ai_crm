@@ -30,7 +30,7 @@ export function TimesheetsView() {
             className={cn(
               'rounded-xl px-3.5 py-2 text-xs font-semibold transition-all',
               tab === t.id
-                ? 'bg-ink text-surface shadow-xs dark:bg-amber-500 dark:text-stone-950'
+                ? 'bg-charcoal text-on-charcoal shadow-xs'
                 : 'text-ink-muted hover:bg-surface-muted/80 hover:text-ink',
             )}
           >

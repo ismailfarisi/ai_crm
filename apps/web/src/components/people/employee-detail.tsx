@@ -23,10 +23,9 @@ import { EmployeeAdvancesTab } from './employee-advances-tab';
 
 import { EmployeeLeaveTab } from './employee-leave-tab';
 import { EmployeePensionTab } from './employee-pension-tab';
+import { inCurrency, money, usePayrollCurrency } from './payroll-format';
+import type { EmployeeTab as TabKey } from './employee-tabs';
 
-type TabKey = 'profile' | 'salary' | 'gratuity' | 'advances' | 'leave' | 'pension' | 'documents';
-
-const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const day = (d: string | null) => (d ? new Date(d).toLocaleDateString() : '—');
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -98,6 +97,8 @@ function SalaryTab({ employeeId }: { employeeId: string }) {
   const add = useAddSalaryPackage();
   const [open, setOpen] = useState(false);
 
+  const cur = usePayrollCurrency();
+
   if (isPending) return <p className="text-ink-muted">Loading…</p>;
   if (isError || !data) {
     return <EmptyState title="Couldn't load salary history" description={error instanceof Error ? error.message : 'Please try again.'} />;
@@ -122,11 +123,11 @@ function SalaryTab({ employeeId }: { employeeId: string }) {
               <thead>
                 <tr className="text-left text-xs text-ink-subtle">
                   <th className="py-2 font-medium">From</th>
-                  <th className="py-2 text-right font-medium">Basic</th>
-                  <th className="py-2 text-right font-medium">Housing</th>
-                  <th className="py-2 text-right font-medium">Transport</th>
-                  <th className="py-2 text-right font-medium">Other</th>
-                  <th className="py-2 text-right font-medium">Gross</th>
+                  <th className="py-2 text-right font-medium">{inCurrency('Basic', cur)}</th>
+                  <th className="py-2 text-right font-medium">{inCurrency('Housing', cur)}</th>
+                  <th className="py-2 text-right font-medium">{inCurrency('Transport', cur)}</th>
+                  <th className="py-2 text-right font-medium">{inCurrency('Other', cur)}</th>
+                  <th className="py-2 text-right font-medium">{inCurrency('Gross', cur)}</th>
                 </tr>
               </thead>
               <tbody>
@@ -159,11 +160,11 @@ function SalaryTab({ employeeId }: { employeeId: string }) {
   );
 }
 
-export function EmployeeDetail({ id }: { id: string }) {
+export function EmployeeDetail({ id, initialTab = 'profile' }: { id: string; initialTab?: TabKey }) {
   const { data: employee, isPending, isError, error } = useEmployee(id);
   const canPay = useCan({ permission: PERMISSIONS.PAYROLL_READ });
   const canManage = useCan({ permission: PERMISSIONS.EMPLOYEE_MANAGE });
-  const [tab, setTab] = useState<TabKey>('profile');
+  const [chosen, setTab] = useState<TabKey>(initialTab);
 
   if (isPending) return <p className="text-ink-muted">Loading…</p>;
   if (isError || !employee) {
@@ -183,6 +184,8 @@ export function EmployeeDetail({ id }: { id: string }) {
     ...(canPay && employee.isNational ? ([{ key: 'pension', label: 'Pension' }] as const) : []),
     ...(canManage ? ([{ key: 'documents', label: 'Documents' }] as const) : []),
   ];
+  // A linked tab this user can't see falls back to the profile.
+  const tab: TabKey = tabs.some((t) => t.key === chosen) ? chosen : 'profile';
 
   return (
     <div className="space-y-6">
@@ -197,7 +200,7 @@ export function EmployeeDetail({ id }: { id: string }) {
       />
 
       <div className="border-b border-border">
-        <nav className="-mb-px flex gap-6" aria-label="Tabs">
+        <nav role="tablist" className="-mb-px flex gap-6 overflow-x-auto" aria-label="Employee sections">
           {tabs.map((t) => (
             <button
               key={t.key}
@@ -205,10 +208,10 @@ export function EmployeeDetail({ id }: { id: string }) {
               role="tab"
               aria-selected={tab === t.key}
               onClick={() => setTab(t.key)}
-              className={`border-b-2 pb-3 pt-1 text-sm font-medium transition-colors ${
+              className={`shrink-0 border-b-2 pb-3 pt-1 text-sm font-medium transition-colors ${
                 tab === t.key
-                  ? 'border-brand text-brand'
-                  : 'border-transparent text-ink-subtle hover:border-border hover:text-ink'
+                  ? 'border-ink text-ink'
+                  : 'border-transparent text-ink-muted hover:border-border-strong hover:text-ink'
               }`}
             >
               {t.label}

@@ -10,16 +10,21 @@ import {
   type TaxCodeDto,
   type TaxKind,
   type TaxReportRow,
+  type TaxRuleDto,
   type VatTreatment,
 } from '@saas/shared';
 import { useTaxCodes, useTaxReport, useTaxRules, useTaxSettingsAction, useUaeVatStatus } from '@/hooks/use-credits';
 import { useCan } from '@/lib/session-context';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Input, Select } from '@/components/ui/field';
 import { PageHeader } from '@/components/ui/primitives';
 import { useOrganization } from '@/hooks/use-organization';
 import { FinanceNav } from '../finance-nav';
 import { VatSettingsCard } from './vat-settings-card';
 import { VatReturnCard } from './vat-return-card';
+import { currentTaxRange, type TaxRange } from './vat-period';
+import { describeTreatmentChange } from './vat-boxes';
 
 const TREATMENT_LABELS: Record<VatTreatment, string> = {
   STANDARD: 'Standard rated',
@@ -30,6 +35,11 @@ const TREATMENT_LABELS: Record<VatTreatment, string> = {
   BLOCKED: 'Blocked input tax',
   IMPORT_GOODS: 'Import of goods',
 };
+
+const KIND_OPTIONS = [
+  { value: 'SALES', label: 'Sales' },
+  { value: 'PURCHASE', label: 'Purchase' },
+];
 
 /**
  * What a code's rate reads as. A UAE purchase reverse charge or import is
@@ -51,10 +61,8 @@ const treatmentsFor = (c: TaxCodeDto) =>
 
 const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-function quarterStart(date = new Date()) {
-  return new Date(Date.UTC(date.getUTCFullYear(), Math.floor(date.getUTCMonth() / 3) * 3, 1));
-}
-const iso = (d: Date) => d.toISOString().slice(0, 10);
+const ruleSentence = (r: TaxRuleDto) =>
+  `${r.kind === 'SALES' ? 'Customers' : 'Suppliers'} in ${r.country === '*' ? 'anywhere else' : r.country}${r.requiresTaxId ? ' with a tax number' : ''}`;
 
 /**
  * Tax codes, the rules that pick them from an address, and the return figures.
@@ -62,22 +70,30 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
  * Rules read in order of specificity: an exact country beats EU, which beats
  * anywhere. "Needs a tax number" is the business-to-business condition that
  * reverse charge depends on.
+ *
+ * The period opens on the current VAT period (or the one in the link), the
+ * same one the Finance overview reports. Changing a code's treatment and
+ * removing a rule both ask first, because each changes what lands on returns.
  */
-export function TaxView() {
+export function TaxView({ initialRange }: { initialRange?: TaxRange } = {}) {
   const canManage = useCan({ permission: PERMISSIONS.TAX_MANAGE });
   const { data: codes = [] } = useTaxCodes();
   const { data: rules = [] } = useTaxRules();
   const act = useTaxSettingsAction();
   // No tax:read means this fails; that simply reads as "not UAE mode".
-  const uaeMode = useUaeVatStatus().data?.enabled === true;
+  const vatStatus = useUaeVatStatus();
+  const uaeMode = vatStatus.data?.enabled === true;
   const orgIsUae = useOrganization().data?.country === 'AE';
 
   const [code, setCode] = useState({ code: '', name: '', rate: '', kind: 'SALES' as TaxKind, isReverseCharge: false, treatment: '' as VatTreatment | '' });
   const [rule, setRule] = useState({ kind: 'SALES' as TaxKind, country: '', requiresTaxId: false, taxCodeId: '' });
-  const start = quarterStart();
-  const [from, setFrom] = useState(iso(start));
-  const [to, setTo] = useState(iso(new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 3, 1))));
+  // Until a date is picked, the period follows the VAT settings as they load.
+  const [picked, setPicked] = useState<TaxRange | null>(initialRange ?? null);
+  const { from, to } = picked ?? currentTaxRange(vatStatus.data?.settings);
   const report = useTaxReport(from, to);
+
+  const [retreating, setRetreating] = useState<{ code: TaxCodeDto; treatment: VatTreatment } | null>(null);
+  const [removingRule, setRemovingRule] = useState<TaxRuleDto | null>(null);
 
   const codeName = (id: string) => codes.find((c) => c.id === id);
 
@@ -88,27 +104,33 @@ export function TaxView() {
 
       {orgIsUae && <VatSettingsCard />}
 
-      <section aria-labelledby="report-heading" className="rounded border border-line bg-surface">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
-          <h2 id="report-heading" className="text-sm font-medium text-ink">
+      <section aria-labelledby="report-heading" className="rounded-2xl border border-border bg-surface">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border px-4 py-3">
+          <h2 id="report-heading" className="pb-2 text-sm font-semibold text-ink">
             Tax report
           </h2>
-          <div className="flex flex-wrap items-center gap-2 text-sm text-ink-muted">
-            <label className="flex items-center gap-2">
-              From
-              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="rounded border border-line bg-surface px-2 py-1 text-ink" />
-            </label>
-            <label className="flex items-center gap-2">
-              Up to
-              <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="rounded border border-line bg-surface px-2 py-1 text-ink" />
-            </label>
+          <div className="flex flex-wrap items-end gap-3">
+            <Input
+              type="date"
+              label="From"
+              value={from}
+              onChange={(e) => setPicked({ from: e.target.value, to })}
+              containerClassName="w-40"
+            />
+            <Input
+              type="date"
+              label="Up to"
+              value={to}
+              onChange={(e) => setPicked({ from, to: e.target.value })}
+              containerClassName="w-40"
+            />
           </div>
         </div>
         {report.data ? (
           <div className="grid gap-4 p-4 lg:grid-cols-2">
             <ReportTable title="Output tax (sales, less credit notes)" rows={report.data.output} total={report.data.outputTax} />
             <ReportTable title="Input tax (approved supplier bills)" rows={report.data.input} total={report.data.inputTax} />
-            <div className="rounded bg-surface-sunk px-4 py-3 lg:col-span-2">
+            <div className="rounded-xl bg-surface-sunk px-4 py-3 lg:col-span-2">
               <p className="text-sm text-ink-muted">
                 {report.data.netPayable >= 0 ? 'Owed to the tax authority' : 'Reclaimable from the tax authority'}
               </p>
@@ -128,50 +150,32 @@ export function TaxView() {
       {uaeMode && <VatReturnCard from={from} to={to} />}
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <section aria-labelledby="codes-heading" className="rounded border border-line bg-surface">
-          <h2 id="codes-heading" className="border-b border-line px-4 py-3 text-sm font-medium text-ink">
+        <section aria-labelledby="codes-heading" className="rounded-2xl border border-border bg-surface">
+          <h2 id="codes-heading" className="border-b border-border px-4 py-3 text-sm font-semibold text-ink">
             Tax codes
           </h2>
-          <ul className="divide-y divide-line">
+          <ul className="divide-y divide-border">
             {codes.map((c) => (
-              <li key={c.id} className="flex items-center justify-between gap-2 px-4 py-2 text-sm">
+              <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm">
                 <span className="min-w-0">
                   <span className="font-mono text-ink">{c.code}</span>{' '}
                   <span className="text-ink-muted">{c.name}</span>
                 </span>
                 {uaeMode && canManage && (
-                  <select
+                  <Select
                     aria-label={`Treatment for ${c.code} (${c.kind.toLowerCase()})`}
                     data-column="treatment"
                     value={c.treatment ?? ''}
                     disabled={act.isPending}
+                    placeholder="Treatment…"
+                    options={treatmentsFor(c).map((t) => ({ value: t, label: TREATMENT_LABELS[t] }))}
                     onChange={(e) => {
                       const treatment = e.target.value as VatTreatment | '';
-                      if (!treatment) return;
-                      act.mutate({
-                        kind: 'updateCode',
-                        id: c.id,
-                        input: {
-                          code: c.code,
-                          name: c.name,
-                          rate: Number(c.rate),
-                          kind: c.kind,
-                          isReverseCharge: c.isReverseCharge,
-                          ledgerAccountId: c.ledgerAccountId,
-                          isActive: c.isActive,
-                          treatment,
-                        },
-                      });
+                      // Nothing is saved until the change is confirmed.
+                      if (treatment && treatment !== c.treatment) setRetreating({ code: c, treatment });
                     }}
-                    className="w-36 shrink-0 rounded border border-line bg-surface px-1 py-0.5 text-xs"
-                  >
-                    <option value="">Treatment…</option>
-                    {treatmentsFor(c).map((t) => (
-                      <option key={t} value={t}>
-                        {TREATMENT_LABELS[t]}
-                      </option>
-                    ))}
-                  </select>
+                    containerClassName="w-44 shrink-0"
+                  />
                 )}
                 {uaeMode && !canManage && (
                   <span className="w-32 shrink-0 text-xs text-ink-muted" data-column="treatment">
@@ -187,7 +191,8 @@ export function TaxView() {
           </ul>
           {canManage && (
             <form
-              className="grid gap-2 border-t border-line p-4 sm:grid-cols-6"
+              aria-label="Add a tax code"
+              className="grid items-end gap-3 border-t border-border p-4 sm:grid-cols-6"
               onSubmit={(e) => {
                 e.preventDefault();
                 act.mutate(
@@ -208,33 +213,54 @@ export function TaxView() {
                 );
               }}
             >
-              <input aria-label="Code" placeholder="STD" value={code.code} onChange={(e) => setCode({ ...code, code: e.target.value })} className="rounded border border-line bg-surface px-2 py-1 text-sm sm:col-span-1" />
-              <input aria-label="Name" placeholder="Standard rate" value={code.name} onChange={(e) => setCode({ ...code, name: e.target.value })} className="rounded border border-line bg-surface px-2 py-1 text-sm sm:col-span-2" />
-              <input aria-label="Rate %" placeholder="20" type="number" min={0} max={100} step="any" disabled={code.isReverseCharge} value={code.isReverseCharge ? '0' : code.rate} onChange={(e) => setCode({ ...code, rate: e.target.value })} className="rounded border border-line bg-surface px-2 py-1 text-sm" />
-              <select aria-label="Kind" value={code.kind} onChange={(e) => {
-                const kind = e.target.value as TaxKind;
-                setCode({ ...code, kind, treatment: code.treatment && treatmentAllowed(kind, code.treatment) ? code.treatment : '' });
-              }} className="rounded border border-line bg-surface px-2 py-1 text-sm">
-                <option value="SALES">Sales</option>
-                <option value="PURCHASE">Purchase</option>
-              </select>
+              <Input label="Code" placeholder="SR" value={code.code} onChange={(e) => setCode({ ...code, code: e.target.value })} containerClassName="sm:col-span-2" />
+              <Input label="Name" placeholder="Standard rate" value={code.name} onChange={(e) => setCode({ ...code, name: e.target.value })} containerClassName="sm:col-span-4" />
+              <Input
+                label="Rate %"
+                placeholder="5"
+                type="number"
+                min={0}
+                max={100}
+                step="any"
+                inputMode="decimal"
+                disabled={code.isReverseCharge}
+                value={code.isReverseCharge ? '0' : code.rate}
+                onChange={(e) => setCode({ ...code, rate: e.target.value })}
+                containerClassName="sm:col-span-2"
+              />
+              <Select
+                label="Kind"
+                value={code.kind}
+                options={KIND_OPTIONS}
+                onChange={(e) => {
+                  const kind = e.target.value as TaxKind;
+                  setCode({ ...code, kind, treatment: code.treatment && treatmentAllowed(kind, code.treatment) ? code.treatment : '' });
+                }}
+                containerClassName="sm:col-span-2"
+              />
               {uaeMode && (
-                <select aria-label="Treatment" required value={code.treatment} onChange={(e) => setCode({ ...code, treatment: e.target.value as VatTreatment | '' })} className="rounded border border-line bg-surface px-2 py-1 text-sm sm:col-span-5">
-                  <option value="">Treatment…</option>
-                  {VAT_TREATMENTS.filter((t) => treatmentAllowed(code.kind, t)).map((t) => (
-                    <option key={t} value={t}>
-                      {TREATMENT_LABELS[t]}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  label="Treatment"
+                  required
+                  value={code.treatment}
+                  placeholder="Treatment…"
+                  options={VAT_TREATMENTS.filter((t) => treatmentAllowed(code.kind, t)).map((t) => ({ value: t, label: TREATMENT_LABELS[t] }))}
+                  onChange={(e) => setCode({ ...code, treatment: e.target.value as VatTreatment | '' })}
+                  containerClassName="sm:col-span-6"
+                />
               )}
-              <Button type="submit" size="sm" disabled={!code.code.trim() || !code.name.trim() || (!code.isReverseCharge && code.rate === '') || (uaeMode && !code.treatment)} loading={act.isPending}>
+              <Button
+                type="submit"
+                className="sm:col-span-2"
+                disabled={!code.code.trim() || !code.name.trim() || (!code.isReverseCharge && code.rate === '') || (uaeMode && !code.treatment)}
+                loading={act.isPending}
+              >
                 <Plus className="size-4" />
-                Add
+                Add code
               </Button>
               {!uaeMode && (
                 <label className="flex items-center gap-2 text-xs text-ink-muted sm:col-span-6">
-                  <input type="checkbox" checked={code.isReverseCharge} onChange={(e) => setCode({ ...code, isReverseCharge: e.target.checked })} />
+                  <input type="checkbox" className="size-4 accent-brand" checked={code.isReverseCharge} onChange={(e) => setCode({ ...code, isReverseCharge: e.target.checked })} />
                   Reverse charge — charged at 0%, and the invoice says the customer accounts for the tax
                 </label>
               )}
@@ -242,8 +268,8 @@ export function TaxView() {
           )}
         </section>
 
-        <section aria-labelledby="rules-heading" className="rounded border border-line bg-surface">
-          <h2 id="rules-heading" className="border-b border-line px-4 py-3 text-sm font-medium text-ink">
+        <section aria-labelledby="rules-heading" className="rounded-2xl border border-border bg-surface">
+          <h2 id="rules-heading" className="border-b border-border px-4 py-3 text-sm font-semibold text-ink">
             Rules
           </h2>
           {rules.length === 0 ? (
@@ -251,17 +277,20 @@ export function TaxView() {
               No rules yet, so each line keeps the rate typed or set on its catalog item.
             </p>
           ) : (
-            <ul className="divide-y divide-line">
+            <ul className="divide-y divide-border">
               {rules.map((r) => (
                 <li key={r.id} className="flex items-center justify-between gap-2 px-4 py-2 text-sm">
                   <span className="text-ink">
-                    {r.kind === 'SALES' ? 'Customers' : 'Suppliers'} in{' '}
-                    <strong>{r.country === '*' ? 'anywhere else' : r.country}</strong>
-                    {r.requiresTaxId && ' with a tax number'} →{' '}
+                    {ruleSentence(r)} →{' '}
                     <span className="font-mono">{codeName(r.taxCodeId)?.code ?? '?'}</span>
                   </span>
                   {canManage && (
-                    <Button size="sm" variant="ghost" aria-label="Remove rule" onClick={() => act.mutate({ kind: 'deleteRule', id: r.id })}>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      aria-label={`Remove the rule for ${ruleSentence(r).toLowerCase()}`}
+                      onClick={() => setRemovingRule(r)}
+                    >
                       <Trash2 className="size-4" />
                     </Button>
                   )}
@@ -271,7 +300,8 @@ export function TaxView() {
           )}
           {canManage && (
             <form
-              className="grid gap-2 border-t border-line p-4 sm:grid-cols-5"
+              aria-label="Add a rule"
+              className="grid items-end gap-3 border-t border-border p-4 sm:grid-cols-6"
               onSubmit={(e) => {
                 e.preventDefault();
                 act.mutate(
@@ -289,33 +319,91 @@ export function TaxView() {
                 );
               }}
             >
-              <select aria-label="Applies to" value={rule.kind} onChange={(e) => setRule({ ...rule, kind: e.target.value as TaxKind, taxCodeId: '' })} className="rounded border border-line bg-surface px-2 py-1 text-sm">
-                <option value="SALES">Customers</option>
-                <option value="PURCHASE">Suppliers</option>
-              </select>
-              <input aria-label="Country" placeholder="GB, EU or *" maxLength={2} value={rule.country} onChange={(e) => setRule({ ...rule, country: e.target.value })} className="rounded border border-line bg-surface px-2 py-1 text-sm uppercase" />
-              <select aria-label="Tax code" value={rule.taxCodeId} onChange={(e) => setRule({ ...rule, taxCodeId: e.target.value })} className="rounded border border-line bg-surface px-2 py-1 text-sm sm:col-span-2">
-                <option value="">Tax code…</option>
-                {codes
+              <Select
+                label="Applies to"
+                value={rule.kind}
+                options={[
+                  { value: 'SALES', label: 'Customers' },
+                  { value: 'PURCHASE', label: 'Suppliers' },
+                ]}
+                onChange={(e) => setRule({ ...rule, kind: e.target.value as TaxKind, taxCodeId: '' })}
+                containerClassName="sm:col-span-3"
+              />
+              <Input
+                label="Country"
+                placeholder="AE, EU or *"
+                maxLength={2}
+                value={rule.country}
+                onChange={(e) => setRule({ ...rule, country: e.target.value })}
+                className="uppercase"
+                containerClassName="sm:col-span-3"
+              />
+              <Select
+                label="Tax code"
+                value={rule.taxCodeId}
+                placeholder="Tax code…"
+                options={codes
                   .filter((c) => c.kind === rule.kind && c.isActive)
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.code} — {c.name}
-                    </option>
-                  ))}
-              </select>
-              <Button type="submit" size="sm" disabled={!rule.country.trim() || !rule.taxCodeId} loading={act.isPending}>
+                  .map((c) => ({ value: c.id, label: `${c.code} — ${c.name}` }))}
+                onChange={(e) => setRule({ ...rule, taxCodeId: e.target.value })}
+                containerClassName="sm:col-span-4"
+              />
+              <Button type="submit" className="sm:col-span-2" disabled={!rule.country.trim() || !rule.taxCodeId} loading={act.isPending}>
                 <Plus className="size-4" />
-                Add
+                Add rule
               </Button>
-              <label className="flex items-center gap-2 text-xs text-ink-muted sm:col-span-5">
-                <input type="checkbox" checked={rule.requiresTaxId} onChange={(e) => setRule({ ...rule, requiresTaxId: e.target.checked })} />
+              <label className="flex items-center gap-2 text-xs text-ink-muted sm:col-span-6">
+                <input type="checkbox" className="size-4 accent-brand" checked={rule.requiresTaxId} onChange={(e) => setRule({ ...rule, requiresTaxId: e.target.checked })} />
                 Only when they have a tax / VAT number (business customers)
               </label>
             </form>
           )}
         </section>
       </div>
+
+      <ConfirmDialog
+        open={retreating !== null}
+        onClose={() => setRetreating(null)}
+        title={
+          retreating
+            ? `Treat '${retreating.code.name}' as ${TREATMENT_LABELS[retreating.treatment].toLowerCase()}?`
+            : ''
+        }
+        description={retreating ? describeTreatmentChange(retreating.code, retreating.treatment) : undefined}
+        confirmLabel="Change treatment"
+        onConfirm={() => {
+          if (!retreating) return;
+          const c = retreating.code;
+          return act.mutateAsync({
+            kind: 'updateCode',
+            id: c.id,
+            input: {
+              code: c.code,
+              name: c.name,
+              rate: Number(c.rate),
+              kind: c.kind,
+              isReverseCharge: c.isReverseCharge,
+              ledgerAccountId: c.ledgerAccountId,
+              isActive: c.isActive,
+              treatment: retreating.treatment,
+            },
+          });
+        }}
+      />
+
+      <ConfirmDialog
+        open={removingRule !== null}
+        onClose={() => setRemovingRule(null)}
+        title="Remove this rule?"
+        description={
+          removingRule
+            ? `${ruleSentence(removingRule)} will no longer get ${codeName(removingRule.taxCodeId)?.code ?? 'its code'} chosen for them. New lines keep the rate typed or set on the catalog item. Documents already raised are not changed.`
+            : undefined
+        }
+        confirmLabel="Remove rule"
+        tone="danger"
+        onConfirm={() => (removingRule ? act.mutateAsync({ kind: 'deleteRule', id: removingRule.id }) : undefined)}
+      />
     </div>
   );
 }
@@ -335,7 +423,7 @@ function ReportTable({ title, rows, total }: { title: string; rows: TaxReportRow
               <th className="py-1 text-right font-medium">Tax</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-line">
+          <tbody className="divide-y divide-border">
             {rows.map((r) => (
               <tr key={`${r.taxCodeId ?? r.code}-${r.rate}-${r.reverseCharge}`}>
                 <td className="py-1.5 text-ink">

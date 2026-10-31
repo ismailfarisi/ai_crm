@@ -92,7 +92,7 @@ export function WorkOrderFloor({ id }: { id: string }) {
             {wo.salesOrderNumber && (
               <>
                 {' · '}
-                <Link href={`/orders/${wo.salesOrderId}`} className="text-accent hover:underline">
+                <Link href={`/orders/${wo.salesOrderId}`} className="text-ink underline underline-offset-2">
                   {wo.salesOrderNumber}
                 </Link>
               </>

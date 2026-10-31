@@ -418,7 +418,7 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
                   <div
                     key={col.id}
                     className={`border-r border-line/40 p-2 text-center text-[11px] truncate ${
-                      col.isToday ? 'bg-accent/10 font-bold text-accent' : ''
+                      col.isToday ? 'bg-brand-soft font-bold text-ink' : ''
                     }`}
                   >
                     <span>{col.label}</span>
@@ -432,10 +432,10 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
                 {isTodayInRange && (
                   <div
                     data-testid="gantt-today-marker-header"
-                    className="absolute top-0 bottom-0 pointer-events-none border-l-2 border-accent"
+                    className="absolute top-0 bottom-0 pointer-events-none border-l-2 border-brand"
                     style={{ left: `${todayOffsetPct}%` }}
                   >
-                    <span className="absolute -top-2 -translate-x-1/2 rounded bg-accent px-1 py-0.5 text-[8px] font-bold text-white shadow-xs uppercase">
+                    <span className="absolute -top-2 -translate-x-1/2 rounded bg-brand px-1 py-0.5 text-[11px] font-bold text-on-brand shadow-xs uppercase">
                       Today
                     </span>
                   </div>
@@ -539,7 +539,7 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
                             <div
                               key={col.id}
                               className={`border-r border-line/30 h-full ${
-                                col.isToday ? 'bg-accent/5' : ''
+                                col.isToday ? 'bg-brand-soft/50' : ''
                               }`}
                             />
                           ))}
@@ -549,7 +549,7 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
                         {isTodayInRange && (
                           <div
                             data-testid="gantt-today-marker"
-                            className="absolute top-0 bottom-0 pointer-events-none border-l-2 border-accent z-10"
+                            className="absolute top-0 bottom-0 pointer-events-none border-l-2 border-brand z-10"
                             style={{ left: `${todayOffsetPct}%` }}
                           />
                         )}
@@ -697,7 +697,7 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
                           <div
                             key={col.id}
                             className={`border-r border-line/30 h-full ${
-                              col.isToday ? 'bg-accent/5' : ''
+                              col.isToday ? 'bg-brand-soft/50' : ''
                             }`}
                           />
                         ))}
@@ -707,7 +707,7 @@ export function ProductionGantt({ workOrders, onSelectWorkOrder }: ProductionGan
                       {isTodayInRange && (
                         <div
                           data-testid="gantt-today-marker"
-                          className="absolute top-0 bottom-0 pointer-events-none border-l-2 border-accent z-10"
+                          className="absolute top-0 bottom-0 pointer-events-none border-l-2 border-brand z-10"
                           style={{ left: `${todayOffsetPct}%` }}
                         />
                       )}

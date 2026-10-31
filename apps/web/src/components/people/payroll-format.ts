@@ -1,7 +1,23 @@
 import type { PayrollRunStatus, SettlementReason, SettlementStatus } from '@saas/shared';
+import { useOrganization } from '@/hooks/use-organization';
 
-export const money = (n: number) =>
-  n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** 1234.5 → "1,234.50"; with a currency, "AED 1,234.50". */
+export const money = (n: number, currency?: string | null) => {
+  const figure = n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return currency ? `${currency} ${figure}` : figure;
+};
+
+/**
+ * The currency payroll is run in: the organisation's base currency. Undefined
+ * until the organisation loads, so a figure shows bare rather than in a guess.
+ */
+export function usePayrollCurrency(): string | undefined {
+  return useOrganization().data?.baseCurrency;
+}
+
+/** "Net" → "Net (AED)", for table headers so each cell stays a bare figure. */
+export const inCurrency = (label: string, currency: string | undefined) =>
+  currency ? `${label} (${currency})` : label;
 
 export const STATUS_LABELS: Record<PayrollRunStatus, string> = {
   DRAFT: 'Draft',

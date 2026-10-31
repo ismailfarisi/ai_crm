@@ -89,7 +89,7 @@ export function ApprovalsInbox() {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <Link
                       href={`/automations/${approval.workflowId}`}
-                      className="text-sm font-semibold text-ink hover:text-brand"
+                      className="text-sm font-semibold text-ink underline-offset-2 hover:underline"
                     >
                       {approval.workflowName}
                     </Link>

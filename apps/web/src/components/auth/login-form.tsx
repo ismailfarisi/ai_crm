@@ -11,6 +11,8 @@ import { ApiError } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/field';
 import { Alert } from '@/components/ui/primitives';
+import { safeDestination } from '@/components/auth/safe-destination';
+import { UNREACHABLE_MESSAGE } from '@/components/auth/messages';
 
 export function LoginForm() {
   const router = useRouter();
@@ -31,8 +33,10 @@ export function LoginForm() {
     setFormError(null);
     try {
       await api.auth.login(values);
-      // Ensure the browser navigates with the newly set cookie headers
-      window.location.href = searchParams.get('next') ?? '/dashboard';
+      // Ensure the browser navigates with the newly set cookie headers.
+      // `next` comes from the URL, so anyone can write it: only follow it
+      // inside the app.
+      window.location.assign(safeDestination(searchParams.get('next')));
     } catch (error) {
       if (error instanceof ApiError) {
         for (const [field, message] of Object.entries(error.fieldErrors)) {
@@ -40,7 +44,7 @@ export function LoginForm() {
         }
         setFormError(error.message);
       } else {
-        setFormError('Could not reach the server. Is the API running?');
+        setFormError(UNREACHABLE_MESSAGE);
       }
     }
   });
@@ -78,7 +82,7 @@ export function LoginForm() {
 
       <p className="mt-6 text-sm text-ink-muted">
         Don&apos;t have an account?{' '}
-        <Link href="/register" className="font-medium text-brand hover:underline">
+        <Link href="/register" className="font-medium text-ink underline underline-offset-2">
           Create one
         </Link>
       </p>

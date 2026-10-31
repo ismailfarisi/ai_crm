@@ -41,7 +41,8 @@ export const DEFAULT_NODE_LABELS: Record<AutomationNodeType, string> = {
 export const DEFAULT_NODE_CONFIGS: Record<AutomationNodeType, Record<string, any>> = {
   webhookTrigger: {},
   scheduleTrigger: { cron: '0 9 * * 1-5' },
-  crmEventTrigger: { eventType: 'contact.created' },
+  // The API matches CRM triggers on `event` (automations.service syncTriggerConfig).
+  crmEventTrigger: { event: 'contact.created' },
   manualTrigger: {},
   conditionNode: { condition: '' },
   transformNode: { script: '' },

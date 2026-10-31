@@ -82,7 +82,7 @@ export function ObjectStudioView() {
                       </p>
                     </div>
 
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand-dark">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-ink">
                       <Database className="size-4" />
                     </div>
                   </div>

@@ -28,7 +28,7 @@ export function SetupChecklist({ steps }: { steps: SetupStep[] }) {
   const done = steps.length - remaining.length;
 
   return (
-    <Card className="rounded-2xl border-brand/30 bg-brand-soft/30 shadow-xs">
+    <Card className="rounded-2xl border-border bg-surface shadow-xs">
       <CardHeader className="flex items-center justify-between border-b border-border/70 px-5 py-4">
         <CardTitle className="text-sm font-semibold text-ink">Finish setting up</CardTitle>
         <span className="text-xs font-medium tabular-nums text-ink-muted">
@@ -39,7 +39,7 @@ export function SetupChecklist({ steps }: { steps: SetupStep[] }) {
         {steps.map((step) => (
           <div key={step.key} className="flex items-start gap-3 py-3">
             {step.done ? (
-              <Check className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              <Check className="mt-0.5 size-4 shrink-0 text-success" aria-label="Done" />
             ) : (
               <Circle className="mt-0.5 size-4 shrink-0 text-ink-subtle" />
             )}
@@ -58,7 +58,7 @@ export function SetupChecklist({ steps }: { steps: SetupStep[] }) {
             {!step.done && (
               <Link
                 href={step.href}
-                className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-brand hover:underline"
+                className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-ink underline underline-offset-2"
               >
                 Set up
                 <ArrowRight className="size-3.5" />

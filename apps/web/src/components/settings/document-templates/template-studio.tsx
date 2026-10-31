@@ -236,7 +236,7 @@ export function TemplateStudio({ templateId }: TemplateStudioProps) {
                 type="checkbox"
                 checked={isDefault}
                 onChange={(e) => setIsDefault(e.target.checked)}
-                className="rounded border-border text-brand focus:ring-brand size-4 cursor-pointer"
+                className="rounded border-border-control accent-[var(--color-brand)] size-4 cursor-pointer"
               />
               <span className="text-xs font-medium text-ink">Set as default template for selected types</span>
             </label>
@@ -475,7 +475,7 @@ export function TemplateStudio({ templateId }: TemplateStudioProps) {
                               header: { ...prev.header, [key]: e.target.checked },
                             }))
                           }
-                          className="rounded border-border text-brand focus:ring-brand size-3.5"
+                          className="rounded border-border-control accent-[var(--color-brand)] size-3.5"
                         />
                         <span className="text-xs text-ink">{label}</span>
                       </label>
@@ -585,7 +585,7 @@ export function TemplateStudio({ templateId }: TemplateStudioProps) {
                               parties: { ...prev.parties, [key]: e.target.checked },
                             }))
                           }
-                          className="rounded border-border text-brand focus:ring-brand size-3.5"
+                          className="rounded border-border-control accent-[var(--color-brand)] size-3.5"
                         />
                         <span className="text-xs text-ink">{label}</span>
                       </label>
@@ -632,7 +632,7 @@ export function TemplateStudio({ templateId }: TemplateStudioProps) {
                               itemsTable: { ...prev.itemsTable, [key]: e.target.checked },
                             }))
                           }
-                          className="rounded border-border text-brand focus:ring-brand size-3.5"
+                          className="rounded border-border-control accent-[var(--color-brand)] size-3.5"
                         />
                         <span className="text-xs text-ink">{label}</span>
                       </label>
@@ -677,7 +677,7 @@ export function TemplateStudio({ templateId }: TemplateStudioProps) {
                               totals: { ...prev.totals, [key]: e.target.checked },
                             }))
                           }
-                          className="rounded border-border text-brand focus:ring-brand size-3.5"
+                          className="rounded border-border-control accent-[var(--color-brand)] size-3.5"
                         />
                         <span className="text-xs text-ink">{label}</span>
                       </label>
@@ -797,7 +797,7 @@ export function TemplateStudio({ templateId }: TemplateStudioProps) {
                             footer: { ...prev.footer, showSignatureBlock: e.target.checked },
                           }))
                         }
-                        className="rounded border-border text-brand focus:ring-brand size-3.5"
+                        className="rounded border-border-control accent-[var(--color-brand)] size-3.5"
                       />
                       <span className="text-xs text-ink">Show Signature Block</span>
                     </label>
@@ -812,7 +812,7 @@ export function TemplateStudio({ templateId }: TemplateStudioProps) {
                             footer: { ...prev.footer, showPageNumbers: e.target.checked },
                           }))
                         }
-                        className="rounded border-border text-brand focus:ring-brand size-3.5"
+                        className="rounded border-border-control accent-[var(--color-brand)] size-3.5"
                       />
                       <span className="text-xs text-ink">Show Page Numbers</span>
                     </label>

@@ -475,7 +475,7 @@ export function ExpressionHelper({
             </div>
             <div
               data-testid="expression-preview-output"
-              className="p-2 rounded-lg bg-brand-dark text-brand font-mono text-[11px] min-h-[44px] break-all border border-border-strong shadow-inner"
+              className="p-2 rounded-lg bg-surface-muted text-ink font-mono text-[11px] min-h-[44px] break-all border border-border-strong shadow-inner"
             >
               {interpolatedPreview || <span className="text-ink-muted italic">Empty output</span>}
             </div>

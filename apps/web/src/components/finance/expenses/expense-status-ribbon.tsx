@@ -58,7 +58,7 @@ export function ExpenseStatusBadge({
           tone="neutral"
           className={cn('gap-1 font-medium', className)}
         >
-          <FileEdit className="size-3 text-ink-subtle" />
+          <FileEdit className="size-3 text-ink-subtle" aria-hidden />
           Draft
         </Badge>
       );
@@ -67,9 +67,9 @@ export function ExpenseStatusBadge({
         <Badge
           data-testid="status-badge-submitted"
           tone="warning"
-          className={cn('gap-1 font-medium bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30', className)}
+          className={cn('gap-1 font-medium', className)}
         >
-          <Clock className="size-3 animate-pulse text-amber-600 dark:text-amber-400" />
+          <Clock className="size-3" aria-hidden />
           Submitted
         </Badge>
       );
@@ -78,9 +78,9 @@ export function ExpenseStatusBadge({
         <Badge
           data-testid="status-badge-approved"
           tone="info"
-          className={cn('gap-1 font-medium bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30', className)}
+          className={cn('gap-1 font-medium', className)}
         >
-          <CheckCircle2 className="size-3 text-blue-600 dark:text-blue-400" />
+          <CheckCircle2 className="size-3" aria-hidden />
           Approved
         </Badge>
       );
@@ -89,9 +89,9 @@ export function ExpenseStatusBadge({
         <Badge
           data-testid="status-badge-paid"
           tone="success"
-          className={cn('gap-1 font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30', className)}
+          className={cn('gap-1 font-medium', className)}
         >
-          <DollarSign className="size-3 text-emerald-600 dark:text-emerald-400" />
+          <DollarSign className="size-3" aria-hidden />
           Paid
         </Badge>
       );
@@ -100,9 +100,9 @@ export function ExpenseStatusBadge({
         <Badge
           data-testid="status-badge-rejected"
           tone="danger"
-          className={cn('gap-1 font-medium bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30', className)}
+          className={cn('gap-1 font-medium', className)}
         >
-          <XCircle className="size-3 text-rose-600 dark:text-rose-400" />
+          <XCircle className="size-3" aria-hidden />
           Rejected
         </Badge>
       );
@@ -217,7 +217,7 @@ export function ExpenseStatusRibbon({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <nav aria-label="Expense Claim Lifecycle" className="w-full sm:w-auto">
-          <ol className="flex items-center rounded-2xl border border-border/40 bg-surface/70 backdrop-blur-xs p-1 text-xs shadow-xs">
+          <ol className="flex items-center rounded-2xl border border-border bg-surface p-1 text-xs">
             {STEPS.map((step, idx) => {
               const state = getStepState(step.key);
               const isLast = idx === STEPS.length - 1;
@@ -233,31 +233,29 @@ export function ExpenseStatusRibbon({
                   <div
                     className={cn(
                       'flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 transition-all text-xs',
-                      state === 'current' &&
-                        'bg-brand text-on-brand font-semibold shadow-xs ring-1 ring-brand-ring/40',
+                      state === 'current' && 'bg-charcoal text-on-charcoal font-semibold',
                       state === 'completed' &&
                         'text-ink-muted font-medium hover:text-ink',
-                      state === 'upcoming' &&
-                        'text-ink-subtle opacity-60',
+                      state === 'upcoming' && 'text-ink-subtle',
                       state === 'rejected' &&
-                        'bg-rose-500/10 text-rose-700 dark:text-rose-300 font-semibold border border-rose-500/20',
+                        'bg-danger-soft text-danger font-semibold border border-danger/20',
                     )}
                   >
                     <StepIcon
                       className={cn(
                         'size-3.5 shrink-0',
-                        state === 'completed' && 'text-emerald-600 dark:text-emerald-400 stroke-[2.2]',
-                        state === 'current' && 'text-ink stroke-[2.2]',
-                        state === 'rejected' && 'text-rose-600 dark:text-rose-400',
+                        state === 'completed' && 'text-success stroke-[2.2]',
+                        state === 'current' && 'text-on-charcoal stroke-[2.2]',
+                        state === 'rejected' && 'text-danger',
                         state === 'upcoming' && 'text-ink-subtle',
                       )}
                     />
 
-                    <div className="flex flex-col text-left">
+                    <div className="flex flex-col text-start">
                       <span className="hidden sm:inline whitespace-nowrap">{step.label}</span>
                       <span className="inline sm:hidden whitespace-nowrap">{step.shortLabel}</span>
                       {timestamp && state !== 'upcoming' && (
-                        <span className="text-[10px] opacity-75 font-normal whitespace-nowrap">
+                        <span className="text-[11px] font-normal tabular-nums whitespace-nowrap">
                           {timestamp}
                         </span>
                       )}
@@ -266,7 +264,7 @@ export function ExpenseStatusRibbon({
 
                   {!isLast && (
                     <ChevronRight
-                      className="size-3 text-border-strong/70 shrink-0 mx-0.5 select-none"
+                      className="size-3 text-ink-subtle shrink-0 mx-0.5 select-none"
                       aria-hidden="true"
                     />
                   )}
@@ -286,9 +284,9 @@ export function ExpenseStatusRibbon({
       {status === 'APPROVED' && (effectiveApprovedBy || effectiveApprovedAt) && (
         <div
           data-testid="approval-info-banner"
-          className="flex items-center gap-2 rounded-xl border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-xs text-blue-800 dark:text-blue-300"
+          className="flex items-center gap-2 rounded-xl border border-info/20 bg-info-soft px-3 py-2 text-xs text-ink"
         >
-          <UserCheck className="size-4 text-blue-600 dark:text-blue-400 shrink-0" />
+          <UserCheck className="size-4 text-info shrink-0" aria-hidden />
           <span>
             Approved by <strong className="font-semibold">{effectiveApprovedBy || 'Authorized Manager'}</strong>
             {effectiveApprovedAt && ` on ${formatStepDate(effectiveApprovedAt)}`}
@@ -299,11 +297,11 @@ export function ExpenseStatusRibbon({
       {status === 'PAID' && effectiveReimbursedAt && (
         <div
           data-testid="reimbursement-info-banner"
-          className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-800 dark:text-emerald-300"
+          className="flex items-center gap-2 rounded-xl border border-success/20 bg-success-soft px-3 py-2 text-xs text-ink"
         >
-          <ShieldCheck className="size-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+          <ShieldCheck className="size-4 text-success shrink-0" aria-hidden />
           <span>
-            Payment settled & disbursed on <strong className="font-semibold">{formatStepDate(effectiveReimbursedAt)}</strong>
+            Reimbursed on <strong className="font-semibold">{formatStepDate(effectiveReimbursedAt)}</strong>
           </span>
         </div>
       )}
@@ -311,13 +309,13 @@ export function ExpenseStatusRibbon({
       {isRejected && (
         <div
           data-testid="rejection-info-banner"
-          className="flex items-start gap-2.5 rounded-xl border border-rose-500/25 bg-rose-500/10 px-3.5 py-2.5 text-xs text-rose-800 dark:text-rose-200"
+          className="flex items-start gap-2.5 rounded-xl border border-danger/20 bg-danger-soft px-3.5 py-2.5 text-xs text-ink"
         >
-          <AlertTriangle className="size-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+          <AlertTriangle className="size-4 text-danger shrink-0 mt-0.5" aria-hidden />
           <div className="flex-1">
-            <p className="font-semibold text-rose-900 dark:text-rose-100">Claim Rejected</p>
-            <p className="mt-0.5 text-rose-700 dark:text-rose-300">
-              {effectiveRejectionReason || 'No specific rejection reason provided. Please contact your manager.'}
+            <p className="font-semibold text-danger">Claim rejected</p>
+            <p className="mt-0.5 text-ink">
+              {effectiveRejectionReason || 'No reason was recorded.'}
             </p>
           </div>
         </div>

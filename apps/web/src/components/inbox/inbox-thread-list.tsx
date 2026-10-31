@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { Search, Mail, MessageSquare, Send, CheckCheck, AlertCircle } from 'lucide-react';
+import { useMemo } from 'react';
+import { Search, Send, CheckCheck, AlertCircle } from 'lucide-react';
 import type { ContactDto } from '@saas/shared';
 import type { ChannelMessageDto } from '@/lib/api/endpoints';
 import { formatRelative, initials } from '@/lib/utils';
@@ -95,7 +95,9 @@ export function InboxThreadList({
         <div className="relative">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-subtle" />
           <Input
-            placeholder="Search conversations..."
+            type="search"
+            aria-label="Search conversations"
+            placeholder="Search conversations…"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             className="pl-9 h-9 text-sm"
@@ -109,10 +111,12 @@ export function InboxThreadList({
             return (
               <button
                 key={btn.key}
+                type="button"
+                aria-pressed={isActive}
                 onClick={() => onFilterChange(btn.key)}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                className={`h-10 rounded-full px-3.5 text-xs font-medium transition-colors md:h-8 ${
                   isActive
-                    ? 'bg-brand text-on-brand'
+                    ? 'bg-charcoal text-on-charcoal'
                     : 'bg-surface-muted text-ink-muted hover:bg-border/60 hover:text-ink'
                 }`}
               >
@@ -126,8 +130,8 @@ export function InboxThreadList({
       {/* Threads List */}
       <div className="flex-1 overflow-y-auto divide-y divide-border/60 scrollbar-thin">
         {filteredThreads.length === 0 ? (
-          <div className="p-8 text-center text-sm text-ink-subtle">
-            No conversation threads found.
+          <div className="p-8 text-center text-sm text-ink-muted">
+            No conversations match. Clear the search or pick another channel.
           </div>
         ) : (
           filteredThreads.map((thread) => {
@@ -138,15 +142,18 @@ export function InboxThreadList({
             return (
               <button
                 key={thread.id}
+                type="button"
+                aria-current={isSelected ? 'true' : undefined}
                 onClick={() => onSelectThread(thread)}
-                className={`flex w-full items-start gap-3 p-3.5 text-left transition-colors ${
-                  isSelected
-                    ? 'bg-brand-soft/80 border-l-4 border-brand font-medium'
-                    : 'hover:bg-surface-muted/60'
+                className={`flex w-full items-start gap-3 p-3.5 text-left transition-colors focus-visible:-outline-offset-2 ${
+                  isSelected ? 'bg-brand-soft' : 'hover:bg-surface-muted/60'
                 }`}
               >
                 {/* Avatar */}
-                <div className="grid size-10 shrink-0 place-items-center rounded-full bg-brand-soft text-xs font-semibold text-brand ring-1 ring-brand/20">
+                <div
+                  aria-hidden
+                  className="grid size-10 shrink-0 place-items-center rounded-full bg-surface-muted text-xs font-semibold text-ink ring-1 ring-border"
+                >
                   {initials(thread.name, '')}
                 </div>
 
@@ -157,13 +164,9 @@ export function InboxThreadList({
                       <span className="truncate text-sm font-semibold text-ink">
                         {thread.name}
                       </span>
-                      {thread.staffUser && (
-                        <span className="rounded bg-brand/10 text-brand text-[10px] font-medium px-1.5 py-0.5 border border-brand/20 shrink-0">
-                          Staff
-                        </span>
-                      )}
+                      {thread.staffUser && <Badge className="shrink-0">Staff</Badge>}
                     </div>
-                    <span className="shrink-0 text-[11px] text-ink-subtle">
+                    <span className="shrink-0 text-xs tabular-nums text-ink-subtle">
                       {formatRelative(lastMsg.createdAt)}
                     </span>
                   </div>
@@ -192,34 +195,33 @@ export function InboxThreadList({
   );
 }
 
+/** The channel's everyday name: what the customer used, not the driver behind it. */
+export function channelName(provider: string): string {
+  if (provider === 'WHATSAPP_META') return 'WhatsApp';
+  if (provider === 'TELEGRAM') return 'Telegram';
+  return 'Email';
+}
+
+// Neutral on purpose: the channel is a label, not a state, so it doesn't get a status colour.
 export function ChannelBadge({ provider }: { provider: string }) {
-  if (provider === 'WHATSAPP_META') {
-    return <Badge tone="success">WhatsApp</Badge>;
-  }
-  if (provider === 'TELEGRAM') {
-    return <Badge tone="brand">Telegram</Badge>;
-  }
-  return <Badge tone="warning">Email</Badge>;
+  return <Badge>{channelName(provider)}</Badge>;
 }
 
 function StatusIcon({ status }: { status: string }) {
   if (status === 'failed') {
     return (
-      <span title="Failed">
-        <AlertCircle className="size-3 text-danger shrink-0" />
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-danger">
+        <AlertCircle className="size-3 shrink-0" aria-hidden />
+        Not delivered
       </span>
     );
   }
-  if (status === 'delivered' || status === 'sent') {
-    return (
-      <span title={status}>
-        <CheckCheck className="size-3 text-brand shrink-0" />
-      </span>
-    );
-  }
+  const label = status === 'delivered' ? 'Delivered' : status === 'sent' ? 'Sent' : 'Sending';
+  const Icon = status === 'delivered' || status === 'sent' ? CheckCheck : Send;
   return (
-    <span title={status}>
-      <Send className="size-3 text-ink-subtle shrink-0" />
+    <span title={label}>
+      <Icon className="size-3 shrink-0 text-ink-subtle" aria-hidden />
+      <span className="sr-only">{label}</span>
     </span>
   );
 }

@@ -26,7 +26,7 @@ export function BillingBanner() {
               : 'Your subscription is not active.'}{' '}
           You can still view everything, but changes are paused.
         </span>
-        <Link href="/settings/billing" className="font-medium text-accent hover:underline">
+        <Link href="/settings/billing" className="font-medium text-ink underline underline-offset-2">
           Fix billing
         </Link>
       </div>
@@ -42,7 +42,7 @@ export function BillingBanner() {
         <span>
           {sub.status === 'TRIALING' ? 'Your trial ends' : 'Changes pause'} {d === 0 ? 'today' : `in ${d} day${d === 1 ? '' : 's'}`}.
         </span>
-        <Link href="/settings/billing" className="font-medium text-accent hover:underline">
+        <Link href="/settings/billing" className="font-medium text-ink underline underline-offset-2">
           {sub.status === 'TRIALING' ? 'Choose a plan' : 'Update payment'}
         </Link>
       </div>

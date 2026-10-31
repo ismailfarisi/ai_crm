@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { SessionContinue } from '@/components/auth/session-continue';
 
-export const metadata: Metadata = { title: 'Signing you back in' };
+export const metadata: Metadata = { title: 'Opening Kerf' };
 
 /**
  * The interstitial that keeps a full-page navigation from signing you out.

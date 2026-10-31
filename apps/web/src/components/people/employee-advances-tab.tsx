@@ -8,12 +8,12 @@ import { Can } from '@/components/auth/can';
 import { Button } from '@/components/ui/button';
 import { Card, CardBody, EmptyState } from '@/components/ui/primitives';
 import { RecordAdvanceModal } from './record-advance-modal';
-
-const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+import { inCurrency, money, usePayrollCurrency } from './payroll-format';
 
 export function EmployeeAdvancesTab({ employeeId }: { employeeId: string }) {
   const { data, isPending, isError, error } = useEmployeeAdvances(employeeId);
   const record = useRecordAdvance();
+  const cur = usePayrollCurrency();
   const [open, setOpen] = useState(false);
 
   if (isPending) return <p className="text-ink-muted">Loading…</p>;
@@ -28,12 +28,12 @@ export function EmployeeAdvancesTab({ employeeId }: { employeeId: string }) {
           <div>
             <dt className="text-xs text-ink-subtle">Outstanding</dt>
             <dd data-testid="advances-outstanding" className="text-lg font-semibold tabular-nums text-ink">
-              {money(data.outstanding)}
+              {money(data.outstanding, cur)}
             </dd>
           </div>
           <div>
             <dt className="text-xs text-ink-subtle">Recovered</dt>
-            <dd className="text-lg font-semibold tabular-nums text-ink-muted">{money(data.recovered)}</dd>
+            <dd className="text-lg font-semibold tabular-nums text-ink-muted">{money(data.recovered, cur)}</dd>
           </div>
         </dl>
         <Can permission={PERMISSIONS.PAYROLL_PAY}>
@@ -54,7 +54,7 @@ export function EmployeeAdvancesTab({ employeeId }: { employeeId: string }) {
                 <tr className="text-left text-xs text-ink-subtle">
                   <th className="py-2 font-medium">Date</th>
                   <th className="py-2 font-medium">Note</th>
-                  <th className="py-2 text-right font-medium">Amount</th>
+                  <th className="py-2 text-right font-medium">{inCurrency('Amount', cur)}</th>
                 </tr>
               </thead>
               <tbody>

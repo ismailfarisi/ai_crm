@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   Webhook,
   Calendar,
@@ -214,6 +214,23 @@ export function NodePaletteDrawer({
 }: NodePaletteDrawerProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<PaletteCategory>('All');
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
+  // Escape closes the palette, as it would any other panel. A modal dialog
+  // above it (a confirmation) handles its own Escape first.
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      if (document.querySelector('dialog[open]')) return;
+      onCloseRef.current?.();
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [isOpen]);
 
   const filteredItems = useMemo(() => {
     return NODE_PALETTE_ITEMS.filter((item) => {

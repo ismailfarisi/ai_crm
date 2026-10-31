@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { CustomObjectDefinitionDto } from '@saas/shared';
 import { ObjectStudioView } from './object-studio-view';
@@ -240,6 +240,9 @@ describe('ObjectStudioView', () => {
       expect(screen.getByRole('heading', { name: /vehicles fields/i })).toBeInTheDocument();
     });
 
+    // A native <dialog> (ModalShell), not a hand-built div.
+    expect(screen.getByRole('dialog', { name: /vehicles fields/i }).tagName).toBe('DIALOG');
+
     expect(screen.getByText('VIN')).toBeInTheDocument();
     expect(screen.getByText('Mileage')).toBeInTheDocument();
 
@@ -276,6 +279,12 @@ describe('ObjectStudioView', () => {
     // Deleting an attribute
     const deleteMileageBtn = screen.getByTestId('delete-attribute-mileage');
     fireEvent.click(deleteMileageBtn);
+
+    // One click only asks: it names the field and what goes with it.
+    expect(api.customObjects.deleteAttribute).not.toHaveBeenCalled();
+    const confirm = screen.getByRole('dialog', { name: 'Delete the Mileage field?' });
+    expect(within(confirm).getByText(/removed from every Vehicles record/)).toBeInTheDocument();
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Delete field' }));
 
     await waitFor(() => {
       expect(api.customObjects.deleteAttribute).toHaveBeenCalledWith('vehicles', 'mileage');

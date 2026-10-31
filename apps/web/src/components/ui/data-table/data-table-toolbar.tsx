@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { exportToCSV, exportToJSON } from './data-table-export';
+import { columnLabel } from './column-label';
 
 export type ViewMode = 'table' | 'card' | 'auto';
 export type DensityMode = 'comfortable' | 'compact';
@@ -158,7 +159,7 @@ export function DataTableToolbar<TData>({
                           onChange={col.getToggleVisibilityHandler()}
                           className="rounded border-border text-brand focus:ring-brand"
                         />
-                        <span className="capitalize">{col.id}</span>
+                        <span>{columnLabel(col)}</span>
                       </label>
                     ))}
                 </div>

@@ -1,16 +1,19 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { z } from 'zod';
 import { Plus, Trash2 } from 'lucide-react';
-import { createPurchaseOrderSchema } from '@saas/shared';
+import { createPurchaseOrderSchema, type SupplierDto } from '@saas/shared';
 import { useSuppliers } from '@/hooks/use-suppliers';
 import { useMaterials } from '@/hooks/use-catalog-admin';
+import { useDebounced } from '@/hooks/use-catalog';
 import { useCreatePurchaseOrder } from '@/hooks/use-purchase-orders';
+import { useOrganization } from '@/hooks/use-organization';
 import { ApiError } from '@/lib/api/client';
+import { formatMoney } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Input, Select, Textarea } from '@/components/ui/field';
@@ -46,6 +49,16 @@ const UOM_OPTIONS = [
   { value: 'KG', label: 'Kilogram' },
 ];
 
+/** The API's list schema caps a page at 100; asking for more is a 400. */
+const SUPPLIER_PAGE_SIZE = 100;
+
+/**
+ * Lines after the first sit in the same columns as the first, so their labels
+ * are hidden on wider screens. They stay in the markup for screen readers, and
+ * stay visible on a phone, where the fields stack and have no column heading.
+ */
+const LATER_LINE_LABEL = 'sm:[&>label]:sr-only';
+
 /**
  * Raises a draft purchase order.
  *
@@ -60,10 +73,27 @@ export function PurchaseOrderFormDialog({ open, onClose }: PurchaseOrderFormDial
   const router = useRouter();
   const create = useCreatePurchaseOrder();
 
-  const { data: supplierPage } = useSuppliers({ page: 1, limit: 200 });
+  const [supplierSearch, setSupplierSearch] = useState('');
+  const search = useDebounced(supplierSearch.trim());
+  const supplierQuery = useSuppliers({
+    page: 1,
+    limit: SUPPLIER_PAGE_SIZE,
+    sortBy: 'companyName',
+    sortOrder: 'ASC',
+    ...(search ? { search } : {}),
+  });
   const { data: materials } = useMaterials();
+  const baseCurrency = useOrganization().data?.baseCurrency ?? null;
 
-  const suppliers = supplierPage?.items ?? [];
+  // Kept apart from the list, so narrowing the search does not drop the
+  // supplier already picked, or the currency the order is priced in.
+  const [chosen, setChosen] = useState<SupplierDto | null>(null);
+
+  const found = supplierQuery.data?.items ?? [];
+  const suppliers =
+    chosen && !found.some((s) => s.id === chosen.id) ? [chosen, ...found] : found;
+  // The API prices the order in the supplier's currency.
+  const currency = chosen?.currency || baseCurrency;
 
   const {
     register,
@@ -83,7 +113,10 @@ export function PurchaseOrderFormDialog({ open, onClose }: PurchaseOrderFormDial
   const lines = watch('lines');
 
   useEffect(() => {
-    if (open) reset(EMPTY);
+    if (!open) return;
+    reset(EMPTY);
+    setChosen(null);
+    setSupplierSearch('');
   }, [open, reset]);
 
   /**
@@ -140,14 +173,52 @@ export function PurchaseOrderFormDialog({ open, onClose }: PurchaseOrderFormDial
     >
       <form id="purchase-order-form" onSubmit={onSubmit} className="space-y-4" noValidate>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Select
-            label="Supplier"
-            required
-            error={errors.supplierId?.message}
-            placeholder={suppliers.length ? 'Choose a supplier…' : 'No suppliers yet'}
-            options={suppliers.map((s) => ({ value: s.id, label: s.companyName }))}
-            {...register('supplierId')}
+          <Input
+            label="Find a supplier"
+            type="search"
+            placeholder="Type part of a name"
+            autoComplete="off"
+            value={supplierSearch}
+            onChange={(event) => setSupplierSearch(event.target.value)}
           />
+          <div className="space-y-1.5">
+            <Select
+              label="Supplier"
+              required
+              error={errors.supplierId?.message}
+              placeholder={supplierPlaceholder(supplierQuery, found.length, search)}
+              options={suppliers.map((s) => ({ value: s.id, label: s.companyName }))}
+              {...register('supplierId', {
+                onChange: (event) => {
+                  const id = event.target.value as string;
+                  setChosen(suppliers.find((s) => s.id === id) ?? null);
+                },
+              })}
+            />
+            {supplierQuery.isError ? (
+              <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-danger">
+                <span>
+                  {supplierQuery.error instanceof Error && supplierQuery.error.message
+                    ? `Suppliers did not load: ${supplierQuery.error.message}`
+                    : 'Suppliers did not load.'}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  loading={supplierQuery.isFetching}
+                  onClick={() => void supplierQuery.refetch()}
+                >
+                  Retry
+                </Button>
+              </div>
+            ) : (supplierQuery.data?.meta?.total ?? 0) > found.length ? (
+              <p className="text-xs text-ink-subtle">
+                Showing the first {found.length} of {supplierQuery.data?.meta?.total}. Type a name
+                to find the rest.
+              </p>
+            ) : null}
+          </div>
           {/*
             An empty date input reads as '', and `z.coerce.date()` turns that
             into an Invalid Date rather than treating it as absent — so without
@@ -186,11 +257,14 @@ export function PurchaseOrderFormDialog({ open, onClose }: PurchaseOrderFormDial
             {fields.map((field, index) => (
               <div
                 key={field.id}
+                role="group"
+                aria-label={`Line ${index + 1}`}
                 className="grid gap-3 rounded-xl border border-border/60 bg-surface-muted/20 p-3 sm:grid-cols-12"
               >
                 <div className="sm:col-span-4">
                   <Select
-                    label={index === 0 ? 'Material' : undefined}
+                    label="Material"
+                    containerClassName={index === 0 ? undefined : LATER_LINE_LABEL}
                     placeholder="Not from the catalog"
                     options={(materials ?? []).map((m) => ({
                       value: m.id,
@@ -203,7 +277,8 @@ export function PurchaseOrderFormDialog({ open, onClose }: PurchaseOrderFormDial
 
                 <div className="sm:col-span-8">
                   <Input
-                    label={index === 0 ? 'Description' : undefined}
+                    label="Description"
+                    containerClassName={index === 0 ? undefined : LATER_LINE_LABEL}
                     required
                     error={errors.lines?.[index]?.description?.message}
                     {...register(`lines.${index}.description`)}
@@ -212,7 +287,8 @@ export function PurchaseOrderFormDialog({ open, onClose }: PurchaseOrderFormDial
 
                 <div className="sm:col-span-3">
                   <Input
-                    label={index === 0 ? 'Quantity' : undefined}
+                    label="Quantity"
+                    containerClassName={index === 0 ? undefined : LATER_LINE_LABEL}
                     type="number"
                     step="0.001"
                     min="0"
@@ -223,7 +299,8 @@ export function PurchaseOrderFormDialog({ open, onClose }: PurchaseOrderFormDial
 
                 <div className="sm:col-span-3">
                   <Select
-                    label={index === 0 ? 'Unit' : undefined}
+                    label="Unit"
+                    containerClassName={index === 0 ? undefined : LATER_LINE_LABEL}
                     options={UOM_OPTIONS}
                     error={errors.lines?.[index]?.uom?.message}
                     {...register(`lines.${index}.uom`)}
@@ -232,7 +309,8 @@ export function PurchaseOrderFormDialog({ open, onClose }: PurchaseOrderFormDial
 
                 <div className="sm:col-span-3">
                   <Input
-                    label={index === 0 ? 'Unit cost' : undefined}
+                    label={currency ? `Unit cost (${currency})` : 'Unit cost'}
+                    containerClassName={index === 0 ? undefined : LATER_LINE_LABEL}
                     type="number"
                     step="0.0001"
                     min="0"
@@ -243,12 +321,10 @@ export function PurchaseOrderFormDialog({ open, onClose }: PurchaseOrderFormDial
 
                 <div className="flex items-end justify-between gap-2 sm:col-span-3">
                   <span className="pb-2 text-sm font-medium tabular-nums text-ink">
-                    {new Intl.NumberFormat('en-US', {
-                      style: 'currency',
-                      currency: 'USD',
-                    }).format(
+                    {formatMoney(
                       (Number(lines?.[index]?.qtyOrdered) || 0) *
                         (Number(lines?.[index]?.unitCost) || 0),
+                      currency,
                     )}
                   </span>
                   {fields.length > 1 ? (
@@ -271,10 +347,7 @@ export function PurchaseOrderFormDialog({ open, onClose }: PurchaseOrderFormDial
             <span className="text-ink-muted">
               Order total{' '}
               <strong className="ml-2 tabular-nums text-ink">
-                {new Intl.NumberFormat('en-US', {
-                  style: 'currency',
-                  currency: 'USD',
-                }).format(total)}
+                {formatMoney(total, currency)}
               </strong>
             </span>
           </div>
@@ -289,4 +362,16 @@ export function PurchaseOrderFormDialog({ open, onClose }: PurchaseOrderFormDial
       </form>
     </Dialog>
   );
+}
+
+/** Says why the list is empty, rather than claiming there are no suppliers when the request failed. */
+function supplierPlaceholder(
+  query: { isPending: boolean; isError: boolean },
+  count: number,
+  search: string,
+): string {
+  if (query.isError) return 'Suppliers did not load';
+  if (query.isPending) return 'Loading suppliers…';
+  if (count > 0) return 'Choose a supplier…';
+  return search ? `No supplier matches "${search}"` : 'No suppliers yet';
 }

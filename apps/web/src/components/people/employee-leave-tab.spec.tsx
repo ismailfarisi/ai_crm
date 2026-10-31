@@ -11,12 +11,15 @@ vi.mock('@/lib/session-context', () => ({
   useCan: (rule: { permission: string }) => granted.has(rule.permission),
 }));
 
+vi.mock('@/hooks/use-organization', () => ({ useOrganization: () => ({ data: { baseCurrency: 'AED' } }) }));
+
 let leave: EmployeeLeaveDto;
+const deleteRecord = vi.fn();
 vi.mock('@/hooks/use-payroll', () => ({
   useEmployeeLeave: () => ({ data: leave, isPending: false, isError: false, error: null }),
   useCreateLeaveRecord: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateLeaveRecord: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useDeleteLeaveRecord: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteLeaveRecord: () => ({ mutateAsync: deleteRecord, isPending: false }),
   useAdjustLeave: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock('@/components/platform/attachments-panel', () => ({
@@ -25,6 +28,7 @@ vi.mock('@/components/platform/attachments-panel', () => ({
 
 beforeEach(() => {
   granted = new Set(['employee:read']);
+  deleteRecord.mockReset();
   leave = {
     balanceDays: 12.5,
     accruedToDate: 20,
@@ -45,7 +49,7 @@ describe('EmployeeLeaveTab', () => {
   it('shows the balance, provision and records', () => {
     render(<EmployeeLeaveTab employeeId="e1" />);
     expect(screen.getByTestId('leave-balance')).toHaveTextContent('12.5');
-    expect(screen.getByTestId('leave-provision')).toBeInTheDocument();
+    expect(screen.getByTestId('leave-provision')).toHaveTextContent('AED 1,450.00');
     expect(screen.getByText('Sick')).toBeInTheDocument();
     expect(screen.getByText('Flu')).toBeInTheDocument();
   });
@@ -68,6 +72,26 @@ describe('EmployeeLeaveTab', () => {
     expect(screen.getByRole('button', { name: /adjust days/i })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /files/i }));
     expect(screen.getByTestId('attachments')).toBeInTheDocument();
+  });
+
+  it('asks before deleting a leave record, naming it, and deletes only on confirm', async () => {
+    granted.add('employee:manage');
+    deleteRecord.mockResolvedValue(undefined);
+    render(<EmployeeLeaveTab employeeId="e1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(deleteRecord).not.toHaveBeenCalled();
+    const dialog = screen.getByRole('dialog', { name: /delete sick leave/i });
+    expect(dialog).toHaveTextContent('3 days');
+    fireEvent.click(screen.getByRole('button', { name: 'Delete leave' }));
+    await waitFor(() => expect(deleteRecord).toHaveBeenCalledWith({ id: 'e1', recordId: 'r1' }));
+  });
+
+  it('cancelling the delete leaves the record alone', () => {
+    granted.add('employee:manage');
+    render(<EmployeeLeaveTab employeeId="e1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(deleteRecord).not.toHaveBeenCalled();
   });
 
   it('hides the provision when the DTO omits it', () => {

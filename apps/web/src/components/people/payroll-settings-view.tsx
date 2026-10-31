@@ -27,12 +27,13 @@ import {
 } from '@/hooks/use-payroll';
 import { Can } from '@/components/auth/can';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog } from '@/components/ui/dialog';
 import { Input, Select } from '@/components/ui/field';
 import { Badge, Card, CardBody, CardHeader, CardTitle, EmptyState, PageHeader, Skeleton } from '@/components/ui/primitives';
 import { useCan } from '@/lib/session-context';
 import { PeopleNav } from './people-nav';
-import { money } from './payroll-format';
+import { inCurrency, money, usePayrollCurrency } from './payroll-format';
 
 export const PENSION_BASE_LABELS: Record<PensionBase, string> = {
   BASIC: 'Basic',
@@ -284,12 +285,43 @@ function PensionSchemeModal({
   );
 }
 
+const employees = (n: number) => (n === 1 ? '1 employee' : `${n} employees`);
+
+/** What switching a scheme on or off, or deleting it, does to people's pay. */
+export function schemeConsequence(s: PensionSchemeDto, action: 'toggle' | 'delete'): { title: string; description: string } {
+  if (action === 'delete') {
+    return {
+      title: `Delete ${s.name}?`,
+      description: "The scheme is removed. Nobody is assigned to it, so no one's pay changes.",
+    };
+  }
+  if (s.isActive) {
+    return {
+      title: `Deactivate ${s.name}?`,
+      description:
+        s.assignedCount > 0
+          ? `From the next payroll run, nothing is deducted or contributed for the ${employees(s.assignedCount)} assigned to it, and it can't be assigned to anyone else.`
+          : `It can no longer be assigned to employees. Nobody is on it now, so no one's pay changes.`,
+    };
+  }
+  return {
+    title: `Activate ${s.name}?`,
+    description:
+      s.assignedCount > 0
+        ? `From the next payroll run it deducts ${s.employeePct}% from the pay of the ${employees(s.assignedCount)} assigned to it, and the business contributes ${s.employerPct}%.`
+        : `It can then be assigned to employees. From the next payroll run it deducts ${s.employeePct}% from the pay of everyone on it, and the business contributes ${s.employerPct}%.`,
+  };
+}
+
 export function PensionSchemesCard() {
   const { data, isPending, isError, error } = usePensionSchemes();
   const update = useUpdatePensionScheme();
   const remove = useDeletePensionScheme();
+  const cur = usePayrollCurrency();
   const [editing, setEditing] = useState<PensionSchemeDto | null>(null);
   const [adding, setAdding] = useState(false);
+  const [confirming, setConfirming] = useState<{ scheme: PensionSchemeDto; action: 'toggle' | 'delete' } | null>(null);
+  const consequence = confirming && schemeConsequence(confirming.scheme, confirming.action);
 
   return (
     <Card data-testid="pension-schemes">
@@ -321,8 +353,8 @@ export function PensionSchemesCard() {
                 <th className="py-2 text-right font-medium">Employee %</th>
                 <th className="py-2 text-right font-medium">Employer %</th>
                 <th className="py-2 font-medium">Base</th>
-                <th className="py-2 text-right font-medium">Min</th>
-                <th className="py-2 text-right font-medium">Max</th>
+                <th className="py-2 text-right font-medium">{inCurrency('Min', cur)}</th>
+                <th className="py-2 text-right font-medium">{inCurrency('Max', cur)}</th>
                 <th className="py-2 font-medium">Status</th>
                 <th className="py-2 text-right font-medium">Assigned</th>
                 <Can permission={PERMISSIONS.PAYROLL_MANAGE}>
@@ -349,7 +381,7 @@ export function PensionSchemesCard() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => update.mutate({ id: s.id, input: { isActive: !s.isActive } })}
+                          onClick={() => setConfirming({ scheme: s, action: 'toggle' })}
                         >
                           {s.isActive ? 'Deactivate' : 'Activate'}
                         </Button>
@@ -361,9 +393,7 @@ export function PensionSchemesCard() {
                           variant="ghost"
                           disabled={s.assignedCount > 0}
                           title={s.assignedCount > 0 ? 'Assigned to employees — move them to another scheme first' : undefined}
-                          onClick={() => {
-                            if (window.confirm(`Delete ${s.name}?`)) remove.mutate(s.id);
-                          }}
+                          onClick={() => setConfirming({ scheme: s, action: 'delete' })}
                         >
                           Delete
                         </Button>
@@ -379,6 +409,27 @@ export function PensionSchemesCard() {
       <Can permission={PERMISSIONS.PAYROLL_MANAGE}>
         {adding && <PensionSchemeModal open onClose={() => setAdding(false)} />}
         {editing && <PensionSchemeModal open existing={editing} onClose={() => setEditing(null)} />}
+        {confirming && consequence && (
+          <ConfirmDialog
+            open
+            onClose={() => setConfirming(null)}
+            title={consequence.title}
+            description={consequence.description}
+            confirmLabel={
+              confirming.action === 'delete'
+                ? 'Delete scheme'
+                : confirming.scheme.isActive
+                  ? 'Deactivate scheme'
+                  : 'Activate scheme'
+            }
+            tone={confirming.action === 'delete' || confirming.scheme.isActive ? 'danger' : 'primary'}
+            onConfirm={() =>
+              confirming.action === 'delete'
+                ? remove.mutateAsync(confirming.scheme.id)
+                : update.mutateAsync({ id: confirming.scheme.id, input: { isActive: !confirming.scheme.isActive } })
+            }
+          />
+        )}
       </Can>
     </Card>
   );

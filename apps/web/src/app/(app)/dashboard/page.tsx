@@ -2,12 +2,12 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import {
   ArrowRight,
-  CalendarDays,
+  ClipboardCheck,
+  Factory,
   FilePlus2,
+  ReceiptText,
   ShieldCheck,
-  Star,
-  UserPlus,
-  Users,
+  Target,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -20,13 +20,24 @@ import {
 } from '@saas/shared';
 import { serverFetchOrNull } from '@/lib/api/server';
 import { can } from '@/lib/access';
-import { formatMoney } from '@/lib/utils';
+import { cn, formatDate, formatMoney } from '@/lib/utils';
 import { requireSession } from '@/lib/get-session';
 import { Badge, Card, CardBody, CardHeader, CardTitle } from '@/components/ui/primitives';
-import { DashboardGaugeWidget } from '@/components/dashboard/dashboard-gauge-widget';
 import { DashboardKpiChart } from '@/components/dashboard/dashboard-kpi-chart';
-import { DashboardScheduleCards } from '@/components/dashboard/dashboard-schedule-cards';
+import { DashboardScheduleCards, type ScheduleGroup } from '@/components/dashboard/dashboard-schedule-cards';
 import { SetupChecklist, type SetupStep } from '@/components/dashboard/setup-checklist';
+import {
+  awaitingApproval,
+  drafts,
+  jobsOnTheFloor,
+  monthlyRevenue,
+  overdueInvoices,
+  sumQuotes,
+  waitingSince,
+  type DashboardInvoice,
+  type DashboardQuote,
+  type DashboardWorkOrder,
+} from '@/components/dashboard/dashboard-figures';
 
 export const metadata: Metadata = { title: 'Dashboard' };
 
@@ -38,30 +49,12 @@ function getGreeting(date: Date = new Date()): string {
 }
 
 function getFormattedDate(date: Date = new Date()): string {
-  return date.toLocaleDateString('en-US', {
+  return date.toLocaleDateString('en-GB', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
   });
-}
-
-/** Only the fields the dashboard reads, so it is not coupled to the full DTO. */
-interface DashboardQuote {
-  id: string;
-  quoteNumber: string | null;
-  title: string;
-  customerName: string;
-  status: 'DRAFT' | 'AWAITING_APPROVAL' | 'APPROVED' | 'REJECTED';
-  totalAmount: number | string;
-  currency?: string;
-  acceptedAt: string | null;
-  createdAt: string;
-}
-
-interface DashboardInvoice {
-  amount: number | string;
-  issuedAt: string;
 }
 
 /**
@@ -88,61 +81,51 @@ function summariseWinRate(quotes: DashboardQuote[]): {
   };
 }
 
-/** Invoiced totals for the trailing 12 months, oldest first. */
-function monthlyRevenue(
-  invoices: DashboardInvoice[],
-  now: Date,
-): Array<{ month: string; value: number }> {
-  const buckets: Array<{ month: string; key: string; value: number }> = [];
+const otherCurrencies = (count: number) =>
+  count > 0 ? ` + ${count} in other currencies` : '';
 
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    buckets.push({
-      month: d.toLocaleDateString('en-US', { month: 'short' }),
-      key: `${d.getFullYear()}-${d.getMonth()}`,
-      value: 0,
-    });
-  }
+/** How many of each list the panel shows; the count beside it is always the real one. */
+const APPROVALS_SHOWN = 5;
+const DRAFTS_SHOWN = 3;
 
-  const byKey = new Map(buckets.map((b) => [b.key, b]));
-  for (const invoice of invoices) {
-    if (!invoice.issuedAt) continue;
-    const issued = new Date(invoice.issuedAt);
-    const bucket = byKey.get(`${issued.getFullYear()}-${issued.getMonth()}`);
-    if (bucket) bucket.value += Number(invoice.amount) || 0;
-  }
-
-  return buckets.map(({ month, value }) => ({
-    month,
-    value: Math.round(value * 100) / 100,
-  }));
+function quoteItem(q: DashboardQuote, timePrefix: string) {
+  return {
+    id: q.id,
+    reference: q.quoteNumber ?? 'Not yet numbered',
+    title: q.title ? `${q.customerName} · ${q.title}` : q.customerName || 'Untitled quote',
+    amount: formatMoney(Number(q.totalAmount) || 0, q.currency, { decimals: 0 }),
+    timeLabel: `${timePrefix} ${formatDate(waitingSince(q))}`,
+    href: `/quotes/${q.id}`,
+  };
 }
 
-/** Quotes that need a decision, newest first. */
-function quotesAwaitingAction(quotes: DashboardQuote[], baseCurrency?: string) {
-  return quotes
-    .filter((q) => q.status === 'AWAITING_APPROVAL' || q.status === 'DRAFT')
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    )
-    .slice(0, 3)
-    .map((q) => ({
-      id: q.id,
-      title: q.title
-        ? `${q.customerName} — ${q.title}`
-        : q.customerName || 'Untitled quote',
-      category: 'quote' as const,
-      categoryLabel:
-        q.status === 'AWAITING_APPROVAL' ? 'Awaiting approval' : 'Draft',
-      timeLabel: q.quoteNumber ?? 'Not yet numbered',
-      amount: formatMoney(Number(q.totalAmount) || 0, q.currency || baseCurrency, {
-        decimals: 0,
-      }),
-      statusBadge:
-        q.status === 'AWAITING_APPROVAL' ? 'Needs your decision' : undefined,
-      href: `/quotes/${q.id}`,
-    }));
+/**
+ * What waits on the viewer. Someone who can approve sees the approvals first,
+ * oldest first, because those are theirs to decide; drafts follow on their own.
+ * The panel used to mix the two, sort by creation and keep three, so a week of
+ * approvals could sit behind three fresh drafts.
+ */
+function waitingGroups(quotes: DashboardQuote[], canApprove: boolean): ScheduleGroup[] {
+  const approvals = awaitingApproval(quotes);
+  const draftList = drafts(quotes);
+
+  const approvalGroup: ScheduleGroup = {
+    key: 'approvals',
+    title: canApprove ? 'Your approval' : 'With an approver',
+    count: approvals.length,
+    items: approvals.slice(0, APPROVALS_SHOWN).map((q) => quoteItem(q, 'Waiting since')),
+    href: '/quotes',
+    tone: canApprove ? 'warning' : 'neutral',
+  };
+  const draftGroup: ScheduleGroup = {
+    key: 'drafts',
+    title: 'Drafts not yet submitted',
+    count: draftList.length,
+    items: draftList.slice(0, DRAFTS_SHOWN).map((q) => quoteItem(q, 'Last changed')),
+    href: '/quotes',
+  };
+
+  return canApprove ? [approvalGroup, draftGroup] : [draftGroup, approvalGroup];
 }
 
 /**
@@ -204,37 +187,46 @@ function buildSetupSteps(input: {
   ];
 }
 
+const listOf = <T,>(value: { items?: T[] } | T[] | null): T[] | null =>
+  value === null ? null : Array.isArray(value) ? value : (value.items ?? []);
+
 export default async function DashboardPage() {
   const session = await requireSession();
   const now = new Date();
   const greeting = getGreeting(now);
   const formattedDate = getFormattedDate(now);
+  const canApprove = can(session, { permission: PERMISSIONS.QUOTE_APPROVE });
+  const canCreateQuote = can(session, { permission: PERMISSIONS.QUOTE_CREATE });
 
   // Each returns null rather than throwing when the user lacks the permission.
   const [
     stats,
     quotes,
-    invoices,
+    invoiceList,
     organization,
     accounts,
     catalogItems,
     taxCodes,
     customers,
-  ] =
-    await Promise.all([
-      serverFetchOrNull<ContactStatsDto>('/contacts/stats'),
-      serverFetchOrNull<DashboardQuote[]>('/quotes'),
-      serverFetchOrNull<{ items?: DashboardInvoice[] } | DashboardInvoice[]>(
-        '/invoices',
-      ),
-      serverFetchOrNull<OrganizationProfileDto>('/organization'),
-      serverFetchOrNull<unknown[]>('/finance/accounts'),
-      serverFetchOrNull<unknown[]>('/catalog/items', { query: { limit: 1 } }),
-      serverFetchOrNull<Array<{ rate: number }>>('/finance/tax-codes'),
-      serverFetchOrNull<{ items?: unknown[] } | unknown[]>('/customers', {
-        query: { limit: 1 },
-      }),
-    ]);
+    releasedJobs,
+    runningJobs,
+  ] = await Promise.all([
+    serverFetchOrNull<ContactStatsDto>('/contacts/stats'),
+    serverFetchOrNull<DashboardQuote[]>('/quotes'),
+    serverFetchOrNull<{ items?: DashboardInvoice[] } | DashboardInvoice[]>('/invoices'),
+    serverFetchOrNull<OrganizationProfileDto>('/organization'),
+    serverFetchOrNull<unknown[]>('/finance/accounts'),
+    serverFetchOrNull<unknown[]>('/catalog/items', { query: { limit: 1 } }),
+    serverFetchOrNull<Array<{ rate: number }>>('/finance/tax-codes'),
+    serverFetchOrNull<{ items?: unknown[] } | unknown[]>('/customers', {
+      query: { limit: 1 },
+    }),
+    serverFetchOrNull<DashboardWorkOrder[]>('/work-orders', { query: { status: 'RELEASED' } }),
+    serverFetchOrNull<DashboardWorkOrder[]>('/work-orders', { query: { status: 'IN_PROGRESS' } }),
+  ]);
+
+  const baseCurrency = organization?.baseCurrency;
+  const invoices = listOf(invoiceList);
 
   const setupSteps = buildSetupSteps({
     organization,
@@ -242,214 +234,227 @@ export default async function DashboardPage() {
     catalogCount: catalogItems?.length ?? null,
     // A rate someone chose, rather than the 0% code every tenant starts with.
     chargeableTaxCodes: taxCodes ? taxCodes.filter((c) => Number(c.rate) > 0).length : null,
-    customerCount: Array.isArray(customers)
-      ? customers.length
-      : (customers?.items?.length ?? null),
+    customerCount: listOf(customers)?.length ?? null,
   });
 
   const winRate = summariseWinRate(quotes ?? []);
-  const revenueSeries = monthlyRevenue(
-    Array.isArray(invoices) ? invoices : (invoices?.items ?? []),
-    now,
-  );
-  const awaiting = quotesAwaitingAction(quotes ?? [], organization?.baseCurrency);
+  const revenue = monthlyRevenue(invoices ?? [], baseCurrency, now);
 
-  const invoicedThisMonth = revenueSeries[revenueSeries.length - 1]?.value ?? 0;
-  const invoicedLastMonth = revenueSeries[revenueSeries.length - 2]?.value ?? 0;
-  const revenueGrowth =
-    invoicedLastMonth > 0
-      ? Math.round(
-          ((invoicedThisMonth - invoicedLastMonth) / invoicedLastMonth) * 1000,
-        ) / 10
-      : null;
+  // The tiles lead with what needs the viewer, and only what they can act on
+  // or read. A figure the API does not give us is left out, not estimated.
+  const tiles: TileProps[] = [];
+  if (quotes && canApprove) {
+    const approvals = sumQuotes(awaitingApproval(quotes), baseCurrency);
+    tiles.push({
+      id: 'approvals',
+      label: 'Awaiting your approval',
+      value: approvals.count,
+      detail:
+        approvals.count > 0
+          ? `${formatMoney(approvals.amount, baseCurrency, { decimals: 0 })}${otherCurrencies(approvals.otherCurrencies)}`
+          : 'Nothing to approve',
+      tone: approvals.count > 0 ? 'warning' : 'neutral',
+      icon: ClipboardCheck,
+      href: '/quotes',
+    });
+  }
+  if (releasedJobs && runningJobs) {
+    const floor = jobsOnTheFloor([...releasedJobs, ...runningJobs], now);
+    tiles.push({
+      id: 'floor',
+      label: 'Jobs on the floor',
+      value: floor.count,
+      detail: floor.overdue > 0 ? `${floor.overdue} past due date` : 'None past due date',
+      tone: floor.overdue > 0 ? 'warning' : 'neutral',
+      icon: Factory,
+      href: '/production',
+    });
+  }
+  if (invoices) {
+    const overdue = overdueInvoices(invoices, baseCurrency, now);
+    tiles.push({
+      id: 'overdue',
+      label: 'Overdue invoices',
+      value: overdue.count,
+      detail:
+        overdue.count > 0
+          ? `${formatMoney(overdue.amount, baseCurrency, { decimals: 0 })} owed${otherCurrencies(overdue.otherCurrencies)}`
+          : 'Nothing overdue',
+      tone: overdue.count > 0 ? 'danger' : 'neutral',
+      icon: ReceiptText,
+      href: '/invoices',
+    });
+  }
+
+  // Win rate sits in the row as a figure, not a decorative ring beside it.
+  if (quotes && winRate.decided > 0) {
+    tiles.push({
+      id: 'win-rate',
+      label: 'Quote win rate',
+      value: `${winRate.percentage}%`,
+      detail: `${winRate.won} won of ${winRate.decided} decided`,
+      tone: 'neutral',
+      icon: Target,
+      href: '/quotes',
+    });
+  }
 
   return (
     <div className="space-y-6">
-      {/* Hero Greeting Header Banner */}
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border/80 bg-surface p-6 shadow-xs">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink sm:text-3xl">
+          <h1 className="text-2xl font-bold tracking-tight text-ink">
             {greeting}, {session.user.firstName}
           </h1>
           <p className="mt-1 text-sm text-ink-muted">
-            It&apos;s {formattedDate} • You&apos;re signed in to <strong className="font-semibold text-ink">{session.organization.name}</strong>.
+            {formattedDate} · {session.organization.name}
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        {canCreateQuote && (
           <Link
             href="/quotes/new"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-3.5 py-2 text-xs font-semibold text-on-brand shadow-xs transition-all hover:bg-brand-hover hover:shadow-sm"
+            className="inline-flex h-10 items-center gap-2 rounded-full bg-brand px-4.5 text-sm font-semibold text-on-brand shadow-xs transition-colors hover:bg-brand-hover"
           >
-            <FilePlus2 className="size-3.5" />
-            Create Quote
+            <FilePlus2 className="size-4" aria-hidden />
+            Create quote
           </Link>
-          <Link
-            href="/contacts"
-            className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-surface-muted/60 px-3.5 py-2 text-xs font-semibold text-ink transition-all hover:bg-surface-muted hover:text-ink"
-          >
-            View Contacts
-          </Link>
-        </div>
+        )}
       </div>
 
       <SetupChecklist steps={setupSteps} />
 
-      {stats ? (
-        <>
-          {/* Top Row: 4 Stat Chips (col-span-8) + Circular Gauge Widget (col-span-4) */}
-          <div className="grid gap-5 lg:grid-cols-12">
-            <div className="grid gap-3.5 sm:grid-cols-2 lg:col-span-8">
-              <Stat label="Total contacts" value={stats.total} icon={Users} tone="brand" />
-              <Stat label="Added this week" value={stats.createdThisWeek} icon={UserPlus} tone="info" />
-              <Stat label="Added this month" value={stats.createdThisMonth} icon={CalendarDays} tone="warning" />
-              <Stat label="Active Customers" value={stats.byStatus.customer} icon={Star} tone="success" />
-            </div>
+      {tiles.length > 0 && (
+        <div
+          className={cn(
+            'grid gap-3.5 sm:grid-cols-2',
+            tiles.length === 3 && 'lg:grid-cols-3',
+            tiles.length >= 4 && 'lg:grid-cols-4',
+          )}
+        >
+          {tiles.map((tile) => (
+            <Tile key={tile.id} {...tile} />
+          ))}
+        </div>
+      )}
 
-            <div className="lg:col-span-4">
-              <DashboardGaugeWidget
-                percentage={winRate.percentage}
-                title="Quotation win rate"
-                subtitle={
-                  winRate.decided > 0
-                    ? `${winRate.won} of ${winRate.decided} decided`
-                    : 'Accepted vs rejected quotes'
-                }
-                emptyLabel={
-                  winRate.decided === 0
-                    ? 'No quote has been accepted or rejected yet, so there is no win rate to show.'
+      {(invoices || quotes) && (
+        // grid-cols-1 caps the phone column at the screen width: truncated
+        // titles otherwise widen it by their full text and the page scrolls sideways.
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+          {invoices && (
+            <div className={quotes ? 'lg:col-span-7' : 'lg:col-span-12'}>
+              <DashboardKpiChart
+                series={revenue.series}
+                currency={baseCurrency}
+                note={
+                  revenue.otherCurrencies > 0
+                    ? `Leaves out ${revenue.otherCurrencies} ${revenue.otherCurrencies === 1 ? 'invoice' : 'invoices'} in other currencies`
                     : undefined
                 }
                 className="h-full"
               />
             </div>
-          </div>
+          )}
 
-          {/* Middle Row: Golden Wave KPI Chart (60% width) + Warm Schedule & Deals Cards (40% width) */}
-          {/* grid-cols-1 caps the phone column at the screen width: the cards' truncated
-              titles otherwise widen it by their full text and the page scrolls sideways. */}
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
-            <div className="lg:col-span-7">
-              <DashboardKpiChart
-                series={revenueSeries}
-                title="Invoiced revenue"
-                metricLabel="This month"
-                metricValue={formatMoney(invoicedThisMonth, organization?.baseCurrency, {
-                  decimals: 0,
-                })}
-                growthLabel={
-                  revenueGrowth === null
-                    ? undefined
-                    : `${revenueGrowth >= 0 ? '+' : ''}${revenueGrowth}% vs last month`
-                }
-                className="h-full"
-              />
-            </div>
-
-            <div className="lg:col-span-5">
+          {quotes && (
+            <div className={invoices ? 'lg:col-span-5' : 'lg:col-span-12'}>
               <DashboardScheduleCards
-                items={awaiting}
+                groups={waitingGroups(quotes, canApprove)}
                 emptyLabel="No quotes are waiting for a decision."
                 className="h-full"
               />
             </div>
-          </div>
-
-          {/* Bottom Row: Pipeline Status Breakdown + User RBAC Access */}
-          <div className="grid items-start gap-5 lg:grid-cols-2">
-            <Card className="rounded-2xl border-border bg-surface shadow-xs">
-              <CardHeader className="flex items-center justify-between border-b border-border/70 px-5 py-4">
-                <CardTitle className="text-sm font-semibold text-ink">Contacts Pipeline by Status</CardTitle>
-                <Link
-                  href="/contacts"
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-brand hover:underline"
-                >
-                  View contacts
-                  <ArrowRight className="size-3.5" />
-                </Link>
-              </CardHeader>
-              <CardBody className="space-y-4 px-5 py-4">
-                {Object.entries(stats.byStatus).map(([status, count]) => {
-                  const share = stats.total > 0 ? (count / stats.total) * 100 : 0;
-                  return (
-                    <div key={status} className="space-y-1.5">
-                      <div className="flex items-baseline justify-between text-xs font-medium">
-                        <span className="text-ink">
-                          {CONTACT_STATUS_LABELS[status as keyof typeof CONTACT_STATUS_LABELS] || status}
-                        </span>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-ink-subtle">{Math.round(share)}%</span>
-                          <span className="font-semibold tabular-nums text-ink">{count}</span>
-                        </div>
-                      </div>
-                      <div
-                        className="h-2.5 overflow-hidden rounded-full bg-surface-muted"
-                        role="img"
-                        aria-label={`${count} contacts, ${Math.round(share)} percent of the pipeline`}
-                      >
-                        <div
-                          className="h-full rounded-full bg-brand transition-[width] duration-500"
-                          style={{ width: `${share}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </CardBody>
-            </Card>
-
-            <AccessCard session={session} />
-          </div>
-        </>
-      ) : (
-        <div className="grid gap-5 lg:grid-cols-2">
-          <Card className="rounded-2xl border-border bg-surface shadow-xs">
-            <CardBody className="py-8 text-center text-sm text-ink-muted">
-              Your role doesn&apos;t include access to contacts statistics. Ask an administrator if you think that&apos;s wrong.
-            </CardBody>
-          </Card>
-          <AccessCard session={session} />
+          )}
         </div>
       )}
+
+      <div className="grid items-start gap-5 lg:grid-cols-2">
+        {stats && <ContactsCard stats={stats} />}
+        <AccessCard session={session} />
+      </div>
     </div>
   );
 }
 
-const STAT_TONES = {
-  brand: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
-  info: 'bg-sky-500/15 text-sky-600 dark:text-sky-400',
-  warning: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
-  success: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+const TILE_TONES = {
+  neutral: 'bg-surface-muted text-ink-muted',
+  warning: 'bg-warning-soft text-warning',
+  danger: 'bg-danger-soft text-danger',
 } as const;
 
-function Stat({
-  label,
-  value,
-  icon: Icon,
-  tone,
-}: {
+interface TileProps {
+  id: string;
   label: string;
-  value: number;
+  value: number | string;
+  /** The money or the detail behind the count, in words. */
+  detail: string;
+  tone: keyof typeof TILE_TONES;
   icon: LucideIcon;
-  tone: keyof typeof STAT_TONES;
-}) {
+  href: string;
+}
+
+function Tile({ label, value, detail, tone, icon: Icon, href }: TileProps) {
   return (
-    <Card className="rounded-2xl border-border bg-surface p-4 shadow-xs transition-all hover:shadow-sm">
-      <div className="flex items-center gap-3.5">
-        <span
-          className={`grid size-11 shrink-0 place-items-center rounded-xl ${STAT_TONES[tone]}`}
-        >
-          <Icon className="size-5" />
+    <Link
+      href={href}
+      data-testid="dashboard-tile"
+      className="group rounded-2xl border border-border bg-surface p-4 shadow-xs transition-colors hover:bg-surface-muted"
+    >
+      <div className="flex items-start gap-3.5">
+        <span className={`grid size-10 shrink-0 place-items-center rounded-xl ${TILE_TONES[tone]}`}>
+          <Icon className="size-5" aria-hidden />
         </span>
         <div className="min-w-0">
-          <p className="truncate text-xs font-semibold tracking-wide text-ink-subtle uppercase">
-            {label}
-          </p>
-          <p className="mt-0.5 text-2xl font-extrabold tabular-nums tracking-tight text-ink">
-            {value}
+          <p className="text-xs font-semibold tracking-wide text-ink-muted uppercase">{label}</p>
+          <p className="mt-0.5 text-2xl font-bold tabular-nums tracking-tight text-ink">{value}</p>
+          <p className={cn('text-xs tabular-nums', tone === 'danger' ? 'font-medium text-danger' : 'text-ink-muted')}>
+            {detail}
           </p>
         </div>
       </div>
+    </Link>
+  );
+}
+
+function ContactsCard({ stats }: { stats: ContactStatsDto }) {
+  return (
+    <Card className="rounded-2xl border-border bg-surface shadow-xs">
+      <CardHeader className="flex items-center justify-between border-b border-border/70 px-5 py-4">
+        <CardTitle className="text-sm font-semibold text-ink">Contacts by status</CardTitle>
+        <Link
+          href="/contacts"
+          className="inline-flex items-center gap-1 text-xs font-semibold text-ink underline-offset-2 hover:underline"
+        >
+          View contacts
+          <ArrowRight className="size-3.5" aria-hidden />
+        </Link>
+      </CardHeader>
+      <CardBody className="space-y-4 px-5 py-4">
+        {Object.entries(stats.byStatus).map(([status, count]) => {
+          const share = stats.total > 0 ? (count / stats.total) * 100 : 0;
+          return (
+            <div key={status} className="space-y-1.5">
+              <div className="flex items-baseline justify-between text-xs font-medium">
+                <span className="text-ink">
+                  {CONTACT_STATUS_LABELS[status as keyof typeof CONTACT_STATUS_LABELS] || status}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="tabular-nums text-ink-subtle">{Math.round(share)}%</span>
+                  <span className="font-semibold tabular-nums text-ink">{count}</span>
+                </div>
+              </div>
+              <div
+                className="h-2 overflow-hidden rounded-full bg-surface-muted"
+                role="img"
+                aria-label={`${count} contacts, ${Math.round(share)} percent of the total`}
+              >
+                <div className="h-full rounded-full bg-ink-subtle" style={{ width: `${share}%` }} />
+              </div>
+            </div>
+          );
+        })}
+      </CardBody>
     </Card>
   );
 }
@@ -486,25 +491,25 @@ function AccessCard({ session }: { session: SessionDto }) {
     <Card className="rounded-2xl border-border bg-surface shadow-xs">
       <CardHeader className="flex items-center justify-between border-b border-border/70 px-5 py-4">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold text-ink">
-          <ShieldCheck className="size-4 text-amber-600 dark:text-amber-400" />
-          Your Access & Roles
+          <ShieldCheck className="size-4 text-ink-muted" aria-hidden />
+          Your access and roles
         </CardTitle>
         {canManageRoles && (
           <Link
             href="/settings/roles"
-            className="inline-flex items-center gap-1 text-xs font-semibold text-brand hover:underline"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-ink underline-offset-2 hover:underline"
           >
             Manage roles
-            <ArrowRight className="size-3.5" />
+            <ArrowRight className="size-3.5" aria-hidden />
           </Link>
         )}
       </CardHeader>
       <CardBody className="space-y-4 px-5 py-4">
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-subtle">Assigned Roles</p>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-subtle">Assigned roles</p>
           <div className="flex flex-wrap gap-1.5">
             {session.user.roles.map((role) => (
-              <Badge key={role.id} tone="brand" className="rounded-lg px-2.5 py-1 text-xs font-medium">
+              <Badge key={role.id} tone="neutral" className="px-2.5 py-1 text-xs font-medium">
                 {role.name}
               </Badge>
             ))}
@@ -521,7 +526,7 @@ function AccessCard({ session }: { session: SessionDto }) {
                 <span
                   className={
                     area.held === area.total
-                      ? 'shrink-0 font-semibold tabular-nums text-emerald-600 dark:text-emerald-400'
+                      ? 'shrink-0 font-semibold tabular-nums text-success'
                       : 'shrink-0 tabular-nums text-ink-subtle'
                   }
                 >
@@ -533,7 +538,7 @@ function AccessCard({ session }: { session: SessionDto }) {
           {canManageRoles && (
             <p className="mt-3 text-[11px] text-ink-subtle">
               The individual permission codes are on{' '}
-              <Link href="/settings/roles" className="font-medium text-brand hover:underline">
+              <Link href="/settings/roles" className="font-medium text-ink underline underline-offset-2">
                 Settings &rarr; Roles &amp; permissions
               </Link>
               .

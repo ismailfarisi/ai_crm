@@ -48,7 +48,7 @@ export function PayRunModal({ open, onClose, method, amount, onSubmit, isLoading
       open={open}
       onClose={onClose}
       title={title ?? (method === 'BANK' ? 'Pay by bank transfer' : 'Pay cash employees')}
-      description={description ?? `Records ${money(amount)} paid to employees on ${label}.`}
+      description={description ?? `Records ${money(amount, baseCurrency)} paid to employees on ${label}.`}
     >
       <form
         data-testid="pay-run-form"

@@ -9,6 +9,7 @@ import {
   type SupplierBillDto,
 } from '@saas/shared';
 import { api } from '@/lib/api/endpoints';
+import { formatMoney } from '@/lib/utils';
 import { useBillableLines, useCreateBill } from '@/hooks/use-bills';
 import { usePurchasePolicy } from '@/hooks/use-purchase-orders';
 import { Button } from '@/components/ui/button';
@@ -139,7 +140,7 @@ export function EnterBillDialog({ open, onClose, order, prefill, onCreated }: En
               onCreated?.(bill);
             }}
           >
-            Save draft · {totals.total.toFixed(2)} {order.currency}
+            Save draft · {formatMoney(totals.total, order.currency)}
           </Button>
         </>
       }

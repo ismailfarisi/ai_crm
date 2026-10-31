@@ -47,7 +47,7 @@ export function EmployeesView() {
         accessorKey: 'employeeNumber',
         header: ({ column }) => <DataTableColumnHeader column={column} title="No." />,
         cell: ({ row }) => (
-          <Link href={`/people/employees/${row.original.id}`} className="font-medium text-accent hover:underline">
+          <Link href={`/people/employees/${row.original.id}`} className="font-medium text-ink underline-offset-2 hover:underline">
             {row.original.employeeNumber}
           </Link>
         ),

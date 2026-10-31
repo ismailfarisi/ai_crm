@@ -19,7 +19,8 @@ import { Button } from '@/components/ui/button';
 import { Input, Select } from '@/components/ui/field';
 import { useCan } from '@/lib/session-context';
 import { useSuppliers } from '@/hooks/use-suppliers';
-import { formatFinanceCurrency } from '../dashboard/treasury-stat-cards';
+import { useOrganization } from '@/hooks/use-organization';
+import { formatFinanceCurrency } from '../money';
 
 type FormIn = z.input<typeof createRecurringExpenseSchema>;
 type FormOut = z.output<typeof createRecurringExpenseSchema>;
@@ -99,6 +100,12 @@ export function SubscriptionFormModal({
   const amount = Number(form.watch('amount') || 0);
   const supplierId = form.watch('supplierId');
   const errors = form.formState.errors;
+  // Bills are raised in the supplier's currency, or the base currency without one.
+  const base = useOrganization().data?.baseCurrency ?? '';
+  const supplierCurrency =
+    (suppliers?.items ?? []).find((s) => s.id === supplierId)?.currency ??
+    (existing && existing.supplierId === supplierId ? existing.currency : null);
+  const currency = supplierCurrency || base;
 
   // The server refuses these edits without bill:approve while auto-approve is on,
   // so say so up front rather than after a round trip.
@@ -211,7 +218,7 @@ export function SubscriptionFormModal({
         />
         {interval !== 'MONTHLY' && amount > 0 && (
           <p data-testid="monthly-equivalent" className="text-xs text-ink-muted">
-            About {formatFinanceCurrency(monthlyEquivalent(amount, interval))} a month
+            About {formatFinanceCurrency(monthlyEquivalent(amount, interval), currency)} a month
           </p>
         )}
 

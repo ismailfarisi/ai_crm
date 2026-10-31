@@ -270,6 +270,13 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <AssistantProvider>
+    {/* The sidebar is about 37 tab stops; the first one skips it. */}
+    <a
+      href="#main-content"
+      className="sr-only z-50 rounded-full bg-charcoal px-4 py-2 text-sm font-semibold text-on-charcoal focus:not-sr-only focus:fixed focus:start-4 focus:top-3"
+    >
+      Skip to content
+    </a>
     <div className="flex min-h-screen">
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-border bg-surface lg:flex print:hidden">
@@ -332,7 +339,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <BillingBanner />
         </div>
 
-        <main className="flex-1 px-4 py-6 lg:px-8 lg:py-8 print:p-0 print:m-0">
+        <main id="main-content" tabIndex={-1} className="flex-1 px-4 py-6 outline-none lg:px-8 lg:py-8 print:p-0 print:m-0">
           <div className="mx-auto max-w-6xl space-y-6 print:max-w-none print:space-y-0">{children}</div>
         </main>
       </div>

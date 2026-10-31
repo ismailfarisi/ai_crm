@@ -28,6 +28,8 @@ import type { CategoryBudgetDto, BudgetPeriod } from '@saas/shared';
 
 export interface BudgetMeterCardProps {
   budget: CategoryBudgetDto;
+  /** Budgets carry no currency of their own: they are set in the organisation's base currency. */
+  currency: string;
   isLoading?: boolean;
   onEdit?: (budget: CategoryBudgetDto) => void;
   onDelete?: (budget: CategoryBudgetDto) => void;
@@ -37,6 +39,8 @@ export interface BudgetMeterCardProps {
 
 export interface BudgetGridProps {
   budgets?: CategoryBudgetDto[];
+  /** The organisation's base currency, which every budget is set in. */
+  currency: string;
   isLoading?: boolean;
   onNewBudget?: () => void;
   onEditBudget?: (budget: CategoryBudgetDto) => void;
@@ -46,10 +50,7 @@ export interface BudgetGridProps {
   className?: string;
 }
 
-export function formatBudgetCurrency(
-  amount: number | null | undefined,
-  currency: string = 'USD',
-): string {
+export function formatBudgetCurrency(amount: number | null | undefined, currency: string): string {
   const safeAmount = amount ?? 0;
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -79,41 +80,41 @@ export function getCategoryBudgetMetadata(category: string) {
     return {
       icon: TrendingUp,
       badgeTone: 'info' as const,
-      colorClass: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
+      colorClass: 'bg-surface-muted text-ink-muted border-border',
     };
   }
   if (normalized.includes('soft') || normalized.includes('saas') || normalized.includes('tech') || normalized.includes('cloud')) {
     return {
       icon: Laptop,
       badgeTone: 'brand' as const,
-      colorClass: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20',
+      colorClass: 'bg-surface-muted text-ink-muted border-border',
     };
   }
   if (normalized.includes('travel') || normalized.includes('flight') || normalized.includes('hotel')) {
     return {
       icon: Plane,
       badgeTone: 'warning' as const,
-      colorClass: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
+      colorClass: 'bg-surface-muted text-ink-muted border-border',
     };
   }
   if (normalized.includes('office') || normalized.includes('suppl')) {
     return {
       icon: Building,
       badgeTone: 'neutral' as const,
-      colorClass: 'bg-stone-500/10 text-stone-600 dark:text-stone-400 border-stone-500/20',
+      colorClass: 'bg-surface-muted text-ink-muted border-border',
     };
   }
   if (normalized.includes('payroll') || normalized.includes('sal') || normalized.includes('contractor') || normalized.includes('people')) {
     return {
       icon: Users,
       badgeTone: 'success' as const,
-      colorClass: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+      colorClass: 'bg-surface-muted text-ink-muted border-border',
     };
   }
   return {
     icon: ShoppingBag,
     badgeTone: 'neutral' as const,
-    colorClass: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
+    colorClass: 'bg-surface-muted text-ink-muted border-border',
   };
 }
 
@@ -128,16 +129,16 @@ export function calculateBudgetStatus(
   const isNearLimit = !isOverBudget && percentage >= thresholdPercent;
   const isHealthy = !isOverBudget && !isNearLimit;
 
-  let meterColor = 'bg-emerald-500 dark:bg-emerald-400';
+  let meterColor = 'bg-success';
   let badgeTone: 'success' | 'warning' | 'danger' = 'success';
   let statusText = 'On Track';
 
   if (isOverBudget) {
-    meterColor = 'bg-rose-500 dark:bg-rose-400';
+    meterColor = 'bg-danger';
     badgeTone = 'danger';
     statusText = 'Over Budget';
   } else if (isNearLimit) {
-    meterColor = 'bg-amber-500 dark:bg-amber-400';
+    meterColor = 'bg-warning';
     badgeTone = 'warning';
     statusText = 'Near Limit';
   }
@@ -157,6 +158,7 @@ export function calculateBudgetStatus(
 
 export function BudgetMeterCard({
   budget,
+  currency,
   isLoading = false,
   onEdit,
   onDelete,
@@ -168,7 +170,7 @@ export function BudgetMeterCard({
       <div
         data-testid="budget-meter-loading"
         className={cn(
-          'flex flex-col justify-between rounded-2xl border border-border/40 bg-surface/85 p-5 shadow-xs',
+          'flex flex-col justify-between rounded-2xl border border-border/40 bg-surface p-5 shadow-xs',
           className,
         )}
       >
@@ -195,11 +197,11 @@ export function BudgetMeterCard({
     <div
       data-testid={`budget-meter-card-${budget.id}`}
       className={cn(
-        'group relative flex flex-col justify-between rounded-2xl border bg-surface/85 p-5 shadow-xs backdrop-blur-xs transition-all hover:border-border hover:shadow-sm',
+        'group relative flex flex-col justify-between rounded-2xl border bg-surface p-5 shadow-xs transition-all hover:border-border hover:shadow-sm',
         status.isOverBudget
-          ? 'border-rose-500/30 bg-rose-500/5'
+          ? 'border-danger/30 bg-danger-soft'
           : status.isNearLimit
-          ? 'border-amber-500/30 bg-amber-500/5'
+          ? 'border-warning/30 bg-warning-soft'
           : 'border-border/40',
         className,
       )}
@@ -219,7 +221,7 @@ export function BudgetMeterCard({
             <div>
               <h3
                 data-testid={`budget-category-${budget.id}`}
-                className="text-sm font-bold text-ink group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors"
+                className="text-sm font-bold text-ink transition-colors"
               >
                 {budget.category}
               </h3>
@@ -259,7 +261,7 @@ export function BudgetMeterCard({
                 data-testid={`btn-delete-budget-${budget.id}`}
                 onClick={() => onDelete(budget)}
                 aria-label="Delete budget"
-                className="rounded-lg p-1 text-ink-subtle hover:bg-surface-muted hover:text-rose-600 cursor-pointer transition-colors"
+                className="rounded-lg p-1 text-ink-subtle hover:bg-surface-muted hover:text-danger cursor-pointer transition-colors"
               >
                 <Trash2 className="size-3.5" />
               </button>
@@ -274,13 +276,13 @@ export function BudgetMeterCard({
               data-testid={`budget-spent-amount-${budget.id}`}
               className="text-2xl font-extrabold tracking-tight tabular-nums text-ink"
             >
-              {formatBudgetCurrency(budget.spentAmount)}
+              {formatBudgetCurrency(budget.spentAmount, currency)}
             </span>
             <span
               data-testid={`budget-total-amount-${budget.id}`}
               className="text-xs font-semibold text-ink-muted tabular-nums"
             >
-              cap: {formatBudgetCurrency(budget.budgetAmount)}
+              cap: {formatBudgetCurrency(budget.budgetAmount, currency)}
             </span>
           </div>
 
@@ -319,7 +321,7 @@ export function BudgetMeterCard({
                 {status.isOverBudget ? (
                   <span
                     data-testid={`status-badge-overbudget-${budget.id}`}
-                    className="inline-flex items-center gap-1 font-bold text-rose-600 dark:text-rose-400"
+                    className="inline-flex items-center gap-1 font-bold text-danger"
                   >
                     <AlertOctagon className="size-3.5" />
                     Over Budget ({status.percentage}%)
@@ -327,7 +329,7 @@ export function BudgetMeterCard({
                 ) : status.isNearLimit ? (
                   <span
                     data-testid={`status-badge-warning-${budget.id}`}
-                    className="inline-flex items-center gap-1 font-bold text-amber-600 dark:text-amber-400"
+                    className="inline-flex items-center gap-1 font-bold text-warning"
                   >
                     <AlertTriangle className="size-3.5" />
                     Near Cap ({status.percentage}%)
@@ -337,7 +339,7 @@ export function BudgetMeterCard({
                     data-testid={`status-badge-healthy-${budget.id}`}
                     className="inline-flex items-center gap-1 text-ink-muted"
                   >
-                    <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <CheckCircle2 className="size-3.5 text-success" />
                     {status.percentage}% spent
                   </span>
                 )}
@@ -348,13 +350,13 @@ export function BudgetMeterCard({
                 className={cn(
                   'font-semibold tabular-nums',
                   status.remaining < 0
-                    ? 'text-rose-600 dark:text-rose-400'
+                    ? 'text-danger'
                     : 'text-ink-muted',
                 )}
               >
                 {status.remaining < 0
-                  ? `+${formatBudgetCurrency(Math.abs(status.remaining))} over`
-                  : `${formatBudgetCurrency(status.remaining)} left`}
+                  ? `+${formatBudgetCurrency(Math.abs(status.remaining), currency)} over`
+                  : `${formatBudgetCurrency(status.remaining, currency)} left`}
               </span>
             </div>
           </div>
@@ -383,6 +385,7 @@ export function BudgetMeterCard({
 
 export function BudgetGrid({
   budgets = [],
+  currency,
   isLoading = false,
   onNewBudget,
   onEditBudget,
@@ -405,7 +408,7 @@ export function BudgetGrid({
           {Array.from({ length: 3 }).map((_, idx) => (
             <div
               key={idx}
-              className="rounded-2xl border border-border/40 bg-surface/85 p-5 space-y-4"
+              className="rounded-2xl border border-border/40 bg-surface p-5 space-y-4"
             >
               <div className="flex justify-between">
                 <Skeleton className="size-10 rounded-xl" />
@@ -425,7 +428,7 @@ export function BudgetGrid({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="grid size-7 place-items-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+            <span className="grid size-7 place-items-center rounded-lg bg-surface-muted text-ink-muted">
               <DollarSign className="size-4" />
             </span>
             <h2 className="text-lg font-bold tracking-tight text-ink sm:text-xl">{title}</h2>
@@ -436,7 +439,7 @@ export function BudgetGrid({
         {onNewBudget && (
           <Button
             type="button"
-            variant="primary"
+            variant="outline"
             size="sm"
             data-testid="new-budget-btn"
             onClick={onNewBudget}
@@ -453,7 +456,7 @@ export function BudgetGrid({
           data-testid="budget-grid-empty"
           className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/70 bg-surface/40 px-6 py-12 text-center"
         >
-          <div className="grid size-12 place-items-center rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+          <div className="grid size-12 place-items-center rounded-2xl bg-surface-muted text-ink-muted">
             <Layers className="size-6" />
           </div>
           <h3 className="mt-3 text-sm font-semibold text-ink">No category budgets created</h3>
@@ -479,6 +482,7 @@ export function BudgetGrid({
             <BudgetMeterCard
               key={budget.id}
               budget={budget}
+              currency={currency}
               onEdit={onEditBudget}
               onDelete={onDeleteBudget}
             />

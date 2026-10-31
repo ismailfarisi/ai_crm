@@ -120,7 +120,7 @@ export function TemplateListView() {
                       <div className="flex items-center gap-2">
                         <Link
                           href={`/settings/document-templates/${tmpl.id}`}
-                          className="font-bold text-ink hover:text-brand transition-colors text-base"
+                          className="text-sm font-semibold text-ink underline-offset-2 hover:underline"
                         >
                           {tmpl.name}
                         </Link>
@@ -143,12 +143,12 @@ export function TemplateListView() {
                       <div className="flex items-center gap-3">
                         <div className="flex items-center -space-x-1">
                           <span
-                            className="size-5 rounded-full border border-white shadow-xs inline-block"
+                            className="size-5 rounded-full border border-surface shadow-xs inline-block"
                             style={{ backgroundColor: primaryColor }}
                             title={`Primary: ${primaryColor}`}
                           />
                           <span
-                            className="size-5 rounded-full border border-white shadow-xs inline-block"
+                            className="size-5 rounded-full border border-surface shadow-xs inline-block"
                             style={{ backgroundColor: secondaryColor }}
                             title={`Secondary: ${secondaryColor}`}
                           />
@@ -265,7 +265,7 @@ export function TemplateListView() {
                   type="checkbox"
                   checked={isChecked}
                   onChange={() => toggleDefaultType(type)}
-                  className="rounded border-border text-brand focus:ring-brand size-4 cursor-pointer"
+                  className="rounded border-border-control accent-[var(--color-brand)] size-4 cursor-pointer"
                 />
               </label>
             );

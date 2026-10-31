@@ -18,6 +18,14 @@ import { Button } from '@/components/ui/button';
 import { Input, Select } from '@/components/ui/field';
 import { CountrySelect } from '@/components/ui/country-select';
 import { Alert } from '@/components/ui/primitives';
+import { UNREACHABLE_MESSAGE } from '@/components/auth/messages';
+
+// The market is the UAE first, so the dirham leads and is the default.
+const BASE_CURRENCY = 'AED';
+const BASE_CURRENCY_OPTIONS = [
+  ...CURRENCY_OPTIONS.filter((currency) => currency.code === BASE_CURRENCY),
+  ...CURRENCY_OPTIONS.filter((currency) => currency.code !== BASE_CURRENCY),
+].map((currency) => ({ value: currency.code, label: currencyLongLabel(currency.code) }));
 
 export function RegisterForm() {
   const router = useRouter();
@@ -37,7 +45,7 @@ export function RegisterForm() {
       lastName: '',
       email: '',
       password: '',
-      baseCurrency: 'USD',
+      baseCurrency: BASE_CURRENCY,
       country: '',
     },
   });
@@ -54,7 +62,7 @@ export function RegisterForm() {
         }
         setFormError(error.message);
       } else {
-        setFormError('Could not reach the server. Is the API running?');
+        setFormError(UNREACHABLE_MESSAGE);
       }
     }
   });
@@ -71,7 +79,7 @@ export function RegisterForm() {
 
         <Input
           label="Company name"
-          placeholder="Northwind Trading"
+          placeholder="Harbour Box Works"
           error={errors.organizationName?.message}
           {...register('organizationName')}
         />
@@ -119,10 +127,7 @@ export function RegisterForm() {
           <Select
             label="Base currency"
             hint="The currency your books are kept in. It cannot be changed later."
-            options={CURRENCY_OPTIONS.map((currency) => ({
-              value: currency.code,
-              label: currencyLongLabel(currency.code),
-            }))}
+            options={BASE_CURRENCY_OPTIONS}
             error={errors.baseCurrency?.message}
             {...register('baseCurrency')}
           />
@@ -142,7 +147,7 @@ export function RegisterForm() {
 
       <p className="mt-6 text-sm text-ink-muted">
         Already have an account?{' '}
-        <Link href="/login" className="font-medium text-brand hover:underline">
+        <Link href="/login" className="font-medium text-ink underline underline-offset-2">
           Sign in
         </Link>
       </p>

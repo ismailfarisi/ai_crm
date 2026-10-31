@@ -1,12 +1,16 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { MessageSquare, RefreshCw } from 'lucide-react';
-import { api, queryKeys, type ChannelMessageDto } from '@/lib/api/endpoints';
+import { PERMISSIONS } from '@saas/shared';
+import { api, queryKeys } from '@/lib/api/endpoints';
 import { useContacts } from '@/hooks/use-contacts';
+import { useMediaQuery } from '@/hooks/use-media-query';
+import { useCan } from '@/lib/session-context';
 import { Button } from '@/components/ui/button';
-import { Card, EmptyState, Skeleton } from '@/components/ui/primitives';
+import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { InboxThreadList, type ProviderFilter, type ThreadGroup } from './inbox-thread-list';
 import { InboxChatPanel } from './inbox-chat-panel';
 
@@ -14,13 +18,15 @@ export function InboxWorkspace() {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<ProviderFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+  // Below `md` there is room for one pane: the list, or the open thread.
+  const isDesktop = useMediaQuery('(min-width: 48rem)');
+  const canManageChannels = useCan({ permission: PERMISSIONS.CHANNEL_MANAGE });
 
   // Fetch messages history
   const {
     data: messages,
     isPending: isMessagesLoading,
     isError,
-    error,
     refetch,
   } = useQuery({
     queryKey: queryKeys.channelMessages(),
@@ -104,14 +110,38 @@ export function InboxWorkspace() {
     return result;
   }, [messages, contactsMap]);
 
-  // Active selected thread object
-  const selectedThread = useMemo(() => {
-    if (!selectedThreadId) return threads[0] || null;
-    return threads.find((t) => t.id === selectedThreadId) || threads[0] || null;
-  }, [threads, selectedThreadId]);
+  // The thread the user opened, if it is still in the list.
+  const openedThread = useMemo(
+    () => (selectedThreadId ? threads.find((t) => t.id === selectedThreadId) ?? null : null),
+    [threads, selectedThreadId],
+  );
+  // On a desk the newest thread is open until another is picked; on a phone
+  // nothing is open until the user taps one, so the list comes first.
+  const selectedThread = isDesktop ? openedThread ?? threads[0] ?? null : openedThread;
+
+  const threadList = (
+    <InboxThreadList
+      threads={threads}
+      selectedThreadId={selectedThread?.id ?? null}
+      onSelectThread={(t) => setSelectedThreadId(t.id)}
+      activeFilter={activeFilter}
+      onFilterChange={setActiveFilter}
+      searchQuery={searchQuery}
+      onSearchChange={setSearchQuery}
+    />
+  );
+
+  const chatPanel = (
+    <InboxChatPanel
+      thread={selectedThread}
+      onMessageSent={() => refetch()}
+      onBack={isDesktop ? undefined : () => setSelectedThreadId(null)}
+    />
+  );
 
   return (
-    <div className="flex h-[calc(100vh-8.5rem)] flex-col rounded-xl border border-border bg-surface shadow-xs overflow-hidden">
+    // dvh, not vh: on a phone the browser bar would otherwise cover the composer.
+    <div className="flex h-[calc(100dvh-8.5rem)] min-h-[24rem] flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-xs">
       {isMessagesLoading ? (
         <div className="flex h-full items-center justify-center p-8">
           <div className="space-y-4 text-center">
@@ -123,8 +153,8 @@ export function InboxWorkspace() {
       ) : isError ? (
         <EmptyState
           icon={<MessageSquare className="size-8" />}
-          title="Couldn't load messages"
-          description={error instanceof Error ? error.message : 'Please check your connection and try again.'}
+          title="Couldn't load your messages"
+          description="The inbox didn't answer. Check your connection, then try again."
           action={
             <Button variant="outline" onClick={() => refetch()}>
               <RefreshCw className="size-4" />
@@ -132,29 +162,33 @@ export function InboxWorkspace() {
             </Button>
           }
         />
-      ) : (
-        <div className="grid h-full grid-cols-1 md:grid-cols-12 divide-x divide-border">
-          {/* Thread list sidebar */}
-          <div className="md:col-span-4 lg:col-span-4 h-full overflow-hidden">
-            <InboxThreadList
-              threads={threads}
-              selectedThreadId={selectedThread?.id || null}
-              onSelectThread={(t) => setSelectedThreadId(t.id)}
-              activeFilter={activeFilter}
-              onFilterChange={setActiveFilter}
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
-            />
-          </div>
-
-          {/* Chat panel */}
-          <div className="md:col-span-8 lg:col-span-8 h-full overflow-hidden">
-            <InboxChatPanel
-              thread={selectedThread}
-              onMessageSent={() => refetch()}
-            />
-          </div>
+      ) : threads.length === 0 ? (
+        <EmptyState
+          icon={<MessageSquare className="size-8" />}
+          title="No conversations yet"
+          description={
+            canManageChannels
+              ? 'WhatsApp, Telegram and email messages land here once a channel is connected.'
+              : 'WhatsApp, Telegram and email messages land here once an admin connects a channel in Settings › Channels.'
+          }
+          action={
+            canManageChannels ? (
+              <Link
+                href="/settings/channels"
+                className="font-medium text-ink underline underline-offset-2 hover:no-underline"
+              >
+                Connect a channel in Settings › Channels
+              </Link>
+            ) : undefined
+          }
+        />
+      ) : isDesktop ? (
+        <div className="grid h-full min-h-0 grid-cols-12 divide-x divide-border">
+          <div className="col-span-4 h-full min-h-0 overflow-hidden">{threadList}</div>
+          <div className="col-span-8 h-full min-h-0 overflow-hidden">{chatPanel}</div>
         </div>
+      ) : (
+        <div className="h-full min-h-0 overflow-hidden">{selectedThread ? chatPanel : threadList}</div>
       )}
     </div>
   );

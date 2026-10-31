@@ -8,31 +8,64 @@ import { Button } from '@/components/ui/button';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { money, periodLabel } from './payroll-format';
 
-function Row({ label, amount, strong }: { label: string; amount: number; strong?: boolean }) {
+type Amount = { label: string; amount: number; testId?: string };
+
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+const sum = (rows: Amount[]) => round2(rows.reduce((s, r) => s + r.amount, 0));
+const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`;
+
+function Row({ label, amount, strong, testId }: Amount & { strong?: boolean }) {
   return (
-    <tr className={strong ? 'border-t border-black/30 font-semibold' : ''}>
+    <tr className={strong ? 'border-t border-border-strong font-semibold print:border-black/40' : ''}>
       <td className="py-1">{label}</td>
-      <td className="py-1 text-right tabular-nums">{money(amount)}</td>
+      <td data-testid={testId} className="py-1 text-right tabular-nums">
+        {money(amount)}
+      </td>
     </tr>
   );
 }
 
-export function Payslip({ slip }: { slip: PayslipDto }) {
-  const { line, employee, organization, run } = slip;
-  const cur = organization.baseCurrency;
-  const earnings: { label: string; amount: number }[] = [
+/**
+ * The payslip's two columns, built from the same parts `computeLine` uses so
+ * gross earnings less total deductions is exactly the net pay printed below.
+ */
+export function payslipRows(line: PayslipDto['line']): { earnings: Amount[]; deductions: Amount[] } {
+  const earnings: Amount[] = [
     { label: 'Basic', amount: line.basic },
     { label: 'Housing', amount: line.housing },
     { label: 'Transport', amount: line.transport },
     ...line.otherAllowances.map((a) => ({ label: a.label, amount: a.amount })),
   ];
-  const prorated = line.proratedGross !== line.gross;
-  const deductions: { label: string; amount: number }[] = [
-    { label: 'Unpaid leave', amount: line.unpaidLeaveAmount },
+  // The package is monthly; a part month pays only the days employed.
+  const notEmployed = round2(line.gross - line.proratedGross);
+  if (notEmployed !== 0) {
+    earnings.push({
+      label: `Part month: employed ${line.daysEmployed} of ${line.daysInMonth} days`,
+      amount: -notEmployed,
+    });
+  }
+  if (line.overtimeAmount > 0) earnings.push({ label: 'Overtime', amount: line.overtimeAmount });
+  if (line.bonusAmount > 0) earnings.push({ label: line.bonusLabel || 'Bonus', amount: line.bonusAmount });
+
+  const deductions: Amount[] = [
+    { label: `Unpaid leave (${plural(line.unpaidLeaveDays, 'day')})`, amount: line.unpaidLeaveAmount },
+    { label: `Half-pay leave (${plural(line.halfPayDays, 'day')} at half pay)`, amount: line.halfPayAmount },
+    {
+      label: line.pensionSchemeName ? `Pension: ${line.pensionSchemeName} (employee share)` : 'Pension (employee share)',
+      amount: line.pensionEmployee,
+    },
     { label: 'Advance recovery', amount: line.advanceRecovery },
     { label: line.otherDeductionLabel || 'Other deductions', amount: line.otherDeductionAmount },
   ].filter((d) => d.amount > 0);
-  const totalDeductions = deductions.reduce((s, d) => s + d.amount, 0);
+  return { earnings, deductions };
+}
+
+export function Payslip({ slip }: { slip: PayslipDto }) {
+  const { line, employee, organization, run } = slip;
+  const cur = organization.baseCurrency;
+  const { earnings, deductions } = payslipRows(line);
+  const grossEarnings = sum(earnings);
+  const totalDeductions = sum(deductions);
 
   return (
     <article data-testid="payslip" className="mx-auto max-w-2xl space-y-5 rounded-2xl border border-border/40 bg-surface p-8 print:max-w-none print:rounded-none print:border-0 print:p-0 print:text-black">
@@ -94,15 +127,7 @@ export function Payslip({ slip }: { slip: PayslipDto }) {
             {earnings.map((e, i) => (
               <Row key={`${e.label}-${i}`} label={e.label} amount={e.amount} />
             ))}
-            {prorated && (
-              <tr className="text-xs text-ink-muted">
-                <td colSpan={2} className="py-1">
-                  Prorated for {line.daysEmployed} of {line.daysInMonth} days: {money(line.proratedGross)}
-                </td>
-              </tr>
-            )}
-            {line.overtimeAmount > 0 && <Row label="Overtime" amount={line.overtimeAmount} />}
-            {line.bonusAmount > 0 && <Row label={line.bonusLabel || 'Bonus'} amount={line.bonusAmount} />}
+            <Row label="Gross earnings" amount={grossEarnings} strong testId="payslip-gross" />
           </tbody>
         </table>
       </section>
@@ -117,16 +142,16 @@ export function Payslip({ slip }: { slip: PayslipDto }) {
               {deductions.map((d) => (
                 <Row key={d.label} label={d.label} amount={d.amount} />
               ))}
-              <Row label="Total deductions" amount={totalDeductions} strong />
+              <Row label="Total deductions" amount={totalDeductions} strong testId="payslip-deductions" />
             </tbody>
           </table>
         )}
       </section>
 
-      <div className="flex items-center justify-between border-t-2 border-black/40 pt-3 text-lg font-bold">
+      <div className="flex items-center justify-between border-t-2 border-border-strong pt-3 text-lg font-bold print:border-black/60">
         <span>Net pay</span>
         <span data-testid="payslip-net" className="tabular-nums">
-          {cur} {money(line.netPay)}
+          {money(line.netPay, cur)}
         </span>
       </div>
     </article>

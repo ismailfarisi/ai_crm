@@ -65,7 +65,7 @@ export function OrderDeliveries({ order }: { order: SalesOrderDto }) {
     .filter((l) => l.qty > 0);
 
   return (
-    <section className="mb-6 rounded border border-line bg-surface" aria-labelledby="deliveries-heading">
+    <section className="mb-6 rounded-2xl border border-border bg-surface" aria-labelledby="deliveries-heading">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3">
         <h2 id="deliveries-heading" className="text-sm font-medium text-ink">
           Deliveries
@@ -190,7 +190,7 @@ export function OrderDeliveries({ order }: { order: SalesOrderDto }) {
                     step="any"
                     value={qty[line.id] ?? ''}
                     onChange={(e) => setQty((q) => ({ ...q, [line.id]: e.target.value }))}
-                    className="w-24 rounded border border-line bg-surface px-2 py-1 text-right tabular-nums text-ink"
+                    className="w-24 rounded-lg border border-border-control bg-surface px-2 py-1 text-right tabular-nums text-ink"
                   />
                 </td>
               </tr>

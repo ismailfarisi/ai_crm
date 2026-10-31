@@ -52,7 +52,7 @@ export function BadgeSelectCellEditor({
                 setIsOpen(false);
               }}
               className={`text-left text-xs px-2 py-1 rounded-sm hover:bg-surface-muted transition-colors flex items-center justify-between ${
-                opt.value === value ? 'font-semibold text-brand' : 'text-ink'
+                opt.value === value ? 'font-semibold text-ink' : 'text-ink'
               }`}
             >
               <span>{opt.label}</span>

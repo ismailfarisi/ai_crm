@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, type FormEvent } from 'react';
+import { useId, useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   CUSTOM_ATTRIBUTE_TYPES,
   type CustomAttributeType,
+  type CustomAttributeDefinitionDto,
   type CustomObjectDefinitionDto,
   type CreateCustomAttributePayload,
 } from '@saas/shared';
@@ -14,6 +15,8 @@ import { api, queryKeys } from '@/lib/api/endpoints';
 import { useCustomObject } from '@/hooks/use-custom-objects';
 import { Input, Select } from '@/components/ui/field';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { ModalShell } from '@/components/ui/modal-shell';
 import { Badge } from '@/components/ui/primitives';
 import { slugify } from './create-object-dialog';
 
@@ -43,16 +46,11 @@ export function AttributeEditorDrawer({
   const [optionsStr, setOptionsStr] = useState('');
   const [isSlugTouched, setIsSlugTouched] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    if (isOpen) {
-      window.addEventListener('keydown', handleKeyDown);
-    }
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  // The field waiting on "Delete field?". Kept while the dialog closes so its
+  // words don't blank out.
+  const [fieldToDelete, setFieldToDelete] = useState<CustomAttributeDefinitionDto | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const titleId = useId();
 
   const resetNewAttributeForm = () => {
     setName('');
@@ -101,13 +99,9 @@ export function AttributeEditorDrawer({
       queryClient.invalidateQueries({ queryKey: queryKeys.customObjects.bySlug(currentObject.slug) });
       toast.success('Attribute deleted');
     },
-    onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : 'Failed to delete attribute';
-      toast.error(msg);
-    },
   });
 
-  if (!isOpen || !currentObject) return null;
+  if (!currentObject) return null;
 
   const attributes = currentObject.attributes ?? [];
 
@@ -159,21 +153,15 @@ export function AttributeEditorDrawer({
   }));
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden" role="dialog" aria-modal="true">
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/40 backdrop-blur-xs transition-opacity duration-200"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-
-      {/* Slide-over panel */}
-      <div className="fixed inset-y-0 right-0 flex max-w-full pl-10">
-        <aside className="flex w-screen max-w-lg flex-col border-l border-border/30 bg-surface shadow-2xl">
+    <>
+      {/* A native <dialog> on the end edge: focus moves in, stays in, and
+          returns to Configure Fields; Escape closes it. */}
+      <ModalShell open={isOpen} onClose={onClose} labelledBy={titleId} placement="end" className="max-w-lg">
+        <div className="flex h-full flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-border/25 px-6 py-4">
+          <div className="flex items-center justify-between border-b border-border/60 px-6 py-4">
             <div>
-              <h2 className="text-base font-semibold tracking-tight text-ink">
+              <h2 id={titleId} className="text-sm font-semibold tracking-tight text-ink">
                 {currentObject.name} Fields
               </h2>
               <p className="mt-0.5 font-mono text-xs text-ink-subtle">
@@ -184,7 +172,7 @@ export function AttributeEditorDrawer({
               type="button"
               onClick={onClose}
               aria-label="Close drawer"
-              className="rounded-full p-1.5 text-ink-subtle transition-colors hover:bg-surface-muted hover:text-ink cursor-pointer"
+              className="grid size-10 place-items-center rounded-full text-ink-subtle transition-colors hover:bg-surface-muted hover:text-ink cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-ring"
             >
               <X className="size-4" />
             </button>
@@ -248,7 +236,10 @@ export function AttributeEditorDrawer({
                             aria-label={`Delete attribute ${attr.name}`}
                             data-testid={`delete-attribute-${attr.slug}`}
                             disabled={deleteAttributeMutation.isPending}
-                            onClick={() => deleteAttributeMutation.mutate(attr.slug)}
+                            onClick={() => {
+                              setFieldToDelete(attr);
+                              setConfirmingDelete(true);
+                            }}
                             className="text-danger hover:text-danger-hover"
                           >
                             <Trash2 className="size-3.5" />
@@ -264,7 +255,7 @@ export function AttributeEditorDrawer({
             {/* Add new attribute form */}
             <div className="rounded-2xl border border-border/40 bg-surface-muted/20 p-4 space-y-4">
               <h3 className="text-sm font-semibold text-ink flex items-center gap-1.5">
-                <Plus className="size-4 text-brand" />
+                <Plus className="size-4 text-ink-subtle" aria-hidden />
                 Add New Attribute
               </h3>
 
@@ -318,7 +309,7 @@ export function AttributeEditorDrawer({
                       type="checkbox"
                       checked={isRequired}
                       onChange={(e) => setIsRequired(e.target.checked)}
-                      className="rounded border-border/80 text-brand focus:ring-brand"
+                      className="size-4 rounded border-border-control accent-[var(--color-brand)]"
                     />
                     Required field
                   </label>
@@ -328,7 +319,7 @@ export function AttributeEditorDrawer({
                       type="checkbox"
                       checked={isUnique}
                       onChange={(e) => setIsUnique(e.target.checked)}
-                      className="rounded border-border/80 text-brand focus:ring-brand"
+                      className="size-4 rounded border-border-control accent-[var(--color-brand)]"
                     />
                     Unique value
                   </label>
@@ -348,8 +339,20 @@ export function AttributeEditorDrawer({
               </form>
             </div>
           </div>
-        </aside>
-      </div>
-    </div>
+        </div>
+      </ModalShell>
+
+      {fieldToDelete && (
+        <ConfirmDialog
+          open={confirmingDelete}
+          onClose={() => setConfirmingDelete(false)}
+          onConfirm={() => deleteAttributeMutation.mutateAsync(fieldToDelete.slug)}
+          title={`Delete the ${fieldToDelete.name} field?`}
+          description={`Its values are removed from every ${currentObject.name} record, and this can't be undone here.`}
+          confirmLabel="Delete field"
+          tone="danger"
+        />
+      )}
+    </>
   );
 }

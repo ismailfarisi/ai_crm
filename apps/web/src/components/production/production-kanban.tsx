@@ -261,7 +261,7 @@ export function ProductionKanban({
               }}
               className={`flex flex-col rounded-2xl border transition-all duration-150 p-3 min-h-[350px] min-w-[280px] flex-1 ${
                 isOver
-                  ? 'border-accent bg-accent/5 ring-2 ring-accent/30'
+                  ? 'border-brand bg-brand-soft/40 ring-2 ring-brand/30'
                   : 'border-line/70 bg-surface-sunk/30'
               }`}
             >

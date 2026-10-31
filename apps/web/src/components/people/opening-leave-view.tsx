@@ -5,7 +5,7 @@ import { PERMISSIONS } from '@saas/shared';
 import { useOpeningLeavePreview, usePayrollRuns, usePostOpeningLeave } from '@/hooks/use-payroll';
 import { useCan } from '@/lib/session-context';
 import { Button } from '@/components/ui/button';
-import { Dialog } from '@/components/ui/dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/field';
 import { Alert, Card, CardBody, EmptyState, PageHeader, Skeleton } from '@/components/ui/primitives';
 import { PeopleNav } from './people-nav';
@@ -82,59 +82,67 @@ export function OpeningLeaveView() {
               description="Everyone has joined after this date or already has an opening leave balance."
             />
           ) : (
-            <Card>
-              <CardBody className="overflow-x-auto">
-                <table className="w-full text-sm" data-testid="opening-leave-table">
-                  <thead>
-                    <tr className="text-left text-xs text-ink-subtle">
-                      <th className="py-2 font-medium">Employee</th>
-                      <th className="py-2 font-medium">Joined</th>
-                      <th className="py-2 text-right font-medium">Service days</th>
-                      <th className="py-2 text-right font-medium">Calculated days</th>
-                      <th className="py-2 text-right font-medium">Opening balance (days)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lines.map((l) => (
-                      <tr key={l.employeeId} className="border-t border-border/40">
-                        <td className="py-2 text-ink">{l.employeeName}</td>
-                        <td className="py-2 text-ink-muted">{day(l.joiningDate)}</td>
-                        <td className="py-2 text-right tabular-nums">{l.serviceDays}</td>
-                        <td className="py-2 text-right tabular-nums text-ink-muted">{l.calculatedDays}</td>
-                        <td className="py-2 text-right">
-                          <input
-                            aria-label={`Opening leave days for ${l.employeeName}`}
-                            type="number"
-                            min={MIN_DAYS}
-                            max={MAX_DAYS}
-                            step="0.01"
-                            value={overrides[l.employeeId] ?? String(l.calculatedDays)}
-                            onChange={(e) => setOverrides((o) => ({ ...o, [l.employeeId]: e.target.value }))}
-                            aria-invalid={l.days === null}
-                            className="w-28 rounded-lg border border-border/80 bg-surface px-2 py-1 text-right text-sm tabular-nums"
-                          />
-                          {l.days === null && (
-                            <p className="mt-1 text-xs text-danger" role="alert">
-                              Enter days between {MIN_DAYS} and {MAX_DAYS}
-                            </p>
-                          )}
+            <>
+              <Alert tone="warning">
+                <span data-testid="opening-leave-assumption">
+                  The prefilled days assume nobody took any leave before the cut-over. Correct each balance to the days
+                  the employee actually has left before you post.
+                </span>
+              </Alert>
+              <Card>
+                <CardBody className="overflow-x-auto">
+                  <table className="w-full text-sm" data-testid="opening-leave-table">
+                    <thead>
+                      <tr className="text-left text-xs text-ink-subtle">
+                        <th className="py-2 font-medium">Employee</th>
+                        <th className="py-2 font-medium">Joined</th>
+                        <th className="py-2 text-right font-medium">Service days</th>
+                        <th className="py-2 text-right font-medium">Earned days (none taken)</th>
+                        <th className="py-2 text-right font-medium">Opening balance (days)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lines.map((l) => (
+                        <tr key={l.employeeId} className="border-t border-border/40">
+                          <td className="py-2 text-ink">{l.employeeName}</td>
+                          <td className="py-2 text-ink-muted">{day(l.joiningDate)}</td>
+                          <td className="py-2 text-right tabular-nums">{l.serviceDays}</td>
+                          <td className="py-2 text-right tabular-nums text-ink-muted">{l.calculatedDays}</td>
+                          <td className="py-2 text-right">
+                            <input
+                              aria-label={`Opening leave days for ${l.employeeName}`}
+                              type="number"
+                              min={MIN_DAYS}
+                              max={MAX_DAYS}
+                              step="0.01"
+                              value={overrides[l.employeeId] ?? String(l.calculatedDays)}
+                              onChange={(e) => setOverrides((o) => ({ ...o, [l.employeeId]: e.target.value }))}
+                              aria-invalid={l.days === null}
+                              className="w-28 rounded-lg border border-border/80 bg-surface px-2 py-1 text-right text-sm tabular-nums"
+                            />
+                            {l.days === null && (
+                              <p className="mt-1 text-xs text-danger" role="alert">
+                                Enter days between {MIN_DAYS} and {MAX_DAYS}
+                              </p>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-border font-semibold">
+                        <td colSpan={4} className="py-2 text-right">
+                          Total days
+                        </td>
+                        <td data-testid="opening-leave-total" className="py-2 text-right tabular-nums">
+                          {total}
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t border-border font-semibold">
-                      <td colSpan={4} className="py-2 text-right">
-                        Total days
-                      </td>
-                      <td data-testid="opening-leave-total" className="py-2 text-right tabular-nums">
-                        {total}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </CardBody>
-            </Card>
+                    </tfoot>
+                  </table>
+                </CardBody>
+              </Card>
+            </>
           )}
 
           {lines.length > 0 && (
@@ -149,38 +157,20 @@ export function OpeningLeaveView() {
         </>
       )}
 
-      <Dialog
+      <ConfirmDialog
         open={confirming}
         onClose={() => setConfirming(false)}
         title="Post opening leave balances?"
-        description={`This carries ${total} days of leave into the books as of ${effectiveCutover ? day(effectiveCutover) : 'the cut-over date'}.`}
-      >
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={() => setConfirming(false)}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            loading={post.isPending}
-            disabled={stale || invalid}
-            onClick={async () => {
-              if (invalid) return;
-              try {
-                await post.mutateAsync({
-                  cutoverDate: effectiveCutover,
-                  lines: lines.map((l) => ({ employeeId: l.employeeId, balanceDays: l.days ?? 0 })),
-                });
-              } catch {
-                return;
-              } finally {
-                setConfirming(false);
-              }
-            }}
-          >
-            Post
-          </Button>
-        </div>
-      </Dialog>
+        description={`This carries ${total} days of leave for ${lines.length === 1 ? '1 employee' : `${lines.length} employees`} into the books as of ${effectiveCutover ? day(effectiveCutover) : 'the cut-over date'}. Check that leave already taken is deducted.`}
+        confirmLabel="Post leave balances"
+        onConfirm={async () => {
+          if (stale || invalid) throw new Error('The figures changed while this was open. Check them and post again.');
+          await post.mutateAsync({
+            cutoverDate: effectiveCutover,
+            lines: lines.map((l) => ({ employeeId: l.employeeId, balanceDays: l.days ?? 0 })),
+          });
+        }}
+      />
     </div>
   );
 }

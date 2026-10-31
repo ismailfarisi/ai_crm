@@ -89,7 +89,7 @@ export function CustomRecordFormDialog({
                   onChange={(e) =>
                     setValues((prev) => ({ ...prev, [attr.slug]: e.target.checked }))
                   }
-                  className="size-4 rounded border-border/80 text-brand focus:ring-brand"
+                  className="size-4 rounded border-border-control accent-[var(--color-brand)]"
                 />
                 <label htmlFor={fieldId} className="text-sm font-medium text-ink cursor-pointer">
                   {labelText}

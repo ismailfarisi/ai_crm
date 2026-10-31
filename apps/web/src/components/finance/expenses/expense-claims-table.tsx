@@ -8,38 +8,39 @@ import {
   Receipt,
   CheckCircle2,
   XCircle,
-  Clock,
   DollarSign,
   Eye,
   FileEdit,
-  MoreHorizontal,
   ArrowUpDown,
   Building2,
-  Calendar,
-  Sparkles,
   ChevronLeft,
   ChevronRight,
-  ShieldCheck,
-  AlertCircle,
-  ExternalLink,
 } from 'lucide-react';
+import { EXPENSE_CATEGORY_GROUPS, PERMISSIONS } from '@saas/shared';
 import type { ExpenseClaimDto, ExpenseStatus } from '@saas/shared';
 import { cn } from '@/lib/utils';
-import { Badge, Card, CardBody, CardHeader, CardTitle, Skeleton } from '@/components/ui/primitives';
+import { Card, CardBody, CardHeader, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
-import { Input, Select, Textarea } from '@/components/ui/field';
+import { Can } from '@/components/auth/can';
 import { ExpenseStatusBadge } from './expense-status-ribbon';
-import { ReceiptPreviewCard, formatExpenseCurrency } from './receipt-preview-card';
-import { EXPENSE_CATEGORIES } from './submit-expense-modal';
+import { ReceiptPreviewCard } from './receipt-preview-card';
+import { formatExpenseCurrency } from './expense-money';
+import {
+  ApproveClaimDialog,
+  ReimburseClaimDialog,
+  RejectClaimDialog,
+} from './claim-action-dialogs';
 
 export interface ExpenseClaimsTableProps {
   claims: ExpenseClaimDto[];
   isLoading?: boolean;
   onSelectClaim?: (claim: ExpenseClaimDto) => void;
-  onApprove?: (claim: ExpenseClaimDto) => Promise<void> | void;
-  onReject?: (claim: ExpenseClaimDto, reason?: string) => Promise<void> | void;
-  onReimburse?: (claim: ExpenseClaimDto) => Promise<void> | void;
+  onApprove?: (claim: ExpenseClaimDto) => Promise<unknown> | void;
+  onReject?: (claim: ExpenseClaimDto, reason: string) => Promise<unknown> | void;
+  onReimburse?: (claim: ExpenseClaimDto) => Promise<unknown> | void;
+  /** The account a reimbursement is paid from, named in its confirmation. */
+  reimbursementAccountName?: string | null;
   onViewReceipt?: (claim: ExpenseClaimDto) => void;
   onNewClaim?: () => void;
   onEditClaim?: (claim: ExpenseClaimDto) => void;
@@ -64,6 +65,7 @@ export function ExpenseClaimsTable({
   onApprove,
   onReject,
   onReimburse,
+  reimbursementAccountName,
   onViewReceipt,
   onNewClaim,
   onEditClaim,
@@ -79,9 +81,10 @@ export function ExpenseClaimsTable({
 
   // Modals state
   const [previewReceiptClaim, setPreviewReceiptClaim] = useState<ExpenseClaimDto | null>(null);
+  // Each action with consequences waits for a confirmation naming the claim.
+  const [approvingClaim, setApprovingClaim] = useState<ExpenseClaimDto | null>(null);
   const [rejectingClaim, setRejectingClaim] = useState<ExpenseClaimDto | null>(null);
-  const [rejectionReason, setRejectionReason] = useState('');
-  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [reimbursingClaim, setReimbursingClaim] = useState<ExpenseClaimDto | null>(null);
 
   // Sorting state
   const [sortBy, setSortBy] = useState<'date' | 'amount' | 'claimNumber'>('date');
@@ -146,67 +149,12 @@ export function ExpenseClaimsTable({
     return map;
   }, [claims]);
 
-  // Summary Metrics
-  const summaryMetrics = useMemo(() => {
-    const totalAmount = claims.reduce((s, c) => s + (c.amount || 0), 0);
-    const pendingReview = claims.filter((c) => c.status === 'SUBMITTED');
-    const pendingAmount = pendingReview.reduce((s, c) => s + (c.amount || 0), 0);
-    const paidAmount = claims
-      .filter((c) => c.status === 'PAID')
-      .reduce((s, c) => s + (c.amount || 0), 0);
-
-    return {
-      totalCount: claims.length,
-      totalAmount,
-      pendingCount: pendingReview.length,
-      pendingAmount,
-      paidAmount,
-    };
-  }, [claims]);
-
   // Pagination calculation
   const totalPages = Math.ceil(filteredClaims.length / pageSize) || 1;
   const paginatedClaims = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
     return filteredClaims.slice(start, start + pageSize);
   }, [filteredClaims, currentPage, pageSize]);
-
-  // Handlers for quick actions
-  const handleApprove = async (claim: ExpenseClaimDto) => {
-    if (!onApprove) return;
-    try {
-      setActionLoadingId(claim.id);
-      await onApprove(claim);
-    } finally {
-      setActionLoadingId(null);
-    }
-  };
-
-  const handleOpenReject = (claim: ExpenseClaimDto) => {
-    setRejectingClaim(claim);
-    setRejectionReason('');
-  };
-
-  const handleConfirmReject = async () => {
-    if (!rejectingClaim || !onReject) return;
-    try {
-      setActionLoadingId(rejectingClaim.id);
-      await onReject(rejectingClaim, rejectionReason);
-      setRejectingClaim(null);
-    } finally {
-      setActionLoadingId(null);
-    }
-  };
-
-  const handleReimburse = async (claim: ExpenseClaimDto) => {
-    if (!onReimburse) return;
-    try {
-      setActionLoadingId(claim.id);
-      await onReimburse(claim);
-    } finally {
-      setActionLoadingId(null);
-    }
-  };
 
   const handleViewReceiptClick = (claim: ExpenseClaimDto) => {
     if (onViewReceipt) {
@@ -221,71 +169,9 @@ export function ExpenseClaimsTable({
       data-testid="expense-claims-table-container"
       className={cn('flex flex-col gap-4 w-full', className)}
     >
-      {/* Summary KPI Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="rounded-2xl border border-border/30 bg-surface/80 p-3.5 shadow-xs">
-          <p className="text-xs font-medium text-ink-muted">Total Expense Claims</p>
-          <div className="mt-1 flex items-baseline justify-between">
-            <span data-testid="kpi-total-claims" className="text-xl font-bold text-ink">
-              {summaryMetrics.totalCount}
-            </span>
-            <span className="text-xs font-mono text-ink-muted">
-              {formatExpenseCurrency(summaryMetrics.totalAmount)}
-            </span>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-3.5 shadow-xs">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-amber-700 dark:text-amber-300">Pending Review</p>
-            <Clock className="size-3.5 text-amber-600 dark:text-amber-400" />
-          </div>
-          <div className="mt-1 flex items-baseline justify-between">
-            <span data-testid="kpi-pending-count" className="text-xl font-bold text-amber-900 dark:text-amber-100">
-              {summaryMetrics.pendingCount}
-            </span>
-            <span className="text-xs font-mono font-semibold text-amber-700 dark:text-amber-300">
-              {formatExpenseCurrency(summaryMetrics.pendingAmount)}
-            </span>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-3.5 shadow-xs">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">Reimbursed & Settled</p>
-            <ShieldCheck className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-          </div>
-          <div className="mt-1 flex items-baseline justify-between">
-            <span data-testid="kpi-paid-amount" className="text-xl font-bold text-emerald-900 dark:text-emerald-100">
-              {formatExpenseCurrency(summaryMetrics.paidAmount)}
-            </span>
-            <Badge tone="success" className="text-[10px]">Settled</Badge>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-border/30 bg-surface/80 p-3.5 shadow-xs flex flex-col justify-between">
-          <p className="text-xs font-medium text-ink-muted">Quick Actions</p>
-          <div className="mt-1 flex items-center gap-2">
-            {onNewClaim && (
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                data-testid="btn-new-claim"
-                onClick={onNewClaim}
-                className="w-full gap-1.5 text-xs shadow-xs"
-              >
-                <Plus className="size-3.5" />
-                Submit Claim
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* Main Table Card */}
-      <Card className="border border-border/40 bg-surface/90 shadow-xs">
-        <CardHeader className="flex flex-col gap-3 p-4 border-b border-border/25">
+      <Card>
+        <CardHeader className="flex flex-col gap-3 p-4 border-b border-border">
           {/* Status Tabs */}
           <div className="flex items-center justify-between flex-wrap gap-2">
             <nav aria-label="Filter claims by status" className="flex flex-wrap gap-1.5">
@@ -298,24 +184,20 @@ export function ExpenseClaimsTable({
                     key={tab.value}
                     type="button"
                     data-testid={`status-tab-${tab.value.toLowerCase()}`}
+                    aria-pressed={isActive}
                     onClick={() => {
                       setStatusFilter(tab.value);
                       setCurrentPage(1);
                     }}
                     className={cn(
-                      'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all cursor-pointer',
+                      'inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors cursor-pointer',
                       isActive
-                        ? 'bg-brand text-on-brand font-semibold shadow-xs'
-                        : 'bg-surface-muted/40 text-ink-muted hover:bg-surface-muted hover:text-ink',
+                        ? 'bg-charcoal text-on-charcoal font-semibold'
+                        : 'bg-surface-muted text-ink-muted hover:text-ink',
                     )}
                   >
                     <span>{tab.label}</span>
-                    <span
-                      className={cn(
-                        'rounded-full px-1.5 py-0.2 text-[10px] font-mono',
-                        isActive ? 'bg-ink/10 text-ink' : 'bg-surface text-ink-muted',
-                      )}
-                    >
+                    <span className="rounded-full bg-surface px-1.5 text-[11px] tabular-nums text-ink">
                       {count}
                     </span>
                   </button>
@@ -327,9 +209,10 @@ export function ExpenseClaimsTable({
           {/* Search & Category Filter Controls */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
             <div className="relative w-full sm:w-80">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-ink-subtle" />
+              <Search className="absolute start-3 top-1/2 -translate-y-1/2 size-4 text-ink-subtle" aria-hidden />
               <input
-                type="text"
+                type="search"
+                aria-label="Search claims"
                 placeholder="Search claim #, merchant, employee..."
                 data-testid="input-search-claims"
                 value={searchTerm}
@@ -337,29 +220,34 @@ export function ExpenseClaimsTable({
                   setSearchTerm(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full rounded-xl border border-border/70 bg-surface pl-9 pr-3 py-1.5 text-xs text-ink placeholder:text-ink-subtle focus:outline-hidden focus:border-brand"
+                className="h-10 w-full rounded-xl border border-border-control bg-surface ps-9 pe-3 text-sm text-ink placeholder:text-ink-subtle focus:outline-hidden focus:border-brand-ring focus:ring-1 focus:ring-brand-ring"
               />
             </div>
 
             <div className="flex items-center gap-2 w-full sm:w-auto">
-              <div className="flex items-center gap-1.5 text-xs text-ink-muted">
-                <Filter className="size-3.5 text-ink-subtle" />
-                <span>Category:</span>
-              </div>
+              <label htmlFor="filter-category" className="flex items-center gap-1.5 text-xs text-ink-muted">
+                <Filter className="size-3.5 text-ink-subtle" aria-hidden />
+                <span>Category</span>
+              </label>
               <select
+                id="filter-category"
                 data-testid="select-filter-category"
                 value={categoryFilter}
                 onChange={(e) => {
                   setCategoryFilter(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="rounded-xl border border-border/70 bg-surface px-2.5 py-1.5 text-xs text-ink focus:outline-hidden focus:border-brand"
+                className="h-10 rounded-xl border border-border-control bg-surface px-3 text-sm text-ink focus:outline-hidden focus:border-brand-ring focus:ring-1 focus:ring-brand-ring"
               >
-                <option value="ALL">All Categories</option>
-                {EXPENSE_CATEGORIES.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
+                <option value="ALL">All categories</option>
+                {EXPENSE_CATEGORY_GROUPS.map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.categories.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </div>
@@ -385,7 +273,7 @@ export function ExpenseClaimsTable({
               data-testid="table-empty-state"
               className="flex flex-col items-center justify-center p-12 text-center"
             >
-              <div className="rounded-2xl bg-surface-muted/50 p-4 text-ink-subtle border border-border/30">
+              <div className="rounded-2xl bg-surface-muted p-4 text-ink-subtle border border-border">
                 <Receipt className="size-8 stroke-[1.5]" />
               </div>
               <h4 className="mt-3 text-sm font-semibold text-ink">No Expense Claims Found</h4>
@@ -394,27 +282,29 @@ export function ExpenseClaimsTable({
                   ? 'No expense claims match your search filters. Try clearing or changing your filters.'
                   : 'No expense claims have been submitted yet. Submit a new expense claim to get started.'}
               </p>
-              {onNewClaim && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  data-testid="btn-empty-new-claim"
-                  onClick={onNewClaim}
-                  className="mt-4 gap-1.5 text-xs"
-                >
-                  <Plus className="size-3.5" />
-                  Submit New Claim
-                </Button>
+              {/* Only when there are none at all: a filtered-out list needs its filters changed, not a new claim. */}
+              {onNewClaim && claims.length === 0 && (
+                <Can permission={PERMISSIONS.EXPENSE_SUBMIT}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    data-testid="btn-empty-new-claim"
+                    onClick={onNewClaim}
+                    className="mt-4"
+                  >
+                    <Plus className="size-4" />
+                    Submit expense claim
+                  </Button>
+                </Can>
               )}
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table
                 data-testid="expense-claims-table"
-                className="w-full text-left text-xs text-ink divide-y divide-border/25"
+                className="w-full text-start text-xs text-ink divide-y divide-border"
               >
-                <thead className="bg-surface-muted/30 text-[11px] font-semibold text-ink-muted uppercase tracking-wider">
+                <thead className="bg-surface-muted text-[11px] font-semibold text-ink-muted uppercase tracking-wider">
                   <tr>
                     <th
                       className="px-4 py-3 cursor-pointer select-none hover:text-ink"
@@ -444,7 +334,7 @@ export function ExpenseClaimsTable({
                       </div>
                     </th>
                     <th
-                      className="px-4 py-3 cursor-pointer select-none hover:text-ink text-right"
+                      className="px-4 py-3 cursor-pointer select-none hover:text-ink text-end"
                       onClick={() => {
                         setSortBy('amount');
                         setSortAsc(!sortAsc);
@@ -457,13 +347,12 @@ export function ExpenseClaimsTable({
                     </th>
                     <th className="px-4 py-3 text-center">Receipt</th>
                     <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
+                    <th className="px-4 py-3 text-end">Actions</th>
                   </tr>
                 </thead>
 
-                <tbody className="divide-y divide-border/20 bg-surface/50">
+                <tbody className="divide-y divide-border">
                   {paginatedClaims.map((claim) => {
-                    const isActionLoading = actionLoadingId === claim.id;
                     const dateStr = claim.expenseDate
                       ? new Date(claim.expenseDate).toLocaleDateString(undefined, {
                           month: 'short',
@@ -476,14 +365,14 @@ export function ExpenseClaimsTable({
                       <tr
                         key={claim.id}
                         data-testid={`claim-row-${claim.id}`}
-                        className="transition-colors hover:bg-surface-muted/30 group"
+                        className="transition-colors hover:bg-surface-muted"
                       >
                         {/* Claim Number */}
                         <td className="px-4 py-3 font-mono font-medium text-ink">
                           <button
                             type="button"
                             onClick={() => onSelectClaim?.(claim)}
-                            className="hover:text-brand hover:underline cursor-pointer text-left"
+                            className="font-medium text-ink underline-offset-2 hover:underline cursor-pointer text-start"
                           >
                             {claim.claimNumber || `#${claim.id.slice(0, 7)}`}
                           </button>
@@ -492,7 +381,7 @@ export function ExpenseClaimsTable({
                         {/* Submitter */}
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
-                            <div className="flex size-6 items-center justify-center rounded-full bg-brand-soft/80 text-[10px] font-bold text-ink border border-brand/20">
+                            <div aria-hidden className="flex size-6 items-center justify-center rounded-full bg-surface-muted text-[11px] font-semibold text-ink-muted border border-border">
                               {(claim.employeeName || 'U').charAt(0).toUpperCase()}
                             </div>
                             <span className="font-medium text-ink truncate max-w-[120px]">
@@ -513,18 +402,18 @@ export function ExpenseClaimsTable({
 
                         {/* Category */}
                         <td className="px-4 py-3">
-                          <span className="inline-flex rounded-lg bg-surface-muted/60 px-2 py-0.5 text-[11px] font-medium text-ink-muted border border-border/30">
+                          <span className="inline-flex rounded-lg bg-surface-muted px-2 py-0.5 text-[11px] font-medium text-ink-muted border border-border">
                             {claim.category || 'General'}
                           </span>
                         </td>
 
                         {/* Date */}
-                        <td className="px-4 py-3 text-ink-muted whitespace-nowrap">
+                        <td className="px-4 py-3 text-ink-muted whitespace-nowrap tabular-nums">
                           {dateStr}
                         </td>
 
                         {/* Amount */}
-                        <td className="px-4 py-3 text-right font-mono font-semibold text-ink whitespace-nowrap">
+                        <td className="px-4 py-3 text-end font-semibold tabular-nums text-ink whitespace-nowrap">
                           {formatExpenseCurrency(claim.amount, claim.currency)}
                         </td>
 
@@ -537,9 +426,9 @@ export function ExpenseClaimsTable({
                               aria-label={`View receipt for ${claim.claimNumber || claim.id}`}
                               data-testid={`btn-view-receipt-${claim.id}`}
                               title="View Zoomable Receipt"
-                              className="inline-flex items-center gap-1 rounded-lg border border-brand/30 bg-brand-soft/50 px-2 py-1 text-[11px] font-medium text-ink hover:bg-brand-soft transition-colors cursor-pointer"
+                              className="inline-flex h-8 items-center gap-1 rounded-lg border border-border bg-surface px-2 text-[11px] font-medium text-ink hover:bg-surface-muted transition-colors cursor-pointer"
                             >
-                              <Receipt className="size-3 text-brand" />
+                              <Receipt className="size-3 text-ink-muted" aria-hidden />
                               <span>Receipt</span>
                             </button>
                           ) : (
@@ -553,53 +442,52 @@ export function ExpenseClaimsTable({
                         </td>
 
                         {/* Actions */}
-                        <td className="px-4 py-3 text-right">
+                        <td className="px-4 py-3 text-end">
                           <div className="flex items-center justify-end gap-1.5">
                             {/* Workflow Quick Action Buttons */}
-                            {claim.status === 'SUBMITTED' && (
-                              <>
-                                <button
-                                  type="button"
-                                  disabled={isActionLoading}
-                                  onClick={() => handleApprove(claim)}
-                                  aria-label={`Approve claim ${claim.claimNumber || claim.id}`}
-                                  data-testid={`btn-approve-claim-${claim.id}`}
-                                  title="Approve Claim"
-                                  className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 transition-colors cursor-pointer"
-                                >
-                                  <CheckCircle2 className="size-3 text-emerald-600" />
-                                  <span>Approve</span>
-                                </button>
+                            <Can permission={PERMISSIONS.EXPENSE_APPROVE}>
+                              {claim.status === 'SUBMITTED' && (
+                                <>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setApprovingClaim(claim)}
+                                    aria-label={`Approve claim ${claim.claimNumber || claim.id}`}
+                                    data-testid={`btn-approve-claim-${claim.id}`}
+                                  >
+                                    <CheckCircle2 className="size-3.5" aria-hidden />
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setRejectingClaim(claim)}
+                                    aria-label={`Reject claim ${claim.claimNumber || claim.id}`}
+                                    data-testid={`btn-reject-claim-${claim.id}`}
+                                    className="text-danger hover:bg-danger-soft"
+                                  >
+                                    <XCircle className="size-3.5" aria-hidden />
+                                    Reject
+                                  </Button>
+                                </>
+                              )}
 
-                                <button
+                              {claim.status === 'APPROVED' && (
+                                <Button
                                   type="button"
-                                  disabled={isActionLoading}
-                                  onClick={() => handleOpenReject(claim)}
-                                  aria-label={`Reject claim ${claim.claimNumber || claim.id}`}
-                                  data-testid={`btn-reject-claim-${claim.id}`}
-                                  title="Reject Claim"
-                                  className="inline-flex items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-500/20 transition-colors cursor-pointer"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setReimbursingClaim(claim)}
+                                  aria-label={`Reimburse claim ${claim.claimNumber || claim.id}`}
+                                  data-testid={`btn-reimburse-claim-${claim.id}`}
                                 >
-                                  <XCircle className="size-3 text-rose-600" />
-                                  <span>Reject</span>
-                                </button>
-                              </>
-                            )}
-
-                            {claim.status === 'APPROVED' && (
-                              <button
-                                type="button"
-                                disabled={isActionLoading}
-                                onClick={() => handleReimburse(claim)}
-                                aria-label={`Reimburse claim ${claim.claimNumber || claim.id}`}
-                                data-testid={`btn-reimburse-claim-${claim.id}`}
-                                title="Disburse Reimbursement"
-                                className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 transition-colors cursor-pointer"
-                              >
-                                <DollarSign className="size-3 text-emerald-600" />
-                                <span>Reimburse</span>
-                              </button>
-                            )}
+                                  <DollarSign className="size-3.5" aria-hidden />
+                                  Reimburse
+                                </Button>
+                              )}
+                            </Can>
 
                             {(claim.status === 'DRAFT' || claim.status === 'REJECTED') && onEditClaim && (
                               <button
@@ -608,7 +496,7 @@ export function ExpenseClaimsTable({
                                 aria-label={`Edit claim ${claim.claimNumber || claim.id}`}
                                 data-testid={`btn-edit-claim-${claim.id}`}
                                 title="Edit Claim"
-                                className="rounded-lg p-1 text-ink-muted hover:bg-surface-muted hover:text-ink transition-colors cursor-pointer"
+                                className="grid size-8 place-items-center rounded-lg text-ink-muted hover:bg-surface-muted hover:text-ink transition-colors cursor-pointer"
                               >
                                 <FileEdit className="size-3.5" />
                               </button>
@@ -621,7 +509,7 @@ export function ExpenseClaimsTable({
                                 aria-label={`View claim ${claim.claimNumber || claim.id}`}
                                 data-testid={`btn-view-claim-${claim.id}`}
                                 title="View Details"
-                                className="rounded-lg p-1 text-ink-muted hover:bg-surface-muted hover:text-ink transition-colors cursor-pointer"
+                                className="grid size-8 place-items-center rounded-lg text-ink-muted hover:bg-surface-muted hover:text-ink transition-colors cursor-pointer"
                               >
                                 <Eye className="size-3.5" />
                               </button>
@@ -638,7 +526,7 @@ export function ExpenseClaimsTable({
 
           {/* Pagination Toolbar */}
           {!isLoading && filteredClaims.length > 0 && (
-            <div className="flex items-center justify-between border-t border-border/25 px-4 py-3 text-xs text-ink-muted bg-surface-muted/20">
+            <div className="flex items-center justify-between border-t border-border px-4 py-3 text-xs text-ink-muted bg-surface-muted tabular-nums">
               <div>
                 Showing {(currentPage - 1) * pageSize + 1} to{' '}
                 {Math.min(currentPage * pageSize, filteredClaims.length)} of {filteredClaims.length} claims
@@ -651,11 +539,11 @@ export function ExpenseClaimsTable({
                   disabled={currentPage <= 1}
                   aria-label="Previous Page"
                   data-testid="btn-prev-page"
-                  className="rounded-lg border border-border/40 p-1.5 text-ink-muted hover:bg-surface hover:text-ink disabled:opacity-40 cursor-pointer"
+                  className="grid size-8 place-items-center rounded-lg border border-border bg-surface text-ink-muted hover:text-ink disabled:opacity-40 cursor-pointer"
                 >
                   <ChevronLeft className="size-3.5" />
                 </button>
-                <span className="px-2 text-xs font-mono text-ink">
+                <span className="px-2 text-xs tabular-nums text-ink">
                   {currentPage} / {totalPages}
                 </span>
                 <button
@@ -664,7 +552,7 @@ export function ExpenseClaimsTable({
                   disabled={currentPage >= totalPages}
                   aria-label="Next Page"
                   data-testid="btn-next-page"
-                  className="rounded-lg border border-border/40 p-1.5 text-ink-muted hover:bg-surface hover:text-ink disabled:opacity-40 cursor-pointer"
+                  className="grid size-8 place-items-center rounded-lg border border-border bg-surface text-ink-muted hover:text-ink disabled:opacity-40 cursor-pointer"
                 >
                   <ChevronRight className="size-3.5" />
                 </button>
@@ -674,54 +562,22 @@ export function ExpenseClaimsTable({
         </CardBody>
       </Card>
 
-      {/* Reject Confirmation Dialog */}
-      {rejectingClaim && (
-        <Dialog
-          open={Boolean(rejectingClaim)}
-          onClose={() => setRejectingClaim(null)}
-          title={`Reject Expense Claim #${rejectingClaim.claimNumber || rejectingClaim.id.slice(0, 7)}`}
-          description="Provide a reason for rejection so the employee can review and adjust."
-          size="md"
-        >
-          <div className="space-y-4 pt-1">
-            <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-3 text-xs text-rose-800 dark:text-rose-300">
-              Claim Amount:{' '}
-              <strong className="font-semibold">
-                {formatExpenseCurrency(rejectingClaim.amount, rejectingClaim.currency)}
-              </strong>{' '}
-              for <strong>{rejectingClaim.merchantName || 'Expenses'}</strong>
-            </div>
-
-            <Textarea
-              label="Rejection Reason"
-              required
-              data-testid="input-rejection-reason"
-              placeholder="e.g. Missing detailed itemized invoice, or exceeds meal policy limit..."
-              value={rejectionReason}
-              onChange={(e) => setRejectionReason(e.target.value)}
-            />
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-border/20">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setRejectingClaim(null)}
-                data-testid="btn-cancel-reject"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="danger"
-                data-testid="btn-confirm-reject"
-                onClick={handleConfirmReject}
-              >
-                Confirm Rejection
-              </Button>
-            </div>
-          </div>
-        </Dialog>
-      )}
+      <ApproveClaimDialog
+        claim={approvingClaim}
+        onClose={() => setApprovingClaim(null)}
+        onConfirm={(claim) => onApprove?.(claim)}
+      />
+      <RejectClaimDialog
+        claim={rejectingClaim}
+        onClose={() => setRejectingClaim(null)}
+        onConfirm={(claim, reason) => onReject?.(claim, reason)}
+      />
+      <ReimburseClaimDialog
+        claim={reimbursingClaim}
+        onClose={() => setReimbursingClaim(null)}
+        onConfirm={(claim) => onReimburse?.(claim)}
+        accountName={reimbursementAccountName}
+      />
 
       {/* Built-in Receipt Preview Dialog */}
       {previewReceiptClaim && (

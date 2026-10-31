@@ -131,7 +131,7 @@ export function ContactsView() {
           <div>
             <Link
               href={`/contacts/${row.original.id}`}
-              className="font-medium text-ink hover:text-brand transition-colors"
+              className="font-medium text-ink underline-offset-2 hover:underline"
             >
               {row.original.fullName}
             </Link>
@@ -287,7 +287,7 @@ export function ContactsView() {
                     <div className="flex items-start justify-between gap-1">
                       <Link
                         href={`/contacts/${c.id}`}
-                        className="font-medium text-xs text-ink hover:text-brand line-clamp-1 transition-colors"
+                        className="font-medium text-xs text-ink line-clamp-1 underline-offset-2 hover:underline"
                       >
                         {c.fullName}
                       </Link>

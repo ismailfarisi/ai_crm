@@ -1,22 +1,33 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Send, Mail, MessageSquare, Phone, User, Paperclip } from 'lucide-react';
+import { ArrowLeft, MessageSquare, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { type ChannelProvider } from '@saas/shared';
 import { api, type ChannelMessageDto } from '@/lib/api/endpoints';
 import { formatRelative, initials } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input, Select, Textarea } from '@/components/ui/field';
-import { Badge, Card } from '@/components/ui/primitives';
-import type { ThreadGroup } from './inbox-thread-list';
+import { Badge } from '@/components/ui/primitives';
+import { ChannelBadge, channelName, type ThreadGroup } from './inbox-thread-list';
 
 interface InboxChatPanelProps {
   thread: ThreadGroup | null;
   onMessageSent: () => void;
+  /** Phone layout only: return to the thread list. */
+  onBack?: () => void;
 }
 
-export function InboxChatPanel({ thread, onMessageSent }: InboxChatPanelProps) {
+/** How an outbound message's delivery reads under the bubble. */
+const OUTBOUND_STATUS: Record<ChannelMessageDto['status'], string> = {
+  pending: 'Sending',
+  sent: 'Sent',
+  delivered: 'Delivered',
+  failed: 'Not delivered',
+  received: 'Received',
+};
+
+export function InboxChatPanel({ thread, onMessageSent, onBack }: InboxChatPanelProps) {
   const [provider, setProvider] = useState<ChannelProvider>('WHATSAPP_META');
   const [recipient, setRecipient] = useState('');
   const [subject, setSubject] = useState('');
@@ -42,7 +53,10 @@ export function InboxChatPanel({ thread, onMessageSent }: InboxChatPanelProps) {
       }
     }
     setRecipient(defaultRecipient);
-  }, [thread]);
+    // Keyed on the thread's id, not the object: the inbox polls every 10s and
+    // rebuilds the thread, which used to reset a recipient mid-edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [thread?.id]);
 
   // Scroll to bottom when thread messages change
   useEffect(() => {
@@ -55,9 +69,9 @@ export function InboxChatPanel({ thread, onMessageSent }: InboxChatPanelProps) {
         <div className="grid size-12 place-items-center rounded-full bg-surface-muted text-ink-subtle mb-3">
           <MessageSquare className="size-6" />
         </div>
-        <h3 className="text-base font-semibold text-ink">No conversation selected</h3>
-        <p className="mt-1 text-sm text-ink-subtle max-w-sm">
-          Select a thread from the list on the left to view message history and send replies.
+        <h3 className="text-sm font-semibold text-ink">No conversation open</h3>
+        <p className="mt-1 max-w-sm text-sm text-ink-muted">
+          Pick a conversation from the list to read it and reply.
         </p>
       </div>
     );
@@ -84,12 +98,12 @@ export function InboxChatPanel({ thread, onMessageSent }: InboxChatPanelProps) {
         subject: isEmail ? subject.trim() : undefined,
       });
 
-      toast.success('Message sent successfully');
+      toast.success('Message sent');
       setBody('');
       setSubject('');
       onMessageSent();
     } catch (err: any) {
-      toast.error(err.message || 'Failed to send message');
+      toast.error(err.message || "Couldn't send the message. Try again.");
     } finally {
       setIsSending(false);
     }
@@ -98,73 +112,84 @@ export function InboxChatPanel({ thread, onMessageSent }: InboxChatPanelProps) {
   return (
     <div className="flex h-full flex-col bg-surface">
       {/* Thread Header */}
-      <div className="flex items-center justify-between border-b border-border p-4">
-        <div className="flex items-center gap-3">
-          <div className="grid size-10 place-items-center rounded-full bg-brand-soft text-xs font-semibold text-brand ring-1 ring-brand/20">
+      <div className="flex items-center justify-between gap-3 border-b border-border p-3 md:p-4">
+        <div className="flex min-w-0 items-center gap-3">
+          {onBack && (
+            <Button
+              variant="ghost"
+              size="lg"
+              onClick={onBack}
+              aria-label="Back to conversations"
+              className="-ml-1 shrink-0 gap-1.5 px-3"
+            >
+              <ArrowLeft className="size-4" aria-hidden />
+              Back
+            </Button>
+          )}
+          <div
+            aria-hidden
+            className="grid size-10 shrink-0 place-items-center rounded-full bg-surface-muted text-xs font-semibold text-ink ring-1 ring-border"
+          >
             {initials(thread.name, '')}
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="font-semibold text-ink leading-none">{thread.name}</h3>
-              {thread.staffUser && (
-                <span className="rounded bg-brand/10 text-brand text-[10px] font-medium px-1.5 py-0.5 border border-brand/20">
-                  Staff Member
-                </span>
-              )}
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <h3 className="truncate font-semibold leading-none text-ink">{thread.name}</h3>
+              {thread.staffUser && <Badge className="shrink-0">Staff</Badge>}
             </div>
-            <p className="text-xs text-ink-subtle mt-1">
+            <p className="mt-1 truncate text-xs text-ink-muted">
               {thread.staffUser?.email || thread.contact?.email || thread.contact?.phone || thread.recipientOrSender}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="hidden shrink-0 items-center gap-2 sm:flex">
           {Array.from(thread.providers).map((prov) => (
-            <Badge key={prov} tone={prov === 'WHATSAPP_META' ? 'success' : prov === 'TELEGRAM' ? 'brand' : 'warning'}>
-              {prov === 'WHATSAPP_META' ? 'WhatsApp' : prov === 'TELEGRAM' ? 'Telegram' : 'Email'}
-            </Badge>
+            <ChannelBadge key={prov} provider={prov} />
           ))}
         </div>
       </div>
 
       {/* Message History Feed */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin bg-surface-muted/10">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-surface-muted/10 p-4 scrollbar-thin">
         {sortedMessages.length === 0 ? (
           <p className="text-center text-sm text-ink-subtle py-8">No messages in this conversation.</p>
         ) : (
           sortedMessages.map((msg) => {
             const isOutbound = msg.direction === 'OUTBOUND';
+            const isFailed = isOutbound && msg.status === 'failed';
             return (
               <div
                 key={msg.id}
                 className={`flex flex-col ${isOutbound ? 'items-end' : 'items-start'}`}
               >
                 <div
-                  className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-xs ${
+                  className={`max-w-[85%] rounded-2xl border px-4 py-2.5 text-sm text-ink shadow-xs md:max-w-[75%] ${
                     isOutbound
-                      ? 'bg-brand text-on-brand rounded-br-xs'
-                      : 'bg-surface border border-border text-ink rounded-bl-xs'
+                      ? 'rounded-br-xs bg-surface-muted ' + (isFailed ? 'border-danger/40' : 'border-border')
+                      : 'rounded-bl-xs border-border bg-surface'
                   }`}
                 >
                   {/* Subject line for email messages */}
                   {msg.metadata?.subject && (
-                    <p className={`font-semibold mb-1 text-xs ${isOutbound ? 'text-white/90' : 'text-ink-subtle'}`}>
-                      Subject: {msg.metadata.subject}
-                    </p>
+                    <p className="mb-1 text-xs font-semibold text-ink-muted">Subject: {msg.metadata.subject}</p>
                   )}
 
                   <p className="whitespace-pre-wrap break-words">{msg.body}</p>
 
-                  <div
-                    className={`mt-1.5 flex items-center justify-end gap-1.5 text-[10px] ${
-                      isOutbound ? 'text-white/80' : 'text-ink-subtle'
-                    }`}
-                  >
-                    <span>{msg.provider === 'WHATSAPP_META' ? 'WhatsApp' : msg.provider === 'TELEGRAM' ? 'Telegram' : 'Email'}</span>
-                    <span>•</span>
-                    <span>{formatRelative(msg.createdAt)}</span>
-                    <span>•</span>
-                    <span className="capitalize font-medium">{msg.status}</span>
+                  <div className="mt-1.5 flex flex-wrap items-center justify-end gap-x-1.5 gap-y-1 text-xs text-ink-muted">
+                    <span>{channelName(msg.provider)}</span>
+                    <span aria-hidden>·</span>
+                    <span className="tabular-nums">{formatRelative(msg.createdAt)}</span>
+                    {isOutbound &&
+                      (isFailed ? (
+                        <Badge tone="danger">Not delivered</Badge>
+                      ) : (
+                        <>
+                          <span aria-hidden>·</span>
+                          <span className="font-medium">{OUTBOUND_STATUS[msg.status]}</span>
+                        </>
+                      ))}
                   </div>
                 </div>
               </div>
@@ -179,9 +204,10 @@ export function InboxChatPanel({ thread, onMessageSent }: InboxChatPanelProps) {
         <div className="flex flex-wrap items-center gap-2">
           {/* Provider Selector */}
           <Select
+            aria-label="Send through"
             value={provider}
             onChange={(e) => setProvider(e.target.value as ChannelProvider)}
-            containerClassName="w-44"
+            containerClassName="w-full sm:w-44"
             options={[
               { value: 'WHATSAPP_META', label: 'WhatsApp Meta' },
               { value: 'TELEGRAM', label: 'Telegram Bot' },
@@ -192,31 +218,34 @@ export function InboxChatPanel({ thread, onMessageSent }: InboxChatPanelProps) {
 
           {/* Recipient Input */}
           <Input
-            placeholder="Recipient (Phone / Email / Chat ID)"
+            aria-label="Recipient"
+            placeholder="Phone, email or chat ID"
             value={recipient}
             onChange={(e) => setRecipient(e.target.value)}
-            className="flex-1 min-w-[200px]"
+            containerClassName="min-w-[12rem] flex-1"
           />
         </div>
 
         {/* Subject input (if email) */}
         {isEmail && (
           <Input
-            placeholder="Email Subject"
+            aria-label="Subject"
+            placeholder="Subject"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
-            className="w-full text-sm"
           />
         )}
 
         {/* Message body */}
-        <div className="relative flex items-end gap-2">
+        <div className="flex items-end gap-2">
           <Textarea
-            placeholder={`Type your reply via ${provider === 'WHATSAPP_META' ? 'WhatsApp' : provider === 'TELEGRAM' ? 'Telegram' : 'Email'}...`}
+            aria-label="Reply"
+            placeholder={`Reply by ${channelName(provider)}…`}
             value={body}
             onChange={(e) => setBody(e.target.value)}
             rows={2}
-            className="flex-1 resize-none text-sm pr-12"
+            containerClassName="min-w-0 flex-1"
+            className="resize-none"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                 handleSend(e);
@@ -228,14 +257,15 @@ export function InboxChatPanel({ thread, onMessageSent }: InboxChatPanelProps) {
             type="submit"
             disabled={isSending || !body.trim() || !recipient.trim()}
             loading={isSending}
-            size="md"
-            className="self-end"
+            size="lg"
+            className="shrink-0"
           >
             <Send className="size-4" />
             Send
           </Button>
         </div>
-        <p className="text-[11px] text-ink-subtle text-right">Press Ctrl+Enter or Cmd+Enter to send</p>
+        {/* Only a keyboard can press it; touch screens don't need the hint. */}
+        <p className="hidden text-right text-xs text-ink-subtle pointer-fine:block">Ctrl+Enter or Cmd+Enter sends</p>
       </form>
     </div>
   );

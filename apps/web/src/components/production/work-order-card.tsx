@@ -129,8 +129,8 @@ export function WorkOrderCard({ workOrder, onSelect, onActionSuccess }: WorkOrde
           onSelect(workOrder.id);
         }
       }}
-      className={`group relative flex flex-col justify-between rounded-xl border bg-surface p-3.5 shadow-2xs transition-all duration-150 hover:border-accent hover:shadow-sm cursor-pointer select-none ${
-        runningOp ? 'border-l-4 border-l-success border-line' : 'border-line'
+      className={`group relative flex flex-col justify-between rounded-xl border bg-surface p-3.5 shadow-2xs transition-all duration-150 hover:border-brand hover:shadow-sm cursor-pointer select-none ${
+        runningOp ? 'border-success/60 ring-1 ring-success/30' : 'border-line'
       }`}
     >
       <div>
@@ -224,7 +224,7 @@ export function WorkOrderCard({ workOrder, onSelect, onActionSuccess }: WorkOrde
             onClick={handleQuickAction}
             disabled={act.isPending}
             aria-label={`${quickAction.label} ${workOrder.woNumber}`}
-            className="inline-flex items-center gap-1 rounded-md border border-line bg-surface px-2 py-1 text-xs font-medium text-ink shadow-2xs hover:bg-surface-sunk hover:border-accent active:scale-95 transition-all opacity-90 sm:opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer"
+            className="inline-flex items-center gap-1 rounded-md border border-line bg-surface px-2 py-1 text-xs font-medium text-ink shadow-2xs pointer-coarse:min-h-11 pointer-coarse:px-3 pointer-coarse:text-sm hover:bg-surface-sunk hover:border-brand active:scale-95 transition-all sm:pointer-fine:opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer"
           >
             {quickAction.icon}
             <span>{quickAction.label}</span>
