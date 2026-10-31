@@ -386,10 +386,12 @@ export class FinanceService {
       (e) => e.status === 'APPROVED' || e.status === 'PAID',
     );
 
-    const totalCash = accounts.reduce(
-      (sum, acc) => sum + Number(acc.balance || 0),
-      0,
-    );
+    // Only accounts in the base currency add up; a dollar account's balance
+    // is not dirhams. The web lists the others separately.
+    const base = await baseCurrencyFor(this.accountRepository.manager, tenantId);
+    const totalCash = accounts
+      .filter((acc) => (acc.currency || base).toUpperCase() === base)
+      .reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
 
     const recurringMonthly = recurringExpenses.reduce(
       (sum, rec) =>
@@ -504,7 +506,7 @@ export class FinanceService {
 
     return {
       totalCash,
-      currency: accounts[0]?.currency || 'USD',
+      currency: base,
       monthlyInflow,
       monthlyOutflow,
       netCashflow,

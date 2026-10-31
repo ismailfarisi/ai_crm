@@ -41,6 +41,7 @@ import {
   scannedReceiptJsonSchema,
 } from './dto';
 import {
+  EXPENSE_NOTES_MAX_LENGTH,
   LEDGER_ROLES,
   expenseCategoryRole,
   type ExpenseStatus,
@@ -51,6 +52,17 @@ import {
 } from '../../database/tenant-sequence.util';
 
 const POSTGRES_UNIQUE_VIOLATION = '23505';
+
+/** Trimmed, blank as null, and refused when it is longer than a paragraph. */
+function cleanNotes(notes: string | null | undefined): string | null {
+  const trimmed = typeof notes === 'string' ? notes.trim() : '';
+  if (trimmed.length > EXPENSE_NOTES_MAX_LENGTH) {
+    throw new BadRequestException(
+      `Notes can be at most ${EXPENSE_NOTES_MAX_LENGTH} characters.`,
+    );
+  }
+  return trimmed || null;
+}
 
 /** A second posting for a reference the database allows only one of. */
 function isDuplicatePosting(err: unknown): boolean {
@@ -140,6 +152,7 @@ export class ExpensesService {
       merchantName: dto.merchantName || null,
       expenseDate: dto.expenseDate ? new Date(dto.expenseDate) : new Date(),
       receiptUrl: dto.receiptUrl || null,
+      notes: cleanNotes(dto.notes),
       items,
     });
 
@@ -195,6 +208,7 @@ export class ExpensesService {
         : new Date();
     }
     if (dto.receiptUrl !== undefined) claim.receiptUrl = dto.receiptUrl;
+    if (dto.notes !== undefined) claim.notes = cleanNotes(dto.notes);
     if (dto.rejectionReason !== undefined) {
       claim.rejectionReason = dto.rejectionReason;
     }
@@ -217,6 +231,13 @@ export class ExpensesService {
       dto.action !== 'REIMBURSE'
     ) {
       throw new BadRequestException(`Invalid signal action: ${dto.action}`);
+    }
+    // The claimant is told why, so a rejection has to say.
+    if (
+      dto.action === 'REJECT' &&
+      (typeof dto.reason !== 'string' || !dto.reason.trim())
+    ) {
+      throw new BadRequestException('Give a reason for rejecting the claim.');
     }
 
     /*
@@ -316,7 +337,7 @@ export class ExpensesService {
         break;
       case 'REJECT':
         claim.status = 'REJECTED';
-        claim.rejectionReason = dto.reason || 'Expense rejected';
+        claim.rejectionReason = dto.reason?.trim() || null;
         break;
       case 'REIMBURSE':
         claim.status = 'PAID';

@@ -244,6 +244,45 @@ describe('ExpensesService', () => {
       expect(result.temporalWorkflowId).toBe(`expense-${expenseId}`);
       expect(expenseRepo.save).toHaveBeenCalled();
     });
+
+    it('keeps the notes the claimant wrote, trimmed', async () => {
+      const result = await service.create(tenantId, {
+        category: 'Meals & Entertainment',
+        amount: 120,
+        notes: '  Lunch with the Al Futtaim site team after the survey.  ',
+      });
+
+      expect(expenseRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          notes: 'Lunch with the Al Futtaim site team after the survey.',
+        }),
+      );
+      expect(result.notes).toBe(
+        'Lunch with the Al Futtaim site team after the survey.',
+      );
+    });
+
+    it('stores blank notes as none rather than an empty string', async () => {
+      await service.create(tenantId, {
+        category: 'Consumables',
+        amount: 40,
+        notes: '   ',
+      });
+      expect(expenseRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ notes: null }),
+      );
+    });
+
+    it('refuses notes longer than a paragraph', async () => {
+      await expect(
+        service.create(tenantId, {
+          category: 'Consumables',
+          amount: 40,
+          notes: 'x'.repeat(2001),
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(expenseRepo.save).not.toHaveBeenCalled();
+    });
   });
 
   describe('update', () => {
@@ -271,6 +310,20 @@ describe('ExpensesService', () => {
         }),
       );
       expect(updated.category).toBe('Meals & Entertainment');
+    });
+
+    it('updates the notes, and clears them when sent blank', async () => {
+      expenseRepo.findOne = jest
+        .fn()
+        .mockResolvedValue({ id: expenseId, tenantId, notes: 'Old' });
+
+      const updated = await service.update(tenantId, expenseId, {
+        notes: ' Fuel for the delivery van ',
+      });
+      expect(updated.notes).toBe('Fuel for the delivery van');
+
+      const cleared = await service.update(tenantId, expenseId, { notes: '' });
+      expect(cleared.notes).toBeNull();
     });
   });
 
@@ -324,6 +377,23 @@ describe('ExpensesService', () => {
         }),
       );
       expect(res.status).toBe('REJECTED');
+    });
+
+    it('refuses a rejection without a reason', async () => {
+      expenseRepo.findOne = jest.fn().mockResolvedValue({
+        id: expenseId,
+        tenantId,
+        status: 'SUBMITTED',
+      });
+
+      await expect(
+        service.sendSignal(tenantId, expenseId, {
+          action: 'REJECT',
+          reason: '   ',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(expenseRepo.save).not.toHaveBeenCalled();
+      expect(mockWorkflowHandle.signal).not.toHaveBeenCalled();
     });
 
     it('signals REIMBURSE and updates status to PAID', async () => {

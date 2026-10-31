@@ -48,6 +48,8 @@ export interface ExpenseClaimDto {
   merchantName?: string | null;
   expenseDate: string;
   receiptUrl?: string | null;
+  /** What the claimant wrote about it: the business purpose, who was there. */
+  notes?: string | null;
   rejectionReason?: string | null;
   approvedById?: string | null;
   approvedAt?: string | null;
@@ -226,6 +228,9 @@ export interface CreateCategoryBudgetPayload {
   endDate: string;
 }
 
+/** A claim's notes are a paragraph, not a document. */
+export const EXPENSE_NOTES_MAX_LENGTH = 2000;
+
 export interface CreateExpenseClaimPayload {
   claimNumber?: string;
   employeeId?: string;
@@ -236,6 +241,7 @@ export interface CreateExpenseClaimPayload {
   merchantName?: string | null;
   expenseDate?: string;
   receiptUrl?: string | null;
+  notes?: string | null;
   items?: ExpenseItemDto[];
   status?: ExpenseStatus;
 }
@@ -249,6 +255,7 @@ export interface UpdateExpenseClaimPayload {
   merchantName?: string | null;
   expenseDate?: string;
   receiptUrl?: string | null;
+  notes?: string | null;
   rejectionReason?: string | null;
   items?: ExpenseItemDto[];
   status?: ExpenseStatus;

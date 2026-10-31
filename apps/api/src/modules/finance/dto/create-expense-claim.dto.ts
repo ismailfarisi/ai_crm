@@ -10,6 +10,7 @@ export class CreateExpenseClaimDto {
   merchantName?: string | null;
   expenseDate?: string | Date;
   receiptUrl?: string | null;
+  notes?: string | null;
   items?: ExpenseItemDto[];
   status?: ExpenseStatus;
 }

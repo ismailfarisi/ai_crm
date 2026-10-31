@@ -9,6 +9,7 @@ export class UpdateExpenseClaimDto {
   merchantName?: string | null;
   expenseDate?: string | Date;
   receiptUrl?: string | null;
+  notes?: string | null;
   rejectionReason?: string | null;
   items?: ExpenseItemDto[];
   status?: ExpenseStatus;

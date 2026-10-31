@@ -20,6 +20,7 @@ import { Quote } from '../quotes/entities/quote.entity';
 import { Invoice } from '../quotes/entities/invoice.entity';
 import { SalesOrder } from '../orders/entities/sales-order.entity';
 import type { CustomerQueryDto } from './dto/customer-query.dto';
+import { baseCurrencyFor } from '../finance/fx';
 
 @Injectable()
 export class CustomersService {
@@ -121,7 +122,7 @@ export class CustomersService {
 
     return {
       customerId: customer.id,
-      currency: customer.currency ?? 'USD',
+      currency: customer.currency ?? (await baseCurrencyFor(this.customers.manager, tenantId)),
       quotes: quotes.map((quote) => ({
         id: quote.id,
         number: quote.quoteNumber,

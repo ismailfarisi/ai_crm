@@ -59,6 +59,10 @@ export class ExpenseClaim {
   @Column({ type: 'text', nullable: true })
   receiptUrl: string | null;
 
+  /** What the claimant wrote: the business purpose, who was there. */
+  @Column({ type: 'text', nullable: true })
+  notes: string | null;
+
   @Column({ type: 'text', nullable: true })
   rejectionReason: string | null;
 

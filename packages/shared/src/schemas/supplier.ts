@@ -27,7 +27,7 @@ const currency = z
   .max(3)
   .nullish()
   .transform((v) => (v == null || v === '' ? null : v))
-  .refine((v) => v === null || /^[A-Z]{3}$/.test(v), 'Enter a 3-letter currency code (e.g. USD)');
+  .refine((v) => v === null || /^[A-Z]{3}$/.test(v), 'Enter a 3-letter currency code (e.g. AED)');
 
 const days = (max: number) =>
   z.coerce
@@ -61,7 +61,8 @@ export const createSupplierSchema = z
   taxId: optionalText(40),
   emirate: emirateField,
   vatStatus: vatStatusField,
-  currency: currency.default('USD'),
+  // Left empty, the API uses the organisation's own currency, not USD.
+  currency,
   paymentTermsDays: days(365).default(30),
   /** Order-to-delivery, used to propose an expected date on a purchase order. */
   leadTimeDays: days(365).default(7),

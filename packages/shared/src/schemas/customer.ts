@@ -56,7 +56,8 @@ export const createCustomerSchema = z
   taxId: optionalText(40),
   emirate: emirateField,
   vatStatus: vatStatusField,
-  currency: currency.default('USD'),
+  // Left empty, the API uses the organisation's own currency, not USD.
+  currency,
   paymentTermsDays: paymentTermsDays.default(30),
   notes: optionalText(5000),
 })

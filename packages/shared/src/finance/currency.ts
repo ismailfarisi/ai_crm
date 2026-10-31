@@ -33,6 +33,8 @@ export const CURRENCY_OPTIONS: ReadonlyArray<{
   symbol: string;
   name: string;
 }> = [
+  // UAE first: it's the market Kerf is sold in.
+  { code: 'AED', symbol: 'د.إ', name: 'UAE Dirham' },
   { code: 'USD', symbol: '$', name: 'US Dollar' },
   { code: 'EUR', symbol: '€', name: 'Euro' },
   { code: 'GBP', symbol: '£', name: 'British Pound' },
@@ -48,7 +50,6 @@ export const CURRENCY_OPTIONS: ReadonlyArray<{
   { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
   { code: 'CNY', symbol: '¥', name: 'Chinese Yuan' },
   { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
-  { code: 'AED', symbol: 'د.إ', name: 'UAE Dirham' },
   { code: 'SAR', symbol: '﷼', name: 'Saudi Riyal' },
   { code: 'ZAR', symbol: 'R', name: 'South African Rand' },
 ];

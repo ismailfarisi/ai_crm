@@ -35,6 +35,7 @@ import { Organization } from '../organizations/entities/organization.entity';
 import { MailService } from '../mail/mail.service';
 import { PurchaseOrderPdfService } from './purchase-order-pdf.service';
 import { PurchaseOrderLifecycleService } from './purchase-order-lifecycle.service';
+import { baseCurrencyFor } from '../finance/fx';
 
 /** Minimal escaping for the values interpolated into the supplier email. */
 function escapeHtml(value: string): string {
@@ -292,6 +293,7 @@ export class PurchasingService {
     return this.suppliers.save(
       this.suppliers.create({
         ...input,
+        currency: input.currency ?? (await baseCurrencyFor(this.suppliers.manager, tenantId)),
         tenantId,
         vatStatus: resolveVatStatus(null, input),
       }),
@@ -604,6 +606,8 @@ ${from}`,
     demand: MaterialDemand[],
   ): Promise<PurchaseSuggestion> {
     const groups = new Map<string, SuggestedPurchaseOrder>();
+    // A supplier with no currency of its own trades in ours.
+    const base = await baseCurrencyFor(this.suppliers.manager, tenantId);
     const unsourced: UnsourcedDemand[] = [];
 
     for (const item of demand) {
@@ -628,7 +632,7 @@ ${from}`,
         ({
           supplierId: supplier.id,
           supplierName: supplier.companyName,
-          currency: supplier.currency ?? 'USD',
+          currency: supplier.currency ?? base,
           leadTimeDays: supplier.leadTimeDays,
           lines: [],
           totalAmount: 0,
@@ -734,7 +738,7 @@ ${from}`,
         supplierId: supplier.id,
         supplierName: supplier.companyName,
         status: 'DRAFT' as const,
-        currency: supplier.currency ?? 'USD',
+        currency: supplier.currency ?? (await baseCurrencyFor(manager, tenantId)),
         orderDate: new Date(),
         expectedDate,
         subtotalAmount: subtotal,

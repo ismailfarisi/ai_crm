@@ -340,11 +340,39 @@ export class DocumentTemplatesService {
     org: Organization | null,
     docType: DocumentType,
   ): UniversalDocumentData {
-    const orgName = org?.name || 'Acme Packaging & Supplies Ltd';
-    const currency = org?.baseCurrency || 'USD';
+    // The same sample the template studio previews (Meridian Packaging billing
+    // Al Noor Sweets, UAE VAT at 5%), with every total worked out from the
+    // rows. It used to be a US sample whose discount was counted twice.
+    const orgName = org?.name || 'Meridian Packaging Co';
+    const currency = org?.baseCurrency || 'AED';
     const orgAddress =
       [org?.addressLine1, org?.city, org?.country].filter(Boolean).join(', ') ||
-      '100 Industrial Parkway, Suite 400, Chicago, IL 60601';
+      'Plot 14, Industrial Area 13, Sharjah, UAE';
+    const vatRate = 5;
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const sampleLines =
+      docType === 'PURCHASE_ORDER'
+        ? [
+            { code: 'GB-1200', description: 'Greyboard 1200 gsm, 700×1000 sheet', quantity: 2400, unitPrice: 3.15, discount: 0 },
+            { code: 'ART-157', description: 'Art paper 157 gsm wrap, 700×1000 sheet', quantity: 2600, unitPrice: 0.95, discount: 10 },
+          ]
+        : [
+            { code: 'RB-200', description: 'Rigid box 200×150×60, gold foil lid', quantity: 5000, unitPrice: 4.6, discount: 0 },
+            { code: 'EVA-2C', description: 'EVA foam insert, 2 cavities', quantity: 5000, unitPrice: 0.85, discount: 0 },
+            { code: 'SLV-ML', description: 'Printed paper sleeve, matt lamination', quantity: 5000, unitPrice: 0.4, discount: 5 },
+          ];
+    const items = sampleLines.map((line) => ({
+      ...line,
+      taxRate: vatRate,
+      amount: round2(line.quantity * line.unitPrice * (1 - line.discount / 100)),
+    }));
+    const gross = round2(sampleLines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0));
+    const net = round2(items.reduce((sum, line) => sum + line.amount, 0));
+    const vat = round2(net * (vatRate / 100));
+    const total = round2(net + vat);
+    const amountPaid = docType === 'INVOICE' ? 15000 : 0;
+    const balanceDue = round2(total - amountPaid);
+    const openingBalance = 4200;
 
     const numbers: Record<DocumentType, string> = {
       INVOICE: 'INV-2026-0042',
@@ -376,71 +404,38 @@ export class DocumentTemplatesService {
       organization: {
         name: orgName,
         address: orgAddress,
-        taxId: org?.taxId || 'US-987654321',
-        phone: org?.phone || '+1 (312) 555-0140',
-        email: org?.email || 'billing@acmepackaging.example.com',
-        website: org?.website || 'https://acmepackaging.example.com',
+        taxId: org?.taxId || '100234567800003',
+        phone: org?.phone || '+971 6 555 0142',
+        email: org?.email || 'accounts@meridianpackaging.example',
+        website: org?.website || 'https://meridianpackaging.example',
       },
       party:
         docType === 'PURCHASE_ORDER'
           ? {
-              name: 'Raw Paperboard Mill Co',
-              companyName: 'Raw Paperboard Mill Co',
-              address: '500 Pulp Road, Savannah, GA 31401',
-              email: 'orders@paperboardmill.example.com',
-              phone: '+1 (912) 555-0199',
-              taxId: 'US-112233445',
+              name: 'Gulf Board Trading LLC',
+              companyName: 'Gulf Board Trading LLC',
+              address: 'Warehouse 22, Al Jurf Industrial Area 2, Ajman, UAE',
+              email: 'orders@gulfboard.example',
+              phone: '+971 6 555 0177',
+              taxId: '100456789100003',
             }
           : {
-              name: 'Sarah Connor',
-              companyName: 'Cyberdyne Logistics Inc',
-              address: '742 Evergreen Terrace, Springfield, OR 97477',
-              email: 'accounts@cyberdyne.example.com',
-              phone: '+1 (503) 555-0188',
-              taxId: 'US-554433221',
+              name: 'Al Noor Sweets',
+              companyName: 'Al Noor Sweets',
+              address: 'Warehouse 7, Al Qusais Industrial Area 2, Dubai, UAE',
+              email: 'accounts@alnoorsweets.example',
+              phone: '+971 4 555 0186',
+              taxId: '100398765400003',
             },
-      items: [
-        {
-          code: 'BOX-MD-01',
-          description: 'Custom Rigid Corrugated Box (12" x 12" x 8")',
-          quantity: 250,
-          unitPrice: 3.25,
-          discount: 0,
-          taxRate: 8.5,
-          amount: 812.5,
-        },
-        {
-          code: 'INS-FOAM-02',
-          description: 'Anti-Static Foam Cushion Inserts',
-          quantity: 250,
-          unitPrice: 1.2,
-          discount: 20,
-          taxRate: 8.5,
-          amount: 280,
-        },
-        {
-          code: 'PRT-OFFSET',
-          description: 'Spot UV & Matte Lamination Custom Printing',
-          quantity: 1,
-          unitPrice: 150,
-          discount: 0,
-          taxRate: 8.5,
-          amount: 150,
-        },
-      ],
+      items,
       totals: {
-        subtotal: 1262.5,
-        discounts: 20,
-        taxes: [
-          {
-            rate: 8.5,
-            label: 'State Tax (8.5%)',
-            amount: 105.61,
-          },
-        ],
-        total: 1348.11,
-        amountPaid: docType === 'INVOICE' ? 500 : 0,
-        balanceDue: docType === 'INVOICE' ? 848.11 : 1348.11,
+        // Before discounts; the Discount row takes them off.
+        subtotal: gross,
+        discounts: round2(gross - net),
+        taxes: [{ rate: vatRate, label: `VAT (${vatRate}%)`, amount: vat }],
+        total,
+        amountPaid,
+        balanceDue,
       },
       notes:
         docType === 'STATEMENT'
@@ -448,23 +443,23 @@ export class DocumentTemplatesService {
           : 'Thank you for your business! All goods remain property of seller until payment in full.',
       paymentTerms:
         docType === 'QUOTE'
-          ? 'Estimate valid for 14 days from date of issue.'
-          : 'Net 30 Days. Payments accepted via ACH or wire transfer.',
+          ? 'Valid for 14 days from the issue date.'
+          : 'Net 30 days. Bank transfer to the account on this invoice.',
     };
 
     if (docType === 'STATEMENT') {
       docData.statementSummary = {
-        openingBalance: 450.0,
-        closingBalance: 1298.11,
+        openingBalance,
+        closingBalance: round2(openingBalance + total),
         periodFrom: new Date(Date.now() - 30 * 86400000)
           .toISOString()
           .slice(0, 10),
         periodTo: new Date().toISOString().slice(0, 10),
         aging: {
-          current: 848.11,
-          days30: 300.0,
-          days60: 150.0,
-          days90Plus: 0.0,
+          current: total,
+          days30: openingBalance,
+          days60: 0,
+          days90Plus: 0,
         },
       };
     }

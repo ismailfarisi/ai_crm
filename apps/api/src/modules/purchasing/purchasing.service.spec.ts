@@ -43,6 +43,10 @@ function makeService(seed: { suppliers?: any[]; orders?: any[] } = {}) {
       return { affected: row ? 1 : 0 };
     }),
     createQueryBuilder: jest.fn(),
+    // A supplier saved without a currency takes the organisation's own.
+    manager: {
+      getRepository: () => ({ findOne: jest.fn(async () => ({ id: 'tenant-a', baseCurrency: 'AED' })) }),
+    },
   };
 
   const orderRepo = {
