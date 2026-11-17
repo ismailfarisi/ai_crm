@@ -73,7 +73,10 @@ export class QuoteProofsService {
     private readonly storage: StorageService,
   ) {}
 
-  async list(tenantId: string, quoteId: string): Promise<QuoteProofsSummaryDto> {
+  async list(
+    tenantId: string,
+    quoteId: string,
+  ): Promise<QuoteProofsSummaryDto> {
     const quote = await this.findQuote(tenantId, quoteId);
     const rows = await this.proofs.find({
       where: { tenantId, quoteId },
@@ -81,7 +84,8 @@ export class QuoteProofsService {
     });
     return {
       proofRequired: await this.isRequired(quote),
-      proofRequiredFromDefault: quote.proofRequired === null || quote.proofRequired === undefined,
+      proofRequiredFromDefault:
+        quote.proofRequired === null || quote.proofRequired === undefined,
       customerResponse: quote.customerResponse
         ? {
             kind: quote.customerResponse,
@@ -162,12 +166,20 @@ export class QuoteProofsService {
     required: boolean,
   ): Promise<{ proofRequired: boolean }> {
     const quote = await this.findQuote(tenantId, quoteId);
+    if (quote.supersededAt) {
+      throw new BadRequestException(
+        'This quote has been replaced by a newer revision. Change the proof rule on the latest version.',
+      );
+    }
     if (quote.acceptedAt) {
       throw new BadRequestException(
         'The customer already accepted this quote, so the proof rule no longer applies.',
       );
     }
-    await this.quotes.update({ id: quoteId, tenantId }, { proofRequired: required });
+    await this.quotes.update(
+      { id: quoteId, tenantId },
+      { proofRequired: required },
+    );
     return { proofRequired: required };
   }
 
@@ -184,7 +196,10 @@ export class QuoteProofsService {
   }
 
   /** The latest live version, which is the only one a customer can answer. */
-  async latestFor(tenantId: string, quoteId: string): Promise<QuoteProof | null> {
+  async latestFor(
+    tenantId: string,
+    quoteId: string,
+  ): Promise<QuoteProof | null> {
     const rows = await this.proofs.find({
       where: { tenantId, quoteId },
       order: { version: 'DESC' },
@@ -252,7 +267,9 @@ export class QuoteProofsService {
       select: { id: true, salesOrderId: true },
     });
     if (!workOrder) {
-      throw new NotFoundException(`Work order with ID ${workOrderId} not found`);
+      throw new NotFoundException(
+        `Work order with ID ${workOrderId} not found`,
+      );
     }
     if (!workOrder.salesOrderId) return null;
     const order = await this.salesOrders.findOne({
@@ -300,8 +317,11 @@ export class QuoteProofsService {
   }
 
   private async findQuote(tenantId: string, quoteId: string): Promise<Quote> {
-    const quote = await this.quotes.findOne({ where: { id: quoteId, tenantId } });
-    if (!quote) throw new NotFoundException(`Quote with ID ${quoteId} not found`);
+    const quote = await this.quotes.findOne({
+      where: { id: quoteId, tenantId },
+    });
+    if (!quote)
+      throw new NotFoundException(`Quote with ID ${quoteId} not found`);
     return quote;
   }
 
@@ -316,7 +336,9 @@ export class QuoteProofsService {
   private async toDtos(rows: QuoteProof[]): Promise<QuoteProofDto[]> {
     const files = await this.filesFor(rows);
     const userIds = [
-      ...new Set(rows.map((r) => r.uploadedById).filter((v): v is string => !!v)),
+      ...new Set(
+        rows.map((r) => r.uploadedById).filter((v): v is string => !!v),
+      ),
     ];
     const users = userIds.length
       ? await this.users.find({
@@ -338,7 +360,8 @@ export class QuoteProofsService {
         fileAvailable: Boolean(file),
         staffNote: row.staffNote,
         uploadedByName: uploader
-          ? `${uploader.firstName} ${uploader.lastName}`.trim() || uploader.email
+          ? `${uploader.firstName} ${uploader.lastName}`.trim() ||
+            uploader.email
           : null,
         respondedAt: row.respondedAt?.toISOString() ?? null,
         respondedByName: row.respondedByName,

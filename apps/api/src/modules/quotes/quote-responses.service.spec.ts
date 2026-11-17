@@ -51,7 +51,9 @@ function makeService(
     refuse: jest.fn((reason: string) => {
       throw new GoneException({ reason });
     }),
-    toPublic: jest.fn(async (q: any) => ({ customerResponse: q.customerResponse })),
+    toPublic: jest.fn(async (q: any) => ({
+      customerResponse: q.customerResponse,
+    })),
   };
   const proofs: any = {
     latestFor: jest.fn(async () =>
@@ -78,14 +80,27 @@ function makeService(
     audit,
     config,
   );
-  return { service, quote, quoteQb, proofQb, acceptance, notifications, mail, audit };
+  return {
+    service,
+    quote,
+    quoteQb,
+    proofQb,
+    acceptance,
+    notifications,
+    mail,
+    audit,
+  };
 }
 
 describe('QuoteResponsesService', () => {
   it('records a decline with the customer name, audits it without a user and tells staff', async () => {
     const { service, quote, audit, notifications, mail } = makeService();
 
-    const view = await service.decline(token, { name: 'Jo Bloggs', reason: 'Too dear' }, '203.0.113.9');
+    const view = await service.decline(
+      token,
+      { name: 'Jo Bloggs', reason: 'Too dear' },
+      '203.0.113.9',
+    );
 
     expect(view.customerResponse).toBe('DECLINED');
     expect(quote.customerRespondedByName).toBe('Jo Bloggs');
@@ -103,7 +118,11 @@ describe('QuoteResponsesService', () => {
     expect(notifications.notifyUsers).toHaveBeenCalledWith(
       tenantId,
       ['u1', 'u2'],
-      expect.objectContaining({ type: 'QUOTE_CUSTOMER_RESPONSE', entityId: 'q1', link: '/quotes/q1' }),
+      expect.objectContaining({
+        type: 'QUOTE_CUSTOMER_RESPONSE',
+        entityId: 'q1',
+        link: '/quotes/q1',
+      }),
     );
     // Only recipients with an address get mail.
     expect(mail.sendMail).toHaveBeenCalledTimes(1);
@@ -121,15 +140,23 @@ describe('QuoteResponsesService', () => {
     const { html, text } = mail.sendMail.mock.calls[0][0];
     expect(html).not.toContain('<script>');
     expect(html).not.toContain('<b>Jo</b>');
-    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;<br>Blue, not red');
+    expect(html).toContain(
+      '&lt;script&gt;alert(1)&lt;/script&gt;<br>Blue, not red',
+    );
     expect(text).toContain('Blue, not red');
   });
 
   it('refuses on the same grounds as acceptance and records nothing', async () => {
-    const { service, audit, notifications, quoteQb } = makeService({ refusal: 'EXPIRED' });
+    const { service, audit, notifications, quoteQb } = makeService({
+      refusal: 'EXPIRED',
+    });
 
     await expect(
-      service.requestChanges(token, { name: 'Jo Bloggs', note: 'Bigger logo' }, undefined),
+      service.requestChanges(
+        token,
+        { name: 'Jo Bloggs', note: 'Bigger logo' },
+        undefined,
+      ),
     ).rejects.toBeInstanceOf(GoneException);
     expect(quoteQb.execute).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
@@ -156,13 +183,19 @@ describe('QuoteResponsesService', () => {
   });
 
   it('approves the latest pending proof and audits it by version', async () => {
-    const { service, audit, notifications, proofQb, acceptance } = makeService();
+    const { service, audit, notifications, proofQb, acceptance } =
+      makeService();
 
     await service.approveProof(token, 'p2', { name: 'Jo Bloggs' }, undefined);
 
-    expect(acceptance.refusalFor).toHaveBeenCalledWith(expect.anything(), { allowAccepted: true });
+    expect(acceptance.refusalFor).toHaveBeenCalledWith(expect.anything(), {
+      allowAccepted: true,
+    });
     expect(proofQb.set).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'APPROVED', respondedByName: 'Jo Bloggs' }),
+      expect.objectContaining({
+        status: 'APPROVED',
+        respondedByName: 'Jo Bloggs',
+      }),
     );
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -182,7 +215,12 @@ describe('QuoteResponsesService', () => {
     const { service, audit } = makeService();
 
     await expect(
-      service.requestProofChanges(token, 'p1', { name: 'Jo Bloggs', comment: 'Wrong colour' }, undefined),
+      service.requestProofChanges(
+        token,
+        'p1',
+        { name: 'Jo Bloggs', comment: 'Wrong colour' },
+        undefined,
+      ),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(audit.record).not.toHaveBeenCalled();
   });

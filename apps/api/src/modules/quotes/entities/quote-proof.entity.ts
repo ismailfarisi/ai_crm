@@ -36,7 +36,12 @@ export class QuoteProof extends TenantBaseEntity {
   respondedAt: Date | null;
 
   /** Typed by the customer; not an account, so never trusted as identity. */
-  @Column({ name: 'responded_by_name', type: 'varchar', length: 255, nullable: true })
+  @Column({
+    name: 'responded_by_name',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
   respondedByName: string | null;
 
   @Column({ name: 'response_comment', type: 'text', nullable: true })

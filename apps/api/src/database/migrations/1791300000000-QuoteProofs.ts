@@ -39,8 +39,12 @@ export class QuoteProofs1791300000000 implements MigrationInterface {
     await queryRunner.query(
       `CREATE UNIQUE INDEX "uq_quote_proofs_version" ON "quote_proofs" ("quote_id", "version")`,
     );
-    await queryRunner.query(`ALTER TABLE "quote_proofs" ENABLE ROW LEVEL SECURITY`);
-    await queryRunner.query(`ALTER TABLE "quote_proofs" FORCE ROW LEVEL SECURITY`);
+    await queryRunner.query(
+      `ALTER TABLE "quote_proofs" ENABLE ROW LEVEL SECURITY`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "quote_proofs" FORCE ROW LEVEL SECURITY`,
+    );
     await queryRunner.query(
       `CREATE POLICY tenant_isolation_policy ON "quote_proofs" FOR ALL ` +
         `USING (current_setting('app.bypass_rls', true) = 'on' OR "tenant_id" = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) ` +

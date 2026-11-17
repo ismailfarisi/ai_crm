@@ -81,7 +81,7 @@ export function QuoteProofsPanel({
         <CardTitle className="flex items-center gap-2">
           <FileImage className="h-4 w-4" /> Artwork proof
         </CardTitle>
-        {canEdit && !accepted && (
+        {canEdit && (
           <>
             <input
               ref={picker}

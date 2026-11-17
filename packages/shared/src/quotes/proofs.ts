@@ -61,7 +61,6 @@ export interface PublicQuoteProofDto {
   createdAt: string;
 }
 
-/** The proof a work order is built from, with a link the floor can open. */
 /** The proof card on the quote screen: the versions, the rule, and the customer's last word. */
 export interface QuoteProofsSummaryDto {
   proofRequired: boolean;
@@ -76,6 +75,7 @@ export interface QuoteProofsSummaryDto {
   proofs: QuoteProofDto[];
 }
 
+/** The proof a work order is built from, with a link the floor can open. */
 export interface WorkOrderProofDto {
   quoteId: string;
   quoteNumber: string | null;

@@ -26,7 +26,11 @@ function proof(overrides: Record<string, unknown> = {}): any {
 }
 
 function makeService(
-  options: { quote?: Record<string, unknown>; rows?: any[]; orgDefault?: boolean } = {},
+  options: {
+    quote?: Record<string, unknown>;
+    rows?: any[];
+    orgDefault?: boolean;
+  } = {},
 ) {
   const quote: any = {
     id: 'q1',
@@ -60,19 +64,35 @@ function makeService(
   };
   const attachments: any = {
     find: jest.fn(async () => [
-      { id: 'a1', storageKey: 'k1', filename: 'box-v1.pdf', contentType: 'application/pdf' },
-      { id: 'a2', storageKey: 'k2', filename: 'box-v2.png', contentType: 'image/png' },
+      {
+        id: 'a1',
+        storageKey: 'k1',
+        filename: 'box-v1.pdf',
+        contentType: 'application/pdf',
+      },
+      {
+        id: 'a2',
+        storageKey: 'k2',
+        filename: 'box-v2.png',
+        contentType: 'image/png',
+      },
     ]),
   };
   const organizations: any = {
-    findOne: jest.fn(async () => ({ quoteProofRequiredDefault: options.orgDefault ?? false })),
+    findOne: jest.fn(async () => ({
+      quoteProofRequiredDefault: options.orgDefault ?? false,
+    })),
   };
   const workOrders: any = {
     findOne: jest.fn(async () => ({ id: 'w1', salesOrderId: 's1' })),
   };
-  const salesOrders: any = { findOne: jest.fn(async () => ({ id: 's1', quoteId: 'q1' })) };
+  const salesOrders: any = {
+    findOne: jest.fn(async () => ({ id: 's1', quoteId: 'q1' })),
+  };
   const users: any = { find: jest.fn(async () => []) };
-  const attachmentsService: any = { upload: jest.fn(async () => ({ id: 'a9' })) };
+  const attachmentsService: any = {
+    upload: jest.fn(async () => ({ id: 'a9' })),
+  };
   const storage: any = {
     linkFor: jest.fn(async (id: string) => ({
       url: `https://api.example.test/attachments/${id}/download?sig=x`,
@@ -90,7 +110,15 @@ function makeService(
     attachmentsService,
     storage,
   );
-  return { service, quote, saved, managerQuery, attachments, attachmentsService, storage };
+  return {
+    service,
+    quote,
+    saved,
+    managerQuery,
+    attachments,
+    attachmentsService,
+    storage,
+  };
 }
 
 describe('QuoteProofsService', () => {
@@ -98,13 +126,20 @@ describe('QuoteProofsService', () => {
     const { service, attachmentsService } = makeService();
 
     await expect(
-      service.upload(user, 'q1', { mimetype: 'text/plain', originalname: 'a.txt' } as any, null),
+      service.upload(
+        user,
+        'q1',
+        { mimetype: 'text/plain', originalname: 'a.txt' } as any,
+        null,
+      ),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(attachmentsService.upload).not.toHaveBeenCalled();
   });
 
   it('will not add a proof to a quote a revision replaced', async () => {
-    const { service, attachmentsService } = makeService({ quote: { supersededAt: at } });
+    const { service, attachmentsService } = makeService({
+      quote: { supersededAt: at },
+    });
 
     await expect(
       service.upload(user, 'q1', { mimetype: 'application/pdf' } as any, null),
@@ -114,24 +149,52 @@ describe('QuoteProofsService', () => {
 
   it('adds the next version and supersedes the live one', async () => {
     const { service, saved, managerQuery, attachmentsService } = makeService({
-      rows: [proof({ id: 'p2', version: 2, status: 'CHANGES_REQUESTED' }), proof({ supersededAt: at })],
+      rows: [
+        proof({ id: 'p2', version: 2, status: 'CHANGES_REQUESTED' }),
+        proof({ supersededAt: at }),
+      ],
     });
 
-    await service.upload(user, 'q1', { mimetype: 'image/png' } as any, 'Logo bigger');
+    await service.upload(
+      user,
+      'q1',
+      { mimetype: 'image/png' } as any,
+      'Logo bigger',
+    );
 
-    expect(attachmentsService.upload).toHaveBeenCalledWith(user, 'QUOTE', 'q1', expect.anything());
+    expect(attachmentsService.upload).toHaveBeenCalledWith(
+      user,
+      'QUOTE',
+      'q1',
+      expect.anything(),
+    );
     expect(managerQuery).toHaveBeenCalledWith(
       expect.stringContaining('SET "superseded_at"'),
       [tenantId, 'q1', expect.any(Date)],
     );
     expect(saved[0]).toEqual(
-      expect.objectContaining({ version: 3, status: 'PENDING', attachmentId: 'a9', staffNote: 'Logo bigger' }),
+      expect.objectContaining({
+        version: 3,
+        status: 'PENDING',
+        attachmentId: 'a9',
+        staffNote: 'Logo bigger',
+      }),
     );
   });
 
   it('falls back to the organisation default until the quote has its own setting', async () => {
-    expect(await makeService({ orgDefault: true }).service.isRequired({ tenantId, proofRequired: null } as any)).toBe(true);
-    expect(await makeService({ orgDefault: true }).service.isRequired({ tenantId, proofRequired: false } as any)).toBe(false);
+    expect(
+      await makeService({ orgDefault: true }).service.isRequired({
+        tenantId,
+        proofRequired: null,
+      } as any),
+    ).toBe(true);
+    expect(
+      await makeService({ orgDefault: true }).service.isRequired({
+        tenantId,
+        proofRequired: false,
+      } as any),
+    ).toBe(false);
   });
 
   it('blocks acceptance until the latest live proof is approved', async () => {
@@ -145,20 +208,32 @@ describe('QuoteProofsService', () => {
     // An older approval does not count once a newer version is live.
     const newer = makeService({
       ...required,
-      rows: [proof({ id: 'p2', version: 2 }), proof({ status: 'APPROVED', supersededAt: at })],
+      rows: [
+        proof({ id: 'p2', version: 2 }),
+        proof({ status: 'APPROVED', supersededAt: at }),
+      ],
     });
     expect(await newer.service.blocksAcceptance(newer.quote)).toBe(true);
 
-    const approved = makeService({ ...required, rows: [proof({ status: 'APPROVED' })] });
+    const approved = makeService({
+      ...required,
+      rows: [proof({ status: 'APPROVED' })],
+    });
     expect(await approved.service.blocksAcceptance(approved.quote)).toBe(false);
 
-    const off = makeService({ quote: { proofRequired: false }, rows: [proof()] });
+    const off = makeService({
+      quote: { proofRequired: false },
+      rows: [proof()],
+    });
     expect(await off.service.blocksAcceptance(off.quote)).toBe(false);
   });
 
   it('signs links only for the files proof rows name', async () => {
     const { service, quote, attachments, storage } = makeService({
-      rows: [proof({ id: 'p2', version: 2, attachmentId: 'a2' }), proof({ supersededAt: at })],
+      rows: [
+        proof({ id: 'p2', version: 2, attachmentId: 'a2' }),
+        proof({ supersededAt: at }),
+      ],
     });
 
     const result = await service.forPublic(quote);
@@ -166,10 +241,12 @@ describe('QuoteProofsService', () => {
     const asked = attachments.find.mock.calls[0][0].where.id;
     expect(asked.value ?? asked._value).toEqual(['a2', 'a1']);
     expect(storage.linkFor).toHaveBeenCalledTimes(2);
-    expect(result.map((p) => [p.version, p.superseded, p.contentType])).toEqual([
-      [2, false, 'image/png'],
-      [1, true, 'application/pdf'],
-    ]);
+    expect(result.map((p) => [p.version, p.superseded, p.contentType])).toEqual(
+      [
+        [2, false, 'image/png'],
+        [1, true, 'application/pdf'],
+      ],
+    );
     expect(result[0].url).toContain('/attachments/a2/');
   });
 
@@ -177,14 +254,23 @@ describe('QuoteProofsService', () => {
     const { service, storage } = makeService({
       rows: [
         proof({ id: 'p2', version: 2, attachmentId: 'a2' }),
-        proof({ status: 'APPROVED', respondedByName: 'Jo Bloggs', respondedAt: at, supersededAt: at }),
+        proof({
+          status: 'APPROVED',
+          respondedByName: 'Jo Bloggs',
+          respondedAt: at,
+          supersededAt: at,
+        }),
       ],
     });
 
     const result = await service.forWorkOrder(tenantId, 'w1');
 
     expect(result?.proof).toEqual(
-      expect.objectContaining({ version: 1, filename: 'box-v1.pdf', approvedByName: 'Jo Bloggs' }),
+      expect.objectContaining({
+        version: 1,
+        filename: 'box-v1.pdf',
+        approvedByName: 'Jo Bloggs',
+      }),
     );
     expect(result?.newerVersion).toEqual({ version: 2, status: 'PENDING' });
     expect(storage.linkFor).toHaveBeenCalledWith('a1', 'k1', 'box-v1.pdf');

@@ -80,7 +80,9 @@ export class PublicQuotesController {
   @Post(':token/request-changes')
   @HttpCode(HttpStatus.OK)
   @Throttle({ auth: { limit: 10, ttl: 60_000 } })
-  @ApiOperation({ summary: 'Ask for changes to a quote from its acceptance link' })
+  @ApiOperation({
+    summary: 'Ask for changes to a quote from its acceptance link',
+  })
   requestChanges(
     @Param('token') token: string,
     @Body(zodBody(requestQuoteChangesSchema)) body: RequestQuoteChangesPayload,

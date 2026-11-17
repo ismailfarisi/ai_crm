@@ -30,6 +30,9 @@ blob-report/
 .claude/
 .playwright-mcp/
 
+# uploads written by the local storage driver (STORAGE_LOCAL_DIR)
+apps/api/storage/
+
 # editor / os
 .DS_Store
 Thumbs.db

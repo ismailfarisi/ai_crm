@@ -25,7 +25,11 @@ export function WorkOrderProofCard({ workOrderId }: { workOrderId: string }) {
     <section aria-labelledby="proof-heading" className="rounded-lg border border-border/60 bg-surface p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="proof-heading" className="flex items-center gap-2 text-lg font-semibold text-ink">
-          <FileCheck2 className="size-5 text-success" />
+          {proof ? (
+            <FileCheck2 className="size-5 text-success" />
+          ) : (
+            <TriangleAlert className="size-5 text-warning" />
+          )}
           {proof ? `Approved artwork · Proof v${proof.version}` : 'Artwork'}
         </h2>
         {proof?.url && (
