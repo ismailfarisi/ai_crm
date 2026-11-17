@@ -7,6 +7,7 @@ import {
   allocateStageAmounts,
   BILLING_PRESETS,
   DEFAULT_BILLING_SCHEDULE,
+  depositSchedule,
   validateBillingSchedule,
   type BillingStage,
   type QuoteTotals,
@@ -19,6 +20,8 @@ interface QuoteBillingCardProps {
   totals: QuoteTotals;
   currency: string;
   readOnly?: boolean;
+  /** The tenant's default deposit, from payment settings. */
+  defaultDepositPercent?: number;
 }
 
 // One money format across the editor: the same one as the lines and totals.
@@ -26,15 +29,34 @@ const money = (n: number, currency: string) => formatCurrency(n, currency);
 
 const sameStages = (a: BillingStage[], b: BillingStage[]) => JSON.stringify(a) === JSON.stringify(b);
 
+/** A deposit when accepted, then the balance: the shape the deposit editor edits. */
+const isDepositShape = (stages: BillingStage[]) =>
+  stages.length === 2 &&
+  stages[0].kind === 'DEPOSIT' &&
+  stages[0].trigger === 'ON_APPROVAL' &&
+  stages[1].kind === 'FINAL' &&
+  stages[1].trigger === 'MANUAL';
+
 /**
  * How the quote will be invoiced once approved.
  *
  * Previews the split with the same allocation the API stores, so the amounts
  * shown here are the amounts that will be invoiced, to the cent.
  */
-export function QuoteBillingCard({ schedule, onChange, totals, currency, readOnly }: QuoteBillingCardProps) {
+export function QuoteBillingCard({
+  schedule,
+  onChange,
+  totals,
+  currency,
+  readOnly,
+  defaultDepositPercent,
+}: QuoteBillingCardProps) {
   const stages = schedule?.length ? schedule : DEFAULT_BILLING_SCHEDULE;
-  const presetKey = BILLING_PRESETS.find((p) => sameStages(p.stages, stages))?.key ?? 'custom';
+  const presetKey =
+    BILLING_PRESETS.find((p) => sameStages(p.stages, stages))?.key ??
+    (isDepositShape(stages) ? 'deposit' : 'custom');
+  const depositShape = isDepositShape(stages);
+  const fixedDeposit = depositShape && stages[0].amount != null;
   const problems = useMemo(() => validateBillingSchedule(stages), [stages]);
   const amounts = useMemo(
     () => (problems.length ? null : allocateStageAmounts(totals, stages)),
@@ -45,6 +67,10 @@ export function QuoteBillingCard({ schedule, onChange, totals, currency, readOnl
     onChange(stages.map((stage, i) => (i === index ? { ...stage, ...patch } : stage)));
 
   const choosePreset = (key: string) => {
+    if (key === 'deposit') {
+      onChange(depositSchedule({ percent: defaultDepositPercent || 30 }));
+      return;
+    }
     if (key === 'custom') {
       onChange([
         { kind: 'DEPOSIT', label: 'Deposit', percent: 40, trigger: 'ON_APPROVAL' },
@@ -66,7 +92,8 @@ export function QuoteBillingCard({ schedule, onChange, totals, currency, readOnl
         {/* A locked quote states its schedule; a greyed-out dropdown reads as broken. */}
         {readOnly ? (
           <p className="text-sm font-medium text-ink">
-            {BILLING_PRESETS.find((preset) => preset.key === presetKey)?.label ?? 'Custom stages'}
+            {BILLING_PRESETS.find((preset) => preset.key === presetKey)?.label ??
+              (presetKey === 'deposit' ? 'Deposit, then balance' : 'Custom stages')}
           </p>
         ) : (
           <select
@@ -80,10 +107,54 @@ export function QuoteBillingCard({ schedule, onChange, totals, currency, readOnl
                 {preset.label}
               </option>
             ))}
+            <option value="deposit">Deposit, then balance</option>
             <option value="custom">Custom stages</option>
           </select>
         )}
       </div>
+
+      {depositShape && !readOnly && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+          <label htmlFor="deposit-value" className="text-ink">
+            Deposit
+          </label>
+          <input
+            id="deposit-value"
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step="any"
+            value={fixedDeposit ? (stages[0].amount ?? 0) : stages[0].percent}
+            onChange={(e) => {
+              const value = Number(e.target.value);
+              onChange(
+                fixedDeposit
+                  ? depositSchedule({ amount: value, quoteTotal: totals.totalAmount })
+                  : depositSchedule({ percent: value }),
+              );
+            }}
+            className="w-28 rounded-xl border border-border-control bg-surface px-2 py-1.5 text-end tabular-nums text-ink focus:border-brand-ring focus:outline-hidden focus:ring-1 focus:ring-brand-ring"
+          />
+          <select
+            aria-label="Deposit as"
+            value={fixedDeposit ? 'amount' : 'percent'}
+            onChange={(e) =>
+              onChange(
+                e.target.value === 'amount'
+                  ? depositSchedule({
+                      amount: amounts?.[0]?.totalAmount || Math.round(totals.totalAmount * 0.3 * 100) / 100,
+                      quoteTotal: totals.totalAmount,
+                    })
+                  : depositSchedule({ percent: Math.round(stages[0].percent) || 30 }),
+              )
+            }
+            className="rounded-xl border border-border-control bg-surface px-2 py-1.5 text-ink focus:border-brand-ring focus:outline-hidden focus:ring-1 focus:ring-brand-ring"
+          >
+            <option value="percent">% of total</option>
+            <option value="amount">{currency}, incl. VAT</option>
+          </select>
+        </div>
+      )}
 
       <ol className="space-y-2">
         {stages.map((stage, index) => (
@@ -136,7 +207,7 @@ export function QuoteBillingCard({ schedule, onChange, totals, currency, readOnl
               <span className="flex-1 text-ink">
                 {stage.label}{' '}
                 <span className="text-ink-subtle">
-                  · {stage.percent}% ·{' '}
+                  · {stage.amount != null ? money(stage.amount, currency) : `${stage.percent}%`} ·{' '}
                   {stage.trigger === 'ON_APPROVAL'
                     ? 'when accepted'
                     : stage.trigger === 'ON_DELIVERY'

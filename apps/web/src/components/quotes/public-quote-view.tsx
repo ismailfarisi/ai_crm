@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { CheckCircle2, CircleAlert, Loader2 } from 'lucide-react';
 import type { PublicQuoteDto } from '@saas/shared';
 import { API_PUBLIC_URL } from '@/lib/api/config';
+import { DepositPanel } from '@/components/payments/deposit-panel';
 
 type LoadState =
   | { kind: 'loading' }
@@ -232,7 +233,11 @@ export function PublicQuoteView({ token }: { token: string }) {
               Accepted by {quote.acceptedByName} on {new Date(quote.acceptedAt).toLocaleDateString()}. Thank
               you — {quote.organizationName || 'the team'} will be in touch.
             </p>
-          ) : (
+          ) : null}
+          {quote.acceptedAt && quote.deposit && (
+            <DepositPanel token={token} deposit={quote.deposit} currency={quote.currency} />
+          )}
+          {quote.acceptedAt ? null : (
             <form
               className="space-y-3"
               onSubmit={(event) => {

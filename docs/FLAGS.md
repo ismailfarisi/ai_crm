@@ -329,6 +329,41 @@ Turn it back on once Stripe is live (see "Stripe is untested" above). At that
 point, trials that have already lapsed restrict immediately, so extend
 `trial_ends_at` first if existing organizations should get notice.
 
+### Customer deposits are taken as a deposit invoice — by design
+
+Online deposits do not create an unapplied payment. A quote with a deposit
+stage raises a tax invoice for the deposit when it is accepted, and the
+customer pays that invoice. The final invoice bills only the balance, so VAT is
+charged once on each part and the tax point lands where the money arrives. This
+avoids the gap in "Advance payments before an invoice create no tax point"
+under Tax, for online deposits only: a deposit recorded by hand against no
+invoice still has that gap.
+
+### Tenant payment keys are untested against live Stripe — open
+
+Each tenant's own Stripe secret key and webhook secret (Settings > Online
+payments, `org:manage_payments`) are encrypted with `APP_SECRET` (the same
+AES-GCM helper as channel credentials) and never sent back to the browser. Checkout and webhook handling follow
+Stripe's documented test-mode shapes and are unit tested, but have not run
+against a real account. Staging uses the test checkout
+(`PAYMENTS_FAKE_CHECKOUT`, on by default outside production). This is separate
+from Kerf's own subscription billing above.
+
+### Online payment refunds are recorded by hand — open
+
+A webhook records a payment and nothing else. Refunds issued in the Stripe
+dashboard do not reach Kerf; record them with a credit note and refund as
+today. Voiding an invoice paid online reverses the payment in the books but
+returns no money; refund it in Stripe as well. A payment larger than the balance (a stale tab) is recorded up to the
+balance, and staff are notified to refund the rest.
+
+### Pay buttons cover deposits and invoices only — open
+
+Settings choose between a Pay button on accepted quotes (the deposit) and on
+invoices. Milestone invoices are paid from their invoice link like any other.
+Telr and Network International would each be one more `TenantPaymentProvider`;
+neither is built.
+
 ---
 
 ## Tax

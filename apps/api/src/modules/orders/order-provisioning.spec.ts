@@ -212,6 +212,29 @@ describe('provisionOrderForQuote', () => {
     expect(balance.invoiceId).toBeNull();
   });
 
+  it('takes a fixed deposit as a tax invoice for that amount, and bills the rest net of it', async () => {
+    const schedule: BillingStage[] = [
+      { kind: 'DEPOSIT', label: 'Deposit', percent: 41.67, amount: 500, trigger: 'ON_APPROVAL' },
+      { kind: 'FINAL', label: 'Balance', percent: 58.33, trigger: 'MANUAL' },
+    ];
+    const w = makeWorld({ billingSchedule: schedule });
+
+    await provisionOrderForQuote(w.dataSource, w.ledger, tenantId, 'q1');
+    const [deposit] = w.tables.Invoice;
+    expect(deposit.amount).toBe(500);
+    expect(deposit.taxAmount).toBeCloseTo(83.33, 2);
+    expect(deposit.subtotalAmount + deposit.taxAmount - (deposit.discountAmount ?? 0)).toBeCloseTo(500, 2);
+
+    const { invoice: final } = await raiseStageInvoice(
+      w.dataSource,
+      w.ledger,
+      tenantId,
+      w.tables.BillingScheduleLine[1].id,
+    );
+    expect(final.amount).toBe(700);
+    expect(deposit.taxAmount + final.taxAmount).toBeCloseTo(200, 2);
+  });
+
   it('raises nothing when every stage waits for a milestone', async () => {
     const w = makeWorld({
       billingSchedule: [

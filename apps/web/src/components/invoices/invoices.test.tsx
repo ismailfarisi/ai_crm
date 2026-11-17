@@ -74,6 +74,20 @@ describe('InvoicesTable', () => {
     expect(onVoid).toHaveBeenCalledWith(unpaid);
   });
 
+  it('shows online payment state and copies a pay link from the menu', () => {
+    const onCopyPayLink = vi.fn();
+    const unpaid = invoice({ amount: 1000, invoiceNumber: 'INV-2026-0200' });
+    const online = new Map([
+      [unpaid.id, { invoiceId: unpaid.id, payLinkExpiresAt: null, lastCheckoutStatus: 'OPEN' as const, lastCheckoutAt: null, paidOnline: 0 }],
+    ]);
+    render(<InvoicesTable invoices={[unpaid]} online={online} onCopyPayLink={onCopyPayLink} />);
+
+    expect(screen.getByText('Checkout started')).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for INV-2026-0200' }));
+    fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Copy pay link' }));
+    expect(onCopyPayLink).toHaveBeenCalledWith(unpaid);
+  });
+
   it('prints the quote number in ink, not amber', () => {
     render(<InvoicesTable invoices={[invoice({})]} />);
     const link = screen.getByRole('link', { name: 'QT-2026-0042' });
