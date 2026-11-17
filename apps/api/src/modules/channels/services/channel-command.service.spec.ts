@@ -59,6 +59,7 @@ interface Options {
   aiResponses?: any[];
   aiError?: Error;
   sendToCustomer?: jest.Mock;
+  approvalReplies?: { handle: jest.Mock };
   createPurchaseOrder?: jest.Mock;
   sendSignal?: jest.Mock;
 }
@@ -318,6 +319,7 @@ function makeService(o: Options = {}) {
     registry,
     router,
     audit as any,
+    o.approvalReplies as any,
   );
 
   return {
@@ -513,6 +515,41 @@ describe('ChannelCommandService', () => {
       expect(result.reply?.body).toContain('Reply YES');
       expect(conversations[0].status).toBe('AWAITING_CONFIRM');
       expect(conversations[0].skillName).toBe(CHANNEL_SKILLS.QUOTE_APPROVE);
+    });
+
+    it('treats anything but YES or NO to an approval notice as a new command', async () => {
+      const prompt = {
+        id: 'conv-approval',
+        organizationId: orgId,
+        provider,
+        senderIdentifier,
+        userId,
+        skillName: CHANNEL_SKILLS.QUOTE_APPROVE,
+        slots: {
+          _approval: { requestId: 'r1', itemType: 'QUOTE', itemId: 'q9' },
+        },
+        status: 'AWAITING_CONFIRM',
+        createdAt: Date.now() - 1000,
+        expiresAt: new Date(Date.now() + 60_000),
+      };
+      const approvalReplies = { handle: jest.fn() };
+      const { service, conversations } = makeService({
+        identities: [linkedIdentity],
+        quotes: [openQuote],
+        conversations: [prompt],
+        approvalReplies,
+        aiResponses: [
+          { skill: CHANNEL_SKILLS.QUOTE_APPROVE, confidence: 0.95 },
+          { action: 'APPROVE', quoteNumber: 'QT-2026-0004' },
+        ],
+      });
+
+      const result = await send(service, 'approve QT-2026-0004');
+
+      expect(approvalReplies.handle).not.toHaveBeenCalled();
+      expect(prompt.status).toBe('EXPIRED');
+      expect(result.reply?.body).toContain('QT-2026-0004');
+      expect(conversations.at(-1).status).toBe('AWAITING_CONFIRM');
     });
 
     it('asks for clarification rather than acting on a low-confidence route', async () => {

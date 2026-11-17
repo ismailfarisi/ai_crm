@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ApprovalNotifierModule } from '../approval-notifications/approval-notifier.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AutomationsController } from './automations.controller';
 import { AutomationsService } from './automations.service';
@@ -27,6 +28,7 @@ import { User } from '../users/entities/user.entity';
     ]),
     TemporalModule,
     AiModule,
+    ApprovalNotifierModule,
     // Webhook runs check the organisation's subscription (no cycle: billing
     // depends only on notifications and its own tables).
     BillingModule,

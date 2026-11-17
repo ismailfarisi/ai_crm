@@ -1,4 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { ApprovalNotifierService } from '../approval-notifications/approval-notifier.service';
 import { InjectDataSource } from '@nestjs/typeorm';
 import type Redis from 'ioredis';
 import { DataSource, type EntityManager } from 'typeorm';
@@ -16,11 +17,15 @@ const TERMINAL: AssistantTurnStatus[] = ['COMPLETED', 'REJECTED', 'TIMED_OUT', '
  * The only writer of a turn's transcript and state. Rows are the stream:
  * Postgres is the source of truth, Redis only says "look again".
  */
+/** Minutes an assistant approval waits on screen before its reminder. */
+const ASSISTANT_REMINDER_MINUTES = 10;
+
 @Injectable()
 export class AssistantEventsService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     @Inject(ASSISTANT_REDIS_PUBLISHER) private readonly redis: Redis,
+    @Optional() private readonly approvalNotifier?: ApprovalNotifierService,
   ) {}
 
   async emit(input: AssistantEventInput): Promise<void> {
@@ -58,10 +63,58 @@ export class AssistantEventsService {
       await manager.update(AssistantTurn, { id: input.turnId }, patch as QueryDeepPartialEntity<AssistantTurn>);
       if (input.turn?.status !== undefined) {
         await this.writeStatusRow(manager, turn, `${input.eventKey}:status`);
+        await this.noteApprovalState(manager, turn, input);
       }
       return true;
     });
     if (wrote) this.publish(input.conversationId);
+  }
+
+  /**
+   * The person chatting is watching the card, so an assistant approval only
+   * gets a reminder (bell, email or their linked chat) if it is still
+   * waiting a few minutes on. It is their own action: nobody else is asked.
+   */
+  private async noteApprovalState(
+    manager: EntityManager,
+    before: AssistantTurn,
+    input: AssistantEventInput,
+  ): Promise<void> {
+    if (!this.approvalNotifier) return;
+    const status = input.turn?.status;
+    if (status === 'AWAITING_APPROVAL') {
+      const owner: Array<{ user_id: string }> = await manager.query(
+        `SELECT "user_id" FROM "assistant_conversations" WHERE "id" = $1 AND "tenant_id" = $2`,
+        [input.conversationId, input.organizationId],
+      );
+      if (!owner[0]) return;
+      const pending = input.turn?.pendingAction as
+        | { tool?: { id?: string } }
+        | null
+        | undefined;
+      await this.approvalNotifier.requested(
+        {
+          tenantId: input.organizationId,
+          itemType: 'ASSISTANT_ACTION',
+          itemId: input.turnId,
+          recipientUserId: owner[0].user_id,
+          permissions: [],
+          title: input.content.slice(0, 200) || 'An assistant action',
+          link: '/assistant',
+          meta: pending?.tool?.id ? { toolCallId: pending.tool.id } : null,
+          notifyNow: false,
+          remindAfterMinutes: ASSISTANT_REMINDER_MINUTES,
+        },
+        manager,
+      );
+    } else if (before.status === 'AWAITING_APPROVAL') {
+      await this.approvalNotifier.closed(
+        input.organizationId,
+        'ASSISTANT_ACTION',
+        input.turnId,
+        manager,
+      );
+    }
   }
 
   /** For state changes made by the API itself (cancel, stale sweep). */

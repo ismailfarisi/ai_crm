@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ApprovalNotifierModule } from '../approval-notifications/approval-notifier.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TemporalModule } from '../temporal/temporal.module';
 import { AssistantConversation } from './entities/assistant-conversation.entity';
@@ -16,7 +17,7 @@ import {
 } from './assistant-redis';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([AssistantConversation, AssistantTurn, AssistantMessage]), TemporalModule],
+  imports: [TypeOrmModule.forFeature([AssistantConversation, AssistantTurn, AssistantMessage]), TemporalModule, ApprovalNotifierModule],
   controllers: [AssistantController],
   providers: [
     AssistantService,

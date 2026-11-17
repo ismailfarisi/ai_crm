@@ -1127,15 +1127,32 @@ details to approvers, but the run view's approval card shows only the step
 name — approvers read the details (the step's message, or the AI action and
 its preview) in the Approvals inbox. Showing them in the run view is pending.
 
-### Nobody is told when something needs approval — pending
+### Nobody is told when something needs approval — resolved (2026-11-17)
 
-Approval steps and AI actions awaiting sign-off appear in the Approvals inbox
-and its nav count, but no notification is sent: no bell entry, email or chat
-message. Deferred on 2026-10-29. Building blocks already exist:
-`NotificationsService.notifyHolders` (the bell, addressed by permission, so
-`automation:approve` holders), mail (still console-only on staging until SES),
-and the WhatsApp/Telegram channel drivers. Not decided yet: which channels,
-and whether to remind as the timeout nears.
+Quotes waiting for approval, automation approval steps and AI steps now tell
+the people who can approve them: holders of the matching permission
+(`quote:approve`, plus `quote:approve_below_margin` when the margin floor or
+discount cap is broken; `automation:approve`), never the requester. Each
+person gets the bell (linking to the item), email and a message in their own
+linked WhatsApp or Telegram chat with Kerf, never a customer thread. Replying
+YES or NO in that chat decides it through the same service the app calls,
+with permissions re-resolved and the decision audited. The requester hears
+the outcome. One reminder goes out after the organisation's delay (four hours
+by default), and before an automation approval's timeout.
+
+Settings → Notifications holds each person's channels for approvals and for
+outcomes, optional quiet hours (email and chat wait; the bell does not) and an
+organisation default. Notices ride the event outbox in the same transaction as
+the change; each (item, person, event, channel) is sent once
+(`approval_deliveries`), and a failed channel is retried alone. A reminder is
+queued by a five-minute schedule and re-checks the item first, so a decision
+in between stops it.
+
+Still open: an assistant action is the chatting user's own, so it gets only a
+reminder after ten minutes, to them. A chat notice opens a reply prompt only
+when the person is not mid-command; otherwise it just links to the app.
+Approver lists are resolved when each notice is sent, so someone given the
+permission later gets the reminder but not the first notice.
 
 ### An event run whose start reply is lost can show the wrong status — open
 

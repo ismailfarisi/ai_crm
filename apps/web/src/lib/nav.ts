@@ -1,6 +1,7 @@
 import {
   Gauge,
   MessageCircle,
+  Bell,
   Boxes,
   ClipboardList,
   CreditCard,
@@ -199,6 +200,11 @@ export const SECONDARY_SECTIONS: NavSection[] = [
         label: 'Channels',
         icon: Radio,
         rule: { permission: PERMISSIONS.CHANNEL_MANAGE },
+      },
+      {
+        href: '/settings/notifications',
+        label: 'Notifications',
+        icon: Bell,
       },
       {
         href: '/settings/billing',

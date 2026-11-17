@@ -177,7 +177,12 @@ export class QuotesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateQuoteDto,
   ): Promise<Quote> {
-    return this.quotesService.updateQuote(user.organizationId, id, dto);
+    return this.quotesService.updateQuote(
+      user.organizationId,
+      id,
+      dto,
+      user.id,
+    );
   }
 
   @Post('quotes/:id/signal')

@@ -204,6 +204,10 @@ export class QuoteApproveSkill implements ChannelSkill<ResolvedQuoteApproval> {
       ctx.organizationId,
       resolved.quoteId,
       'APPROVE',
+      undefined,
+      // The person confirming is the approver: the margin override is
+      // checked against their own permissions, and they are on the record.
+      ctx.userId,
     );
     const invoice = await this.invoices.findByQuoteId(
       ctx.organizationId,
