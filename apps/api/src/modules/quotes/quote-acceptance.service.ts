@@ -99,7 +99,9 @@ export class QuoteAcceptanceService {
       if (!quote || !quote.acceptedAt) this.refuse('NOT_FOUND');
       const invoice = await this.depositInvoice(quote);
       if (!invoice) {
-        throw new BadRequestException('There is no deposit to pay on this quote.');
+        throw new BadRequestException(
+          'There is no deposit to pay on this quote.',
+        );
       }
       return fn(invoice, quote);
     });
@@ -119,7 +121,9 @@ export class QuoteAcceptanceService {
     const invoice = await manager
       .getRepository(Invoice)
       .findOne({ where: { id: stage.invoiceId, tenantId: quote.tenantId } });
-    return invoice && invoice.status !== InvoiceStatus.CANCELLED ? invoice : null;
+    return invoice && invoice.status !== InvoiceStatus.CANCELLED
+      ? invoice
+      : null;
   }
 
   private async publicDeposit(quote: Quote): Promise<PublicDepositDto | null> {

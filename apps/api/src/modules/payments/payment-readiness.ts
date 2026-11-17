@@ -5,7 +5,10 @@ import type { PaymentSettings } from './entities/payments.entity';
  * an account to record the money into. Pure, so the quote page can ask too.
  */
 export function paymentsReady(
-  settings: Pick<PaymentSettings, 'provider' | 'encryptedCredentials' | 'financeAccountId' | 'secretKeyHint'> | null,
+  settings: Pick<
+    PaymentSettings,
+    'provider' | 'encryptedCredentials' | 'financeAccountId' | 'secretKeyHint'
+  > | null,
   credentials: { secretKey?: string; webhookSecret?: string } | null,
   fakeAllowed: boolean,
 ): boolean {

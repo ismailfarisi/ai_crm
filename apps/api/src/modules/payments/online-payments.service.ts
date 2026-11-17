@@ -111,9 +111,14 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
 
   /** A fresh link; any earlier link for the invoice stops working. */
   async issuePayLink(tenantId: string, invoiceId: string): Promise<PayLinkDto> {
-    const invoice = await this.invoices.findOne({ where: { id: invoiceId, tenantId } });
+    const invoice = await this.invoices.findOne({
+      where: { id: invoiceId, tenantId },
+    });
     if (!invoice) throw new NotFoundException('Invoice not found');
-    if (invoice.status === InvoiceStatus.CANCELLED || invoice.status === InvoiceStatus.PAID) {
+    if (
+      invoice.status === InvoiceStatus.CANCELLED ||
+      invoice.status === InvoiceStatus.PAID
+    ) {
       throw new BadRequestException('Nothing is owed on this invoice');
     }
     const token = randomBytes(32).toString('base64url');
@@ -122,12 +127,19 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
       { tenantId, invoiceId, tokenHash: hashToken(token), expiresAt },
       { conflictPaths: ['invoiceId'] },
     );
-    return { url: `${this.webUrl}/pay/${token}`, expiresAt: expiresAt.toISOString() };
+    return {
+      url: `${this.webUrl}/pay/${token}`,
+      expiresAt: expiresAt.toISOString(),
+    };
   }
 
-  async linkForEmail(tenantId: string, invoiceId: string): Promise<string | null> {
+  async linkForEmail(
+    tenantId: string,
+    invoiceId: string,
+  ): Promise<string | null> {
     const settings = await this.settingsService.find(tenantId);
-    if (!settings?.payInvoices || !this.settingsService.isReady(settings)) return null;
+    if (!settings?.payInvoices || !this.settingsService.isReady(settings))
+      return null;
     return (await this.issuePayLink(tenantId, invoiceId)).url;
   }
 
@@ -142,33 +154,49 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
         )
       : null;
     if (!link) {
-      throw new NotFoundException('This link is not valid. Please check it, or contact the sender.');
+      throw new NotFoundException(
+        'This link is not valid. Please check it, or contact the sender.',
+      );
     }
     if (link.expiresAt.getTime() < Date.now()) {
-      throw new GoneException('This link has expired. Please ask for a new one.');
+      throw new GoneException(
+        'This link has expired. Please ask for a new one.',
+      );
     }
     return this.tenantContext.runWithTenant(link.tenantId, async () => {
       const invoice = await this.invoices.findOne({
         where: { id: link.invoiceId, tenantId: link.tenantId },
       });
       if (!invoice || invoice.status === InvoiceStatus.CANCELLED) {
-        throw new GoneException('This invoice is no longer payable. Please contact the sender.');
+        throw new GoneException(
+          'This invoice is no longer payable. Please contact the sender.',
+        );
       }
       return fn(invoice, await this.settingsService.find(link.tenantId));
     });
   }
 
   async viewInvoice(token: string): Promise<PublicInvoiceDto> {
-    return this.withPayLink(token, (invoice, settings) => this.toPublic(invoice, settings));
+    return this.withPayLink(token, (invoice, settings) =>
+      this.toPublic(invoice, settings),
+    );
   }
 
   async startInvoiceCheckout(token: string): Promise<CheckoutRedirectDto> {
     return this.withPayLink(token, (invoice, settings) => {
       if (!settings?.payInvoices) {
-        throw new BadRequestException('Online payment is not available for this invoice.');
+        throw new BadRequestException(
+          'Online payment is not available for this invoice.',
+        );
       }
       const back = `${this.webUrl}/pay/${token}`;
-      return this.startCheckout(invoice, settings, 'INVOICE', `${back}?paid=1`, back);
+      return this.startCheckout(
+        invoice,
+        settings,
+        'INVOICE',
+        `${back}?paid=1`,
+        back,
+      );
     });
   }
 
@@ -176,10 +204,18 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
     return this.acceptance.withDepositInvoice(quoteToken, async (invoice) => {
       const settings = await this.settingsService.find(invoice.tenantId);
       if (!settings?.payDeposits) {
-        throw new BadRequestException('Online payment is not available for this deposit.');
+        throw new BadRequestException(
+          'Online payment is not available for this deposit.',
+        );
       }
       const back = `${this.webUrl}/q/${quoteToken}`;
-      return this.startCheckout(invoice, settings, 'DEPOSIT', `${back}?paid=1`, back);
+      return this.startCheckout(
+        invoice,
+        settings,
+        'DEPOSIT',
+        `${back}?paid=1`,
+        back,
+      );
     });
   }
 
@@ -190,23 +226,32 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
     successUrl: string,
     cancelUrl: string,
   ): Promise<CheckoutRedirectDto> {
-    if (!this.settingsService.isReady(settings) || settings.provider === 'NONE') {
-      throw new BadRequestException('Online payment is not available right now.');
+    if (
+      !this.settingsService.isReady(settings) ||
+      settings.provider === 'NONE'
+    ) {
+      throw new BadRequestException(
+        'Online payment is not available right now.',
+      );
     }
     const balance = Math.max(0, invoicePosition(invoice).balance);
-    if (balance <= 0) throw new BadRequestException('This has already been paid. Thank you.');
+    if (balance <= 0)
+      throw new BadRequestException('This has already been paid. Thank you.');
 
     const provider = this.providers[settings.provider];
     const reference = randomUUID();
-    const session = await provider.createCheckout(this.settingsService.credentials(settings), {
-      reference,
-      amountMinor: toMinorUnits(balance, invoice.currency),
-      currency: invoice.currency,
-      description: `${invoice.stageLabel ?? 'Invoice'} ${invoice.invoiceNumber}`,
-      customerEmail: invoice.customerEmail,
-      successUrl,
-      cancelUrl,
-    });
+    const session = await provider.createCheckout(
+      this.settingsService.credentials(settings),
+      {
+        reference,
+        amountMinor: toMinorUnits(balance, invoice.currency),
+        currency: invoice.currency,
+        description: `${invoice.stageLabel ?? 'Invoice'} ${invoice.invoiceNumber}`,
+        customerEmail: invoice.customerEmail,
+        successUrl,
+        cancelUrl,
+      },
+    );
     await this.checkouts.save(
       this.checkouts.create({
         id: reference,
@@ -237,7 +282,8 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
     const settings = await this.tenantContext.runAsSystem(() =>
       this.settingsService.findByWebhookKey(webhookKey),
     );
-    if (!settings || settings.provider !== 'STRIPE') throw new NotFoundException();
+    if (!settings || settings.provider !== 'STRIPE')
+      throw new NotFoundException();
     return this.tenantContext.runWithTenant(settings.tenantId, async () => {
       const event = this.providers.STRIPE.parseWebhook(
         this.settingsService.credentials(settings),
@@ -256,15 +302,23 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
     if (!this.settingsService.fakeAllowed) throw new NotFoundException();
     const checkout = /^fake_cs_[a-f0-9]{32}$/.test(sessionId ?? '')
       ? await this.tenantContext.runAsSystem(() =>
-          this.checkouts.findOne({ where: { provider: 'FAKE', providerSessionId: sessionId } }),
+          this.checkouts.findOne({
+            where: { provider: 'FAKE', providerSessionId: sessionId },
+          }),
         )
       : null;
     if (!checkout) throw new NotFoundException('This checkout is not valid.');
     return this.tenantContext.runWithTenant(checkout.tenantId, async () => {
       const settings = await this.settingsService.find(checkout.tenantId);
       if (!settings) throw new NotFoundException();
-      await this.applyEvent(settings, 'FAKE', FakePaymentProvider.event(sessionId, outcome));
-      const after = await this.checkouts.findOneOrFail({ where: { id: checkout.id } });
+      await this.applyEvent(
+        settings,
+        'FAKE',
+        FakePaymentProvider.event(sessionId, outcome),
+      );
+      const after = await this.checkouts.findOneOrFail({
+        where: { id: checkout.id },
+      });
       return { status: after.status };
     });
   }
@@ -283,7 +337,9 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
     if (event.kind === 'IGNORED' || !event.sessionId) return { received: true };
     if (event.kind === 'PAID' && !settings.financeAccountId) {
       // Refused, so the provider retries once an account has been chosen.
-      throw new ServiceUnavailableException('No account is set for online payments');
+      throw new ServiceUnavailableException(
+        'No account is set for online payments',
+      );
     }
 
     const outcome = await this.dataSource.transaction(async (manager) => {
@@ -291,7 +347,12 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
         .createQueryBuilder()
         .insert()
         .into(PaymentWebhookEvent)
-        .values({ tenantId, provider, eventId: event.eventId, type: event.type.slice(0, 100) })
+        .values({
+          tenantId,
+          provider,
+          eventId: event.eventId,
+          type: event.type.slice(0, 100),
+        })
         .orIgnore()
         .returning('id')
         .execute()
@@ -302,13 +363,17 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
         .getRepository(PaymentCheckout)
         .createQueryBuilder('c')
         .setLock('pessimistic_write')
-        .where('c.provider = :provider AND c.provider_session_id = :session AND c.tenant_id = :tenantId', {
-          provider,
-          session: event.sessionId,
-          tenantId,
-        })
+        .where(
+          'c.provider = :provider AND c.provider_session_id = :session AND c.tenant_id = :tenantId',
+          {
+            provider,
+            session: event.sessionId,
+            tenantId,
+          },
+        )
         .getOne();
-      if (!checkout || checkout.status === 'PAID') return { duplicate: false as const };
+      if (!checkout || checkout.status === 'PAID')
+        return { duplicate: false as const };
 
       if (event.kind !== 'PAID') {
         // A failed or abandoned checkout records nothing; the customer can start again.
@@ -320,13 +385,18 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
 
       const paid =
         event.amountMinor != null
-          ? fromMinorUnits(event.amountMinor, event.currency ?? checkout.currency)
+          ? fromMinorUnits(
+              event.amountMinor,
+              event.currency ?? checkout.currency,
+            )
           : Number(checkout.amount);
       const invoice = await manager
         .getRepository(Invoice)
         .findOneOrFail({ where: { id: checkout.invoiceId, tenantId } });
       const owed =
-        invoice.status === InvoiceStatus.CANCELLED ? 0 : Math.max(0, invoicePosition(invoice).balance);
+        invoice.status === InvoiceStatus.CANCELLED
+          ? 0
+          : Math.max(0, invoicePosition(invoice).balance);
       const amount = Math.min(paid, owed);
 
       checkout.status = 'PAID';
@@ -371,7 +441,14 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
         },
         { manager },
       );
-      return { duplicate: false as const, invoice, checkout, paid, amount, paymentId };
+      return {
+        duplicate: false as const,
+        invoice,
+        checkout,
+        paid,
+        amount,
+        paymentId,
+      };
     });
 
     if (outcome.duplicate) return { received: true, duplicate: true };
@@ -411,7 +488,13 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
     const entry = (invoiceId: string) => {
       let row = byInvoice.get(invoiceId);
       if (!row) {
-        row = { invoiceId, payLinkExpiresAt: null, lastCheckoutStatus: null, lastCheckoutAt: null, paidOnline: 0 };
+        row = {
+          invoiceId,
+          payLinkExpiresAt: null,
+          lastCheckoutStatus: null,
+          lastCheckoutAt: null,
+          paidOnline: 0,
+        };
         byInvoice.set(invoiceId, row);
       }
       return row;
@@ -420,7 +503,9 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
       const row = entry(c.invoiceId);
       row.lastCheckoutStatus = c.status;
       row.lastCheckoutAt = (c.completedAt ?? c.createdAt).toISOString();
-      if (c.status === 'PAID') row.paidOnline = Math.round((row.paidOnline + Number(c.amount)) * 100) / 100;
+      if (c.status === 'PAID')
+        row.paidOnline =
+          Math.round((row.paidOnline + Number(c.amount)) * 100) / 100;
     }
     for (const link of links) {
       if (link.expiresAt.getTime() > Date.now()) {
@@ -430,17 +515,24 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
     return [...byInvoice.values()];
   }
 
-  async quoteDeposit(tenantId: string, quoteId: string): Promise<QuoteDepositStatusDto | null> {
+  async quoteDeposit(
+    tenantId: string,
+    quoteId: string,
+  ): Promise<QuoteDepositStatusDto | null> {
     const order = await this.dataSource
       .getRepository(SalesOrder)
       .findOne({ where: { quoteId, tenantId } });
     if (!order) return null;
-    const stage = await this.dataSource.getRepository(BillingScheduleLine).findOne({
-      where: { salesOrderId: order.id, kind: 'DEPOSIT' },
-      order: { sequence: 'ASC' },
-    });
+    const stage = await this.dataSource
+      .getRepository(BillingScheduleLine)
+      .findOne({
+        where: { salesOrderId: order.id, kind: 'DEPOSIT' },
+        order: { sequence: 'ASC' },
+      });
     if (!stage?.invoiceId) return null;
-    const invoice = await this.invoices.findOne({ where: { id: stage.invoiceId, tenantId } });
+    const invoice = await this.invoices.findOne({
+      where: { id: stage.invoiceId, tenantId },
+    });
     if (!invoice) return null;
     const checkouts = await this.checkouts.find({
       where: { tenantId, invoiceId: In([invoice.id]) },
@@ -458,12 +550,20 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
       lastCheckoutStatus: last?.status ?? null,
       paidOnline: checkouts
         .filter((c) => c.status === 'PAID')
-        .reduce((sum, c) => Math.round((sum + Number(c.amount)) * 100) / 100, 0),
+        .reduce(
+          (sum, c) => Math.round((sum + Number(c.amount)) * 100) / 100,
+          0,
+        ),
     };
   }
 
-  private async toPublic(invoice: Invoice, settings: PaymentSettings | null): Promise<PublicInvoiceDto> {
-    const organization = await this.organizations.findOne({ where: { id: invoice.tenantId } });
+  private async toPublic(
+    invoice: Invoice,
+    settings: PaymentSettings | null,
+  ): Promise<PublicInvoiceDto> {
+    const organization = await this.organizations.findOne({
+      where: { id: invoice.tenantId },
+    });
     const balanceDue = Math.max(0, invoicePosition(invoice).balance);
     return {
       organizationName: organization?.name ?? '',
@@ -492,7 +592,9 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
       balanceDue,
       status: invoice.status as PublicInvoiceDto['status'],
       canPayOnline: Boolean(
-        settings?.payInvoices && this.settingsService.isReady(settings) && balanceDue > 0,
+        settings?.payInvoices &&
+        this.settingsService.isReady(settings) &&
+        balanceDue > 0,
       ),
     };
   }

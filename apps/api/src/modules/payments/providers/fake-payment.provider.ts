@@ -17,7 +17,10 @@ export class FakePaymentProvider implements TenantPaymentProvider {
 
   constructor(private readonly webOrigin: string) {}
 
-  createCheckout(_credentials: unknown, request: CheckoutRequest): Promise<CheckoutSession> {
+  createCheckout(
+    _credentials: unknown,
+    request: CheckoutRequest,
+  ): Promise<CheckoutSession> {
     const sessionId = `fake_cs_${randomBytes(16).toString('hex')}`;
     const params = new URLSearchParams({
       session: sessionId,
@@ -41,7 +44,8 @@ export class FakePaymentProvider implements TenantPaymentProvider {
   static event(sessionId: string, outcome: 'PAID' | 'EXPIRED'): PaymentEvent {
     return {
       eventId: `fake_evt_${sessionId}_${outcome}`,
-      type: outcome === 'PAID' ? 'fake.checkout.paid' : 'fake.checkout.cancelled',
+      type:
+        outcome === 'PAID' ? 'fake.checkout.paid' : 'fake.checkout.cancelled',
       kind: outcome,
       sessionId,
       amountMinor: null,

@@ -31,7 +31,9 @@ export class PaymentsController {
 
   @Get('settings')
   @RequirePermissions(PERMISSIONS.ORG_MANAGE_PAYMENTS)
-  @ApiOperation({ summary: 'Online payment settings. Secrets are never returned.' })
+  @ApiOperation({
+    summary: 'Online payment settings. Secrets are never returned.',
+  })
   getSettings(@CurrentUser() user: AuthenticatedUser) {
     return this.settings.get(user.organizationId);
   }
@@ -41,7 +43,8 @@ export class PaymentsController {
   @ApiOperation({ summary: 'Save online payment settings' })
   updateSettings(
     @CurrentUser() user: AuthenticatedUser,
-    @Body(zodBody(updatePaymentSettingsSchema)) body: UpdatePaymentSettingsPayload,
+    @Body(zodBody(updatePaymentSettingsSchema))
+    body: UpdatePaymentSettingsPayload,
   ) {
     return this.settings.update(user.organizationId, body);
   }
@@ -64,7 +67,9 @@ export class PaymentsController {
 
   @Get('invoices')
   @RequirePermissions(PERMISSIONS.INVOICE_READ)
-  @ApiOperation({ summary: 'Online payment state of every invoice that has any' })
+  @ApiOperation({
+    summary: 'Online payment state of every invoice that has any',
+  })
   invoiceStatuses(@CurrentUser() user: AuthenticatedUser) {
     return this.payments.invoiceStatuses(user.organizationId);
   }
@@ -72,7 +77,9 @@ export class PaymentsController {
   @Post('invoices/:id/pay-link')
   @HttpCode(HttpStatus.OK)
   @RequirePermissions(PERMISSIONS.INVOICE_MANAGE)
-  @ApiOperation({ summary: 'Issue a fresh pay link; earlier links stop working' })
+  @ApiOperation({
+    summary: 'Issue a fresh pay link; earlier links stop working',
+  })
   payLink(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -82,11 +89,15 @@ export class PaymentsController {
 
   @Get('quotes/:id/deposit')
   @RequirePermissions(PERMISSIONS.QUOTE_READ)
-  @ApiOperation({ summary: 'The deposit invoice on an accepted quote, and whether it is paid' })
+  @ApiOperation({
+    summary: 'The deposit invoice on an accepted quote, and whether it is paid',
+  })
   async quoteDeposit(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    return { deposit: await this.payments.quoteDeposit(user.organizationId, id) };
+    return {
+      deposit: await this.payments.quoteDeposit(user.organizationId, id),
+    };
   }
 }

@@ -146,7 +146,11 @@ describe('QuoteAcceptanceService', () => {
 
     const rows: Record<string, unknown> = {
       SalesOrder: { id: 'so1' },
-      BillingScheduleLine: { kind: 'DEPOSIT', invoiceId: 'inv1', label: '30% deposit' },
+      BillingScheduleLine: {
+        kind: 'DEPOSIT',
+        invoiceId: 'inv1',
+        label: '30% deposit',
+      },
       Invoice: {
         id: 'inv1',
         tenantId,
@@ -160,9 +164,11 @@ describe('QuoteAcceptanceService', () => {
       },
       PaymentSettings: null,
     };
-    quotes.manager.getRepository.mockImplementation((entity: { name: string }) => ({
-      findOne: jest.fn(async () => rows[entity.name] ?? null),
-    }));
+    quotes.manager.getRepository.mockImplementation(
+      (entity: { name: string }) => ({
+        findOne: jest.fn(async () => rows[entity.name] ?? null),
+      }),
+    );
 
     expect((await service.view(token)).deposit).toEqual({
       label: '30% deposit',

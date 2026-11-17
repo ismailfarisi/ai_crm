@@ -34,7 +34,12 @@ const paidEvent = (over: Partial<PaymentEvent> = {}): PaymentEvent => ({
  * A database that remembers claimed event ids and the checkout row, with
  * just enough of TypeORM's shape for `applyEvent`.
  */
-function setup(opts: { invoice?: Partial<Invoice>; checkout?: Partial<PaymentCheckout> | null } = {}) {
+function setup(
+  opts: {
+    invoice?: Partial<Invoice>;
+    checkout?: Partial<PaymentCheckout> | null;
+  } = {},
+) {
   const claimed = new Set<string>();
   const checkout =
     opts.checkout === null
@@ -94,8 +99,10 @@ function setup(opts: { invoice?: Partial<Invoice>; checkout?: Partial<PaymentChe
         };
         return { createQueryBuilder: () => qb };
       }
-      if (entity === Invoice) return { findOneOrFail: () => Promise.resolve(invoice) };
-      if (entity === InvoicePayment) return { findOne: () => Promise.resolve({ id: 'pay-1' }) };
+      if (entity === Invoice)
+        return { findOneOrFail: () => Promise.resolve(invoice) };
+      if (entity === InvoicePayment)
+        return { findOne: () => Promise.resolve({ id: 'pay-1' }) };
       throw new Error('unexpected repository');
     }),
     save: jest.fn((row: unknown) => Promise.resolve(row)),
@@ -109,7 +116,9 @@ function setup(opts: { invoice?: Partial<Invoice>; checkout?: Partial<PaymentChe
   };
   const audit = { record: jest.fn(() => Promise.resolve()) };
   const notifications = { notifyHolders: jest.fn(() => Promise.resolve(1)) };
-  const dataSource = { transaction: jest.fn((fn: (m: typeof manager) => unknown) => fn(manager)) };
+  const dataSource = {
+    transaction: jest.fn((fn: (m: typeof manager) => unknown) => fn(manager)),
+  };
   const config = { get: jest.fn(() => 'https://app.test') };
 
   const service = new OnlinePaymentsService(
@@ -126,13 +135,23 @@ function setup(opts: { invoice?: Partial<Invoice>; checkout?: Partial<PaymentChe
     dataSource as never,
     config as never,
   );
-  return { service, invoicesService, audit, notifications, manager, checkout, invoice };
+  return {
+    service,
+    invoicesService,
+    audit,
+    notifications,
+    manager,
+    checkout,
+    invoice,
+  };
 }
 
 describe('OnlinePaymentsService.applyEvent', () => {
   it('records a paid checkout through the invoice payment path, into the chosen account', async () => {
     const { service, invoicesService, checkout } = setup();
-    await expect(service.applyEvent(settings(), 'STRIPE', paidEvent())).resolves.toEqual({
+    await expect(
+      service.applyEvent(settings(), 'STRIPE', paidEvent()),
+    ).resolves.toEqual({
       received: true,
     });
     expect(invoicesService.recordPayment).toHaveBeenCalledWith(
@@ -150,7 +169,9 @@ describe('OnlinePaymentsService.applyEvent', () => {
   it('records one payment when the same event arrives twice', async () => {
     const { service, invoicesService, audit } = setup();
     await service.applyEvent(settings(), 'STRIPE', paidEvent());
-    await expect(service.applyEvent(settings(), 'STRIPE', paidEvent())).resolves.toEqual({
+    await expect(
+      service.applyEvent(settings(), 'STRIPE', paidEvent()),
+    ).resolves.toEqual({
       received: true,
       duplicate: true,
     });
@@ -159,8 +180,14 @@ describe('OnlinePaymentsService.applyEvent', () => {
   });
 
   it('records nothing again when a second paid event names a checkout already paid', async () => {
-    const { service, invoicesService } = setup({ checkout: { status: 'PAID' } });
-    await service.applyEvent(settings(), 'STRIPE', paidEvent({ eventId: 'evt_test_2' }));
+    const { service, invoicesService } = setup({
+      checkout: { status: 'PAID' },
+    });
+    await service.applyEvent(
+      settings(),
+      'STRIPE',
+      paidEvent({ eventId: 'evt_test_2' }),
+    );
     expect(invoicesService.recordPayment).not.toHaveBeenCalled();
   });
 
@@ -189,18 +216,26 @@ describe('OnlinePaymentsService.applyEvent', () => {
     );
   });
 
-  it.each(['FAILED', 'EXPIRED'] as const)('records nothing for a %s checkout', async (kind) => {
-    const { service, invoicesService, audit, notifications, checkout } = setup();
-    await service.applyEvent(settings(), 'STRIPE', paidEvent({ kind }));
-    expect(invoicesService.recordPayment).not.toHaveBeenCalled();
-    expect(audit.record).not.toHaveBeenCalled();
-    expect(notifications.notifyHolders).not.toHaveBeenCalled();
-    expect(checkout?.status).toBe(kind);
-  });
+  it.each(['FAILED', 'EXPIRED'] as const)(
+    'records nothing for a %s checkout',
+    async (kind) => {
+      const { service, invoicesService, audit, notifications, checkout } =
+        setup();
+      await service.applyEvent(settings(), 'STRIPE', paidEvent({ kind }));
+      expect(invoicesService.recordPayment).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(notifications.notifyHolders).not.toHaveBeenCalled();
+      expect(checkout?.status).toBe(kind);
+    },
+  );
 
   it('ignores events it does not use without touching the database', async () => {
     const { service, manager } = setup();
-    await service.applyEvent(settings(), 'STRIPE', paidEvent({ kind: 'IGNORED' }));
+    await service.applyEvent(
+      settings(),
+      'STRIPE',
+      paidEvent({ kind: 'IGNORED' }),
+    );
     expect(manager.createQueryBuilder).not.toHaveBeenCalled();
   });
 
@@ -211,7 +246,9 @@ describe('OnlinePaymentsService.applyEvent', () => {
   });
 
   it('records no more than is owed, and says so', async () => {
-    const { service, invoicesService, notifications } = setup({ invoice: { paidAmount: 50 } });
+    const { service, invoicesService, notifications } = setup({
+      invoice: { paidAmount: 50 },
+    });
     await service.applyEvent(settings(), 'STRIPE', paidEvent());
     expect(invoicesService.recordPayment).toHaveBeenCalledWith(
       tenantId,
@@ -240,7 +277,11 @@ describe('OnlinePaymentsService.applyEvent', () => {
   it('asks the provider to retry when no account is chosen yet', async () => {
     const { service } = setup();
     await expect(
-      service.applyEvent(settings({ financeAccountId: null }), 'STRIPE', paidEvent()),
+      service.applyEvent(
+        settings({ financeAccountId: null }),
+        'STRIPE',
+        paidEvent(),
+      ),
     ).rejects.toThrow(ServiceUnavailableException);
   });
 

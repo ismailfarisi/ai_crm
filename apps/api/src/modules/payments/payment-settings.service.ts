@@ -39,17 +39,22 @@ export class PaymentSettingsService {
 
   /** By the key in a webhook URL. Call as system: the tenant is not known yet. */
   findByWebhookKey(webhookKey: string): Promise<PaymentSettings | null> {
-    if (!/^[A-Za-z0-9_-]{20,64}$/.test(webhookKey ?? '')) return Promise.resolve(null);
+    if (!/^[A-Za-z0-9_-]{20,64}$/.test(webhookKey ?? ''))
+      return Promise.resolve(null);
     return this.settings.findOne({ where: { webhookKey } });
   }
 
   credentials(settings: PaymentSettings | null): TenantPaymentCredentials {
     if (!settings?.encryptedCredentials) return {};
-    return this.crypto.decrypt(settings.encryptedCredentials) as TenantPaymentCredentials;
+    return this.crypto.decrypt(settings.encryptedCredentials);
   }
 
   isReady(settings: PaymentSettings | null): boolean {
-    return paymentsReady(settings, settings ? this.credentials(settings) : null, this.fakeAllowed);
+    return paymentsReady(
+      settings,
+      settings ? this.credentials(settings) : null,
+      this.fakeAllowed,
+    );
   }
 
   async get(tenantId: string): Promise<PaymentSettingsDto> {
@@ -68,7 +73,9 @@ export class PaymentSettingsService {
         where: { id: payload.financeAccountId, tenantId },
       });
       if (!account) {
-        throw new BadRequestException('Choose one of your bank or clearing accounts');
+        throw new BadRequestException(
+          'Choose one of your bank or clearing accounts',
+        );
       }
     }
 
@@ -83,13 +90,16 @@ export class PaymentSettingsService {
 
     const credentials = { ...this.credentials(existing) };
     if (payload.secretKey) credentials.secretKey = payload.secretKey;
-    if (payload.webhookSecret) credentials.webhookSecret = payload.webhookSecret;
+    if (payload.webhookSecret)
+      credentials.webhookSecret = payload.webhookSecret;
 
     existing.provider = payload.provider;
     existing.encryptedCredentials = Object.keys(credentials).length
       ? this.crypto.encrypt(credentials)
       : null;
-    existing.secretKeyHint = credentials.secretKey ? credentials.secretKey.slice(-4) : null;
+    existing.secretKeyHint = credentials.secretKey
+      ? credentials.secretKey.slice(-4)
+      : null;
     existing.financeAccountId = payload.financeAccountId;
     existing.defaultDepositPercent = payload.defaultDepositPercent;
     existing.payDeposits = payload.payDeposits;

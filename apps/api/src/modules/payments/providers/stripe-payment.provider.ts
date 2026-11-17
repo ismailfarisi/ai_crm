@@ -48,20 +48,24 @@ export class StripePaymentProvider implements TenantPaymentProvider {
       'line_items[0][quantity]': '1',
       'line_items[0][price_data][currency]': request.currency.toLowerCase(),
       'line_items[0][price_data][unit_amount]': String(request.amountMinor),
-      'line_items[0][price_data][product_data][name]': request.description.slice(0, 250),
+      'line_items[0][price_data][product_data][name]':
+        request.description.slice(0, 250),
       success_url: request.successUrl,
       cancel_url: request.cancelUrl,
     };
     if (request.customerEmail) form.customer_email = request.customerEmail;
 
-    const response = await this.fetchImpl('https://api.stripe.com/v1/checkout/sessions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${credentials.secretKey}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
+    const response = await this.fetchImpl(
+      'https://api.stripe.com/v1/checkout/sessions',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${credentials.secretKey}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams(form).toString(),
       },
-      body: new URLSearchParams(form).toString(),
-    });
+    );
     const body = (await response.json()) as {
       id?: string;
       url?: string;
@@ -69,7 +73,9 @@ export class StripePaymentProvider implements TenantPaymentProvider {
     };
     if (!response.ok || !body.id || !body.url) {
       // Stripe's message can name the account; the customer sees a plain one.
-      this.logger.warn(`Stripe checkout failed: ${body.error?.message ?? response.status}`);
+      this.logger.warn(
+        `Stripe checkout failed: ${body.error?.message ?? response.status}`,
+      );
       throw new BadRequestException(
         'Online payment is not available right now. Please try again later.',
       );
@@ -85,7 +91,11 @@ export class StripePaymentProvider implements TenantPaymentProvider {
     if (!credentials.webhookSecret) {
       throw new UnauthorizedException('No webhook secret is set');
     }
-    verifyStripeSignature(rawBody, headers['stripe-signature'], credentials.webhookSecret);
+    verifyStripeSignature(
+      rawBody,
+      headers['stripe-signature'],
+      credentials.webhookSecret,
+    );
 
     const event = JSON.parse(rawBody.toString('utf8')) as {
       id: string;
@@ -105,7 +115,10 @@ export class StripePaymentProvider implements TenantPaymentProvider {
       case 'checkout.session.completed':
         // Bank debits complete the session before the money arrives; those
         // are paid later by `async_payment_succeeded`.
-        return { ...base, kind: session.payment_status === 'paid' ? 'PAID' : 'IGNORED' };
+        return {
+          ...base,
+          kind: session.payment_status === 'paid' ? 'PAID' : 'IGNORED',
+        };
       case 'checkout.session.async_payment_succeeded':
         return { ...base, kind: 'PAID' };
       case 'checkout.session.async_payment_failed':
@@ -128,7 +141,10 @@ export function verifyStripeSignature(
   if (!signature) throw new UnauthorizedException('Missing signature');
   const parts = signature.split(',');
   const timestamp = Number(parts.find((p) => p.startsWith('t='))?.slice(2));
-  if (!timestamp || Math.abs(nowSeconds - timestamp) > SIGNATURE_TOLERANCE_SECONDS) {
+  if (
+    !timestamp ||
+    Math.abs(nowSeconds - timestamp) > SIGNATURE_TOLERANCE_SECONDS
+  ) {
     throw new UnauthorizedException('Stale or missing signature timestamp');
   }
   const expected = createHmac('sha256', secret)

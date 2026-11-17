@@ -10,14 +10,20 @@ function setup({ fakeCheckout = true, account = true } = {}) {
   let row: PaymentSettings | null = null;
   const repo = {
     findOne: jest.fn(() => Promise.resolve(row)),
-    create: jest.fn((v: Partial<PaymentSettings>) => ({ ...v }) as PaymentSettings),
+    create: jest.fn(
+      (v: Partial<PaymentSettings>) => ({ ...v }) as PaymentSettings,
+    ),
     save: jest.fn((v: PaymentSettings) => {
       row = { ...v };
       return Promise.resolve(row);
     }),
   };
-  const accounts = { findOne: jest.fn(() => Promise.resolve(account ? { id: accountId } : null)) };
-  const crypto = new ChannelCryptoService('test-secret-test-secret-test-secret');
+  const accounts = {
+    findOne: jest.fn(() => Promise.resolve(account ? { id: accountId } : null)),
+  };
+  const crypto = new ChannelCryptoService(
+    'test-secret-test-secret-test-secret',
+  );
   const config = {
     get: jest.fn((key: string) =>
       key === 'payments' ? { fakeCheckout } : 'https://api.test',
@@ -88,9 +94,15 @@ describe('PaymentSettingsService', () => {
 
   it('is not ready without a webhook secret or an account', async () => {
     const { service } = setup();
-    expect((await service.update(tenantId, { ...payload, webhookSecret: undefined })).ready).toBe(false);
+    expect(
+      (await service.update(tenantId, { ...payload, webhookSecret: undefined }))
+        .ready,
+    ).toBe(false);
     const { service: other } = setup();
-    expect((await other.update(tenantId, { ...payload, financeAccountId: null })).ready).toBe(false);
+    expect(
+      (await other.update(tenantId, { ...payload, financeAccountId: null }))
+        .ready,
+    ).toBe(false);
   });
 
   it('forgets the keys on request', async () => {
@@ -98,7 +110,11 @@ describe('PaymentSettingsService', () => {
     await service.update(tenantId, payload);
     const dto = await service.clearKeys(tenantId);
     expect(dto).toEqual(
-      expect.objectContaining({ secretKeySet: false, webhookSecretSet: false, ready: false }),
+      expect.objectContaining({
+        secretKeySet: false,
+        webhookSecretSet: false,
+        ready: false,
+      }),
     );
   });
 
@@ -111,6 +127,8 @@ describe('PaymentSettingsService', () => {
 
   it("refuses another tenant's account", async () => {
     const { service } = setup({ account: false });
-    await expect(service.update(tenantId, payload)).rejects.toThrow(BadRequestException);
+    await expect(service.update(tenantId, payload)).rejects.toThrow(
+      BadRequestException,
+    );
   });
 });

@@ -22,7 +22,12 @@ export class PaymentSettings extends TenantBaseEntity {
   @Column({ name: 'encrypted_credentials', type: 'text', nullable: true })
   encryptedCredentials: string | null;
 
-  @Column({ name: 'secret_key_hint', type: 'varchar', length: 8, nullable: true })
+  @Column({
+    name: 'secret_key_hint',
+    type: 'varchar',
+    length: 8,
+    nullable: true,
+  })
   secretKeyHint: string | null;
 
   /**
@@ -54,7 +59,9 @@ export class PaymentSettings extends TenantBaseEntity {
 
 /** One hosted checkout a customer was sent to. A payment is recorded only when it is PAID. */
 @Entity('payment_checkouts')
-@Index('uq_payment_checkouts_session', ['provider', 'providerSessionId'], { unique: true })
+@Index('uq_payment_checkouts_session', ['provider', 'providerSessionId'], {
+  unique: true,
+})
 @Index('idx_payment_checkouts_invoice', ['tenantId', 'invoiceId'])
 export class PaymentCheckout extends TenantBaseEntity {
   @Column({ name: 'invoice_id', type: 'uuid' })
@@ -92,7 +99,9 @@ export class PaymentCheckout extends TenantBaseEntity {
 
 /** Every provider event handled, so a redelivered event is a no-op. */
 @Entity('payment_webhook_events')
-@Index('uq_payment_webhook_events_event', ['tenantId', 'provider', 'eventId'], { unique: true })
+@Index('uq_payment_webhook_events_event', ['tenantId', 'provider', 'eventId'], {
+  unique: true,
+})
 export class PaymentWebhookEvent extends TenantBaseEntity {
   @Column({ type: 'varchar', length: 20 })
   provider: PaymentProviderName;

@@ -2,14 +2,31 @@ import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { createHmac } from 'node:crypto';
 import { StripePaymentProvider } from './stripe-payment.provider';
 
-const credentials = { secretKey: 'sk_test_tenant', webhookSecret: 'whsec_test_tenant' };
+const credentials = {
+  secretKey: 'sk_test_tenant',
+  webhookSecret: 'whsec_test_tenant',
+};
 
-const sign = (body: string, t = Math.floor(Date.now() / 1000), key = credentials.webhookSecret) =>
+const sign = (
+  body: string,
+  t = Math.floor(Date.now() / 1000),
+  key = credentials.webhookSecret,
+) =>
   `t=${t},v1=${createHmac('sha256', key).update(`${t}.${body}`).digest('hex')}`;
 
 /** Stripe test-mode event shapes, trimmed to what the provider reads. */
-const event = (type: string, object: Record<string, unknown>, id = 'evt_test_1') =>
-  JSON.stringify({ id, object: 'event', livemode: false, type, data: { object } });
+const event = (
+  type: string,
+  object: Record<string, unknown>,
+  id = 'evt_test_1',
+) =>
+  JSON.stringify({
+    id,
+    object: 'event',
+    livemode: false,
+    type,
+    data: { object },
+  });
 
 const session = (over: Record<string, unknown> = {}) => ({
   id: 'cs_test_a1',
@@ -27,7 +44,9 @@ describe('StripePaymentProvider', () => {
 
   describe('parseWebhook', () => {
     const parse = (body: string, header = sign(body), creds = credentials) =>
-      provider.parseWebhook(creds, Buffer.from(body), { 'stripe-signature': header });
+      provider.parseWebhook(creds, Buffer.from(body), {
+        'stripe-signature': header,
+      });
 
     it('reads a paid checkout completion with the amount Stripe collected', () => {
       expect(parse(event('checkout.session.completed', session()))).toEqual({
@@ -41,42 +60,66 @@ describe('StripePaymentProvider', () => {
     });
 
     it('waits for the money on a bank debit that completed unpaid', () => {
-      const body = event('checkout.session.completed', session({ payment_status: 'unpaid' }));
+      const body = event(
+        'checkout.session.completed',
+        session({ payment_status: 'unpaid' }),
+      );
       expect(parse(body).kind).toBe('IGNORED');
-      expect(parse(event('checkout.session.async_payment_succeeded', session())).kind).toBe('PAID');
+      expect(
+        parse(event('checkout.session.async_payment_succeeded', session()))
+          .kind,
+      ).toBe('PAID');
     });
 
     it('treats failed and expired sessions as nothing paid', () => {
-      expect(parse(event('checkout.session.async_payment_failed', session())).kind).toBe('FAILED');
-      expect(parse(event('checkout.session.expired', session({ payment_status: 'unpaid' }))).kind).toBe(
-        'EXPIRED',
-      );
+      expect(
+        parse(event('checkout.session.async_payment_failed', session())).kind,
+      ).toBe('FAILED');
+      expect(
+        parse(
+          event(
+            'checkout.session.expired',
+            session({ payment_status: 'unpaid' }),
+          ),
+        ).kind,
+      ).toBe('EXPIRED');
     });
 
     it('ignores event types it does not use', () => {
-      expect(parse(event('charge.refunded', { id: 'ch_1' })).kind).toBe('IGNORED');
+      expect(parse(event('charge.refunded', { id: 'ch_1' })).kind).toBe(
+        'IGNORED',
+      );
     });
 
     it('rejects a body altered after signing', () => {
       const body = event('checkout.session.completed', session());
-      expect(() => parse(body.replace('105000', '1'), sign(body))).toThrow(UnauthorizedException);
+      expect(() => parse(body.replace('105000', '1'), sign(body))).toThrow(
+        UnauthorizedException,
+      );
     });
 
     it("rejects a signature made with another tenant's secret", () => {
       const body = event('checkout.session.completed', session());
-      expect(() => parse(body, sign(body, undefined, 'whsec_other'))).toThrow(UnauthorizedException);
+      expect(() => parse(body, sign(body, undefined, 'whsec_other'))).toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('rejects a replay older than five minutes', () => {
       const body = event('checkout.session.completed', session());
-      expect(() => parse(body, sign(body, Math.floor(Date.now() / 1000) - 600))).toThrow(/Stale/);
+      expect(() =>
+        parse(body, sign(body, Math.floor(Date.now() / 1000) - 600)),
+      ).toThrow(/Stale/);
     });
 
     it('rejects everything when no webhook secret is saved', () => {
       const body = event('checkout.session.completed', session());
-      expect(() => parse(body, sign(body), { secretKey: 'sk_test_tenant', webhookSecret: '' })).toThrow(
-        UnauthorizedException,
-      );
+      expect(() =>
+        parse(body, sign(body), {
+          secretKey: 'sk_test_tenant',
+          webhookSecret: '',
+        }),
+      ).toThrow(UnauthorizedException);
     });
   });
 
@@ -94,10 +137,16 @@ describe('StripePaymentProvider', () => {
     it("opens a one-off session with the tenant's key", async () => {
       const fetchImpl = jest.fn().mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({ id: 'cs_test_a1', url: 'https://checkout.stripe.com/c/pay/cs_test_a1' }),
+        json: () =>
+          Promise.resolve({
+            id: 'cs_test_a1',
+            url: 'https://checkout.stripe.com/c/pay/cs_test_a1',
+          }),
       });
-      const stripe = new StripePaymentProvider(fetchImpl as unknown as typeof fetch);
-      await expect(stripe.createCheckout(credentials, request)).resolves.toEqual({
+      const stripe = new StripePaymentProvider(fetchImpl);
+      await expect(
+        stripe.createCheckout(credentials, request),
+      ).resolves.toEqual({
         sessionId: 'cs_test_a1',
         url: 'https://checkout.stripe.com/c/pay/cs_test_a1',
       });
@@ -116,16 +165,21 @@ describe('StripePaymentProvider', () => {
       const fetchImpl = jest.fn().mockResolvedValue({
         ok: false,
         status: 401,
-        json: () => Promise.resolve({ error: { message: 'Invalid API Key provided: sk_test_***' } }),
+        json: () =>
+          Promise.resolve({
+            error: { message: 'Invalid API Key provided: sk_test_***' },
+          }),
       });
-      const stripe = new StripePaymentProvider(fetchImpl as unknown as typeof fetch);
+      const stripe = new StripePaymentProvider(fetchImpl);
       await expect(stripe.createCheckout(credentials, request)).rejects.toThrow(
         'Online payment is not available right now. Please try again later.',
       );
     });
 
     it('refuses without a key', async () => {
-      await expect(provider.createCheckout({}, request)).rejects.toThrow(BadRequestException);
+      await expect(provider.createCheckout({}, request)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 });

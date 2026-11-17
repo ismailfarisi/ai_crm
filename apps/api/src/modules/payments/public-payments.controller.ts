@@ -47,7 +47,9 @@ export class PublicPaymentsController {
   @Post('quotes/:token/deposit-checkout')
   @HttpCode(HttpStatus.OK)
   @Throttle({ auth: { limit: 10, ttl: 60_000 } })
-  @ApiOperation({ summary: 'Start a hosted checkout for the deposit on an accepted quote' })
+  @ApiOperation({
+    summary: 'Start a hosted checkout for the deposit on an accepted quote',
+  })
   payDeposit(@Param('token') token: string): Promise<CheckoutRedirectDto> {
     return this.payments.startDepositCheckout(token);
   }
@@ -55,7 +57,9 @@ export class PublicPaymentsController {
   @Public()
   @Post('webhooks/stripe/:webhookKey')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Stripe events for one tenant's account. Verified by signature." })
+  @ApiOperation({
+    summary: "Stripe events for one tenant's account. Verified by signature.",
+  })
   stripeWebhook(
     @Param('webhookKey') webhookKey: string,
     @Req() req: RawBodyRequest<Request>,
@@ -71,11 +75,16 @@ export class PublicPaymentsController {
   @Post('fake/:session/complete')
   @HttpCode(HttpStatus.OK)
   @Throttle({ auth: { limit: 10, ttl: 60_000 } })
-  @ApiOperation({ summary: 'Development and staging: pay or cancel a test checkout' })
+  @ApiOperation({
+    summary: 'Development and staging: pay or cancel a test checkout',
+  })
   completeFake(
     @Param('session') session: string,
     @Body() body: { outcome?: string },
   ) {
-    return this.payments.completeFake(session, body?.outcome === 'PAID' ? 'PAID' : 'EXPIRED');
+    return this.payments.completeFake(
+      session,
+      body?.outcome === 'PAID' ? 'PAID' : 'EXPIRED',
+    );
   }
 }
