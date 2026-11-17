@@ -282,8 +282,8 @@ export interface PublicQuoteDto {
   taxAmount: number;
   totalAmount: number;
   billingSchedule: { label: string; percent: number; totalAmount: number }[];
-  acceptedAt: string | null;
-  acceptedByName: string | null;
   /** The deposit invoice raised on acceptance, once there is one. */
   deposit?: import('../payments/online-payments').PublicDepositDto | null;
+  acceptedAt: string | null;
+  acceptedByName: string | null;
 }

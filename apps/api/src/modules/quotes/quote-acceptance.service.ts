@@ -26,8 +26,6 @@ import { TenantContextService } from '@/common/context/tenant-context.service';
 import { Organization } from '../organizations/entities/organization.entity';
 import { AutomationEventBridgeService } from '../automations/services/automation-event-bridge.service';
 import { MailService } from '../mail/mail.service';
-import { OrganizationsService } from '../organizations/organizations.service';
-import { Quote, QuoteStatus } from './entities/quote.entity';
 import { Invoice, InvoiceStatus } from './entities/invoice.entity';
 import {
   BillingScheduleLine,
@@ -36,6 +34,8 @@ import {
 import { PaymentSettings } from '../payments/entities/payments.entity';
 import { paymentsReady } from '../payments/payment-readiness';
 import { ChannelCryptoService } from '../channels/services/channel-crypto.service';
+import { OrganizationsService } from '../organizations/organizations.service';
+import { Quote, QuoteStatus } from './entities/quote.entity';
 import { QuotesService } from './quotes.service';
 
 const hashToken = (token: string) =>
@@ -546,9 +546,9 @@ export class QuoteAcceptanceService {
         percent: stage.percent,
         totalAmount: amounts[index].totalAmount,
       })),
+      deposit: await this.publicDeposit(quote),
       acceptedAt: quote.acceptedAt ? quote.acceptedAt.toISOString() : null,
       acceptedByName: quote.acceptedByName,
-      deposit: await this.publicDeposit(quote),
     };
   }
 }

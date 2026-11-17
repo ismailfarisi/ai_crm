@@ -56,8 +56,8 @@ import { ChannelCryptoService } from '../channels/services/channel-crypto.servic
     InvoicesService,
     InvoicePdfService,
     InvoiceOverdueService,
-    QuoteAcceptanceService,
     ChannelCryptoService,
+    QuoteAcceptanceService,
   ],
   exports: [QuotesService, InvoicesService, QuoteAcceptanceService],
 })
