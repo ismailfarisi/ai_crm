@@ -17,6 +17,7 @@ import type {
   CreateToolingPayload,
   UpdateToolingPayload,
   ProductTemplateDto,
+  StarterTemplatePreviewDto,
   CreateProductTemplatePayload,
   UpdateProductTemplatePayload,
 } from '@saas/shared';
@@ -232,6 +233,28 @@ export function useTemplate(id: string | null) {
  * version reading exactly as they did. That is why the toast says which
  * version the save produced.
  */
+export function useStarterTemplates(enabled = true) {
+  return useQuery<StarterTemplatePreviewDto[]>({
+    queryKey: queryKeys.catalogStarterTemplates,
+    queryFn: () => api.catalog.listStarterTemplates(),
+    enabled,
+    // The library ships with the app; it only changes on deploy.
+    staleTime: Infinity,
+  });
+}
+
+export function useInstallStarterTemplate() {
+  const invalidate = useInvalidateCatalog();
+
+  return useMutation({
+    mutationFn: (key: string) => api.catalog.installStarterTemplate(key),
+    onSuccess: async () => {
+      await invalidate();
+    },
+    onError: (error) => toast.error(describe(error, 'Could not install the template')),
+  });
+}
+
 export function useSaveTemplate() {
   const invalidate = useInvalidateCatalog();
 

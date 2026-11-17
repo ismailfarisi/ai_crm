@@ -74,7 +74,13 @@ export function TemplateConfigurator({
     width: Number(parameters.width_mm) || 0,
     height: Number(parameters.height_mm) || 0,
   };
-  const hasBoxDimensions = dimensions.length > 0 && dimensions.width > 0 && dimensions.height > 0;
+  // Only box templates opt in: a sign or a cabinet has the same three
+  // dimensions and no box net.
+  const showBlank =
+    template.blankPreview === 'RIGID_BOX' &&
+    dimensions.length > 0 &&
+    dimensions.width > 0 &&
+    dimensions.height > 0;
 
   return (
     <div className="flex max-h-[78vh] flex-col">
@@ -170,7 +176,7 @@ export function TemplateConfigurator({
             />
           </label>
 
-          {hasBoxDimensions && (
+          {showBlank && (
             <BlankPreview
               lengthMm={dimensions.length}
               widthMm={dimensions.width}

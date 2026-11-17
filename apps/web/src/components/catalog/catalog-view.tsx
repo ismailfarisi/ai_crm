@@ -3,7 +3,18 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
-import { Boxes, Factory, Gauge, Package, Pencil, Plus, Ruler, Trash2, Wrench } from 'lucide-react';
+import {
+  Boxes,
+  Factory,
+  Gauge,
+  Package,
+  Pencil,
+  Plus,
+  Ruler,
+  Sparkles,
+  Trash2,
+  Wrench,
+} from 'lucide-react';
 import {
   PERMISSIONS,
   type CatalogItemDto,
@@ -37,6 +48,7 @@ import { MaterialFormDialog } from './material-form-dialog';
 import { WorkCenterFormDialog } from './work-center-form-dialog';
 import { ToolingFormDialog } from './tooling-form-dialog';
 import { CostingReviewPanel } from './costing-review-panel';
+import { StarterTemplatePicker } from './starter-template-picker';
 
 type Tab = 'products' | 'templates' | 'materials' | 'work-centers' | 'tooling' | 'accuracy';
 
@@ -95,6 +107,7 @@ export function CatalogView() {
   const [editingWorkCenter, setEditingWorkCenter] = useState<WorkCenterDto | null>(null);
   const [editingTooling, setEditingTooling] = useState<ToolingDto | null>(null);
   const [creating, setCreating] = useState<Tab | null>(null);
+  const [pickingStarter, setPickingStarter] = useState(false);
 
   const [pendingDelete, setPendingDelete] = useState<
     { kind: Tab; id: string; name: string } | null
@@ -457,12 +470,18 @@ export function CatalogView() {
           <Can permission={PERMISSIONS.CATALOG_MANAGE}>
             {/* A template is too big for a dialog, so it has a page of its own. */}
             {tab === 'accuracy' ? null : tab === 'templates' ? (
-              <Link href="/catalog/templates/new">
-                <Button>
-                  <Plus className="size-4" />
-                  New template
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => setPickingStarter(true)}>
+                  <Sparkles className="size-4" />
+                  Start from an industry template
                 </Button>
-              </Link>
+                <Link href="/catalog/templates/new">
+                  <Button>
+                    <Plus className="size-4" />
+                    New template
+                  </Button>
+                </Link>
+              </div>
             ) : (
               <Button onClick={() => setCreating(tab)}>
                 <Plus className="size-4" />
@@ -516,6 +535,20 @@ export function CatalogView() {
           emptyTitle="No products yet"
           emptyDescription="Add something you sell at a standing price. Products appear in the quote editor's catalog picker, and their cost is what makes the margin on a quote real."
           emptyIcon={<Package className="size-8 text-ink-muted" />}
+        />
+      ) : tab === 'templates' && !templates.isPending && (templates.data ?? []).length === 0 ? (
+        <EmptyState
+          icon={<Ruler className="size-8 text-ink-muted" />}
+          title="No product templates yet"
+          description="A template prices made-to-order work from what it takes to make: parameters in, material yield and machine time costed, a price out. Start from one built for your trade and change the rates to yours."
+          action={
+            <Can permission={PERMISSIONS.CATALOG_MANAGE}>
+              <Button onClick={() => setPickingStarter(true)}>
+                <Sparkles className="size-4" />
+                Start from an industry template
+              </Button>
+            </Can>
+          }
         />
       ) : tab === 'templates' ? (
         <DataTable
@@ -625,6 +658,7 @@ export function CatalogView() {
           now on, edit it and clear “available for new quotes” instead.
         </p>
       </Dialog>
+      <StarterTemplatePicker open={pickingStarter} onClose={() => setPickingStarter(false)} />
     </>
   );
 }

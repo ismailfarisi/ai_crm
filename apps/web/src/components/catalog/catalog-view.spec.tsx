@@ -59,6 +59,11 @@ vi.mock('./tooling-form-dialog', () => ({
     open ? <div data-testid="tooling-dialog" /> : null,
 }));
 
+vi.mock('./starter-template-picker', () => ({
+  StarterTemplatePicker: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="starter-picker" /> : null,
+}));
+
 const item: CatalogItemDto = {
   id: 'item-1',
   sku: 'BOX-200',
@@ -162,6 +167,17 @@ describe('CatalogView', () => {
       fireEvent.click(screen.getByRole('button', { name: /templates/i }));
 
       expect(screen.getByText('No product templates yet')).toBeInTheDocument();
+    });
+
+    it('offers an industry template from the empty state and the toolbar', () => {
+      render(<CatalogView />);
+
+      fireEvent.click(screen.getByRole('button', { name: /templates/i }));
+      const starts = screen.getAllByRole('button', { name: /start from an industry template/i });
+      expect(starts).toHaveLength(2);
+
+      fireEvent.click(starts[1]);
+      expect(screen.getByTestId('starter-picker')).toBeInTheDocument();
     });
 
     // Six repeating sections and a formula in most of them: too much for a

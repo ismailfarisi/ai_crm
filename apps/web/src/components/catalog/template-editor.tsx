@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import type {
+  BlankPreviewKind,
   CreateProductTemplatePayload,
   DerivedVariable,
   ProductTemplateDto,
@@ -40,7 +41,14 @@ import { Card, CardBody, CardHeader, CardTitle, Skeleton } from '@/components/ui
  * only thing that knows what is in scope, and a second, weaker copy of that
  * knowledge in the browser would eventually disagree with it.
  */
-export function TemplateEditor({ templateId }: { templateId: string | null }) {
+export function TemplateEditor({
+  templateId,
+  fromStarter = false,
+}: {
+  templateId: string | null;
+  /** Just installed from the starter library: its rates are placeholders. */
+  fromStarter?: boolean;
+}) {
   const router = useRouter();
   const { data: existing, isPending: loading } = useTemplate(templateId);
   const { data: materials = [] } = useMaterials();
@@ -137,6 +145,16 @@ export function TemplateEditor({ templateId }: { templateId: string | null }) {
         </Button>
       </div>
 
+      {fromStarter && templateId && (
+        <p
+          role="status"
+          className="rounded-xl border border-info/30 bg-info-soft/40 px-4 py-3 text-sm text-ink"
+        >
+          Installed with sample rates. Before you quote, replace the material prices and machine
+          rates on the Catalog screen with your own.
+        </p>
+      )}
+
       {blocked && (
         <p className="rounded-xl border border-warning/40 bg-warning-soft/40 px-4 py-3 text-sm text-ink">
           {blocked}
@@ -171,6 +189,18 @@ export function TemplateEditor({ templateId }: { templateId: string | null }) {
           rows={2}
           value={form.description}
           onChange={(event) => patch({ description: event.target.value })}
+        />
+        <Select
+          label="Flat blank drawing"
+          hint="Shown next to the price in the quote editor. Only for two-piece rigid boxes."
+          value={form.blankPreview}
+          options={[
+            { value: '', label: 'None' },
+            { value: 'RIGID_BOX', label: 'Rigid box, base and lid' },
+          ]}
+          onChange={(event) =>
+            patch({ blankPreview: event.target.value as TemplateForm['blankPreview'] })
+          }
         />
       </Section>
 
@@ -750,6 +780,7 @@ interface TemplateForm {
   name: string;
   description: string;
   currency: string;
+  blankPreview: '' | BlankPreviewKind;
   parameters: ParameterForm[];
   derived: DerivedForm[];
   materials: MaterialForm[];
@@ -763,6 +794,7 @@ const EMPTY_FORM: TemplateForm = {
   name: '',
   description: '',
   currency: 'USD',
+  blankPreview: '',
   parameters: [],
   derived: [],
   materials: [],
@@ -844,6 +876,7 @@ function toPayload(form: TemplateForm): unknown {
     name: form.name.trim(),
     description: text(form.description) ?? null,
     currency: form.currency.trim() || 'USD',
+    blankPreview: form.blankPreview || null,
     parameters: form.parameters.map((parameter) => ({
       key: parameter.key.trim(),
       label: parameter.label.trim(),
@@ -912,6 +945,7 @@ function fromDto(template: ProductTemplateDto): TemplateForm {
     name: template.name,
     description: template.description ?? '',
     currency: template.currency,
+    blankPreview: template.blankPreview ?? '',
     parameters: template.parameters.map((parameter: TemplateParameter) => ({
       key: parameter.key,
       label: parameter.label,
