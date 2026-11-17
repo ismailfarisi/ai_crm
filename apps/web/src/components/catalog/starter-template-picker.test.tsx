@@ -31,7 +31,9 @@ function starter(
     description: `${name} description`,
     currency: 'AED',
     parameters: [{ key: 'width_mm', label: 'Width', type: 'NUMBER', unit: 'mm' }],
-    materials: [{ label: `${name} board`, unit: 'SHEET', placeholderRate: 10, optional: false }],
+    materials: [
+      { label: `${name} board`, name: 'Board', uom: 'SHEET', costPerUom: 10, optional: false },
+    ],
     operations: [{ label: `${name} cut`, workCenterName: 'Cutter', optional: false }],
     tooling: [],
     example: {
@@ -42,7 +44,7 @@ function starter(
       grandTotal: 4675,
       workingDays: 3,
     },
-  } as StarterTemplatePreviewDto;
+  };
 }
 
 describe('StarterTemplatePicker', () => {
