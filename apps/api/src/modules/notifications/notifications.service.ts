@@ -63,7 +63,7 @@ export class NotificationsService {
          JOIN "roles" r ON r."id" = ur."roleId"
          LEFT JOIN "role_permissions" rp ON rp."roleId" = r."id"
          LEFT JOIN "permissions" p ON p."id" = rp."permissionId"
-         WHERE u."organizationId" = $1
+         WHERE u."tenant_id" = $1
            AND u."isActive"
            AND (r."grantsAllPermissions" OR p."key" = $2)`,
         [tenantId, permission],
