@@ -16,6 +16,8 @@ import {
 } from '../production/entities/work-order.entity';
 import { CostingReviewController } from './costing-review.controller';
 import { CostingReviewService } from './costing-review.service';
+import { StarterTemplatesController } from './starter-templates.controller';
+import { StarterTemplatesService } from './starter-templates.service';
 
 @Module({
   imports: [
@@ -32,8 +34,17 @@ import { CostingReviewService } from './costing-review.service';
       WorkOrderOperation,
     ]),
   ],
-  controllers: [CatalogController, CostingReviewController],
-  providers: [CatalogService, CostingService, CostingReviewService],
+  controllers: [
+    CatalogController,
+    CostingReviewController,
+    StarterTemplatesController,
+  ],
+  providers: [
+    CatalogService,
+    CostingService,
+    CostingReviewService,
+    StarterTemplatesService,
+  ],
   // QuotesModule consumes CostingService to re-cost lines on save, so the
   // client can never post its own cost.
   exports: [CatalogService, CostingService],

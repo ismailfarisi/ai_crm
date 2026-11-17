@@ -304,6 +304,7 @@ export class CatalogService {
 
     const draft: DeepPartial<ProductTemplate> = {
       ...payload,
+      blankPreview: payload.blankPreview ?? null,
       tenantId,
       version: 1,
       isCurrent: true,
@@ -329,6 +330,10 @@ export class CatalogService {
       name: payload.name ?? current.name,
       description: payload.description ?? current.description,
       currency: payload.currency ?? current.currency,
+      blankPreview:
+        payload.blankPreview === undefined
+          ? current.blankPreview
+          : payload.blankPreview,
       parameters: payload.parameters ?? current.parameters,
       derived: payload.derived ?? current.derived,
       materials: payload.materials ?? current.materials,

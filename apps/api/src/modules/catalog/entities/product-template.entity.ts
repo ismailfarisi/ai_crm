@@ -1,5 +1,6 @@
 import { Column, Entity, Index } from 'typeorm';
 import type {
+  BlankPreviewKind,
   DerivedVariable,
   TemplateMaterial,
   TemplateOperation,
@@ -58,6 +59,10 @@ export class ProductTemplate extends BaseEntity {
 
   @Column({ type: 'char', length: 3, default: 'USD' })
   currency: string;
+
+  /** The flat blank the quote configurator draws; null draws none. */
+  @Column({ name: 'blank_preview', type: 'varchar', length: 20, nullable: true })
+  blankPreview: BlankPreviewKind | null;
 
   @Column({ type: 'jsonb', default: [] })
   parameters: TemplateParameter[];
