@@ -11,6 +11,7 @@ const tenantId = '11111111-1111-1111-1111-111111111111';
 const userId = '44444444-4444-4444-4444-444444444444';
 const ownGlue = '10000000-0000-4000-8000-000000000001';
 const ownQc = '20000000-0000-4000-8000-000000000001';
+const ownActiveQc = '20000000-0000-4000-8000-000000000002';
 
 /** An in-memory stand-in for one table, enough for find/create/save. */
 function table<T extends { id?: string }>(rows: T[] = []) {
@@ -127,6 +128,34 @@ describe('StarterTemplatesService', () => {
     expect(
       carton.operations!.find((line) => line.key === 'bundle')!.workCenterId,
     ).toBe(ownQc);
+  });
+
+  it('does not reuse a same-named material bought in another unit, and prefers an active match', async () => {
+    const { catalog } = findStarterTemplate('rsc-carton')!;
+    const glue = Object.values(catalog.materials).find(
+      (m) => m.sku === 'GLUE-PVA',
+    )!;
+    materials.rows.push({
+      id: ownGlue,
+      tenantId,
+      sku: null,
+      name: glue.name,
+      uom: 'EACH',
+    });
+    workCenters.rows.push(
+      { id: ownQc, tenantId, name: 'QC and packing', isActive: false },
+      { id: ownActiveQc, tenantId, name: 'QC and packing', isActive: true },
+    );
+
+    await service.install(tenantId, 'rsc-carton', userId);
+    const carton = templates.rows[0];
+
+    expect(
+      carton.materials!.find((line) => line.key === 'glue')!.materialId,
+    ).not.toBe(ownGlue);
+    expect(
+      carton.operations!.find((line) => line.key === 'bundle')!.workCenterId,
+    ).toBe(ownActiveQc);
   });
 
   it('a reinstall reuses every primitive and gets its own template key', async () => {

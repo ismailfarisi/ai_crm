@@ -998,8 +998,9 @@ not anyone's actual costs. The picker and the editor both say so. Nothing
 stops a shop quoting from them unchanged; the costing-accuracy review is what
 catches it after a few jobs.
 
-Installing matches materials by SKU, then name, and work centres and tooling by
-name, case-insensitively. A match is reused as it is, so a shop's own rates win
+Installing matches materials by SKU, then by name in the same unit, and work
+centres and tooling by name, case-insensitively, preferring an active row over
+an archived one. A match is reused as it is, so a shop's own rates win
 over the placeholders, but it also means a same-named centre with a different
 meaning (say, a "Laminator" that is a pouch laminator) is silently reused.
 Installing the same starter twice gives a second template (`rsc-carton-2`)

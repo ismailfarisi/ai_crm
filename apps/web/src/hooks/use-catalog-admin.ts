@@ -225,14 +225,6 @@ export function useTemplate(id: string | null) {
   });
 }
 
-/**
- * Creates a template, or publishes the next version of one.
- *
- * Saving an existing template never edits it: templates are immutable once
- * published, so this inserts version + 1 and leaves quotes priced from the old
- * version reading exactly as they did. That is why the toast says which
- * version the save produced.
- */
 export function useStarterTemplates(enabled = true) {
   return useQuery<StarterTemplatePreviewDto[]>({
     queryKey: queryKeys.catalogStarterTemplates,
@@ -255,6 +247,14 @@ export function useInstallStarterTemplate() {
   });
 }
 
+/**
+ * Creates a template, or publishes the next version of one.
+ *
+ * Saving an existing template never edits it: templates are immutable once
+ * published, so this inserts version + 1 and leaves quotes priced from the old
+ * version reading exactly as they did. That is why the toast says which
+ * version the save produced.
+ */
 export function useSaveTemplate() {
   const invalidate = useInvalidateCatalog();
 

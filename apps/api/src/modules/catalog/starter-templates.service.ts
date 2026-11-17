@@ -16,10 +16,15 @@ import { WorkCenter } from './entities/work-center.entity';
 const normalise = (value: string | null | undefined): string =>
   (value ?? '').trim().toLowerCase();
 
+/** An archived row is reused only when no active one matches. */
+const preferActive = <T extends { isActive?: boolean }>(
+  rows: T[],
+): T | undefined => rows.find((row) => row.isActive !== false) ?? rows[0];
+
 /**
  * Installs a starter from the shared library into a tenant's catalog.
  *
- * Materials are matched by SKU, then by name; work centres and tooling have
+ * Materials are matched by SKU, then by name and unit; work centres and tooling have
  * no SKU, so by name. Anything matched is reused untouched (the shop's own
  * rates win over the placeholders), anything missing is created. All of it,
  * and the template, in one transaction: a half-installed starter would leave
@@ -55,13 +60,22 @@ export class StarterTemplatesService {
       for (const [starterId, spec] of Object.entries(
         starter.catalog.materials,
       )) {
+        // A SKU is the shop's own identity for a material (and unique), so
+        // it wins outright. A name alone only counts in the same unit: a
+        // "PVA adhesive" bought by the litre would be costed per kilo.
         const match =
           (spec.sku &&
-            existingMaterials.find(
-              (row) => normalise(row.sku) === normalise(spec.sku),
+            preferActive(
+              existingMaterials.filter(
+                (row) => normalise(row.sku) === normalise(spec.sku),
+              ),
             )) ||
-          existingMaterials.find(
-            (row) => normalise(row.name) === normalise(spec.name),
+          preferActive(
+            existingMaterials.filter(
+              (row) =>
+                normalise(row.name) === normalise(spec.name) &&
+                row.uom === spec.uom,
+            ),
           );
         if (match) {
           ids.materials.set(starterId, match.id);
@@ -93,8 +107,10 @@ export class StarterTemplatesService {
       for (const [starterId, spec] of Object.entries(
         starter.catalog.workCenters,
       )) {
-        const match = existingWorkCenters.find(
-          (row) => normalise(row.name) === normalise(spec.name),
+        const match = preferActive(
+          existingWorkCenters.filter(
+            (row) => normalise(row.name) === normalise(spec.name),
+          ),
         );
         if (match) {
           ids.workCenters.set(starterId, match.id);
@@ -121,8 +137,10 @@ export class StarterTemplatesService {
       const tooling = manager.getRepository(Tooling);
       const existingTooling = await tooling.find({ where: { tenantId } });
       for (const [starterId, spec] of Object.entries(starter.catalog.tooling)) {
-        const match = existingTooling.find(
-          (row) => normalise(row.name) === normalise(spec.name),
+        const match = preferActive(
+          existingTooling.filter(
+            (row) => normalise(row.name) === normalise(spec.name),
+          ),
         );
         if (match) {
           ids.tooling.set(starterId, match.id);

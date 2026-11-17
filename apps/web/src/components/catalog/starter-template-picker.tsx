@@ -35,7 +35,12 @@ export function StarterTemplatePicker({ open, onClose }: { open: boolean; onClos
 
   const submit = async () => {
     if (!selected) return;
-    const result = await install.mutateAsync(selected.key);
+    let result;
+    try {
+      result = await install.mutateAsync(selected.key);
+    } catch {
+      return; // The hook has already said why.
+    }
     onClose();
     router.push(`/catalog/templates/${result.id}?starter=1`);
   };

@@ -1,8 +1,4 @@
-import {
-  auditSubjectFor,
-  redactBody,
-  subjectForSegment,
-} from './audit-subjects';
+import { auditSubjectFor, redactBody, subjectForSegment } from './audit-subjects';
 
 describe('auditSubjectFor', () => {
   it('prefers a two-segment key under /finance', () => {
@@ -56,12 +52,8 @@ describe('auditSubjectFor', () => {
 
 describe('payroll subjects', () => {
   it('maps employees, payroll runs and opening gratuity', () => {
-    expect(auditSubjectFor(['employees', 'e1']).mapped?.subject).toBe(
-      'EMPLOYEE',
-    );
-    expect(
-      auditSubjectFor(['payroll-runs', 'r1', 'approve']).mapped?.subject,
-    ).toBe('PAYROLL_RUN');
+    expect(auditSubjectFor(['employees', 'e1']).mapped?.subject).toBe('EMPLOYEE');
+    expect(auditSubjectFor(['payroll-runs', 'r1', 'approve']).mapped?.subject).toBe('PAYROLL_RUN');
     const s = auditSubjectFor(['payroll', 'opening-gratuity']);
     expect(s.key).toBe('payroll/opening-gratuity');
     expect(s.mapped?.subject).toBe('PAYROLL');
@@ -72,10 +64,7 @@ describe('redactBody', () => {
   it("redacts an automation webhook's signature secret at any depth", () => {
     const body = {
       name: 'Hook',
-      triggerConfig: {
-        requireSignature: true,
-        signatureSecret: 's'.repeat(43),
-      },
+      triggerConfig: { requireSignature: true, signatureSecret: 's'.repeat(43) },
     };
     const out = redactBody(body);
     expect(out).toEqual({
