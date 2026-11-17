@@ -9,6 +9,7 @@ import {
   type PublicQuoteProofDto,
   type QuoteProofStatus,
 } from '@saas/shared';
+import { publicQuoteCopy, type PublicQuoteCopy } from './public-quote-copy';
 
 export type PublicCall = (path: string, init?: RequestInit) => Promise<PublicQuoteDto>;
 
@@ -50,10 +51,18 @@ function useSubmit(onDone: (quote: PublicQuoteDto) => void) {
   return { submitting, error, run };
 }
 
-function NameField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function NameField({
+  value,
+  onChange,
+  label = 'Your full name',
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  label?: string;
+}) {
   return (
     <label className="block text-sm">
-      <span className="mb-1 block text-ink">Your full name</span>
+      <span className="mb-1 block text-ink">{label}</span>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -238,6 +247,9 @@ export function PublicQuoteRespond({
   name,
   onNameChange,
   onChange,
+  copy = publicQuoteCopy('en'),
+  customerName = quote.customerName,
+  formatDate = (iso: string) => new Date(iso).toLocaleDateString(),
 }: {
   quote: PublicQuoteDto;
   token: string;
@@ -245,6 +257,10 @@ export function PublicQuoteRespond({
   name: string;
   onNameChange: (v: string) => void;
   onChange: (quote: PublicQuoteDto) => void;
+  /** The accept wording in the customer's document language. */
+  copy?: PublicQuoteCopy;
+  customerName?: string;
+  formatDate?: (iso: string) => string;
 }) {
   const [choice, setChoice] = useState<Choice>('accept');
   const [agreed, setAgreed] = useState(false);
@@ -259,11 +275,20 @@ export function PublicQuoteRespond({
 
   if (quote.acceptedAt) {
     return (
-      <p className="flex items-center gap-2 text-sm text-success">
+      <div className="flex items-start gap-2 text-sm text-success">
         <CheckCircle2 className="size-5 shrink-0" />
-        Accepted by {quote.acceptedByName} on {new Date(quote.acceptedAt).toLocaleDateString()}. Thank you — {seller}{' '}
-        will be in touch.
-      </p>
+        <div>
+          {copy
+            .lines('accepted', {
+              name: quote.acceptedByName ?? '',
+              date: formatDate(quote.acceptedAt),
+              org: quote.organizationName || (quote.language === 'ar' ? 'الفريق' : 'the team'),
+            })
+            .map((line) => (
+              <p key={line}>{line}</p>
+            ))}
+        </div>
+      </div>
     );
   }
 
@@ -346,7 +371,7 @@ export function PublicQuoteRespond({
               : `${seller} will send an artwork proof for you to approve. You can accept the quote once it is approved.`}
           </p>
         )}
-        <NameField value={name} onChange={onNameChange} />
+        <NameField value={name} onChange={onNameChange} label={copy.label('yourName')} />
         {choice === 'accept' && (
           <label className="flex items-start gap-2 text-sm text-ink-muted">
             <input
@@ -356,7 +381,13 @@ export function PublicQuoteRespond({
               disabled={blocked}
               className="mt-0.5"
             />
-            I accept this quote and its terms on behalf of {quote.customerName}.
+            <span>
+              {copy.lines('agree', { customer: customerName }).map((line) => (
+                <span key={line} className="block">
+                  {line}
+                </span>
+              ))}
+            </span>
           </label>
         )}
         {choice !== 'accept' && (
@@ -381,7 +412,7 @@ export function PublicQuoteRespond({
         )}
         <button type="submit" disabled={!ready || submitting} className={choice === 'accept' ? primaryButton : secondaryButton}>
           {submitting && <Loader2 className="size-4 animate-spin" />}
-          {choice === 'accept' ? 'Accept quote' : choice === 'changes' ? 'Send request' : 'Decline quote'}
+          {choice === 'accept' ? copy.label('accept') : choice === 'changes' ? 'Send request' : 'Decline quote'}
         </button>
       </form>
     </div>
