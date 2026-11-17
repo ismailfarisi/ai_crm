@@ -8,6 +8,7 @@
 import { authEndpoints, authKeys } from './auth';
 import { contactsEndpoints, contactsKeys } from './contacts';
 import { customersEndpoints, customersKeys } from './customers';
+import { importsEndpoints, importsKeys } from './imports';
 import { rbacEndpoints, rbacKeys } from './rbac';
 import { salesEndpoints, salesKeys } from './sales';
 import { channelsEndpoints, channelsKeys } from './channels';
@@ -32,6 +33,7 @@ import { booksEndpoints, booksKeys } from './books';
 export * from './auth';
 export * from './contacts';
 export * from './customers';
+export * from './imports';
 export * from './rbac';
 export * from './sales';
 export * from './channels';
@@ -57,6 +59,7 @@ export const api = {
   ...authEndpoints,
   ...contactsEndpoints,
   ...customersEndpoints,
+  ...importsEndpoints,
   ...rbacEndpoints,
   ...salesEndpoints,
   ...channelsEndpoints,
@@ -83,6 +86,7 @@ export const queryKeys = {
   ...authKeys,
   ...contactsKeys,
   ...customersKeys,
+  ...importsKeys,
   ...rbacKeys,
   ...salesKeys,
   ...channelsKeys,

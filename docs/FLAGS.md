@@ -300,6 +300,45 @@ accumulated depreciation, with nothing scheduling it.
 
 ---
 
+## Importing data
+
+### An import reads the file twice — by design
+
+The dry run saves nothing, not even the file. Importing sends the same file
+again and every row is checked again against current data, so a record added
+between review and import is matched, not duplicated. Files are capped at 5MB
+and 5,000 rows, held in memory like other uploads; an xlsx is also refused if
+it would unpack to more than 100MB. Only the first sheet is read.
+
+### One audit entry per import — by design
+
+The audit trail gets one `import.<entity>` row per import, pointing at the
+`import_runs` record with the counts. The records it creates or updates are
+not audited one by one. The dry run is not audited at all.
+
+### Rows are saved in batches of 200 — by design
+
+Each batch is one transaction and each row a savepoint inside it, so a row
+that fails (a duplicate SKU, a database rule) is reported and the rest of the
+batch still saves. A failure part-way leaves earlier batches saved; the result
+and the error file say which rows did not go in.
+
+### Opening stock skips materials that already have stock — by design
+
+Each row is a stock adjustment at the unit cost given, posted to the books
+like a manual one. Updating a count would mean a second adjustment against
+stock that may already have moved, so a material that holds stock is skipped
+and corrected with a normal adjustment instead. It goes to the default
+location; locations and lots are not imported.
+
+### Not imported yet — open
+
+Suppliers, product templates, tooling, price breaks and open invoices or
+balances. Contacts are not linked to customers on import. Header matching is
+English only.
+
+---
+
 ## Billing
 
 ### Stripe is untested — open

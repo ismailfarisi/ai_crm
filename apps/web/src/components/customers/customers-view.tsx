@@ -13,6 +13,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { EmptyState, PageHeader } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/data-table';
 import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
+import { ImportLink } from '@/components/imports/import-link';
 import { CustomerFormDialog } from './customer-form-dialog';
 
 const PAGE_SIZE = 20;
@@ -117,12 +118,15 @@ export function CustomersView() {
         title="Customers"
         description="The companies you sell to."
         actions={
-          <Can permission={PERMISSIONS.CUSTOMER_CREATE}>
-            <Button onClick={() => setCreating(true)}>
-              <Plus className="size-4" />
-              New customer
-            </Button>
-          </Can>
+          <>
+            <ImportLink entity="customers" />
+            <Can permission={PERMISSIONS.CUSTOMER_CREATE}>
+              <Button onClick={() => setCreating(true)}>
+                <Plus className="size-4" />
+                New customer
+              </Button>
+            </Can>
+          </>
         }
       />
 
@@ -144,6 +148,7 @@ export function CustomersView() {
           emptyTitle="No customers yet"
           emptyDescription="Add your first customer to start building your book of business."
           emptyIcon={<Building2 className="size-8 text-ink-muted" />}
+          emptyAction={<ImportLink entity="customers" label="Import from a spreadsheet" />}
         />
       )}
 

@@ -9,6 +9,7 @@ import {
   Factory,
   Building2,
   FileText,
+  FileUp,
   Landmark,
   LayoutDashboard,
   LayoutTemplate,
@@ -210,6 +211,19 @@ export const SECONDARY_SECTIONS: NavSection[] = [
         label: 'Audit trail',
         icon: History,
         rule: { permission: PERMISSIONS.AUDIT_READ },
+      },
+      {
+        href: '/settings/import',
+        label: 'Import data',
+        icon: FileUp,
+        rule: {
+          anyOf: [
+            PERMISSIONS.CUSTOMER_CREATE,
+            PERMISSIONS.CONTACT_CREATE,
+            PERMISSIONS.CATALOG_MANAGE,
+            PERMISSIONS.INVENTORY_ADJUST,
+          ],
+        },
       },
       {
         href: '/settings/ai',

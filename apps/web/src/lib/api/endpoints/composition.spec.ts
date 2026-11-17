@@ -3,6 +3,7 @@ import { api, queryKeys } from './index';
 import { authEndpoints, authKeys } from './auth';
 import { contactsEndpoints, contactsKeys } from './contacts';
 import { customersEndpoints, customersKeys } from './customers';
+import { importsEndpoints, importsKeys } from './imports';
 import { rbacEndpoints, rbacKeys } from './rbac';
 import { salesEndpoints, salesKeys } from './sales';
 import { channelsEndpoints, channelsKeys } from './channels';
@@ -39,6 +40,7 @@ const SLICES = [
   ['auth', authEndpoints, authKeys],
   ['contacts', contactsEndpoints, contactsKeys],
   ['customers', customersEndpoints, customersKeys],
+  ['imports', importsEndpoints, importsKeys],
   ['rbac', rbacEndpoints, rbacKeys],
   ['sales', salesEndpoints, salesKeys],
   ['channels', channelsEndpoints, channelsKeys],
@@ -62,7 +64,7 @@ const SLICES = [
 ] as const;
 
 const API_SECTIONS = [
-  'auth', 'contacts', 'customers', 'roles', 'users', 'invitations', 'teams',
+  'auth', 'contacts', 'customers', 'imports', 'roles', 'users', 'invitations', 'teams',
   'quotes', 'catalog', 'invoices', 'channels', 'aiAgents', 'intentAgentConfig',
   'automations', 'finance', 'expenses', 'ai', 'suppliers',
   'purchaseOrders', 'purchasePolicy', 'inventory', 'goodsReceipts', 'bills',
@@ -73,7 +75,7 @@ const API_SECTIONS = [
 ];
 
 const QUERY_KEYS = [
-  'session', 'contacts', 'contact', 'contactStats', 'customers', 'customer', 'customerOverview',
+  'session', 'contacts', 'contact', 'contactStats', 'customers', 'customer', 'customerOverview', 'imports',
   'roles', 'role', 'permissionCatalog', 'users', 'teams', 'invitations',
   'quotes', 'quote', 'invoices', 'invoice', 'invoicePayments', 'catalogItems',
   'catalogItemsAll', 'catalogMaterials', 'catalogWorkCenters', 'catalogTooling',

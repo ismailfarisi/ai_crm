@@ -7,6 +7,7 @@ import { Boxes, Factory, Gauge, Package, Pencil, Plus, Ruler, Trash2, Wrench } f
 import {
   PERMISSIONS,
   type CatalogItemDto,
+  type ImportEntity,
   type MaterialDto,
   type ProductTemplateDto,
   type ToolingDto,
@@ -32,6 +33,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { EmptyState, PageHeader } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/data-table';
 import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
+import { ImportLink } from '@/components/imports/import-link';
 import { CatalogItemFormDialog } from './catalog-item-form-dialog';
 import { MaterialFormDialog } from './material-form-dialog';
 import { WorkCenterFormDialog } from './work-center-form-dialog';
@@ -39,6 +41,12 @@ import { ToolingFormDialog } from './tooling-form-dialog';
 import { CostingReviewPanel } from './costing-review-panel';
 
 type Tab = 'products' | 'templates' | 'materials' | 'work-centers' | 'tooling' | 'accuracy';
+
+const IMPORTABLE: Partial<Record<Tab, ImportEntity>> = {
+  products: 'products',
+  materials: 'materials',
+  'work-centers': 'work-centres',
+};
 
 const TABS: Array<{ id: Tab; label: string; icon: typeof Package }> = [
   { id: 'products', label: 'Products', icon: Package },
@@ -455,6 +463,7 @@ export function CatalogView() {
         description="What you sell, what you make it from, and what it costs to make."
         actions={
           <Can permission={PERMISSIONS.CATALOG_MANAGE}>
+            {tab in IMPORTABLE && <ImportLink entity={IMPORTABLE[tab] as ImportEntity} />}
             {/* A template is too big for a dialog, so it has a page of its own. */}
             {tab === 'accuracy' ? null : tab === 'templates' ? (
               <Link href="/catalog/templates/new">
@@ -516,6 +525,7 @@ export function CatalogView() {
           emptyTitle="No products yet"
           emptyDescription="Add something you sell at a standing price. Products appear in the quote editor's catalog picker, and their cost is what makes the margin on a quote real."
           emptyIcon={<Package className="size-8 text-ink-muted" />}
+          emptyAction={<ImportLink entity="products" label="Import from a spreadsheet" />}
         />
       ) : tab === 'templates' ? (
         <DataTable
@@ -542,6 +552,7 @@ export function CatalogView() {
           emptyTitle="No materials yet"
           emptyDescription="Add the stock you buy and make things from — board, film, ink. Sheet materials carry their sheet size so the costing engine can work out how many blanks fit."
           emptyIcon={<Boxes className="size-8 text-ink-muted" />}
+          emptyAction={<ImportLink entity="materials" label="Import from a spreadsheet" />}
         />
       ) : tab === 'work-centers' ? (
         <DataTable
@@ -554,6 +565,7 @@ export function CatalogView() {
           emptyTitle="No work centres yet"
           emptyDescription="Add the machines and benches a job passes through. Their hourly rates cost the time on a quote, and their capacity is what production schedules against."
           emptyIcon={<Factory className="size-8 text-ink-muted" />}
+          emptyAction={<ImportLink entity="work-centres" label="Import from a spreadsheet" />}
         />
       ) : (
         <DataTable

@@ -165,15 +165,7 @@ export class ContactsService {
     // Without `contact:read_all` a user can only ever create contacts for
     // themselves — otherwise they could create one they immediately can't see.
     // Team leaders may also assign to a member of their own team.
-    let ownerId: string = actor.id;
-    if (parsed.ownerId && this.canSeeEverything(actor)) {
-      ownerId = parsed.ownerId;
-    } else if (parsed.ownerId && this.canSeeTeam(actor)) {
-      const memberIds = await this.teamMemberIds(actor);
-      if (memberIds.includes(parsed.ownerId)) {
-        ownerId = parsed.ownerId;
-      }
-    }
+    const ownerId = await this.assignableOwner(actor, parsed.ownerId);
 
     const contact = this.contacts.create({
       ...(parsed as object),
@@ -329,7 +321,7 @@ export class ContactsService {
    *   owned by members of their team.
    * - Everyone else sees only their own contacts.
    */
-  private scoped(actor: AuthenticatedUser): SelectQueryBuilder<Contact> {
+  scoped(actor: AuthenticatedUser): SelectQueryBuilder<Contact> {
     const qb = this.contacts
       .createQueryBuilder('contact')
       .where('contact.tenantId = :tenantId', {
@@ -354,6 +346,23 @@ export class ContactsService {
     }
 
     return qb;
+  }
+
+  /**
+   * The owner a new contact gets: the one asked for when the actor may assign
+   * to them, otherwise the actor. Shared with the spreadsheet import.
+   */
+  async assignableOwner(
+    actor: AuthenticatedUser,
+    requestedId: string | null | undefined,
+  ): Promise<string> {
+    if (!requestedId) return actor.id;
+    if (this.canSeeEverything(actor)) return requestedId;
+    if (this.canSeeTeam(actor)) {
+      const memberIds = await this.teamMemberIds(actor);
+      if (memberIds.includes(requestedId)) return requestedId;
+    }
+    return actor.id;
   }
 
   private canSeeEverything(actor: AuthenticatedUser): boolean {
