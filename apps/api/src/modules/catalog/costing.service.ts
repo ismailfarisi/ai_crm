@@ -592,6 +592,7 @@ export class CostingService {
       name: entity.name,
       description: entity.description ?? undefined,
       currency: entity.currency,
+      blankPreview: entity.blankPreview,
       parameters: entity.parameters,
       derived: entity.derived,
       materials: entity.materials,

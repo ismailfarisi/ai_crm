@@ -984,6 +984,39 @@ The same pattern is still in `updateContactSchema`, `updateSavedViewSchema`,
 the custom-object, AI-agent and payroll update schemas. Each needs checking
 for defaulted fields and moving to `patchOf`.
 
+### Starter templates — by design, with follow-ups open
+
+A new tenant can install a worked costing model from Catalog → Templates →
+*Start from an industry template*: rigid box and RSC carton (packaging), label
+run (print), acrylic letter sign (signage), laser-cut and bent sheet-metal part
+(fabrication) and cabinet carcass (joinery). The library lives in
+`packages/shared/src/costing/templates/starters/` and each one is costed by the
+same engine in its tests, so the example price in the picker is real.
+
+Every rate in it is a placeholder: AED figures shaped like a small UAE shop,
+not anyone's actual costs. The picker and the editor both say so. Nothing
+stops a shop quoting from them unchanged; the costing-accuracy review is what
+catches it after a few jobs.
+
+Installing matches materials by SKU, then by name in the same unit, and work
+centres and tooling by name, case-insensitively, preferring an active row over
+an archived one. A match is reused as it is, so a shop's own rates win
+over the placeholders, but it also means a same-named centre with a different
+meaning (say, a "Laminator" that is a pouch laminator) is silently reused.
+Installing the same starter twice gives a second template (`rsc-carton-2`)
+rather than a new version of one the shop may have edited.
+
+The quote configurator used to draw a rigid-box flat blank for any template
+with length, width and height. It now draws one only when the template's
+`blankPreview` is `RIGID_BOX`, set in the template editor. The migration turns
+it on for existing templates that have all three dimensions, so nothing
+changes for them; a sign or cabinet built before this needs it switched off by
+hand.
+
+Not done: the optional "Set up your first quote" card on the dashboard, a
+preview of what will be created versus reused before installing, and a
+blank drawing for the RSC carton (it would need a second net kind).
+
 ---
 
 ## Smaller things found on the way

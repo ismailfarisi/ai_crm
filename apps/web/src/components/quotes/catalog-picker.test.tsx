@@ -42,6 +42,7 @@ const TEMPLATE = {
   id: 'template-1',
   templateKey: 'rigid-box-2pc',
   version: 3,
+  blankPreview: 'RIGID_BOX',
   isCurrent: true,
   name: 'Rigid gift box',
   description: 'Base and lid',

@@ -36,6 +36,18 @@ describe('auditSubjectFor', () => {
     expect(s.mapped?.subject).toBe('FINANCE_ACCOUNT');
     expect(s.idSegment).toBe('transfer');
   });
+
+  it('files a starter install under the template it created, not the starter key', () => {
+    const s = auditSubjectFor([
+      'catalog',
+      'starter-templates',
+      'rsc-carton',
+      'install',
+    ]);
+    expect(s.mapped?.subject).toBe('PRODUCT_TEMPLATE');
+    // Not a uuid, so the interceptor takes the id from the response instead.
+    expect(s.idSegment).toBe('rsc-carton');
+  });
 });
 
 describe('payroll subjects', () => {

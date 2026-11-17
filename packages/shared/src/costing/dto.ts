@@ -2,6 +2,7 @@ import type { GuardrailViolation } from '../quotes/guardrails';
 import type { QuoteLineItem, QuoteTotals } from '../quotes/types';
 import type { GrainDirection } from './nesting';
 import type {
+  BlankPreviewKind,
   DerivedVariable,
   MaterialUom,
   PriceBreak,
@@ -93,6 +94,7 @@ export interface ProductTemplateDto {
   name: string;
   description: string | null;
   currency: string;
+  blankPreview: BlankPreviewKind | null;
   parameters: TemplateParameter[];
   derived: DerivedVariable[];
   materials: TemplateMaterial[];

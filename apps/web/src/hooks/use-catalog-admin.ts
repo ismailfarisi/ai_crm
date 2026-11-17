@@ -17,6 +17,7 @@ import type {
   CreateToolingPayload,
   UpdateToolingPayload,
   ProductTemplateDto,
+  StarterTemplatePreviewDto,
   CreateProductTemplatePayload,
   UpdateProductTemplatePayload,
 } from '@saas/shared';
@@ -221,6 +222,28 @@ export function useTemplate(id: string | null) {
     queryKey: queryKeys.catalogTemplate(id ?? ''),
     queryFn: () => api.catalog.getTemplate(id as string),
     enabled: Boolean(id),
+  });
+}
+
+export function useStarterTemplates(enabled = true) {
+  return useQuery<StarterTemplatePreviewDto[]>({
+    queryKey: queryKeys.catalogStarterTemplates,
+    queryFn: () => api.catalog.listStarterTemplates(),
+    enabled,
+    // The library ships with the app; it only changes on deploy.
+    staleTime: Infinity,
+  });
+}
+
+export function useInstallStarterTemplate() {
+  const invalidate = useInvalidateCatalog();
+
+  return useMutation({
+    mutationFn: (key: string) => api.catalog.installStarterTemplate(key),
+    onSuccess: async () => {
+      await invalidate();
+    },
+    onError: (error) => toast.error(describe(error, 'Could not install the template')),
   });
 }
 

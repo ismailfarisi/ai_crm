@@ -5,3 +5,4 @@ export * from './engine';
 export * from './dto';
 export * from './review';
 export * from './templates/rigid-box';
+export * from './templates/starters';

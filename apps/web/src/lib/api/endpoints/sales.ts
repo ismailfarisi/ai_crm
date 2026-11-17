@@ -2,6 +2,8 @@
  * Split out of a single 477-line module so that two feature branches adding
  * endpoints no longer edit the same two objects. */
 import type {
+  StarterInstallResultDto,
+  StarterTemplatePreviewDto,
   QuoteDto,
   CreateQuotePayload,
   UpdateQuotePayload,
@@ -114,6 +116,13 @@ export const salesEndpoints = {
 
     listTemplates: () => apiFetch<ProductTemplateDto[]>('/catalog/templates'),
     getTemplate: (id: string) => apiFetch<ProductTemplateDto>(`/catalog/templates/${id}`),
+    listStarterTemplates: () =>
+      apiFetch<StarterTemplatePreviewDto[]>('/catalog/starter-templates'),
+    installStarterTemplate: (key: string) =>
+      apiFetch<StarterInstallResultDto>(
+        `/catalog/starter-templates/${encodeURIComponent(key)}/install`,
+        { method: 'POST' },
+      ),
     /*
      * The write half of the template API, which the client never called — so
      * the parametric cost model the landing page advertises could only be set
@@ -170,4 +179,4 @@ export const salesKeys = {
   catalogMaterials: ['catalog', 'materials'] as const,
   catalogWorkCenters: ['catalog', 'work-centers'] as const,
   catalogTooling: ['catalog', 'tooling'] as const,
-  catalogTemplates: ['catalog', 'templates'] as const,  catalogTemplate: (id: string) => ['catalog', 'templates', id] as const,  costingPolicy: ['catalog', 'policy'] as const,  quoteGuardrails: (id: string) => ['quotes', id, 'guardrails'] as const,};
+  catalogTemplates: ['catalog', 'templates'] as const,  catalogTemplate: (id: string) => ['catalog', 'templates', id] as const,  catalogStarterTemplates: ['catalog', 'starter-templates'] as const,  costingPolicy: ['catalog', 'policy'] as const,  quoteGuardrails: (id: string) => ['quotes', id, 'guardrails'] as const,};

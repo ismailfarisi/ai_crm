@@ -130,6 +130,7 @@ export const RIGID_BOX_TEMPLATE: ProductTemplate = {
   description:
     'Two-piece rigid box: greyboard base and telescoping lid, wrapped in printed art paper.',
   currency: 'USD',
+  blankPreview: 'RIGID_BOX',
 
   parameters: [
     { key: 'length_mm', label: 'Length', type: 'NUMBER', unit: 'mm', min: 40, max: 600 },
