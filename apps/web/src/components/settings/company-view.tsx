@@ -46,6 +46,8 @@ export function CompanyView() {
     reset({
       name: organization.name,
       legalName: organization.legalName ?? '',
+      legalNameAr: organization.legalNameAr ?? '',
+      addressAr: organization.addressAr ?? '',
       taxId: organization.taxId ?? '',
       registrationNumber: organization.registrationNumber ?? '',
       email: organization.email ?? '',
@@ -124,6 +126,15 @@ export function CompanyView() {
                 />
               </div>
 
+              <Input
+                label="Registered name in Arabic"
+                dir="auto"
+                lang="ar"
+                hint="Printed on Arabic and bilingual documents."
+                error={errors.legalNameAr?.message}
+                {...register('legalNameAr')}
+              />
+
               <div className="grid gap-4 sm:grid-cols-2">
                 <Input
                   label="Tax / VAT registration"
@@ -168,6 +179,14 @@ export function CompanyView() {
                   {...register('postalCode')}
                 />
               </div>
+              <Input
+                label="Address in Arabic"
+                dir="auto"
+                lang="ar"
+                hint="One line, as it should print on Arabic documents."
+                error={errors.addressAr?.message}
+                {...register('addressAr')}
+              />
               <Input
                 label="Country"
                 hint="Two-letter code, such as US or GB. Tax rules match on it."

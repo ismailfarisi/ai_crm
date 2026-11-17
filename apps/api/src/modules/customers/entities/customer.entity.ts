@@ -1,3 +1,4 @@
+import type { DocumentLanguage } from '@saas/shared';
 import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
 import { TenantSoftDeletableEntity } from '@/common/entities/base.entity';
 import type { Emirate, VatStatus } from '@saas/shared';
@@ -64,6 +65,17 @@ export class Customer extends TenantSoftDeletableEntity {
 
   @Column({ type: 'int', nullable: true })
   paymentTermsDays: number | null;
+
+  /** Arabic company name and address, printed on Arabic and bilingual documents. */
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  companyNameAr: string | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  addressAr: string | null;
+
+  /** 'en' | 'ar' | 'bilingual'. Null: documents use the template's language. */
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  documentLanguage: DocumentLanguage | null;
 
   @Column({ type: 'text', nullable: true })
   notes: string | null;

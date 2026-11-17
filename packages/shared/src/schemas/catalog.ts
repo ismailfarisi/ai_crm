@@ -135,6 +135,7 @@ export const createCatalogItemSchema = z.object({
   sku: z.string().trim().min(1, 'SKU is required').max(60),
   name: z.string().trim().min(1, 'Name is required').max(200),
   description: optionalText(1000),
+  descriptionAr: optionalText(1000).optional(),
   uom: z.string().trim().max(40).default('Units'),
   listPrice: money,
   standardCost: money.default(0),

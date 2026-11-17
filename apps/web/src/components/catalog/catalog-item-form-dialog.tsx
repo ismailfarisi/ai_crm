@@ -24,6 +24,7 @@ const EMPTY: FormValues = {
   sku: '',
   name: '',
   description: '',
+  descriptionAr: '',
   uom: 'Units',
   listPrice: 0,
   standardCost: 0,
@@ -56,6 +57,7 @@ export function CatalogItemFormDialog({ open, onClose, item }: CatalogItemFormDi
             sku: item.sku,
             name: item.name,
             description: item.description ?? '',
+            descriptionAr: item.descriptionAr ?? '',
             uom: item.uom,
             listPrice: item.listPrice,
             standardCost: item.standardCost,
@@ -114,6 +116,16 @@ export function CatalogItemFormDialog({ open, onClose, item }: CatalogItemFormDi
           hint="Shown on the quote line when this product is picked."
           error={errors.description?.message}
           {...register('description')}
+        />
+
+        <Textarea
+          label="Description in Arabic"
+          rows={2}
+          dir="auto"
+          lang="ar"
+          hint="Optional. Used on Arabic and bilingual documents."
+          error={errors.descriptionAr?.message}
+          {...register('descriptionAr')}
         />
 
         <div className="grid gap-4 sm:grid-cols-3">

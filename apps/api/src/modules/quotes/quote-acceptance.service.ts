@@ -21,6 +21,7 @@ import {
 } from '@saas/shared';
 import type { AppConfig } from '@/config/configuration';
 import { TenantContextService } from '@/common/context/tenant-context.service';
+import { DocumentLocalizationService } from '../document-templates/document-localization.service';
 import { Organization } from '../organizations/entities/organization.entity';
 import { AutomationEventBridgeService } from '../automations/services/automation-event-bridge.service';
 import { MailService } from '../mail/mail.service';
@@ -73,6 +74,8 @@ export class QuoteAcceptanceService {
     private readonly mail: MailService,
     @Optional() private readonly tenantContext?: TenantContextService,
     @Optional() private readonly quotesService?: QuotesService,
+    @Optional()
+    private readonly documentLocalization?: DocumentLocalizationService,
   ) {}
 
   /**
@@ -401,9 +404,14 @@ export class QuoteAcceptanceService {
 
   /** Whitelisted field by field. Never spread the entity: it carries cost and internal notes. */
   private async toPublic(quote: Quote): Promise<PublicQuoteDto> {
-    const organization = await this.organizations.findOne({
-      where: { id: quote.tenantId },
-    });
+    const [organization, localization] = await Promise.all([
+      this.organizations.findOne({ where: { id: quote.tenantId } }),
+      this.documentLocalization?.forCustomer(
+        quote.tenantId,
+        quote.customerId,
+        'QUOTE',
+      ),
+    ]);
     const stages = quote.billingSchedule?.length
       ? quote.billingSchedule
       : DEFAULT_BILLING_SCHEDULE;
@@ -418,6 +426,7 @@ export class QuoteAcceptanceService {
     );
 
     return {
+      language: localization?.language ?? 'en',
       organizationName: organization?.name ?? '',
       seller: {
         legalName: organization?.legalName ?? null,
@@ -429,6 +438,8 @@ export class QuoteAcceptanceService {
         addressLines: organization
           ? formatOrganizationAddress(organization)
           : [],
+        legalNameAr: organization?.legalNameAr || null,
+        addressAr: organization?.addressAr || null,
         documentFooter: organization?.documentFooter ?? null,
         // Absolute: the customer's browser is on the web app's origin, and the
         // logo is served by the API.
@@ -442,6 +453,7 @@ export class QuoteAcceptanceService {
       quoteNumber: quote.quoteNumber,
       title: quote.title,
       customerName: quote.customerName,
+      customerNameAr: localization?.customer?.companyNameAr || null,
       currency: quote.currency,
       validUntil: quote.validUntil ? quote.validUntil.toISOString() : null,
       paymentTerms: quote.paymentTerms,
@@ -450,6 +462,7 @@ export class QuoteAcceptanceService {
         .filter((item) => (item.type ?? 'product') === 'product')
         .map((item) => ({
           description: item.description,
+          descriptionAr: item.descriptionAr || null,
           quantity: Number(item.quantity) || 0,
           uom: item.uom ?? null,
           unitPrice: Number(item.unitPrice) || 0,

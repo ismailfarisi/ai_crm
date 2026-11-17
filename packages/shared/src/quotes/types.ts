@@ -36,6 +36,8 @@ export interface QuoteLineItem {
   id: string;
   type: QuoteLineItemType;
   description: string;
+  /** Printed under or instead of `description` on Arabic and bilingual documents. */
+  descriptionAr?: string | null;
   quantity?: number;
   uom?: string; // Units, Hours, Days, Licenses, Months, etc.
   unitPrice?: number;

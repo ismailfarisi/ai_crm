@@ -404,6 +404,40 @@ archival job, including tenant offboarding, must respect that period.
 
 ---
 
+## Documents and language
+
+### Arabic is shaped by fontkit and ordered by bidi-js — by design
+
+pdfkit's built-in fonts only print Latin-1, so Arabic and bilingual documents
+embed IBM Plex Sans Arabic (SIL Open Font License, `apps/api/assets/fonts`).
+fontkit joins the letters; it does not run the Unicode bidi algorithm, so each
+line is split into runs with bidi-js and drawn in visual order. pdfkit also
+splits text at spaces unless OpenType features are passed, which reverses
+Arabic words, so every run is drawn with an explicit feature list. English
+documents keep Helvetica, Times or Courier as before.
+
+### Customer language wins over the template — by design
+
+A customer's document language, when set, overrides the template's. A
+customer without one gets the template's language, and a template without one
+prints English. Purchase orders go to suppliers, who have no language setting,
+so they follow the purchase-order template.
+
+### Bilingual documents keep the English layout — by design
+
+Bilingual documents print left to right, with each label as "English / Arabic"
+and the Arabic name, address and line description under the English one.
+Only Arabic-only documents mirror the page. Numbers stay Western digits unless
+the template picks Arabic-Indic.
+
+### Arabic is limited to customer documents — open
+
+The app itself is still English. Arabic covers the PDFs, the template preview
+and the public quote page. Emails that carry a quote link, custom fields,
+product template names and notes typed in English are not translated. Supplier
+records have no Arabic name or address yet, so a purchase order prints the
+supplier in English.
+
 ## Chat command layer
 
 ### Two planned skills were missing — resolved (2026-09-23)

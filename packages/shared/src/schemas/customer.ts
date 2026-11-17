@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { documentLanguageSchema } from '../templates/document-language';
 import { countryCodeField } from './country';
 import { applyUaeParty, emirateField, vatStatusField } from './vat';
 
@@ -48,10 +49,12 @@ export const createCustomerSchema = z
     .transform((v) => (v == null || v === '' ? null : v))
     .refine((v) => v === null || z.email().safeParse(v).success, 'Enter a valid email address'),
   phone: optionalText(40),
+  companyNameAr: optionalText(120).optional(),
   addressLine1: optionalText(160),
   addressLine2: optionalText(160),
   city: optionalText(80),
   postalCode: optionalText(20),
+  addressAr: optionalText(500).optional(),
   country: countryCodeField,
   taxId: optionalText(40),
   emirate: emirateField,
@@ -59,6 +62,8 @@ export const createCustomerSchema = z
   // Left empty, the API uses the organisation's own currency, not USD.
   currency,
   paymentTermsDays: paymentTermsDays.default(30),
+  // Null: documents use the template's language.
+  documentLanguage: documentLanguageSchema.nullish(),
   notes: optionalText(5000),
 })
   .transform(applyUaeParty);
@@ -83,16 +88,19 @@ export const updateCustomerSchema = z
     .refine((v) => v === null || z.email().safeParse(v).success, 'Enter a valid email address')
     .optional(),
   phone: optionalText(40).optional(),
+  companyNameAr: optionalText(120).optional(),
   addressLine1: optionalText(160).optional(),
   addressLine2: optionalText(160).optional(),
   city: optionalText(80).optional(),
   postalCode: optionalText(20).optional(),
+  addressAr: optionalText(500).optional(),
   country: countryCodeField.optional(),
   taxId: optionalText(40).optional(),
   emirate: emirateField.optional(),
   vatStatus: vatStatusField.optional(),
   currency: currency.optional(),
   paymentTermsDays: paymentTermsDays.optional(),
+  documentLanguage: documentLanguageSchema.nullish().optional(),
   notes: optionalText(5000).optional(),
 })
   .transform(applyUaeParty);

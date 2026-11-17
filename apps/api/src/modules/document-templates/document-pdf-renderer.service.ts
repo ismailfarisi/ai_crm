@@ -1,13 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
 import {
+  arabicTaxLabel,
   DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+  DOCUMENT_LABELS,
+  DOCUMENT_STATUS_LABELS_AR,
   DOCUMENT_TIME_ZONE,
+  documentLabel,
+  DocumentLabelKey,
+  DocumentLanguage,
   DocumentTemplateConfig,
   formatPaymentTerms,
   formatTaxLineLabel,
+  isRtlDocument,
+  localizedLabel,
+  toArabicIndicDigits,
   UniversalDocumentData,
 } from '@saas/shared';
+import { hasRtl, isolateLtr } from './pdf/bidi-text';
+import { installDocumentText } from './pdf/document-text';
 
 /**
  * Characters the built-in PDF fonts can print besides Latin-1: the
@@ -51,34 +62,21 @@ export function toPdfText(text: string): string {
   let out = '';
   for (const ch of text) {
     const code = ch.codePointAt(0)!;
-    if (code < 0x7f || (code >= 0xa0 && code <= 0xff) || WIN_ANSI_EXTRAS.has(ch)) {
+    if (
+      code < 0x7f ||
+      (code >= 0xa0 && code <= 0xff) ||
+      WIN_ANSI_EXTRAS.has(ch)
+    ) {
       out += ch;
     } else if (ch in PDF_TEXT_SUBSTITUTES) {
       out += PDF_TEXT_SUBSTITUTES[ch];
     } else {
       const base = ch.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
-      out += base && [...base].every((c) => c.codePointAt(0)! < 0x7f) ? base : '?';
+      out +=
+        base && [...base].every((c) => c.codePointAt(0)! < 0x7f) ? base : '?';
     }
   }
   return out;
-}
-
-/** Routes every string pdfkit prints or measures through `toPdfText`. */
-function useWinAnsiText(doc: PDFKit.PDFDocument): void {
-  const text = doc.text.bind(doc);
-  const widthOfString = doc.widthOfString.bind(doc);
-  const heightOfString = doc.heightOfString.bind(doc);
-  const clean = (value: unknown) =>
-    typeof value === 'string' ? toPdfText(value) : value;
-  doc.text = ((value: unknown, ...rest: unknown[]) =>
-    (text as (...args: unknown[]) => PDFKit.PDFDocument)(
-      clean(value),
-      ...rest,
-    )) as typeof doc.text;
-  doc.widthOfString = ((value: string, options?: PDFKit.Mixins.TextOptions) =>
-    widthOfString(toPdfText(value), options)) as typeof doc.widthOfString;
-  doc.heightOfString = ((value: string, options?: PDFKit.Mixins.TextOptions) =>
-    heightOfString(toPdfText(value), options)) as typeof doc.heightOfString;
 }
 
 function getFont(fontFamily: string, bold = false): string {
@@ -106,11 +104,15 @@ function formatMoney(
   }
 }
 
-function formatDate(value: Date | string | undefined | null): string {
+function formatDate(
+  value: Date | string | undefined | null,
+  arabic = false,
+): string {
   if (!value) return '—';
   const d = typeof value === 'string' ? new Date(value) : value;
   if (isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('en-US', {
+  // Arabic month names, Western digits unless the template asks otherwise.
+  return d.toLocaleDateString(arabic ? 'ar-AE-u-nu-latn' : 'en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -137,6 +139,49 @@ function getDocumentTitle(
     default:
       return type;
   }
+}
+
+function getArabicDocumentTitle(
+  type: UniversalDocumentData['type'],
+  taxRegistered: boolean,
+): string {
+  switch (type) {
+    case 'INVOICE':
+      return taxRegistered
+        ? DOCUMENT_LABELS.taxInvoice.ar
+        : DOCUMENT_LABELS.invoice.ar;
+    case 'QUOTE':
+      return DOCUMENT_LABELS.quote.ar;
+    case 'STATEMENT':
+      return DOCUMENT_LABELS.statement.ar;
+    case 'DELIVERY_NOTE':
+      return DOCUMENT_LABELS.deliveryNote.ar;
+    case 'PURCHASE_ORDER':
+      return DOCUMENT_LABELS.purchaseOrder.ar;
+    default:
+      return type;
+  }
+}
+
+/**
+ * The title in the document's language. A UAE invoice from a VAT-registered
+ * seller is a tax invoice; the English title keeps any custom label.
+ */
+function getLocalizedDocumentTitle(
+  type: UniversalDocumentData['type'],
+  customLabels: DocumentTemplateConfig['header']['customLabels'] | undefined,
+  language: DocumentLanguage,
+  taxRegistered: boolean,
+  joiner: string,
+): string {
+  if (language === 'en') return getDocumentTitle(type, customLabels);
+  const arabic = getArabicDocumentTitle(type, taxRegistered);
+  if (language === 'ar') return arabic;
+  const english =
+    type === 'INVOICE' && taxRegistered && !customLabels?.invoice
+      ? DOCUMENT_LABELS.taxInvoice.en
+      : getDocumentTitle(type, customLabels);
+  return `${english}${joiner}${arabic}`;
 }
 
 interface StatusStyle {
@@ -258,6 +303,10 @@ export class DocumentPdfRendererService {
           ...(templateConfig?.footer?.bankDetails || {}),
         },
       },
+      localization: {
+        ...DEFAULT_DOCUMENT_TEMPLATE_CONFIG.localization,
+        ...(templateConfig?.localization || {}),
+      },
     };
 
     // Pre-fetch logo safely if enabled
@@ -280,7 +329,14 @@ export class DocumentPdfRendererService {
           margins,
           bufferPages: true,
         });
-        useWinAnsiText(doc);
+        const language: DocumentLanguage =
+          docData.language ?? config.localization.language;
+        // Arabic documents mirror the whole layout; bilingual ones keep the
+        // English reading order and print Arabic beside it.
+        installDocumentText(doc, {
+          clean: toPdfText,
+          mirror: isRtlDocument(language),
+        });
 
         const chunks: Buffer[] = [];
         doc.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -303,9 +359,72 @@ export class DocumentPdfRendererService {
         const tableFontSize =
           density === 'compact' ? 8.5 : density === 'relaxed' ? 9.5 : 9;
 
-        const docTitle = getDocumentTitle(
+        const L = (key: DocumentLabelKey, joiner?: string) =>
+          documentLabel(key, language, joiner);
+        const digits = (value: string) =>
+          config.localization.digits === 'arabic-indic' && language !== 'en'
+            ? toArabicIndicDigits(value)
+            : value;
+        const money = (amount: number | undefined | null, currency?: string) =>
+          digits(formatMoney(amount, currency));
+        const date = (value: Date | string | undefined | null) =>
+          digits(formatDate(value, language === 'ar'));
+        // Phone numbers, emails and TRNs read left to right inside Arabic.
+        const ltr = (value: string) =>
+          language === 'en' || hasRtl(value) ? value : isolateLtr(value);
+        // A colon after "Total / الإجمالي" lands between the two scripts, so
+        // bilingual labels go without one.
+        const colon = language === 'bilingual' ? '' : ':';
+        const labelled = (key: DocumentLabelKey, value: string) =>
+          `${L(key)}${colon} ${ltr(value)}`;
+        const taxIdKey: DocumentLabelKey = language === 'en' ? 'taxId' : 'trn';
+        const both = (english?: string, arabic?: string) => {
+          if (language === 'ar') return arabic || english;
+          if (language === 'bilingual' && arabic && arabic !== english) {
+            return english ? `${english}\n${arabic}` : arabic;
+          }
+          return english;
+        };
+        const orgName =
+          both(docData.organization.name, docData.organization.nameAr) || '';
+        const orgAddress = both(
+          docData.organization.address,
+          docData.organization.addressAr,
+        );
+        const partyName = both(docData.party.name, docData.party.nameAr) || '';
+        const partyAddress = both(
+          docData.party.address,
+          docData.party.addressAr,
+        );
+        const secName =
+          both(docData.secondaryParty?.name, docData.secondaryParty?.nameAr) ||
+          '';
+        const secAddress = both(
+          docData.secondaryParty?.address,
+          docData.secondaryParty?.addressAr,
+        );
+        const itemDescription = (
+          item: UniversalDocumentData['items'][number],
+        ) => both(item.description, item.descriptionAr || undefined) || '';
+        const statusLabel = (() => {
+          const english = docData.status.toUpperCase().replace(/_/g, ' ');
+          const arabic =
+            DOCUMENT_STATUS_LABELS_AR[docData.status.toUpperCase()];
+          return localizedLabel(english, arabic ?? english, language);
+        })();
+        const taxLabel = (tax: { rate: number; label: string }) => {
+          const english = formatTaxLineLabel(tax);
+          return digits(
+            localizedLabel(english, arabicTaxLabel(english), language),
+          );
+        };
+
+        const docTitle = getLocalizedDocumentTitle(
           docData.type,
           config.header.customLabels,
+          language,
+          !!docData.organization.taxId,
+          config.header.layout === 'banner' ? ' / ' : '\n',
         );
 
         let y = margins.top;
@@ -323,18 +442,23 @@ export class DocumentPdfRendererService {
             const logoBoxSize = 38;
             if (logoBuffer) {
               try {
-                doc.image(logoBuffer, margins.left, 9, { fit: [logoBoxSize, logoBoxSize] });
+                doc.image(logoBuffer, margins.left, 9, {
+                  fit: [logoBoxSize, logoBoxSize],
+                });
                 logoDrawn = true;
               } catch {
                 logoDrawn = false;
               }
             }
             if (!logoDrawn) {
-              doc.roundedRect(margins.left, 9, logoBoxSize, logoBoxSize, 6).fill('#ffffff22');
-              const initials = (docData.organization.name || 'ORG')
-                .replace(/[^a-zA-Z0-9]/g, '')
-                .slice(0, 3)
-                .toUpperCase() || 'CRM';
+              doc
+                .roundedRect(margins.left, 9, logoBoxSize, logoBoxSize, 6)
+                .fill('#ffffff22');
+              const initials =
+                (docData.organization.name || 'ORG')
+                  .replace(/[^a-zA-Z0-9]/g, '')
+                  .slice(0, 3)
+                  .toUpperCase() || 'CRM';
               doc
                 .font(boldFont)
                 .fontSize(11)
@@ -352,7 +476,7 @@ export class DocumentPdfRendererService {
             .font(boldFont)
             .fontSize(15)
             .fillColor('#ffffff')
-            .text(docData.organization.name, bannerTextX, 19, {
+            .text(orgName, bannerTextX, 19, {
               width: contentWidth / 2 - (bannerTextX - margins.left),
             });
 
@@ -374,17 +498,14 @@ export class DocumentPdfRendererService {
 
           const metaStartY = y;
           doc.font(regularFont).fontSize(8.5).fillColor('#475569');
-          if (
-            config.header.showCompanyAddress &&
-            docData.organization.address
-          ) {
-            doc.text(docData.organization.address, margins.left, doc.y, {
+          if (config.header.showCompanyAddress && orgAddress) {
+            doc.text(orgAddress, margins.left, doc.y, {
               width: leftW,
             });
           }
           if (config.header.showCompanyPhone && docData.organization.phone) {
             doc.text(
-              `Phone: ${docData.organization.phone}`,
+              labelled('phone', docData.organization.phone),
               margins.left,
               doc.y,
               { width: leftW },
@@ -392,7 +513,7 @@ export class DocumentPdfRendererService {
           }
           if (config.header.showCompanyEmail && docData.organization.email) {
             doc.text(
-              `Email: ${docData.organization.email}`,
+              labelled('email', docData.organization.email),
               margins.left,
               doc.y,
               { width: leftW },
@@ -400,7 +521,7 @@ export class DocumentPdfRendererService {
           }
           if (config.header.showCompanyTaxId && docData.organization.taxId) {
             doc.text(
-              `Tax ID: ${docData.organization.taxId}`,
+              labelled(taxIdKey, docData.organization.taxId),
               margins.left,
               doc.y,
               { width: leftW },
@@ -417,14 +538,14 @@ export class DocumentPdfRendererService {
           rY = doc.y + 2;
 
           doc.font(regularFont).fontSize(8.5).fillColor(secondaryColor);
-          doc.text(`Issued: ${formatDate(docData.issuedAt)}`, rightX, rY, {
+          doc.text(labelled('issued', date(docData.issuedAt)), rightX, rY, {
             width: rightW,
             align: 'right',
           });
           rY = doc.y + 2;
 
           if (docData.dueDate) {
-            doc.text(`Due: ${formatDate(docData.dueDate)}`, rightX, rY, {
+            doc.text(labelled('due', date(docData.dueDate)), rightX, rY, {
               width: rightW,
               align: 'right',
             });
@@ -432,7 +553,7 @@ export class DocumentPdfRendererService {
           }
           if (docData.validUntil) {
             doc.text(
-              `Valid Until: ${formatDate(docData.validUntil)}`,
+              labelled('validUntil', date(docData.validUntil)),
               rightX,
               rY,
               { width: rightW, align: 'right' },
@@ -441,7 +562,7 @@ export class DocumentPdfRendererService {
           }
 
           // Status Badge
-          const statusText = docData.status.toUpperCase().replace(/_/g, ' ');
+          const statusText = statusLabel;
           doc.font(boldFont).fontSize(7.5);
           const badgeWidth = Math.max(54, doc.widthOfString(statusText) + 14);
           const badgeHeight = 15;
@@ -485,11 +606,14 @@ export class DocumentPdfRendererService {
             if (!logoDrawn) {
               const badgeSize = 42;
               const badgeX = margins.left + (contentWidth - badgeSize) / 2;
-              doc.roundedRect(badgeX, y, badgeSize, badgeSize, 8).fill(primaryColor);
-              const initials = (docData.organization.name || 'ORG')
-                .replace(/[^a-zA-Z0-9]/g, '')
-                .slice(0, 3)
-                .toUpperCase() || 'CRM';
+              doc
+                .roundedRect(badgeX, y, badgeSize, badgeSize, 8)
+                .fill(primaryColor);
+              const initials =
+                (docData.organization.name || 'ORG')
+                  .replace(/[^a-zA-Z0-9]/g, '')
+                  .slice(0, 3)
+                  .toUpperCase() || 'CRM';
               doc
                 .font(boldFont)
                 .fontSize(12)
@@ -507,7 +631,7 @@ export class DocumentPdfRendererService {
             .font(boldFont)
             .fontSize(16)
             .fillColor('#0f172a')
-            .text(docData.organization.name, margins.left, y, {
+            .text(orgName, margins.left, y, {
               width: contentWidth,
               align: 'center',
             });
@@ -515,16 +639,16 @@ export class DocumentPdfRendererService {
 
           doc.font(regularFont).fontSize(8.5).fillColor('#475569');
           const compLines: string[] = [];
-          if (config.header.showCompanyAddress && docData.organization.address)
-            compLines.push(docData.organization.address);
+          if (config.header.showCompanyAddress && orgAddress)
+            compLines.push(orgAddress);
           const contactParts: string[] = [];
           if (config.header.showCompanyPhone && docData.organization.phone)
-            contactParts.push(`Phone: ${docData.organization.phone}`);
+            contactParts.push(labelled('phone', docData.organization.phone));
           if (config.header.showCompanyEmail && docData.organization.email)
-            contactParts.push(`Email: ${docData.organization.email}`);
+            contactParts.push(labelled('email', docData.organization.email));
           if (contactParts.length) compLines.push(contactParts.join(' | '));
           if (config.header.showCompanyTaxId && docData.organization.taxId)
-            compLines.push(`Tax ID: ${docData.organization.taxId}`);
+            compLines.push(labelled(taxIdKey, docData.organization.taxId));
 
           for (const line of compLines) {
             doc.text(line, margins.left, y, {
@@ -565,12 +689,12 @@ export class DocumentPdfRendererService {
           y = doc.y + 3;
 
           const dateParts: string[] = [
-            `Issued: ${formatDate(docData.issuedAt)}`,
+            labelled('issued', date(docData.issuedAt)),
           ];
           if (docData.dueDate)
-            dateParts.push(`Due: ${formatDate(docData.dueDate)}`);
+            dateParts.push(labelled('due', date(docData.dueDate)));
           if (docData.validUntil)
-            dateParts.push(`Valid Until: ${formatDate(docData.validUntil)}`);
+            dateParts.push(labelled('validUntil', date(docData.validUntil)));
           doc
             .font(regularFont)
             .fontSize(8.5)
@@ -582,7 +706,7 @@ export class DocumentPdfRendererService {
           y = doc.y + 4;
 
           // Status Badge centered
-          const statusText = docData.status.toUpperCase().replace(/_/g, ' ');
+          const statusText = statusLabel;
           doc.font(boldFont).fontSize(7.5);
           const badgeWidth = Math.max(54, doc.widthOfString(statusText) + 14);
           const badgeHeight = 15;
@@ -622,7 +746,9 @@ export class DocumentPdfRendererService {
           if (config.header.showLogo) {
             if (logoBuffer) {
               try {
-                doc.image(logoBuffer, margins.left, y, { fit: [logoBoxSize, logoBoxSize] });
+                doc.image(logoBuffer, margins.left, y, {
+                  fit: [logoBoxSize, logoBoxSize],
+                });
                 logoDrawn = true;
               } catch {
                 logoDrawn = false;
@@ -630,11 +756,14 @@ export class DocumentPdfRendererService {
             }
 
             if (!logoDrawn) {
-              doc.roundedRect(margins.left, y, logoBoxSize, logoBoxSize, 6).fill(primaryColor);
-              const initials = (docData.organization.name || 'ORG')
-                .replace(/[^a-zA-Z0-9]/g, '')
-                .slice(0, 3)
-                .toUpperCase() || 'CRM';
+              doc
+                .roundedRect(margins.left, y, logoBoxSize, logoBoxSize, 6)
+                .fill(primaryColor);
+              const initials =
+                (docData.organization.name || 'ORG')
+                  .replace(/[^a-zA-Z0-9]/g, '')
+                  .slice(0, 3)
+                  .toUpperCase() || 'CRM';
               doc
                 .font(boldFont)
                 .fontSize(11)
@@ -656,40 +785,55 @@ export class DocumentPdfRendererService {
             .font(boldFont)
             .fontSize(15)
             .fillColor('#0f172a')
-            .text(docData.organization.name, textStartX, lY, {
+            .text(orgName, textStartX, lY, {
               width: orgTextW,
             });
           lY = doc.y + 2;
 
           doc.font(regularFont).fontSize(8.5).fillColor('#475569');
-          if (
-            config.header.showCompanyAddress &&
-            docData.organization.address
-          ) {
-            doc.text(docData.organization.address, textStartX, lY, {
+          if (config.header.showCompanyAddress && orgAddress) {
+            doc.text(orgAddress, textStartX, lY, {
               width: orgTextW,
             });
             lY = doc.y + 2;
           }
           if (config.header.showCompanyPhone && docData.organization.phone) {
-            doc.text(`Phone: ${docData.organization.phone}`, textStartX, lY, {
-              width: orgTextW,
-            });
+            doc.text(
+              labelled('phone', docData.organization.phone),
+              textStartX,
+              lY,
+              {
+                width: orgTextW,
+              },
+            );
             lY = doc.y + 2;
           }
           if (config.header.showCompanyEmail && docData.organization.email) {
-            doc.text(`Email: ${docData.organization.email}`, textStartX, lY, {
-              width: orgTextW,
-            });
+            doc.text(
+              labelled('email', docData.organization.email),
+              textStartX,
+              lY,
+              {
+                width: orgTextW,
+              },
+            );
             lY = doc.y + 2;
           }
           if (config.header.showCompanyTaxId && docData.organization.taxId) {
-            doc.text(`Tax ID: ${docData.organization.taxId}`, textStartX, lY, {
-              width: orgTextW,
-            });
+            doc.text(
+              labelled(taxIdKey, docData.organization.taxId),
+              textStartX,
+              lY,
+              {
+                width: orgTextW,
+              },
+            );
             lY = doc.y + 2;
           }
-          const leftEndY = Math.max(lY, startY + (config.header.showLogo ? logoBoxSize + 4 : 0));
+          const leftEndY = Math.max(
+            lY,
+            startY + (config.header.showLogo ? logoBoxSize + 4 : 0),
+          );
 
           let rY = startY;
           doc.font(boldFont).fontSize(18).fillColor(primaryColor);
@@ -704,14 +848,14 @@ export class DocumentPdfRendererService {
           rY = doc.y + 3;
 
           doc.font(regularFont).fontSize(8.5).fillColor(secondaryColor);
-          doc.text(`Issued: ${formatDate(docData.issuedAt)}`, rightX, rY, {
+          doc.text(labelled('issued', date(docData.issuedAt)), rightX, rY, {
             width: rightW,
             align: 'right',
           });
           rY = doc.y + 2;
 
           if (docData.dueDate) {
-            doc.text(`Due: ${formatDate(docData.dueDate)}`, rightX, rY, {
+            doc.text(labelled('due', date(docData.dueDate)), rightX, rY, {
               width: rightW,
               align: 'right',
             });
@@ -719,7 +863,7 @@ export class DocumentPdfRendererService {
           }
           if (docData.validUntil) {
             doc.text(
-              `Valid Until: ${formatDate(docData.validUntil)}`,
+              labelled('validUntil', date(docData.validUntil)),
               rightX,
               rY,
               { width: rightW, align: 'right' },
@@ -728,7 +872,7 @@ export class DocumentPdfRendererService {
           }
 
           // Status Badge
-          const statusText = docData.status.toUpperCase().replace(/_/g, ' ');
+          const statusText = statusLabel;
           doc.font(boldFont).fontSize(7.5);
           const badgeWidth = Math.max(54, doc.widthOfString(statusText) + 14);
           const badgeHeight = 15;
@@ -763,11 +907,15 @@ export class DocumentPdfRendererService {
         const colW = (contentWidth - 20) / 2;
 
         let partyLabel = config.parties.billToLabel;
+        let partyLabelAr: string = DOCUMENT_LABELS.billTo.ar;
         if (docData.type === 'PURCHASE_ORDER') {
           partyLabel = config.parties.supplierLabel;
+          partyLabelAr = DOCUMENT_LABELS.vendor.ar;
         } else if (docData.type === 'DELIVERY_NOTE') {
           partyLabel = config.parties.shipToLabel;
+          partyLabelAr = DOCUMENT_LABELS.shipTo.ar;
         }
+        partyLabel = localizedLabel(partyLabel, partyLabelAr, language);
 
         doc
           .font(boldFont)
@@ -780,7 +928,7 @@ export class DocumentPdfRendererService {
           .font(boldFont)
           .fontSize(9.5)
           .fillColor('#0f172a')
-          .text(docData.party.name, margins.left, pY, { width: colW });
+          .text(partyName, margins.left, pY, { width: colW });
         pY = doc.y + 2;
 
         if (
@@ -794,12 +942,12 @@ export class DocumentPdfRendererService {
             .text(docData.party.companyName, margins.left, pY, { width: colW });
           pY = doc.y + 2;
         }
-        if (config.parties.showAddress && docData.party.address) {
+        if (config.parties.showAddress && partyAddress) {
           doc
             .font(regularFont)
             .fontSize(8.5)
             .fillColor('#475569')
-            .text(docData.party.address, margins.left, pY, { width: colW });
+            .text(partyAddress, margins.left, pY, { width: colW });
           pY = doc.y + 2;
         }
         if (config.parties.showEmail && docData.party.email) {
@@ -823,7 +971,7 @@ export class DocumentPdfRendererService {
             .font(regularFont)
             .fontSize(8.5)
             .fillColor('#475569')
-            .text(`Tax ID: ${docData.party.taxId}`, margins.left, pY, {
+            .text(labelled(taxIdKey, docData.party.taxId), margins.left, pY, {
               width: colW,
             });
           pY = doc.y + 2;
@@ -837,8 +985,10 @@ export class DocumentPdfRendererService {
             .fontSize(8.5)
             .fillColor(secondaryColor)
             .text(
-              (
-                docData.secondaryParty.label || config.parties.shipToLabel
+              localizedLabel(
+                docData.secondaryParty.label || config.parties.shipToLabel,
+                DOCUMENT_LABELS.shipTo.ar,
+                language,
               ).toUpperCase(),
               secX,
               partiesY,
@@ -849,15 +999,15 @@ export class DocumentPdfRendererService {
             .font(boldFont)
             .fontSize(9.5)
             .fillColor('#0f172a')
-            .text(docData.secondaryParty.name, secX, sY, { width: colW });
+            .text(secName, secX, sY, { width: colW });
           sY = doc.y + 2;
 
-          if (docData.secondaryParty.address) {
+          if (secAddress) {
             doc
               .font(regularFont)
               .fontSize(8.5)
               .fillColor('#475569')
-              .text(docData.secondaryParty.address, secX, sY, { width: colW });
+              .text(secAddress, secX, sY, { width: colW });
             sY = doc.y + 2;
           }
           if (docData.secondaryParty.carrier) {
@@ -865,9 +1015,14 @@ export class DocumentPdfRendererService {
               .font(regularFont)
               .fontSize(8.5)
               .fillColor('#475569')
-              .text(`Carrier: ${docData.secondaryParty.carrier}`, secX, sY, {
-                width: colW,
-              });
+              .text(
+                labelled('carrier', docData.secondaryParty.carrier),
+                secX,
+                sY,
+                {
+                  width: colW,
+                },
+              );
             sY = doc.y + 2;
           }
           if (docData.secondaryParty.trackingReference) {
@@ -876,7 +1031,7 @@ export class DocumentPdfRendererService {
               .fontSize(8.5)
               .fillColor('#475569')
               .text(
-                `Tracking: ${docData.secondaryParty.trackingReference}`,
+                labelled('tracking', docData.secondaryParty.trackingReference),
                 secX,
                 sY,
                 { width: colW },
@@ -914,7 +1069,7 @@ export class DocumentPdfRendererService {
         if (showItemCode) {
           columns.push({
             id: 'code',
-            label: 'Item / Code',
+            label: L('itemCode', '\n'),
             width: codeWidth,
             align: 'left',
             x: 0,
@@ -923,7 +1078,7 @@ export class DocumentPdfRendererService {
         if (t.showDescription) {
           columns.push({
             id: 'description',
-            label: 'Description',
+            label: L('description', '\n'),
             width: descWidth,
             align: 'left',
             x: 0,
@@ -932,7 +1087,7 @@ export class DocumentPdfRendererService {
         if (t.showQuantity) {
           columns.push({
             id: 'quantity',
-            label: 'Qty',
+            label: L('quantity', '\n'),
             width: qtyWidth,
             align: 'right',
             x: 0,
@@ -941,7 +1096,7 @@ export class DocumentPdfRendererService {
         if (t.showUnitPrice) {
           columns.push({
             id: 'unitPrice',
-            label: 'Unit Price',
+            label: L('unitPrice', '\n'),
             width: priceWidth,
             align: 'right',
             x: 0,
@@ -950,7 +1105,7 @@ export class DocumentPdfRendererService {
         if (t.showDiscount) {
           columns.push({
             id: 'discount',
-            label: 'Disc %',
+            label: L('discountPercent', '\n'),
             width: discountWidth,
             align: 'right',
             x: 0,
@@ -959,7 +1114,7 @@ export class DocumentPdfRendererService {
         if (t.showTaxRate) {
           columns.push({
             id: 'taxRate',
-            label: 'Tax %',
+            label: L('taxPercent', '\n'),
             width: taxWidth,
             align: 'right',
             x: 0,
@@ -968,7 +1123,7 @@ export class DocumentPdfRendererService {
         if (t.showLineTotal) {
           columns.push({
             id: 'lineTotal',
-            label: 'Total',
+            label: L('lineTotal', '\n'),
             width: totalColWidth,
             align: 'right',
             x: 0,
@@ -983,7 +1138,7 @@ export class DocumentPdfRendererService {
         }
 
         const renderTableHeader = (headerY: number): number => {
-          const headerHeight = 22;
+          const headerHeight = language === 'bilingual' ? 32 : 22;
           const headerBg =
             config.itemsTable.headerBackgroundColor || primaryColor;
           const headerTextColor =
@@ -1026,7 +1181,7 @@ export class DocumentPdfRendererService {
             let itemDescHeight = 12;
             if (descCol && item.description) {
               doc.font(regularFont).fontSize(tableFontSize);
-              itemDescHeight = doc.heightOfString(item.description, {
+              itemDescHeight = doc.heightOfString(itemDescription(item), {
                 width: descCol.width - 8,
               });
             }
@@ -1063,28 +1218,30 @@ export class DocumentPdfRendererService {
                   cellText = item.code || '—';
                   break;
                 case 'description':
-                  cellText = item.description || '';
+                  cellText = itemDescription(item);
                   break;
                 case 'quantity':
                   cellText =
-                    item.quantity != null ? String(item.quantity) : '—';
+                    item.quantity != null ? digits(String(item.quantity)) : '—';
                   break;
                 case 'unitPrice':
                   cellText =
                     item.unitPrice != null
-                      ? formatMoney(item.unitPrice, docData.currency)
+                      ? money(item.unitPrice, docData.currency)
                       : '—';
                   break;
                 case 'discount':
-                  cellText = item.discount != null ? `${item.discount}%` : '—';
+                  cellText =
+                    item.discount != null ? digits(`${item.discount}%`) : '—';
                   break;
                 case 'taxRate':
-                  cellText = item.taxRate != null ? `${item.taxRate}%` : '—';
+                  cellText =
+                    item.taxRate != null ? digits(`${item.taxRate}%`) : '—';
                   break;
                 case 'lineTotal':
                   cellText =
                     item.amount != null
-                      ? formatMoney(item.amount, docData.currency)
+                      ? money(item.amount, docData.currency)
                       : '—';
                   break;
               }
@@ -1109,7 +1266,7 @@ export class DocumentPdfRendererService {
             .font(regularFont)
             .fontSize(8.5)
             .fillColor('#94a3b8')
-            .text('No line items recorded.', margins.left + 6, y + 6);
+            .text(L('noItems'), margins.left + 6, y + 6);
           y += 22;
         }
 
@@ -1126,7 +1283,7 @@ export class DocumentPdfRendererService {
             .font(boldFont)
             .fontSize(9)
             .fillColor(primaryColor)
-            .text('ACCOUNT SUMMARY', margins.left, y);
+            .text(L('accountSummary'), margins.left, y);
           y += 13;
 
           const summaryBoxW = contentWidth / 3;
@@ -1137,29 +1294,29 @@ export class DocumentPdfRendererService {
             .stroke();
 
           doc.font(boldFont).fontSize(7.5).fillColor(secondaryColor);
-          doc.text('STATEMENT PERIOD', margins.left + 8, y + 5);
-          doc.text('OPENING BALANCE', margins.left + summaryBoxW + 8, y + 5);
+          doc.text(L('statementPeriod'), margins.left + 8, y + 5);
+          doc.text(L('openingBalance'), margins.left + summaryBoxW + 8, y + 5);
           doc.text(
-            'CLOSING BALANCE',
+            L('closingBalance'),
             margins.left + summaryBoxW * 2 + 8,
             y + 5,
           );
 
           doc.font(regularFont).fontSize(8.5).fillColor('#0f172a');
           doc.text(
-            `${formatDate(summary.periodFrom)} - ${formatDate(summary.periodTo)}`,
+            `${date(summary.periodFrom)} - ${date(summary.periodTo)}`,
             margins.left + 8,
             y + 17,
           );
           doc.text(
-            formatMoney(summary.openingBalance, docData.currency),
+            money(summary.openingBalance, docData.currency),
             margins.left + summaryBoxW + 8,
             y + 17,
           );
           doc
             .font(boldFont)
             .text(
-              formatMoney(summary.closingBalance, docData.currency),
+              money(summary.closingBalance, docData.currency),
               margins.left + summaryBoxW * 2 + 8,
               y + 17,
             );
@@ -1170,15 +1327,15 @@ export class DocumentPdfRendererService {
             .font(boldFont)
             .fontSize(9)
             .fillColor(primaryColor)
-            .text('AGING BREAKDOWN', margins.left, y);
+            .text(L('agingBreakdown'), margins.left, y);
           y += 13;
 
           const agingCols = [
-            { label: 'Current', value: summary.aging.current },
-            { label: '1-30 Days', value: summary.aging.days30 },
-            { label: '31-60 Days', value: summary.aging.days60 },
-            { label: '61-90 Days', value: (summary.aging as any).days90 ?? 0 },
-            { label: '90+ Days', value: summary.aging.days90Plus },
+            { label: L('agingCurrent'), value: summary.aging.current },
+            { label: L('aging30'), value: summary.aging.days30 },
+            { label: L('aging60'), value: summary.aging.days60 },
+            { label: L('aging90'), value: (summary.aging as any).days90 ?? 0 },
+            { label: L('aging90Plus'), value: summary.aging.days90Plus },
           ];
 
           const agingColW = contentWidth / agingCols.length;
@@ -1200,7 +1357,7 @@ export class DocumentPdfRendererService {
               .font(boldFont)
               .fontSize(8.5)
               .fillColor('#0f172a')
-              .text(formatMoney(ac.value, docData.currency), ax, y + 17, {
+              .text(money(ac.value, docData.currency), ax, y + 17, {
                 width: agingColW,
                 align: 'center',
               });
@@ -1217,9 +1374,10 @@ export class DocumentPdfRendererService {
           }
 
           y += 10;
-          const totalsWidth = 230;
+          // Bilingual labels ("Balance Due / الرصيد المستحق") need the room.
+          const totalsWidth = language === 'bilingual' ? 300 : 230;
           const totalsX = margins.left + contentWidth - totalsWidth;
-          const labelWidth = 115;
+          const labelWidth = totalsWidth - 115;
           const valueWidth = 115;
 
           const renderTotalLine = (
@@ -1241,8 +1399,8 @@ export class DocumentPdfRendererService {
 
           if (config.totals.showSubtotal && docData.totals.subtotal != null) {
             renderTotalLine(
-              'Subtotal:',
-              formatMoney(docData.totals.subtotal, docData.currency),
+              `${L('subtotal')}${colon}`,
+              money(docData.totals.subtotal, docData.currency),
             );
           }
           if (
@@ -1251,8 +1409,8 @@ export class DocumentPdfRendererService {
             docData.totals.discounts > 0
           ) {
             renderTotalLine(
-              'Discount:',
-              `-${formatMoney(docData.totals.discounts, docData.currency)}`,
+              `${L('discount')}${colon}`,
+              ltr(`-${money(docData.totals.discounts, docData.currency)}`),
             );
           }
           if (
@@ -1262,8 +1420,8 @@ export class DocumentPdfRendererService {
           ) {
             for (const tax of docData.totals.taxes) {
               renderTotalLine(
-                `${formatTaxLineLabel(tax)}:`,
-                formatMoney(tax.amount, docData.currency),
+                `${taxLabel(tax)}${colon}`,
+                money(tax.amount, docData.currency),
               );
             }
           }
@@ -1283,16 +1441,24 @@ export class DocumentPdfRendererService {
               .font(boldFont)
               .fontSize(10)
               .fillColor(primaryColor)
-              .text('Total:', totalsX, y + 3, { width: labelWidth, align: 'left' })
-              .text(formatMoney(docData.totals.total, docData.currency), totalsX + labelWidth, y + 3, {
-                width: valueWidth,
-                align: 'right',
-              });
+              .text(`${L('total')}${colon}`, totalsX, y + 3, {
+                width: labelWidth,
+                align: 'left',
+              })
+              .text(
+                money(docData.totals.total, docData.currency),
+                totalsX + labelWidth,
+                y + 3,
+                {
+                  width: valueWidth,
+                  align: 'right',
+                },
+              );
             y += 25;
           } else {
             renderTotalLine(
-              'Total:',
-              formatMoney(docData.totals.total, docData.currency),
+              `${L('total')}${colon}`,
+              money(docData.totals.total, docData.currency),
               false,
             );
           }
@@ -1302,8 +1468,8 @@ export class DocumentPdfRendererService {
             docData.totals.amountPaid != null
           ) {
             renderTotalLine(
-              'Amount Paid:',
-              formatMoney(docData.totals.amountPaid, docData.currency),
+              `${L('amountPaid')}${colon}`,
+              money(docData.totals.amountPaid, docData.currency),
             );
           }
           if (
@@ -1317,8 +1483,8 @@ export class DocumentPdfRendererService {
               .stroke();
             y += 4;
             renderTotalLine(
-              'Balance Due:',
-              formatMoney(docData.totals.balanceDue, docData.currency),
+              `${L('balanceDue')}${colon}`,
+              money(docData.totals.balanceDue, docData.currency),
               true,
             );
           }
@@ -1335,25 +1501,34 @@ export class DocumentPdfRendererService {
         const terms = docData.paymentTerms
           ? formatPaymentTerms(docData.paymentTerms)
           : config.footer.paymentTerms;
-        if (terms) {
-          doc
-            .font(boldFont)
-            .fontSize(8.5)
-            .fillColor('#1e293b')
-            .text('Payment Terms: ', margins.left, y, { continued: true });
-          doc.font(regularFont).fillColor('#475569').text(terms);
+        // pdfkit's `continued` runs cannot be reordered right to left, so
+        // Arabic and bilingual documents put the label on its own line.
+        const writeLabelledParagraph = (
+          key: DocumentLabelKey,
+          text: string,
+        ) => {
+          doc.font(boldFont).fontSize(8.5).fillColor('#1e293b');
+          if (language === 'en') {
+            doc.text(`${L(key)}: `, margins.left, y, { continued: true });
+            doc.font(regularFont).fillColor('#475569').text(text);
+          } else {
+            doc.text(`${L(key)}${colon}`, margins.left, y, {
+              width: contentWidth,
+            });
+            doc
+              .font(regularFont)
+              .fillColor('#475569')
+              .text(text, margins.left, doc.y, { width: contentWidth });
+          }
           y = doc.y + 4;
+        };
+        if (terms) {
+          writeLabelledParagraph('paymentTerms', terms);
         }
 
         const notes = docData.notes || config.footer.notes;
         if (notes) {
-          doc
-            .font(boldFont)
-            .fontSize(8.5)
-            .fillColor('#1e293b')
-            .text('Notes: ', margins.left, y, { continued: true });
-          doc.font(regularFont).fillColor('#475569').text(notes);
-          y = doc.y + 4;
+          writeLabelledParagraph('notes', notes);
         }
 
         const bank = config.footer.bankDetails;
@@ -1369,27 +1544,35 @@ export class DocumentPdfRendererService {
             .font(boldFont)
             .fontSize(8.5)
             .fillColor(primaryColor)
-            .text('BANK DETAILS', margins.left, y);
+            .text(L('bankDetails'), margins.left, y);
           y += 11;
           doc.font(regularFont).fontSize(8).fillColor('#475569');
           if (bank.bankName) {
-            doc.text(`Bank: ${bank.bankName}`, margins.left, y);
+            doc.text(labelled('bank', bank.bankName), margins.left, y);
             y += 10;
           }
           if (bank.accountName) {
-            doc.text(`Account Name: ${bank.accountName}`, margins.left, y);
+            doc.text(
+              labelled('accountName', bank.accountName),
+              margins.left,
+              y,
+            );
             y += 10;
           }
           if (bank.accountNumber) {
-            doc.text(`Account Number: ${bank.accountNumber}`, margins.left, y);
+            doc.text(
+              labelled('accountNumber', bank.accountNumber),
+              margins.left,
+              y,
+            );
             y += 10;
           }
           if (bank.routingOrIban) {
-            doc.text(`IBAN / Routing: ${bank.routingOrIban}`, margins.left, y);
+            doc.text(labelled('iban', bank.routingOrIban), margins.left, y);
             y += 10;
           }
           if (bank.swiftBic) {
-            doc.text(`SWIFT / BIC: ${bank.swiftBic}`, margins.left, y);
+            doc.text(labelled('swift', bank.swiftBic), margins.left, y);
             y += 10;
           }
         }
@@ -1405,8 +1588,16 @@ export class DocumentPdfRendererService {
             const rightSigX = margins.left + sigColW + 40;
 
             doc.font(boldFont).fontSize(8).fillColor('#334155');
-            doc.text(`For ${docData.organization.name}:`, margins.left, y);
-            doc.text(`Accepted by ${docData.party.name}:`, rightSigX, y);
+            doc.text(
+              `${L('for')} ${orgName.replace(/\n/g, ' / ')}:`,
+              margins.left,
+              y,
+            );
+            doc.text(
+              `${L('acceptedBy')} ${partyName.replace(/\n/g, ' / ')}:`,
+              rightSigX,
+              y,
+            );
             y += 24;
 
             doc
@@ -1419,8 +1610,12 @@ export class DocumentPdfRendererService {
               .stroke();
 
             doc.font(regularFont).fontSize(7.5).fillColor('#64748b');
-            doc.text('Authorized Signature / Date', margins.left, y + 4, { width: sigColW });
-            doc.text('Client Signature / Stamp / Date', rightSigX, y + 4, { width: sigColW });
+            doc.text(L('authorizedSignatureDate'), margins.left, y + 4, {
+              width: sigColW,
+            });
+            doc.text(L('clientSignature'), rightSigX, y + 4, {
+              width: sigColW,
+            });
             y += 20;
           } else {
             const sigW = 180;
@@ -1435,7 +1630,11 @@ export class DocumentPdfRendererService {
               .fontSize(8)
               .fillColor('#64748b')
               .text(
-                config.footer.signatureLabel || 'Authorized Signature',
+                localizedLabel(
+                  config.footer.signatureLabel || 'Authorized Signature',
+                  DOCUMENT_LABELS.authorizedSignature.ar,
+                  language,
+                ),
                 sigX,
                 y + 26,
                 {
@@ -1451,11 +1650,7 @@ export class DocumentPdfRendererService {
         if (config.footer.showPageNumbers) {
           const pageRange = doc.bufferedPageRange();
           const totalPages = pageRange.count;
-          for (
-            let i = pageRange.start;
-            i < pageRange.start + totalPages;
-            i++
-          ) {
+          for (let i = pageRange.start; i < pageRange.start + totalPages; i++) {
             doc.switchToPage(i);
             const pageNum = i - pageRange.start + 1;
             const savedBottom = doc.page.margins.bottom;
@@ -1465,7 +1660,13 @@ export class DocumentPdfRendererService {
               .fontSize(7.5)
               .fillColor(secondaryColor)
               .text(
-                `Page ${pageNum} of ${totalPages}`,
+                digits(
+                  localizedLabel(
+                    `Page ${pageNum} of ${totalPages}`,
+                    `${DOCUMENT_LABELS.page.ar} ${pageNum} ${DOCUMENT_LABELS.of.ar} ${totalPages}`,
+                    language,
+                  ),
+                ),
                 margins.left,
                 pageHeight - margins.bottom + 8,
                 {

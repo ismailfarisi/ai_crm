@@ -65,3 +65,35 @@ describe('TemplatePreviewPanel', () => {
     expect(paper).toMatch(/1–30 daysAED\s4,200\.00/);
   });
 });
+
+describe('TemplatePreviewPanel in Arabic', () => {
+  const inLanguage = (language: 'ar' | 'bilingual'): DocumentTemplateConfig => ({
+    ...DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+    localization: { language, digits: 'western' },
+  });
+
+  it('lays an Arabic invoice out right to left with Arabic labels and names', () => {
+    render(<TemplatePreviewPanel config={inLanguage('ar')} />);
+    const paper = screen.getByTestId('template-paper');
+
+    expect(paper).toHaveAttribute('dir', 'rtl');
+    expect(within(paper).getByText('فاتورة ضريبية')).toBeInTheDocument();
+    expect(within(paper).getByText('حلويات النور')).toBeInTheDocument();
+    expect(within(paper).getByText('علبة صلبة 200×150×60، غطاء بختم ذهبي')).toBeInTheDocument();
+    expect(totalsText()).toMatch(/الإجمالي:AED\s30,607\.50/);
+    expect(paper.textContent).not.toMatch(/Al Noor Sweets|Subtotal/);
+  });
+
+  it('shows English and Arabic side by side on a bilingual quote', () => {
+    render(<TemplatePreviewPanel config={inLanguage('bilingual')} />);
+    fireEvent.click(screen.getByRole('button', { name: /^quote/i }));
+    const paper = screen.getByTestId('template-paper');
+
+    expect(paper).toHaveAttribute('dir', 'ltr');
+    expect(paper.textContent).toContain('QUOTATION');
+    expect(paper.textContent).toContain('عرض سعر');
+    expect(within(paper).getByText('Al Noor Sweets')).toBeInTheDocument();
+    expect(within(paper).getByText('حلويات النور')).toBeInTheDocument();
+    expect(totalsText()).toMatch(/Subtotal \/ المجموع الفرعي:/);
+  });
+});

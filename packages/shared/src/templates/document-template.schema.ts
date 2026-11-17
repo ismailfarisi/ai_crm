@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { documentDigitsSchema, documentLanguageSchema } from './document-language';
 
 export const documentTypeSchema = z.enum([
   'INVOICE',
@@ -87,6 +88,13 @@ export const documentTemplateConfigSchema = z.object({
     signatureLabel: z.string().default('Authorized Signature'),
     showPageNumbers: z.boolean().default(true),
   }),
+  /** Templates saved before documents had a language print in English. */
+  localization: z
+    .object({
+      language: documentLanguageSchema.default('en'),
+      digits: documentDigitsSchema.default('western'),
+    })
+    .default({ language: 'en', digits: 'western' }),
 });
 
 export type DocumentTemplateConfig = z.infer<typeof documentTemplateConfigSchema>;
@@ -143,6 +151,10 @@ export const DEFAULT_DOCUMENT_TEMPLATE_CONFIG: DocumentTemplateConfig = {
     signatureLabel: 'Authorized Signature',
     showPageNumbers: true,
   },
+  localization: {
+    language: 'en',
+    digits: 'western',
+  },
 };
 
 /**
@@ -162,8 +174,13 @@ export const universalDocumentDataSchema = z.object({
   dueDate: z.union([z.string(), z.date()]).optional(),
   validUntil: z.union([z.string(), z.date()]).optional(),
   currency: z.string().default('USD'),
+  /** Resolved for this document (customer preference, else template). Omitted: the template's. */
+  language: documentLanguageSchema.optional(),
   organization: z.object({
     name: z.string(),
+    /** Arabic legal name and address, printed on Arabic and bilingual documents. */
+    nameAr: z.string().optional(),
+    addressAr: z.string().optional(),
     logoUrl: z.string().optional(),
     address: z.string().optional(),
     taxId: z.string().optional(),
@@ -173,6 +190,8 @@ export const universalDocumentDataSchema = z.object({
   }),
   party: z.object({
     name: z.string(),
+    nameAr: z.string().optional(),
+    addressAr: z.string().optional(),
     companyName: z.string().optional(),
     address: z.string().optional(),
     email: z.string().optional(),
@@ -183,6 +202,8 @@ export const universalDocumentDataSchema = z.object({
     .object({
       label: z.string(),
       name: z.string(),
+      nameAr: z.string().optional(),
+      addressAr: z.string().optional(),
       address: z.string().optional(),
       carrier: z.string().optional(),
       trackingReference: z.string().optional(),
@@ -193,6 +214,7 @@ export const universalDocumentDataSchema = z.object({
       z.object({
         code: z.string().optional(),
         description: z.string(),
+        descriptionAr: z.string().optional(),
         quantity: z.number().optional(),
         unitPrice: z.number().optional(),
         discount: z.number().optional(),

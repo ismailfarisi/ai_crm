@@ -1,3 +1,4 @@
+import type { DocumentLanguage } from '../templates/document-language';
 /**
  * Sales orders and staged billing.
  *
@@ -221,6 +222,8 @@ export interface SalesOrderDto {
 
 /** What a customer sees on the public page. Never cost, margin, or internal notes. */
 export interface PublicQuoteDto {
+  /** The customer's document language, else the quote template's. */
+  language: DocumentLanguage;
   organizationName: string;
   /**
    * Who the quote is from, as it should print.
@@ -238,6 +241,8 @@ export interface PublicQuoteDto {
     phone: string | null;
     website: string | null;
     addressLines: string[];
+    legalNameAr: string | null;
+    addressAr: string | null;
     documentFooter: string | null;
     /** Absolute URL to the logo, or null when none has been uploaded. */
     logoUrl: string | null;
@@ -245,12 +250,14 @@ export interface PublicQuoteDto {
   quoteNumber: string | null;
   title: string;
   customerName: string;
+  customerNameAr: string | null;
   currency: string;
   validUntil: string | null;
   paymentTerms: string;
   termsAndConditions: string | null;
   items: {
     description: string;
+    descriptionAr: string | null;
     quantity: number;
     uom: string | null;
     unitPrice: number;

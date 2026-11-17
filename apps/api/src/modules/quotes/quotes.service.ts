@@ -42,6 +42,7 @@ import { TaxService } from '../tax/tax.service';
 import { fxRateFor } from '../finance/fx';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DocumentTemplatesService } from '../document-templates/document-templates.service';
+import { DocumentLocalizationService } from '../document-templates/document-localization.service';
 import { DocumentPdfRendererService } from '../document-templates/document-pdf-renderer.service';
 import {
   allocateNextSequenceValue,
@@ -71,6 +72,8 @@ export class QuotesService {
     private readonly pdfRenderer?: DocumentPdfRendererService,
     @Optional()
     private readonly eventBus?: CrmEventBusService,
+    @Optional()
+    private readonly documentLocalization?: DocumentLocalizationService,
   ) {}
 
   /**
@@ -914,6 +917,7 @@ export class QuotesService {
       items: (quote.items || []).map((item) => ({
         code: (item as any).sku || (item as any).code || undefined,
         description: item.description || '',
+        descriptionAr: item.descriptionAr || undefined,
         quantity: item.quantity != null ? Number(item.quantity) : undefined,
         unitPrice: item.unitPrice != null ? Number(item.unitPrice) : undefined,
         discount: item.discount != null ? Number(item.discount) : undefined,
@@ -941,8 +945,15 @@ export class QuotesService {
     };
 
     const config = template?.config ?? DEFAULT_DOCUMENT_TEMPLATE_CONFIG;
+    const localized =
+      (await this.documentLocalization?.localize(
+        tenantId,
+        quote.customerId,
+        docData,
+        config,
+      )) ?? docData;
     const buffer = this.pdfRenderer
-      ? await this.pdfRenderer.render(docData, config)
+      ? await this.pdfRenderer.render(localized, config)
       : Buffer.from('');
 
     return {
