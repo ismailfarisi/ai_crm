@@ -122,7 +122,7 @@ export async function apiFetchBlob(
 export async function apiUpload<T>(
   path: string,
   file: File,
-  options: { query?: object } = {},
+  options: { query?: object; fields?: Record<string, string> } = {},
   _retried = false,
 ): Promise<T> {
   const url = new URL(`${API_PUBLIC_URL}${path}`);
@@ -134,6 +134,7 @@ export async function apiUpload<T>(
 
   const form = new FormData();
   form.append('file', file);
+  for (const [key, value] of Object.entries(options.fields ?? {})) form.append(key, value);
 
   const response = await fetch(url.toString(), {
     method: 'POST',

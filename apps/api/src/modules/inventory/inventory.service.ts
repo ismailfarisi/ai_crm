@@ -900,6 +900,7 @@ export class InventoryService {
       /** Opening counts only; see `adjustStockSchema`. */
       unitCost?: number | null;
     },
+    outer?: EntityManager,
   ): Promise<StockMovement> {
     if (!input.qtyDelta) {
       throw new BadRequestException('An adjustment of zero changes nothing');
@@ -908,7 +909,10 @@ export class InventoryService {
       throw new BadRequestException('Adjustments need a reason');
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    // Inside a caller's transaction (an import batch) this is a savepoint.
+    const run = <T>(fn: (manager: EntityManager) => Promise<T>) =>
+      outer ? outer.transaction(fn) : this.dataSource.transaction(fn);
+    return run(async (manager) => {
       const location = input.locationId
         ? await manager.getRepository(StockLocation).findOne({
             where: { id: input.locationId, tenantId, deletedAt: IsNull() },

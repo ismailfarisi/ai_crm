@@ -25,6 +25,7 @@ import { Select } from '@/components/ui/field';
 import { Badge, EmptyState, PageHeader } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/data-table';
 import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
+import { ImportLink } from '@/components/imports/import-link';
 import { ContactFormDialog } from './contact-form-dialog';
 import { DataViewContainer } from '@/components/views/data-view-container';
 import { KanbanBoard, type KanbanColumnDef } from '@/components/views/kanban-board';
@@ -228,12 +229,15 @@ export function ContactsView() {
         title="Contacts"
         description={scopeDescription}
         actions={
-          <Can permission={PERMISSIONS.CONTACT_CREATE}>
-            <Button onClick={() => setCreating(true)}>
-              <Plus className="size-4" />
-              New contact
-            </Button>
-          </Can>
+          <>
+            <ImportLink entity="contacts" />
+            <Can permission={PERMISSIONS.CONTACT_CREATE}>
+              <Button onClick={() => setCreating(true)}>
+                <Plus className="size-4" />
+                New contact
+              </Button>
+            </Can>
+          </>
         }
       />
 
@@ -332,6 +336,11 @@ export function ContactsView() {
                     : 'Add your first contact to start building the pipeline.'
                 }
                 emptyIcon={<Users className="size-8 text-ink-muted" />}
+                emptyAction={
+                  debouncedSearch || status || source ? undefined : (
+                    <ImportLink entity="contacts" label="Import from a spreadsheet" />
+                  )
+                }
               />
             )
           }

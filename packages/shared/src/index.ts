@@ -34,6 +34,7 @@ export * from './finance/receipts';
 export * from './schemas/books';
 export * from './ai/types';
 export * from './costing';
+export * from './imports';
 export * from './inventory/valuation';
 export * from './payables/matching';
 export * from './payables/capture';

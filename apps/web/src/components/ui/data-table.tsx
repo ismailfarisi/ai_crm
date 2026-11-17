@@ -54,6 +54,7 @@ export interface DataTableProps<TData, TValue> {
   emptyTitle?: string;
   emptyDescription?: string;
   emptyIcon?: React.ReactNode;
+  emptyAction?: React.ReactNode;
 
   className?: string;
 }
@@ -82,6 +83,7 @@ export function DataTable<TData, TValue>({
   emptyTitle = 'No data found',
   emptyDescription = 'There are no records matching your criteria.',
   emptyIcon = <TableIcon className="size-8 text-ink-muted" />,
+  emptyAction,
   className = '',
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -204,7 +206,7 @@ export function DataTable<TData, TValue>({
       {/* Main Content Area: Table vs Cards vs Empty */}
       {table.getRowModel().rows.length === 0 ? (
         <div className="p-8">
-          <EmptyState icon={emptyIcon} title={emptyTitle} description={emptyDescription} />
+          <EmptyState icon={emptyIcon} title={emptyTitle} description={emptyDescription} action={emptyAction} />
         </div>
       ) : activeView === 'card' ? (
         <DataTableCardGrid

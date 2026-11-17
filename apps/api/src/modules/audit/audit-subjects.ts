@@ -35,6 +35,7 @@ import { LedgerAccount } from '../finance/entities/ledger-account.entity';
 import { BankStatementLine } from '../finance/entities/bank-statement-line.entity';
 import { BankMatch } from '../finance/entities/bank-match.entity';
 import { AutomationApproval } from '../automations/entities/automation-approval.entity';
+import { ImportRun } from '../imports/entities/import-run.entity';
 
 /**
  * The one file to touch when a sprint adds a document type worth auditing.
@@ -65,6 +66,7 @@ export const AUDIT_SUBJECTS: Record<string, AuditSubject> = {
   suppliers: { subject: 'SUPPLIER', entity: Supplier },
   customers: { subject: 'CUSTOMER', entity: Customer },
   contacts: { subject: 'CONTACT', entity: Contact },
+  imports: { subject: 'IMPORT', entity: ImportRun },
   'sales-orders': { subject: 'SALES_ORDER', entity: SalesOrder },
   'work-orders': { subject: 'WORK_ORDER', entity: WorkOrder },
   'credit-notes': { subject: 'CREDIT_NOTE', entity: CreditNote },
@@ -169,7 +171,12 @@ export function redactBody(value: unknown, depth = 0): unknown {
 }
 
 /** Not recorded at all: reads dressed as writes, and the audit trail itself. */
-export const AUDIT_SKIPPED_PREFIXES = ['audit', 'health', 'notifications'];
+export const AUDIT_SKIPPED_PREFIXES = [
+  'audit',
+  'health',
+  'import-previews',
+  'notifications',
+];
 
 /** Resolves the audit key, mapping and record-id segment for a route. */
 export function auditSubjectFor(segments: string[]): {
