@@ -141,6 +141,7 @@ export class OrganizationsService {
       postalCode: organization.postalCode ?? null,
       country: organization.country ?? null,
       documentFooter: organization.documentFooter ?? null,
+      quoteProofRequiredDefault: organization.quoteProofRequiredDefault ?? false,
       logoUrl: OrganizationsService.logoUrl(organization),
     };
   }

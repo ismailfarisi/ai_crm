@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Quote } from './entities/quote.entity';
+import { QuoteProof } from './entities/quote-proof.entity';
 import { Invoice } from './entities/invoice.entity';
 import { InvoicePayment } from './entities/invoice-payment.entity';
 import { Organization } from '../organizations/entities/organization.entity';
@@ -11,6 +12,13 @@ import { InvoiceOverdueService } from './invoice-overdue.service';
 import { QuotesController } from './quotes.controller';
 import { PublicQuotesController } from './public-quotes.controller';
 import { QuoteAcceptanceService } from './quote-acceptance.service';
+import { QuoteProofsController } from './quote-proofs.controller';
+import { QuoteProofsService } from './quote-proofs.service';
+import { QuoteResponsesService } from './quote-responses.service';
+import { Attachment } from '../storage/entities/attachment.entity';
+import { StorageModule } from '../storage/storage.module';
+import { User } from '../users/entities/user.entity';
+import { WorkOrder } from '../production/entities/work-order.entity';
 import {
   BillingScheduleLine,
   SalesOrder,
@@ -29,6 +37,10 @@ import { DocumentTemplatesModule } from '../document-templates/document-template
   imports: [
     TypeOrmModule.forFeature([
       Quote,
+      QuoteProof,
+      Attachment,
+      User,
+      WorkOrder,
       Invoice,
       InvoicePayment,
       Organization,
@@ -46,14 +58,17 @@ import { DocumentTemplatesModule } from '../document-templates/document-template
     TaxModule,
     NotificationsModule,
     DocumentTemplatesModule,
+    StorageModule,
   ],
-  controllers: [QuotesController, PublicQuotesController],
+  controllers: [QuotesController, PublicQuotesController, QuoteProofsController],
   providers: [
     QuotesService,
     InvoicesService,
     InvoicePdfService,
     InvoiceOverdueService,
     QuoteAcceptanceService,
+    QuoteProofsService,
+    QuoteResponsesService,
   ],
   exports: [QuotesService, InvoicesService],
 })

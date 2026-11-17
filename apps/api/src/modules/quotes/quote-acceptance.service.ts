@@ -22,13 +22,15 @@ import {
 import type { AppConfig } from '@/config/configuration';
 import { TenantContextService } from '@/common/context/tenant-context.service';
 import { Organization } from '../organizations/entities/organization.entity';
+import { AuditService } from '../audit/audit.service';
 import { AutomationEventBridgeService } from '../automations/services/automation-event-bridge.service';
 import { MailService } from '../mail/mail.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { Quote, QuoteStatus } from './entities/quote.entity';
+import { QuoteProofsService } from './quote-proofs.service';
 import { QuotesService } from './quotes.service';
 
-const hashToken = (token: string) =>
+export const hashToken = (token: string) =>
   createHash('sha256').update(token).digest('hex');
 
 /** The logo URL the DTO carries, resolved against the API's public origin. */
@@ -40,7 +42,7 @@ function absoluteLogoUrl(
 }
 
 /** Customer names and free-typed notes go into an HTML email body. */
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -73,6 +75,8 @@ export class QuoteAcceptanceService {
     private readonly mail: MailService,
     @Optional() private readonly tenantContext?: TenantContextService,
     @Optional() private readonly quotesService?: QuotesService,
+    @Optional() private readonly proofs?: QuoteProofsService,
+    @Optional() private readonly audit?: AuditService,
   ) {}
 
   /**
@@ -84,7 +88,7 @@ export class QuoteAcceptanceService {
    * acceptance, raising `quote.accepted` — runs as the quote's own tenant,
    * exactly as it would for someone signed in to it.
    */
-  private async withQuoteFor<T>(
+  async withQuoteFor<T>(
     token: string,
     fn: (quote: Quote | null) => Promise<T>,
   ): Promise<T> {
@@ -144,9 +148,23 @@ export class QuoteAcceptanceService {
         ? quote.validUntil
         : fallback;
 
+    // Sending settles the proof rule from the organisation's default, so a
+    // later change to the default does not move the goalposts on a quote the
+    // customer already has. A fresh link also clears their last response:
+    // staff have answered it by sending again.
+    const proofRequired =
+      quote.proofRequired ?? (await this.proofs?.isRequired(quote)) ?? false;
     await this.quotes.update(
       { id: quote.id, tenantId },
-      { acceptanceTokenHash: hashToken(token), acceptanceExpiresAt: expiresAt },
+      {
+        acceptanceTokenHash: hashToken(token),
+        acceptanceExpiresAt: expiresAt,
+        proofRequired,
+        customerResponse: null,
+        customerResponseNote: null,
+        customerRespondedAt: null,
+        customerRespondedByName: null,
+      },
     );
 
     const origin = this.config.get('publicWebUrl', { infer: true });
@@ -225,7 +243,10 @@ export class QuoteAcceptanceService {
 
   async view(token: string): Promise<PublicQuoteDto> {
     return this.withQuoteFor(token, async (quote) => {
-      const refusal = this.refusalFor(quote, { allowAccepted: true });
+      const refusal = this.refusalFor(quote, {
+        allowAccepted: true,
+        allowDeclined: true,
+      });
       if (refusal) this.refuse(refusal);
       return this.toPublic(quote!);
     });
@@ -256,6 +277,13 @@ export class QuoteAcceptanceService {
   ): Promise<PublicQuoteDto> {
     const refusal = this.refusalFor(quote, { allowAccepted: false });
     if (refusal) this.refuse(refusal);
+    if (await this.proofs?.blocksAcceptance(quote!)) {
+      throw new BadRequestException({
+        reason: 'PROOF_NOT_APPROVED',
+        message:
+          'Please approve the latest artwork proof first. The quote can be accepted once the proof is approved.',
+      });
+    }
 
     // Conditional, so two clicks (or two people with the link) cannot both
     // record an acceptance: the second update matches no row.
@@ -272,11 +300,23 @@ export class QuoteAcceptanceService {
       .andWhere('accepted_at IS NULL')
       .andWhere('superseded_at IS NULL')
       .andWhere('acceptance_token_hash = :hash', { hash: hashToken(token) })
+      .andWhere("customer_response IS DISTINCT FROM 'DECLINED'")
       .execute();
     if (!result.affected) this.refuse('ALREADY_ACCEPTED');
 
     quote!.acceptedAt = acceptedAt;
     quote!.acceptedByName = name;
+    await this.audit?.record({
+      tenantId: quote!.tenantId,
+      action: 'quote.customer_accept',
+      subjectType: 'QUOTE',
+      subjectId: quote!.id,
+      actorName: `${name} (customer)`,
+      summary: quote!.quoteNumber ?? null,
+      after: { acceptedAt: acceptedAt.toISOString(), acceptedByName: name },
+      ip: ipAddress?.slice(0, 64) ?? null,
+      channel: 'WEB',
+    });
 
     await this.afterAcceptance(quote!, name);
     // The customer has said yes; a failure here must not tell them otherwise.
@@ -321,6 +361,11 @@ export class QuoteAcceptanceService {
     if (quote.status !== QuoteStatus.APPROVED) {
       throw new BadRequestException(
         `${label} must be approved before the customer can accept it`,
+      );
+    }
+    if (await this.proofs?.blocksAcceptance(quote)) {
+      throw new BadRequestException(
+        `${label} needs an approved artwork proof before it can be accepted. Wait for the customer to approve the latest proof, or turn off the proof requirement.`,
       );
     }
 
@@ -374,9 +419,16 @@ export class QuoteAcceptanceService {
     });
   }
 
-  private refusalFor(
+  /**
+   * Why a link cannot be used, or null. Every public route checks this, so
+   * a customer response is refused exactly where an acceptance would be.
+   */
+  refusalFor(
     quote: Quote | null,
-    { allowAccepted }: { allowAccepted: boolean },
+    {
+      allowAccepted,
+      allowDeclined = false,
+    }: { allowAccepted: boolean; allowDeclined?: boolean },
   ): AcceptanceRefusal | null {
     if (!quote) return 'NOT_FOUND';
     if (quote.acceptedAt) return allowAccepted ? null : 'ALREADY_ACCEPTED';
@@ -389,10 +441,13 @@ export class QuoteAcceptanceService {
     ) {
       return 'EXPIRED';
     }
+    if (quote.customerResponse === 'DECLINED' && !allowDeclined) {
+      return 'DECLINED';
+    }
     return null;
   }
 
-  private refuse(reason: AcceptanceRefusal): never {
+  refuse(reason: AcceptanceRefusal): never {
     const body = { reason, message: acceptanceRefusalMessage(reason) };
     if (reason === 'NOT_FOUND') throw new NotFoundException(body);
     if (reason === 'ALREADY_ACCEPTED') throw new BadRequestException(body);
@@ -400,7 +455,7 @@ export class QuoteAcceptanceService {
   }
 
   /** Whitelisted field by field. Never spread the entity: it carries cost and internal notes. */
-  private async toPublic(quote: Quote): Promise<PublicQuoteDto> {
+  async toPublic(quote: Quote): Promise<PublicQuoteDto> {
     const organization = await this.organizations.findOne({
       where: { id: quote.tenantId },
     });
@@ -468,6 +523,20 @@ export class QuoteAcceptanceService {
       })),
       acceptedAt: quote.acceptedAt ? quote.acceptedAt.toISOString() : null,
       acceptedByName: quote.acceptedByName,
+      customerResponse: quote.customerResponse
+        ? {
+            kind: quote.customerResponse,
+            note: quote.customerResponseNote ?? null,
+            name: quote.customerRespondedByName ?? null,
+            at: quote.customerRespondedAt
+              ? quote.customerRespondedAt.toISOString()
+              : null,
+          }
+        : null,
+      proofs: (await this.proofs?.forPublic(quote)) ?? [],
+      proofRequired: (await this.proofs?.isRequired(quote)) ?? false,
+      proofBlocksAcceptance:
+        !quote.acceptedAt && ((await this.proofs?.blocksAcceptance(quote)) ?? false),
     };
   }
 }

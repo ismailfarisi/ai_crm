@@ -121,6 +121,10 @@ export class Organization extends BaseEntity {
   @Column({ name: 'document_footer', type: 'text', nullable: true })
   documentFooter: string | null;
 
+  /** New quotes ask the customer to approve an artwork proof before accepting. */
+  @Column({ name: 'quote_proof_required_default', type: 'boolean', default: false })
+  quoteProofRequiredDefault: boolean;
+
   /**
    * The logo printed on documents, as stored bytes.
    *

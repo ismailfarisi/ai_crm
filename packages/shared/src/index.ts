@@ -18,6 +18,7 @@ export * from './schemas/rbac';
 export * from './schemas/teams';
 export * from './types/api';
 export * from './quotes/types';
+export * from './quotes/proofs';
 export * from './quotes/guardrails';
 export * from './quotes/units';
 export * from './schemas/quote-send';

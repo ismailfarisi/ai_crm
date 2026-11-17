@@ -52,6 +52,7 @@ import { lineMargin, linesWithoutCost, marginStatus } from './margin-status';
 import { thirtyDaysFromToday } from './format';
 import { useLiveRecost } from './use-live-recost';
 import { AttachmentsPanel } from '@/components/platform/attachments-panel';
+import { QuoteProofsPanel } from '@/components/quotes/quote-proofs-panel';
 import { ActivityTimeline } from '@/components/platform/activity-timeline';
 import { useQuoteSalesOrder } from '@/hooks/use-sales-orders';
 import { QuoteCustomerPanel, type CustomerDialog } from './quote-customer-panel';
@@ -888,6 +889,14 @@ export function QuoteEditorPage({
           <strong className="text-ink">Reverse charge.</strong> This customer&apos;s address and tax number put
           these lines at 0%; the invoice will say the customer accounts for the tax.
         </p>
+      )}
+
+      {id && (
+        <QuoteProofsPanel
+          quoteId={id}
+          canEdit={canUpdate && !acceptance.supersededAt}
+          accepted={Boolean(acceptance.acceptedAt)}
+        />
       )}
 
       {/* Files and history, once the quote exists to hang them off */}

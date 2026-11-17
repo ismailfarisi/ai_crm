@@ -8,7 +8,10 @@ import { QuoteStatus } from './entities/quote.entity';
 
 const tenantId = '11111111-1111-1111-1111-111111111111';
 
-function makeService(overrides: Record<string, unknown> = {}) {
+function makeService(
+  overrides: Record<string, unknown> = {},
+  deps: { proofs?: any; audit?: any } = {},
+) {
   const quote: any = {
     id: 'q1',
     tenantId,
@@ -86,6 +89,8 @@ function makeService(overrides: Record<string, unknown> = {}) {
     undefined as any,
     undefined,
     quotesService as any,
+    deps.proofs,
+    deps.audit,
   );
   return { service, quote, events, quotesService };
 }
@@ -93,6 +98,50 @@ function makeService(overrides: Record<string, unknown> = {}) {
 const tokenFrom = (url: string) => url.split('/q/')[1];
 
 describe('QuoteAcceptanceService', () => {
+  it('will not accept while the proof rule is unmet, and says why', async () => {
+    const proofs = {
+      isRequired: jest.fn(async () => true),
+      blocksAcceptance: jest.fn(async () => true),
+      forPublic: jest.fn(async () => []),
+    };
+    const { service, quote, quotesService } = makeService({}, { proofs });
+    const token = tokenFrom((await service.createLink(tenantId, 'q1')).url);
+
+    const view = await service.view(token);
+    expect(view.proofBlocksAcceptance).toBe(true);
+    await expect(service.accept(token, { name: 'Jo Bloggs' }, undefined)).rejects.toMatchObject({
+      response: { reason: 'PROOF_NOT_APPROVED' },
+    });
+    expect(quote.acceptedAt).toBeNull();
+    expect(quotesService.provisionAcceptedQuote).not.toHaveBeenCalled();
+  });
+
+  it('audits a link acceptance under the customer name', async () => {
+    const audit = { record: jest.fn(async () => undefined) };
+    const { service } = makeService({}, { audit });
+    const token = tokenFrom((await service.createLink(tenantId, 'q1')).url);
+
+    await service.accept(token, { name: 'Jo Bloggs' }, '203.0.113.9');
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'quote.customer_accept',
+        actorName: 'Jo Bloggs (customer)',
+        subjectId: 'q1',
+      }),
+    );
+  });
+
+  it('clears an earlier decline when the quote is sent again', async () => {
+    const { service, quote } = makeService({
+      customerResponse: 'DECLINED',
+      customerResponseNote: 'Too dear',
+    });
+    const token = tokenFrom((await service.createLink(tenantId, 'q1')).url);
+
+    expect(quote.customerResponse).toBeNull();
+    await expect(service.view(token)).resolves.toMatchObject({ customerResponse: null });
+  });
+
   it('stores only a hash of the token', async () => {
     const { service, quote } = makeService();
     const { url } = await service.createLink(tenantId, 'q1');

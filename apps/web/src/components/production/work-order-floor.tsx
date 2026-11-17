@@ -21,6 +21,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { Input, Textarea } from '@/components/ui/field';
 import { EmptyState } from '@/components/ui/primitives';
 import { WO_STATUS_LABELS } from './production-board';
+import { WorkOrderProofCard } from './work-order-proof-card';
 
 const fmtMinutes = (n: number) => {
   const r = Math.round(n);
@@ -136,6 +137,8 @@ export function WorkOrderFloor({ id }: { id: string }) {
           )}
         </div>
       </header>
+
+      <WorkOrderProofCard workOrderId={wo.id} />
 
       {wo.estimatedCost && <CostSummary wo={wo} />}
 

@@ -57,6 +57,7 @@ export const updateOrganizationSchema = z
     postalCode: optionalText(30).optional(),
     country: countryCode.optional(),
     documentFooter: optionalText(2000).optional(),
+    quoteProofRequiredDefault: z.boolean().optional(),
   })
   .transform(applyUaeTrn);
 
@@ -82,6 +83,8 @@ export interface OrganizationProfileDto {
   postalCode: string | null;
   country: string | null;
   documentFooter: string | null;
+  /** New quotes need the customer to approve an artwork proof before accepting. */
+  quoteProofRequiredDefault: boolean;
   /**
    * Where the logo is served from, or null when none is set.
    *

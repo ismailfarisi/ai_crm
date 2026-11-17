@@ -58,6 +58,7 @@ export function CompanyView() {
       postalCode: organization.postalCode ?? '',
       country: organization.country ?? '',
       documentFooter: organization.documentFooter ?? '',
+      quoteProofRequiredDefault: organization.quoteProofRequiredDefault ?? false,
     });
   }, [organization, reset]);
 
@@ -201,6 +202,16 @@ export function CompanyView() {
                 error={errors.documentFooter?.message}
                 {...register('documentFooter')}
               />
+              <label className="flex items-start gap-3 text-sm">
+                <input type="checkbox" className="mt-0.5 size-4" {...register('quoteProofRequiredDefault')} />
+                <span>
+                  <span className="block font-medium text-ink">Proof approval required before acceptance</span>
+                  <span className="block text-ink-muted">
+                    New quotes start with this on. Customers can accept only after they approve the latest artwork
+                    proof. You can change it on each quote.
+                  </span>
+                </span>
+              </label>
             </CardBody>
           </Card>
 
