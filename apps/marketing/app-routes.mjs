@@ -2,7 +2,7 @@
  * Top-level routes that belong to the CRM (apps/web), not to this site.
  *
  * The marketing site took over the domain the app used to live on, so links
- * already out in the world — a customer's quote link (/q/…), an invite
+ * already out in the world — a customer's quote link (/q/…) or pay link (/pay/…), an invite
  * (/accept-invite), a bookmarked /dashboard — arrive here. Each is redirected
  * to the same path on the app's domain. `app-routes.test.mjs` fails when
  * apps/web gains a top-level route this list does not cover.
@@ -13,7 +13,8 @@ export const APP_ROUTES = [
   'continue',
   'login',
   'register',
-  // public quote acceptance
+  // public quote acceptance and invoice pay links
+  'pay',
   'q',
   // (app)
   'assistant',
