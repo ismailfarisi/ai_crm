@@ -189,7 +189,7 @@ export class ImportsService {
     file: UploadedFileLike | undefined,
     requested: ImportMapping | undefined,
   ): Promise<Plan> {
-    const { headers, rows } = await parseSpreadsheet(file);
+    const { headers, rows, rowNumbers } = await parseSpreadsheet(file);
     const definition = IMPORT_DEFINITIONS[entity];
     const mapping = this.checkMapping(
       entity,
@@ -202,7 +202,7 @@ export class ImportsService {
       // An unmapped required column shows on every row as "<field> is required".
       const issues: ImportRowIssue[] = result.ok ? [] : result.issues;
       return {
-        rowNumber: i + 2,
+        rowNumber: rowNumbers[i],
         values,
         issues,
         match: 'new',
@@ -455,7 +455,7 @@ export class ImportsService {
     if (emails.length === 0) return;
     const users: { id: string; email: string }[] =
       await this.dataSource.manager.query(
-        `SELECT id, LOWER(email) AS email FROM users WHERE tenant_id = $1 AND LOWER(email) = ANY($2)`,
+        `SELECT id, LOWER(email) AS email FROM users WHERE tenant_id = $1 AND "isActive" AND LOWER(email) = ANY($2)`,
         [actor.organizationId, emails],
       );
     const byEmail = new Map(users.map((u) => [u.email, u.id]));
@@ -466,7 +466,7 @@ export class ImportsService {
       if (!id) {
         row.issues.push({
           field: 'ownerEmail',
-          message: 'No team member has this email',
+          message: 'No active team member has this email',
         });
         continue;
       }

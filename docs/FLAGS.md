@@ -316,6 +316,13 @@ The audit trail gets one `import.<entity>` row per import, pointing at the
 `import_runs` record with the counts. The records it creates or updates are
 not audited one by one. The dry run is not audited at all.
 
+### Imported contacts do not start automations — by design
+
+A contact created by hand publishes `record.created`, which can start an
+automation (a welcome email, a task). An import does not, so bringing in 3,000
+old contacts does not send 3,000 emails. Row numbers in the review and the
+error file are the spreadsheet's own, blank rows counted.
+
 ### Rows are saved in batches of 200 — by design
 
 Each batch is one transaction and each row a savepoint inside it, so a row

@@ -36,6 +36,27 @@ describe('parseSpreadsheet', () => {
     ]);
   });
 
+  it('numbers rows as the spreadsheet does, counting blank rows', async () => {
+    const parsed = await parseSpreadsheet(
+      csv('Company,City\nAlpha,Dubai\n\n,\nBeta,Sharjah\n'),
+    );
+    expect(parsed.rows).toEqual([
+      ['Alpha', 'Dubai'],
+      ['Beta', 'Sharjah'],
+    ]);
+    expect(parsed.rowNumbers).toEqual([2, 5]);
+
+    const file = await xlsx([['SKU'], ['BOX-1'], [], ['BOX-2']]);
+    expect((await parseSpreadsheet(file)).rowNumbers).toEqual([2, 4]);
+  });
+
+  it('refuses a CSV that is not UTF-8 rather than garbling it', async () => {
+    const latin1 = Buffer.from('Name\nCaf\xe9 Noir\n', 'latin1');
+    await expect(
+      parseSpreadsheet({ ...csv(''), buffer: latin1, size: latin1.length }),
+    ).rejects.toThrow(/CSV UTF-8/);
+  });
+
   it('reads the semicolon CSV that Excel writes in some locales', async () => {
     const parsed = await parseSpreadsheet(csv('Name;Price\nBox;12,5\n'));
     expect(parsed.rows).toEqual([['Box', '12,5']]);
@@ -82,6 +103,13 @@ describe('parseSpreadsheet', () => {
     ].join('\n');
     await expect(parseSpreadsheet(csv(big))).rejects.toThrow(
       /more than 5,000 rows/,
+    );
+    const atLimit = [
+      'Name',
+      ...Array.from({ length: IMPORT_LIMITS.maxRows }, (_, i) => `Row ${i}\n`),
+    ].join('\n');
+    expect((await parseSpreadsheet(csv(atLimit))).rows).toHaveLength(
+      IMPORT_LIMITS.maxRows,
     );
   });
 

@@ -9,6 +9,14 @@ export interface ParsedSheet {
   headers: string[];
   /** Data rows, header excluded, each padded to the header's width. */
   rows: string[][];
+  /** Each row's number as the spreadsheet shows it (header = 1), blank rows counted. */
+  rowNumbers: number[];
+}
+
+/** A row of cells and the spreadsheet row it came from. */
+interface RawRow {
+  number: number;
+  cells: string[];
 }
 
 /**
@@ -69,19 +77,45 @@ function delimiterOf(text: string): string {
   return counts.sort((a, b) => b.n - a.n)[0].d;
 }
 
-function parseCsv(buffer: Buffer): string[][] {
-  const text = buffer.toString('utf8');
+function parseCsv(buffer: Buffer): RawRow[] {
+  let text: string;
   try {
-    return parse(text, {
+    // Excel's plain "CSV" is saved in the PC's code page, which would turn
+    // Arabic names into question marks without saying so.
+    text = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+  } catch {
+    throw new BadRequestException(
+      'This CSV is not saved as UTF-8. In Excel, save it as "CSV UTF-8", or upload the .xlsx.',
+    );
+  }
+  // Blank lines are counted, not kept, so a row's number is its row in
+  // Excel. Reading stops at the row limit rather than parsing the rest.
+  let seen = 0;
+  let kept = 0;
+  let over = false;
+  const numbers: number[] = [];
+  try {
+    const records: string[][] = parse(text, {
       bom: true,
       delimiter: delimiterOf(text.replace(/^\uFEFF/, '')),
       relax_column_count: true,
       relax_quotes: true,
-      skip_empty_lines: true,
-      // Header plus the limit, plus one to tell "exactly at" from "over".
-      to_line: IMPORT_LIMITS.maxRows + 2,
+      skip_empty_lines: false,
+      on_record: (cells) => {
+        seen++;
+        if (!cells.some((c) => (c ?? '').trim() !== '')) return null;
+        // Header plus the limit, plus one to tell "exactly at" from "over".
+        if (++kept > IMPORT_LIMITS.maxRows + 1) {
+          over = true;
+          throw tooMany();
+        }
+        numbers.push(seen);
+        return cells;
+      },
     });
+    return records.map((cells, i) => ({ number: numbers[i], cells }));
   } catch (e) {
+    if (over) throw tooMany();
     throw new BadRequestException(
       `This CSV could not be read: ${(e as Error).message}`,
     );
@@ -106,7 +140,7 @@ export function cellText(value: ExcelJS.CellValue): string {
   return String(value);
 }
 
-async function parseXlsx(buffer: Buffer): Promise<string[][]> {
+async function parseXlsx(buffer: Buffer): Promise<RawRow[]> {
   const size = xlsxUncompressedSize(buffer);
   if (size === null) {
     throw new BadRequestException('This is not a valid .xlsx file.');
@@ -125,14 +159,15 @@ async function parseXlsx(buffer: Buffer): Promise<string[][]> {
     worksheets: 'emit',
     entries: 'emit',
   });
-  const rows: string[][] = [];
+  const rows: RawRow[] = [];
   try {
     for await (const worksheet of reader) {
       for await (const row of worksheet as AsyncIterable<ExcelJS.Row>) {
         const values = Array.isArray(row.values) ? row.values.slice(1) : [];
-        const cells = values.map((v) => cellText(v).trim());
+        // `values` is sparse where cells are empty.
+        const cells = Array.from(values, (v) => cellText(v).trim());
         if (cells.every((c) => c === '')) continue;
-        rows.push(cells);
+        rows.push({ number: row.number, cells });
         if (rows.length > IMPORT_LIMITS.maxRows + 1) break;
       }
       break;
@@ -160,22 +195,24 @@ export async function parseSpreadsheet(
   }
   const all =
     kind === 'csv' ? parseCsv(file.buffer) : await parseXlsx(file.buffer);
+  // The first row with anything in it is the header.
   const [header, ...rest] = all;
-  if (!header || header.every((h) => !h?.trim())) {
+  if (!header) {
     throw new BadRequestException('This file is empty.');
   }
   if (rest.length > IMPORT_LIMITS.maxRows) throw tooMany();
-  const headers = header.map((h) => (h ?? '').trim());
+  const headers = Array.from(header.cells, (h) => (h ?? '').trim());
   const width = headers.length;
-  const rows = rest
-    .map((r) => {
-      const cells = r.map((c) => (c ?? '').toString().trim());
-      while (cells.length < width) cells.push('');
-      return cells;
-    })
-    .filter((r) => r.some((c) => c !== ''));
+  const rows: string[][] = [];
+  const rowNumbers: number[] = [];
+  for (const r of rest) {
+    const cells = Array.from(r.cells, (c) => (c ?? '').toString().trim());
+    while (cells.length < width) cells.push('');
+    rows.push(cells);
+    rowNumbers.push(r.number);
+  }
   if (rows.length === 0) {
     throw new BadRequestException('This file has a header but no rows.');
   }
-  return { headers, rows };
+  return { headers, rows, rowNumbers };
 }
