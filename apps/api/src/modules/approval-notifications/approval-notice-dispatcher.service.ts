@@ -51,6 +51,8 @@ const CHAT_PROVIDERS = [
   ChannelProviderType.TELEGRAM,
   ChannelProviderType.WHATSAPP_META,
 ];
+/** Who chat notices are sent as, on the channel message log. */
+const CHAT_SENDER = 'system:approval-notice';
 /** A reply to a chat notice is accepted for a day. */
 const CHAT_PROMPT_TTL_MS = 24 * 60 * 60 * 1000;
 /** Skill name on prompt rows the command layer hands to ApprovalReplyService. */
@@ -92,7 +94,10 @@ UPDATE "approval_deliveries" SET "status" = 'SENDING', "attempts" = "attempts" +
     ORDER BY "due_at"
     LIMIT 200
     FOR UPDATE SKIP LOCKED)
-RETURNING "id", "tenant_id", "request_id", "user_id", "event", "channel"`;
+RETURNING "id", "tenant_id", "request_id", "user_id", "event", "channel", "attempts"`;
+
+/** A deferred notice that fails is tried again this many times in all. */
+const DEFERRED_ATTEMPTS = 5;
 
 type SendResult = 'SENT' | 'SKIPPED';
 
@@ -356,13 +361,18 @@ export class ApprovalNoticeDispatcherService
 
     let sent = false;
     for (const identity of identities) {
-      const replyable =
-        chatReplyable(request, event) &&
-        (await this.openReplyPrompt(request, userId, identity));
-      await this.channels.sendMessage(request.tenantId, userId, {
+      const prompt = chatReplyable(request, event)
+        ? await this.openReplyPrompt(request, userId, identity)
+        : 'NONE';
+      await this.channels.sendMessage(request.tenantId, CHAT_SENDER, {
         provider: identity.provider,
         recipient: identity.identifier,
-        body: chatBody(text, this.absolute(request.link), replyable),
+        body: chatBody(
+          text,
+          this.absolute(request.link),
+          prompt === 'OPENED',
+          prompt === 'SEVERAL',
+        ),
       });
       sent = true;
     }
@@ -372,14 +382,15 @@ export class ApprovalNoticeDispatcherService
   /**
    * Opens the conversation a YES/NO reply lands in. A quote uses the quote
    * approval skill's own confirmation, so YES runs exactly what "approve
-   * QT-…" would. Returns false when the person is mid-command: that is not
-   * clobbered, and the message just links to the app.
+   * QT-…" would. Not opened when the person is mid-command (that is not
+   * clobbered) or when another item's prompt is open: a bare YES could then
+   * mean either, so both are closed and the person decides in the app.
    */
   private async openReplyPrompt(
     request: ApprovalRequest,
     userId: string,
     identity: { provider: ChannelProviderType; identifier: string },
-  ): Promise<boolean> {
+  ): Promise<'OPENED' | 'BUSY' | 'SEVERAL'> {
     const live: Array<{
       id: string;
       skill_name: string;
@@ -390,19 +401,31 @@ export class ApprovalNoticeDispatcherService
             AND "status"::text IN ('COLLECTING', 'AWAITING_CONFIRM') AND "expires_at" > now()`,
       [request.tenantId, identity.provider, identity.identifier],
     );
-    if (live.some((row) => !row.slots?.[APPROVAL_SLOT])) return false;
+    if (live.some((row) => !row.slots?.[APPROVAL_SLOT])) return 'BUSY';
 
-    const resolved =
-      request.itemType === 'QUOTE' ? (request.meta?.quote ?? null) : null;
-    if (request.itemType === 'QUOTE' && !resolved) return false;
-
-    await this.dataSource.transaction(async (m) => {
-      await m.query(
+    const close = (m: Pick<EntityManager, 'query'>) =>
+      m.query(
         `UPDATE "channel_conversations" SET "status" = 'EXPIRED', "resolved_at" = now()
           WHERE "organization_id" = $1 AND "provider"::text = $2 AND "sender_identifier" = $3
             AND "status"::text IN ('COLLECTING', 'AWAITING_CONFIRM')`,
         [request.tenantId, identity.provider, identity.identifier],
       );
+    const otherItem = live.some(
+      (row) =>
+        (row.slots?.[APPROVAL_SLOT] as { itemId?: string } | undefined)
+          ?.itemId !== request.itemId,
+    );
+    if (otherItem) {
+      await close(this.dataSource);
+      return 'SEVERAL';
+    }
+
+    const resolved =
+      request.itemType === 'QUOTE' ? (request.meta?.quote ?? null) : null;
+    if (request.itemType === 'QUOTE' && !resolved) return 'BUSY';
+
+    await this.dataSource.transaction(async (m) => {
+      await close(m);
       await m.query(
         `INSERT INTO "channel_conversations"
            ("organization_id", "user_id", "provider", "sender_identifier", "skill_name", "slots", "status", "pending_question", "expires_at")
@@ -432,7 +455,7 @@ export class ApprovalNoticeDispatcherService
         ],
       );
     });
-    return true;
+    return 'OPENED';
   }
 
   private absolute(link: string | null): string | null {
@@ -479,6 +502,7 @@ export class ApprovalNoticeDispatcherService
       user_id: string;
       event: ApprovalNoticeEvent;
       channel: NotificationChannel;
+      attempts: number;
     }> = [];
     try {
       const result: unknown = await this.tenantContext.runAsSystem(() =>
@@ -508,13 +532,21 @@ export class ApprovalNoticeDispatcherService
             await m.update(ApprovalDelivery, row.id, { status: 'SKIPPED' });
             return;
           }
-          await this.sendClaimed(
+          const failed = await this.sendClaimed(
             row.id,
             request,
             row.user_id,
             row.event,
             row.channel,
           );
+          // The outbox message behind it is long done, so nothing else would
+          // retry it: put it back in the queue for the next sweep.
+          if (failed && row.attempts < DEFERRED_ATTEMPTS) {
+            await m.update(ApprovalDelivery, row.id, {
+              status: 'DEFERRED',
+              dueAt: new Date(Date.now() + 10 * 60_000),
+            });
+          }
         })
         .catch((err: unknown) =>
           this.logger.warn(

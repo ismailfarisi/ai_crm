@@ -173,10 +173,13 @@ export function chatBody(
   text: NoticeText,
   link: string | null,
   replyable: boolean,
+  several = false,
 ): string {
   const lines = [text.title];
   if (text.body) lines.push(text.body);
   if (replyable) lines.push('Reply YES to approve, or NO to reject.');
+  else if (several)
+    lines.push('More than one approval is waiting for you. Decide in Kerf.');
   if (link) lines.push(link);
   return lines.join('\n');
 }

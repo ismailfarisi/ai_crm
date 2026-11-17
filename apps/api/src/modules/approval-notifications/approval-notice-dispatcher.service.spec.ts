@@ -10,6 +10,7 @@ function harness(opts: {
   request: Partial<ApprovalRequest>;
   holders?: string[];
   itemPending?: boolean;
+  deferred?: Array<Record<string, unknown>>;
 }) {
   const request = {
     id: 'req-1',
@@ -33,6 +34,8 @@ function harness(opts: {
   const bell: string[] = [];
   const mail = { sendMail: jest.fn().mockResolvedValue(undefined) };
   const query = jest.fn(async (sql: string, params: unknown[] = []) => {
+    if (sql.includes('WHERE "status" = \'DEFERRED\''))
+      return opts.deferred ?? [];
     if (sql.includes('INSERT INTO "approval_deliveries"')) {
       const key = params.slice(1, 5).join('|');
       if (claimed.has(key)) return [];
@@ -180,6 +183,35 @@ describe('ApprovalNoticeDispatcherService', () => {
     expect(h.bell).toEqual([]);
     await h.service.handle(h.message('approval.reminder'));
     expect(h.bell).toEqual(['owner']);
+  });
+
+  it('puts a deferred notice that fails back in the queue', async () => {
+    const row = {
+      id: 'd1',
+      tenant_id: 't1',
+      request_id: 'req-1',
+      user_id: 'a1',
+      event: 'REQUESTED',
+      channel: 'EMAIL',
+      attempts: 1,
+    };
+    const h = harness({ request: {}, deferred: [row] });
+    h.mail.sendMail.mockRejectedValueOnce(new Error('SES down'));
+    await h.service.sendDeferred();
+    expect(h.manager.update).toHaveBeenLastCalledWith(
+      expect.anything(),
+      'd1',
+      expect.objectContaining({ status: 'DEFERRED' }),
+    );
+
+    const last = harness({ request: {}, deferred: [{ ...row, attempts: 5 }] });
+    last.mail.sendMail.mockRejectedValueOnce(new Error('SES down'));
+    await last.service.sendDeferred();
+    expect(last.manager.update).toHaveBeenLastCalledWith(
+      expect.anything(),
+      'd1',
+      expect.objectContaining({ status: 'FAILED' }),
+    );
   });
 
   it('retries only the channel that failed', async () => {

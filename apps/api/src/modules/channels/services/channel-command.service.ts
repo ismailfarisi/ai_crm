@@ -13,7 +13,11 @@ import { ChannelProviderType } from '../entities/channel-config.entity';
 import { AuditService } from '../../audit/audit.service';
 import { RbacService } from '../../rbac/rbac.service';
 import { SkillRegistry } from '../skills/skill.registry';
-import { ApprovalReplyService, approvalSlotOf } from './approval-reply.service';
+import {
+  ApprovalReplyService,
+  approvalSlotOf,
+  parseApprovalReply,
+} from './approval-reply.service';
 import {
   AiUnavailableError,
   SkillRouterService,
@@ -195,6 +199,12 @@ export class ChannelCommandService {
 
     const approval = live ? approvalSlotOf(live) : null;
     if (live && approval && this.approvalReplies) {
+      // An approval notice waits a day, so it must not swallow the person's
+      // other commands: anything that is not a YES or NO is a new command.
+      if (parseApprovalReply(message).kind === 'unclear') {
+        await this.close(live, 'EXPIRED');
+        return this.startFresh(ctx);
+      }
       // A reply to an approval notice. A quote's YES falls through to the
       // quote approval skill's own confirmation below.
       const answer = await this.approvalReplies.handle(live, approval, ctx);

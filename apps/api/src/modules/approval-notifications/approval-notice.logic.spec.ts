@@ -102,4 +102,15 @@ describe('chatBody', () => {
     );
     expect(chatBody(text, null, false)).not.toContain('Reply YES');
   });
+
+  it('says to decide in the app when another approval is already open', () => {
+    const text = {
+      type: 'APPROVAL_REQUESTED' as const,
+      title: 'Needs approval: QT-2',
+      body: null,
+    };
+    const body = chatBody(text, 'https://app/q/2', false, true);
+    expect(body).not.toContain('Reply YES');
+    expect(body).toContain('More than one approval');
+  });
 });

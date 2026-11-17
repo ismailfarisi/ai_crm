@@ -26,6 +26,15 @@ const clock = z
   .optional()
   .transform((v) => v ?? null);
 
+function knownTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const quietHours = {
   quietHoursStart: clock,
   quietHoursEnd: clock,
@@ -33,6 +42,7 @@ const quietHours = {
     .string()
     .trim()
     .max(60)
+    .refine((v) => !v || knownTimeZone(v), 'Unknown time zone')
     .nullable()
     .optional()
     .transform((v) => (v ? v : null)),
