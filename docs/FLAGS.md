@@ -436,7 +436,9 @@ The app itself is still English. Arabic covers the PDFs, the template preview
 and the public quote page. Emails that carry a quote link, custom fields,
 product template names and notes typed in English are not translated. Supplier
 records have no Arabic name or address yet, so a purchase order prints the
-supplier in English.
+supplier in English. The in-app Preview / Print modal on quotes and invoices
+still renders English HTML for the browser's Print / Save as PDF; its Download
+PDF button gives the customer's language.
 
 ## Chat command layer
 
