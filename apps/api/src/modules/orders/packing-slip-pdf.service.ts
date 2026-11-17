@@ -62,6 +62,13 @@ export class PackingSlipPdfService {
           .filter(Boolean)
           .join(', ') || undefined;
 
+      const descriptionsAr =
+        (await this.documentLocalization?.orderLineDescriptionsAr(
+          note.tenantId,
+          order?.quoteId,
+          lines.map((line) => line.salesOrderLineId),
+        )) ?? new Map<string, string>();
+
       const docData: UniversalDocumentData = {
         type: 'DELIVERY_NOTE',
         number: note.deliveryNoteNumber,
@@ -90,6 +97,7 @@ export class PackingSlipPdfService {
         items: lines.map((line) => ({
           code: line.salesOrderLineId || undefined,
           description: line.description + (line.uom ? ` (${line.uom})` : ''),
+          descriptionAr: descriptionsAr.get(line.salesOrderLineId),
           quantity: Number(line.qty || 0),
         })),
         totals: {
@@ -145,6 +153,9 @@ export class PackingSlipPdfService {
           docData,
           config,
         )) ?? docData;
+      // The ship-to is typed per delivery. The customer's Arabic address is
+      // their billing address and must not replace it.
+      localized.party = { ...localized.party, addressAr: undefined };
       return this.pdfRenderer.render(localized, config);
     }
 
