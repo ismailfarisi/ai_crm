@@ -151,7 +151,7 @@ export class StarterTemplatesService {
         ids,
       );
       return {
-        templateId: template.id,
+        id: template.id,
         templateKey: template.templateKey,
         created,
         reused,

@@ -79,7 +79,7 @@ describe('StarterTemplatePicker', () => {
   });
 
   it('installs the chosen starter and opens it in the editor', async () => {
-    mutateAsync.mockResolvedValue({ templateId: 'tpl-9', templateKey: 'cabinet-carcass' });
+    mutateAsync.mockResolvedValue({ id: 'tpl-9', templateKey: 'cabinet-carcass' });
     const onClose = vi.fn();
     render(<StarterTemplatePicker open onClose={onClose} />);
 

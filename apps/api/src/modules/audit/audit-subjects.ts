@@ -17,6 +17,7 @@ import { FinanceAccount } from '../finance/entities/finance-account.entity';
 import { RecurringExpense } from '../finance/entities/recurring-expense.entity';
 import { PrepaidSchedule } from '../payables/entities/prepaid-schedule.entity';
 import { StockItem } from '../inventory/entities/stock-item.entity';
+import { ProductTemplate } from '../catalog/entities/product-template.entity';
 import { User } from '../users/entities/user.entity';
 import { Employee } from '../payroll/entities/employee.entity';
 import { PayrollRun } from '../payroll/entities/payroll-run.entity';
@@ -71,6 +72,11 @@ export const AUDIT_SUBJECTS: Record<string, AuditSubject> = {
   users: { subject: 'USER', entity: User },
   roles: { subject: 'ROLE', entity: Role },
   'stock-items': { subject: 'STOCK_ITEM', entity: StockItem },
+  // The installed template, so the trail shows what a starter created.
+  'catalog/starter-templates': {
+    subject: 'PRODUCT_TEMPLATE',
+    entity: ProductTemplate,
+  },
   employees: { subject: 'EMPLOYEE', entity: Employee },
   'payroll-runs': { subject: 'PAYROLL_RUN', entity: PayrollRun },
   'payroll/opening-gratuity': { subject: 'PAYROLL', entity: PayrollRun },

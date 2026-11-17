@@ -32,7 +32,8 @@ export interface StarterTemplatePreviewDto {
 
 /** What installing a starter did to the tenant's catalog. */
 export interface StarterInstallResultDto {
-  templateId: string;
+  /** The installed template's id. */
+  id: string;
   templateKey: string;
   created: { materials: number; workCenters: number; tooling: number };
   reused: { materials: number; workCenters: number; tooling: number };

@@ -37,7 +37,7 @@ export function StarterTemplatePicker({ open, onClose }: { open: boolean; onClos
     if (!selected) return;
     const result = await install.mutateAsync(selected.key);
     onClose();
-    router.push(`/catalog/templates/${result.templateId}?starter=1`);
+    router.push(`/catalog/templates/${result.id}?starter=1`);
   };
 
   return (
