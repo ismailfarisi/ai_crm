@@ -41,6 +41,7 @@ export const updateOrganizationSchema = z
   .object({
     name: z.string().trim().min(1, 'Name is required').max(120).optional(),
     legalName: optionalText(200).optional(),
+    legalNameAr: optionalText(200).optional(),
     taxId: optionalText(60).optional(),
     registrationNumber: optionalText(60).optional(),
     email: z
@@ -56,6 +57,7 @@ export const updateOrganizationSchema = z
     region: optionalText(120).optional(),
     postalCode: optionalText(30).optional(),
     country: countryCode.optional(),
+    addressAr: optionalText(500).optional(),
     documentFooter: optionalText(2000).optional(),
     quoteProofRequiredDefault: z.boolean().optional(),
   })
@@ -71,6 +73,8 @@ export interface OrganizationProfileDto {
   slug: string;
   baseCurrency: string;
   legalName: string | null;
+  /** Printed on Arabic and bilingual documents. */
+  legalNameAr: string | null;
   taxId: string | null;
   registrationNumber: string | null;
   email: string | null;
@@ -82,6 +86,8 @@ export interface OrganizationProfileDto {
   region: string | null;
   postalCode: string | null;
   country: string | null;
+  /** The whole address as it should print in Arabic, one line per row. */
+  addressAr: string | null;
   documentFooter: string | null;
   /** New quotes need the customer to approve an artwork proof before accepting. */
   quoteProofRequiredDefault: boolean;

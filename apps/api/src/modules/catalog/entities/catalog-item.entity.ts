@@ -29,6 +29,10 @@ export class CatalogItem extends SoftDeletableEntity {
   @Column({ type: 'text', nullable: true })
   description: string | null;
 
+  /** Copied onto quote lines as their Arabic description. */
+  @Column({ name: 'description_ar', type: 'text', nullable: true })
+  descriptionAr: string | null;
+
   @Column({ type: 'varchar', length: 40, default: 'Units' })
   uom: string;
 

@@ -83,6 +83,9 @@ importers:
       bcrypt:
         specifier: ^6.0.0
         version: 6.0.0
+      bidi-js:
+        specifier: 1.0.3
+        version: 1.0.3
       cookie-parser:
         specifier: ^1.4.7
         version: 1.4.7

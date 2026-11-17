@@ -506,6 +506,7 @@ export class CostingService {
       id: `line_${Date.now()}_${index}`,
       type: 'product',
       description: item.name,
+      descriptionAr: item.descriptionAr || undefined,
       quantity: input.quantity,
       uom: item.uom,
       unitPrice: item.listPrice,

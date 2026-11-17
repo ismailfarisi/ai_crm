@@ -353,20 +353,62 @@ export class DocumentTemplatesService {
     const sampleLines =
       docType === 'PURCHASE_ORDER'
         ? [
-            { code: 'GB-1200', description: 'Greyboard 1200 gsm, 700×1000 sheet', quantity: 2400, unitPrice: 3.15, discount: 0 },
-            { code: 'ART-157', description: 'Art paper 157 gsm wrap, 700×1000 sheet', quantity: 2600, unitPrice: 0.95, discount: 10 },
+            {
+              code: 'GB-1200',
+              description: 'Greyboard 1200 gsm, 700×1000 sheet',
+              descriptionAr: 'كرتون رمادي 1200 غ/م²، لوح 700×1000',
+              quantity: 2400,
+              unitPrice: 3.15,
+              discount: 0,
+            },
+            {
+              code: 'ART-157',
+              description: 'Art paper 157 gsm wrap, 700×1000 sheet',
+              descriptionAr: 'ورق آرت 157 غ/م² للتغليف، لوح 700×1000',
+              quantity: 2600,
+              unitPrice: 0.95,
+              discount: 10,
+            },
           ]
         : [
-            { code: 'RB-200', description: 'Rigid box 200×150×60, gold foil lid', quantity: 5000, unitPrice: 4.6, discount: 0 },
-            { code: 'EVA-2C', description: 'EVA foam insert, 2 cavities', quantity: 5000, unitPrice: 0.85, discount: 0 },
-            { code: 'SLV-ML', description: 'Printed paper sleeve, matt lamination', quantity: 5000, unitPrice: 0.4, discount: 5 },
+            {
+              code: 'RB-200',
+              description: 'Rigid box 200×150×60, gold foil lid',
+              descriptionAr: 'علبة صلبة 200×150×60، غطاء بختم ذهبي',
+              quantity: 5000,
+              unitPrice: 4.6,
+              discount: 0,
+            },
+            {
+              code: 'EVA-2C',
+              description: 'EVA foam insert, 2 cavities',
+              descriptionAr: 'حشوة إسفنج EVA، تجويفان',
+              quantity: 5000,
+              unitPrice: 0.85,
+              discount: 0,
+            },
+            {
+              code: 'SLV-ML',
+              description: 'Printed paper sleeve, matt lamination',
+              descriptionAr: 'غلاف ورقي مطبوع، تغليف مطفي',
+              quantity: 5000,
+              unitPrice: 0.4,
+              discount: 5,
+            },
           ];
     const items = sampleLines.map((line) => ({
       ...line,
       taxRate: vatRate,
-      amount: round2(line.quantity * line.unitPrice * (1 - line.discount / 100)),
+      amount: round2(
+        line.quantity * line.unitPrice * (1 - line.discount / 100),
+      ),
     }));
-    const gross = round2(sampleLines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0));
+    const gross = round2(
+      sampleLines.reduce(
+        (sum, line) => sum + line.quantity * line.unitPrice,
+        0,
+      ),
+    );
     const net = round2(items.reduce((sum, line) => sum + line.amount, 0));
     const vat = round2(net * (vatRate / 100));
     const total = round2(net + vat);
@@ -403,7 +445,16 @@ export class DocumentTemplatesService {
       currency,
       organization: {
         name: orgName,
+        // The sample's Arabic stands in only while the organisation has no
+        // profile of its own.
+        nameAr:
+          org?.legalNameAr || (org?.name ? undefined : 'ميريديان للتغليف'),
         address: orgAddress,
+        addressAr:
+          org?.addressAr ||
+          (org?.addressLine1
+            ? undefined
+            : 'قطعة 14، المنطقة الصناعية 13، الشارقة، الإمارات'),
         taxId: org?.taxId || '100234567800003',
         phone: org?.phone || '+971 6 555 0142',
         email: org?.email || 'accounts@meridianpackaging.example',
@@ -413,16 +464,20 @@ export class DocumentTemplatesService {
         docType === 'PURCHASE_ORDER'
           ? {
               name: 'Gulf Board Trading LLC',
+              nameAr: 'الخليج لتجارة الكرتون ذ.م.م',
               companyName: 'Gulf Board Trading LLC',
               address: 'Warehouse 22, Al Jurf Industrial Area 2, Ajman, UAE',
+              addressAr: 'مستودع 22، الجرف الصناعية 2، عجمان، الإمارات',
               email: 'orders@gulfboard.example',
               phone: '+971 6 555 0177',
               taxId: '100456789100003',
             }
           : {
               name: 'Al Noor Sweets',
+              nameAr: 'حلويات النور',
               companyName: 'Al Noor Sweets',
               address: 'Warehouse 7, Al Qusais Industrial Area 2, Dubai, UAE',
+              addressAr: 'مستودع 7، القصيص الصناعية 2، دبي، الإمارات',
               email: 'accounts@alnoorsweets.example',
               phone: '+971 4 555 0186',
               taxId: '100398765400003',

@@ -69,6 +69,7 @@ const item: CatalogItemDto = {
   sku: 'BOX-200',
   name: 'Rigid gift box 200×150×80',
   description: null,
+  descriptionAr: null,
   uom: 'Units',
   listPrice: 3.7,
   standardCost: 2.22,

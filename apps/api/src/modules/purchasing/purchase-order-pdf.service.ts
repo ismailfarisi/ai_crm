@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import PDFDocument from 'pdfkit';
@@ -10,6 +10,7 @@ import { PurchaseOrder } from './entities/purchase-order.entity';
 import { Supplier } from './entities/supplier.entity';
 import { Organization } from '../organizations/entities/organization.entity';
 import { DocumentTemplatesService } from '../document-templates/document-templates.service';
+import { DocumentLocalizationService } from '../document-templates/document-localization.service';
 import { DocumentPdfRendererService } from '../document-templates/document-pdf-renderer.service';
 
 const CURRENCY_LOCALE = undefined;
@@ -41,6 +42,8 @@ export class PurchaseOrderPdfService {
     private readonly documentTemplatesService?: DocumentTemplatesService,
     @InjectRepository(Organization)
     private readonly organizationRepository?: Repository<Organization>,
+    @Optional()
+    private readonly documentLocalization?: DocumentLocalizationService,
   ) {}
 
   async generate(
@@ -123,10 +126,15 @@ export class PurchaseOrderPdfService {
         notes: order.notes || undefined,
       };
 
-      return this.pdfRenderer.render(
-        docData,
-        template?.config ?? DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
-      );
+      const config = template?.config ?? DEFAULT_DOCUMENT_TEMPLATE_CONFIG;
+      const localized =
+        (await this.documentLocalization?.localize(
+          order.tenantId,
+          null,
+          docData,
+          config,
+        )) ?? docData;
+      return this.pdfRenderer.render(localized, config);
     }
 
     return this.legacyGenerate(order, supplier, organizationName);

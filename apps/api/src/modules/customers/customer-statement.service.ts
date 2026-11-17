@@ -10,6 +10,7 @@ import { Customer } from './entities/customer.entity';
 import { Invoice, InvoiceStatus } from '../quotes/entities/invoice.entity';
 import { InvoicePayment } from '../quotes/entities/invoice-payment.entity';
 import { Organization } from '../organizations/entities/organization.entity';
+import { DocumentLocalizationService } from '../document-templates/document-localization.service';
 import { DocumentPdfRendererService } from '../document-templates/document-pdf-renderer.service';
 import { DocumentTemplatesService } from '../document-templates/document-templates.service';
 import type { UniversalDocumentData } from '@saas/shared';
@@ -76,6 +77,8 @@ export class CustomerStatementService {
     private readonly pdfRenderer: DocumentPdfRendererService,
     @Optional()
     private readonly templatesService?: DocumentTemplatesService,
+    @Optional()
+    private readonly documentLocalization?: DocumentLocalizationService,
   ) {}
 
   async generateStatementData(
@@ -176,6 +179,7 @@ export class CustomerStatementService {
       item: {
         code?: string;
         description: string;
+        descriptionAr?: string;
         quantity: number;
         unitPrice: number;
         amount: number;
@@ -191,6 +195,7 @@ export class CustomerStatementService {
         item: {
           code: inv.invoiceNumber,
           description: `Invoice ${inv.invoiceNumber}`,
+          descriptionAr: `فاتورة ${inv.invoiceNumber}`,
           quantity: 1,
           unitPrice: round2(Number(inv.amount)),
           amount: round2(Number(inv.amount)),
@@ -207,6 +212,7 @@ export class CustomerStatementService {
         item: {
           code,
           description: `Payment ${ref !== 'Payment' ? `(${ref})` : 'Received'}`,
+          descriptionAr: ref !== 'Payment' ? `دفعة (${ref})` : 'دفعة مستلمة',
           quantity: 1,
           unitPrice: -round2(Number(pay.amount)),
           amount: -round2(Number(pay.amount)),
@@ -359,7 +365,14 @@ export class CustomerStatementService {
       'STATEMENT',
     );
 
-    const buffer = await this.pdfRenderer.render(docData, template?.config);
+    const localized =
+      (await this.documentLocalization?.localize(
+        tenantId,
+        customerId,
+        docData,
+        template?.config,
+      )) ?? docData;
+    const buffer = await this.pdfRenderer.render(localized, template?.config);
     const customerName =
       docData.party.companyName || docData.party.name || 'Customer';
     const safeName = customerName.replace(/[^a-zA-Z0-9_-]/g, '_');

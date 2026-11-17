@@ -1,8 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Download, FileText, Loader2 } from 'lucide-react';
-import { DOCUMENT_TIME_ZONE, type DocumentTemplateConfig, type DocumentType } from '@saas/shared';
+import {
+  DOCUMENT_LABELS,
+  DOCUMENT_TIME_ZONE,
+  documentLabel,
+  isRtlDocument,
+  localizedLabel,
+  toArabicIndicDigits,
+  type DocumentLabelKey,
+  type DocumentTemplateConfig,
+  type DocumentType,
+} from '@saas/shared';
 import { Button } from '@/components/ui/button';
 
 interface TemplatePreviewPanelProps {
@@ -26,6 +36,8 @@ const DOCUMENT_TABS: { type: DocumentType; label: string }[] = [
 export interface SampleLine {
   code: string;
   description: string;
+  /** Shown on Arabic and bilingual previews. */
+  descriptionAr?: string;
   quantity: number;
   unitPrice: number;
   /** Percent off the line. */
@@ -39,6 +51,8 @@ export const SAMPLE_VAT_RATE = 5;
 
 export const SAMPLE_SELLER = {
   name: 'Meridian Packaging Co',
+  nameAr: 'ميريديان للتغليف',
+  addressAr: 'قطعة 14، المنطقة الصناعية 13، الشارقة، الإمارات',
   tagline: 'Rigid boxes, cartons and print finishing',
   address: 'Plot 14, Industrial Area 13, Sharjah, UAE',
   phone: '+971 6 555 0142',
@@ -48,6 +62,8 @@ export const SAMPLE_SELLER = {
 
 const SAMPLE_CUSTOMER = {
   name: 'Al Noor Sweets',
+  nameAr: 'حلويات النور',
+  addressAr: 'مستودع 7، القصيص الصناعية 2، دبي، الإمارات',
   address: 'Warehouse 7, Al Qusais Industrial Area 2, Dubai, UAE',
   email: 'accounts@alnoorsweets.example',
   phone: '+971 4 555 0186',
@@ -56,6 +72,8 @@ const SAMPLE_CUSTOMER = {
 
 const SAMPLE_SUPPLIER = {
   name: 'Gulf Board Trading LLC',
+  nameAr: 'الخليج لتجارة الكرتون ذ.م.م',
+  addressAr: 'مستودع 22، الجرف الصناعية 2، عجمان، الإمارات',
   address: 'Warehouse 22, Al Jurf Industrial Area 2, Ajman, UAE',
   email: 'orders@gulfboard.example',
   phone: '+971 6 555 0177',
@@ -66,6 +84,7 @@ const SALES_LINES: SampleLine[] = [
   {
     code: 'RB-200-GF',
     description: 'Rigid box 200×150×60, gold foil lid',
+    descriptionAr: 'علبة صلبة 200×150×60، غطاء بختم ذهبي',
     quantity: 5000,
     unitPrice: 4.6,
     discount: 0,
@@ -74,6 +93,7 @@ const SALES_LINES: SampleLine[] = [
   {
     code: 'EVA-2C',
     description: 'EVA foam insert, 2 cavities',
+    descriptionAr: 'حشوة إسفنج EVA، تجويفان',
     quantity: 5000,
     unitPrice: 0.85,
     discount: 0,
@@ -82,6 +102,7 @@ const SALES_LINES: SampleLine[] = [
   {
     code: 'SLV-MATT',
     description: 'Printed paper sleeve, matt lamination',
+    descriptionAr: 'غلاف ورقي مطبوع، تغليف مطفي',
     quantity: 5000,
     unitPrice: 0.4,
     discount: 5,
@@ -93,6 +114,7 @@ const PURCHASE_LINES: SampleLine[] = [
   {
     code: 'GB-1200',
     description: 'Greyboard 1200 gsm, 700×1000 sheet',
+    descriptionAr: 'كرتون رمادي 1200 غ/م²، لوح 700×1000',
     quantity: 2400,
     unitPrice: 3.15,
     discount: 0,
@@ -101,6 +123,7 @@ const PURCHASE_LINES: SampleLine[] = [
   {
     code: 'ART-157',
     description: 'Art paper 157 gsm wrap, 700×1000 sheet',
+    descriptionAr: 'ورق آرت 157 غ/م² للتغليف، لوح 700×1000',
     quantity: 2600,
     unitPrice: 0.95,
     discount: 10,
@@ -142,8 +165,8 @@ const unitMoney = new Intl.NumberFormat('en-AE', {
   currency: SAMPLE_CURRENCY,
   maximumFractionDigits: 4,
 });
-const formatDate = (offsetDays = 0) =>
-  new Date(Date.now() + offsetDays * 86400000).toLocaleDateString('en-GB', {
+const formatDate = (offsetDays = 0, arabic = false) =>
+  new Date(Date.now() + offsetDays * 86400000).toLocaleDateString(arabic ? 'ar-AE-u-nu-latn' : 'en-GB', {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -196,6 +219,30 @@ export function TemplatePreviewPanel({ config, onDownloadPdf }: TemplatePreviewP
 
   const tableDensity = density === 'compact' ? 'py-1.5 px-2' : density === 'relaxed' ? 'py-3 px-3' : 'py-2 px-2.5';
 
+  const language = config.localization?.language ?? 'en';
+  const rtl = isRtlDocument(language);
+  const toDigits = (text: string) =>
+    language !== 'en' && config.localization?.digits === 'arabic-indic' ? toArabicIndicDigits(text) : text;
+  const fmt = (amount: number, unit = false) =>
+    toDigits(unit ? unitMoney.format(amount) : formatMoney(amount));
+  const date = (offsetDays = 0) => toDigits(formatDate(offsetDays, language === 'ar'));
+  // English previews keep the studio's own wording; Arabic and bilingual ones
+  // use the labels the PDF prints.
+  const lbl = (english: string, key: DocumentLabelKey) =>
+    language === 'en' ? english : documentLabel(key, language);
+  const both = (english: string, arabic?: string): ReactNode => {
+    if (language === 'en' || !arabic) return english;
+    if (language === 'ar') return arabic;
+    return (
+      <>
+        {english}
+        <span className="block" lang="ar" dir="rtl">
+          {arabic}
+        </span>
+      </>
+    );
+  };
+
   const docTitleMap: Record<DocumentType, string> = {
     INVOICE: config.header.customLabels?.invoice || 'TAX INVOICE',
     QUOTE: config.header.customLabels?.quote || 'QUOTATION',
@@ -203,6 +250,14 @@ export function TemplatePreviewPanel({ config, onDownloadPdf }: TemplatePreviewP
     DELIVERY_NOTE: config.header.customLabels?.deliveryNote || 'DELIVERY NOTE',
     PURCHASE_ORDER: config.header.customLabels?.purchaseOrder || 'PURCHASE ORDER',
   };
+  const arabicTitles: Record<DocumentType, string> = {
+    INVOICE: DOCUMENT_LABELS.taxInvoice.ar,
+    QUOTE: DOCUMENT_LABELS.quote.ar,
+    STATEMENT: DOCUMENT_LABELS.statement.ar,
+    DELIVERY_NOTE: DOCUMENT_LABELS.deliveryNote.ar,
+    PURCHASE_ORDER: DOCUMENT_LABELS.purchaseOrder.ar,
+  };
+  const docTitle = both(docTitleMap[activeType], arabicTitles[activeType]);
 
   const docNumberMap: Record<DocumentType, string> = {
     INVOICE: 'INV-2026-0042',
@@ -279,6 +334,8 @@ export function TemplatePreviewPanel({ config, onDownloadPdf }: TemplatePreviewP
       <div className="flex-1 overflow-auto p-4 sm:p-6 bg-canvas flex justify-center items-start">
         <div
           data-testid="template-paper"
+          dir={rtl ? 'rtl' : 'ltr'}
+          lang={rtl ? 'ar' : 'en'}
           className={`w-full max-w-3xl bg-white text-slate-800 rounded-lg shadow-md border border-slate-200 transition-all ${fontFamilyClass} ${densityPadding}`}
           style={{ minHeight: '750px' }}
         >
@@ -295,12 +352,12 @@ export function TemplatePreviewPanel({ config, onDownloadPdf }: TemplatePreviewP
                   </div>
                 )}
                 <div>
-                  <h2 className="text-lg font-bold">{SAMPLE_SELLER.name}</h2>
+                  <h2 className="text-lg font-bold">{both(SAMPLE_SELLER.name, SAMPLE_SELLER.nameAr)}</h2>
                   <p className="text-xs text-white/80">{SAMPLE_SELLER.tagline}</p>
                 </div>
               </div>
-              <div className="text-right">
-                <h1 className="text-xl font-black uppercase tracking-wider">{docTitleMap[activeType]}</h1>
+              <div className="text-end">
+                <h1 className="text-xl font-black uppercase tracking-wider">{docTitle}</h1>
                 <p className="text-xs font-mono text-white/90 font-medium">{docNumberMap[activeType]}</p>
               </div>
             </div>
@@ -316,16 +373,16 @@ export function TemplatePreviewPanel({ config, onDownloadPdf }: TemplatePreviewP
                   LOGO
                 </div>
               )}
-              <h2 className="text-base font-bold text-slate-900">{SAMPLE_SELLER.name}</h2>
+              <h2 className="text-base font-bold text-slate-900">{both(SAMPLE_SELLER.name, SAMPLE_SELLER.nameAr)}</h2>
               <h1 className="text-xl font-extrabold uppercase mt-1" style={{ color: primaryColor }}>
-                {docTitleMap[activeType]}
+                {docTitle}
               </h1>
               <p className="text-xs font-mono text-slate-500 font-semibold">{docNumberMap[activeType]}</p>
               <div className="mt-2 text-[11px] text-slate-500 flex flex-wrap justify-center gap-x-4">
-                {config.header.showCompanyAddress && <span>{SAMPLE_SELLER.address}</span>}
-                {config.header.showCompanyPhone && <span>{SAMPLE_SELLER.phone}</span>}
-                {config.header.showCompanyEmail && <span>{SAMPLE_SELLER.email}</span>}
-                {config.header.showCompanyTaxId && <span>TRN {SAMPLE_SELLER.trn}</span>}
+                {config.header.showCompanyAddress && <span>{both(SAMPLE_SELLER.address, SAMPLE_SELLER.addressAr)}</span>}
+                {config.header.showCompanyPhone && <span dir="ltr">{SAMPLE_SELLER.phone}</span>}
+                {config.header.showCompanyEmail && <span dir="ltr">{SAMPLE_SELLER.email}</span>}
+                {config.header.showCompanyTaxId && <span>{`${lbl('TRN', 'trn')} ${SAMPLE_SELLER.trn}`}</span>}
               </div>
             </div>
           )}
@@ -342,30 +399,30 @@ export function TemplatePreviewPanel({ config, onDownloadPdf }: TemplatePreviewP
                   </div>
                 )}
                 <div className="space-y-0.5">
-                  <h2 className="text-base font-bold text-slate-900">{SAMPLE_SELLER.name}</h2>
+                  <h2 className="text-base font-bold text-slate-900">{both(SAMPLE_SELLER.name, SAMPLE_SELLER.nameAr)}</h2>
                   {config.header.showCompanyAddress && (
-                    <p className="text-[11px] text-slate-500">{SAMPLE_SELLER.address}</p>
+                    <p className="text-[11px] text-slate-500">{both(SAMPLE_SELLER.address, SAMPLE_SELLER.addressAr)}</p>
                   )}
                   <div className="text-[11px] text-slate-500 flex flex-wrap gap-x-3">
-                    {config.header.showCompanyPhone && <span>{SAMPLE_SELLER.phone}</span>}
-                    {config.header.showCompanyEmail && <span>{SAMPLE_SELLER.email}</span>}
+                    {config.header.showCompanyPhone && <span dir="ltr">{SAMPLE_SELLER.phone}</span>}
+                    {config.header.showCompanyEmail && <span dir="ltr">{SAMPLE_SELLER.email}</span>}
                   </div>
                   {config.header.showCompanyTaxId && (
-                    <p className="text-[11px] text-slate-500">TRN {SAMPLE_SELLER.trn}</p>
+                    <p className="text-[11px] text-slate-500">{`${lbl('TRN', 'trn')} ${SAMPLE_SELLER.trn}`}</p>
                   )}
                 </div>
               </div>
 
-              <div className="text-right">
+              <div className="text-end">
                 <h1 className="text-xl font-extrabold uppercase" style={{ color: primaryColor }}>
-                  {docTitleMap[activeType]}
+                  {docTitle}
                 </h1>
                 <p className="text-xs font-mono font-semibold text-slate-600 mt-0.5">{docNumberMap[activeType]}</p>
                 <div className="text-[11px] text-slate-500 mt-2 space-y-0.5 tabular-nums">
-                  <p>Issue date: {formatDate()}</p>
-                  {activeType === 'INVOICE' && <p>Due date: {formatDate(30)}</p>}
-                  {activeType === 'QUOTE' && <p>Valid until: {formatDate(14)}</p>}
-                  {activeType === 'STATEMENT' && <p>Period: last 30 days</p>}
+                  <p>{lbl('Issue date', 'issued')}: {date()}</p>
+                  {activeType === 'INVOICE' && <p>{lbl('Due date', 'due')}: {date(30)}</p>}
+                  {activeType === 'QUOTE' && <p>{lbl('Valid until', 'validUntil')}: {date(14)}</p>}
+                  {activeType === 'STATEMENT' && <p>{lbl('Period: last 30 days', 'periodLast30')}</p>}
                 </div>
               </div>
             </div>
@@ -375,23 +432,25 @@ export function TemplatePreviewPanel({ config, onDownloadPdf }: TemplatePreviewP
           <div className="grid grid-cols-2 gap-6 pt-2">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: secondaryColor }}>
-                {isPurchase ? config.parties.supplierLabel || 'Vendor' : config.parties.billToLabel || 'Bill To'}
+                {isPurchase
+                  ? localizedLabel(config.parties.supplierLabel || 'Vendor', DOCUMENT_LABELS.vendor.ar, language)
+                  : localizedLabel(config.parties.billToLabel || 'Bill To', DOCUMENT_LABELS.billTo.ar, language)}
               </p>
-              <p className="font-semibold text-xs text-slate-900">{party.name}</p>
-              {config.parties.showAddress && <p className="text-[11px] text-slate-500 mt-0.5">{party.address}</p>}
-              {config.parties.showEmail && <p className="text-[11px] text-slate-500">{party.email}</p>}
-              {config.parties.showPhone && <p className="text-[11px] text-slate-500">{party.phone}</p>}
-              {config.parties.showTaxId && <p className="text-[11px] text-slate-500">TRN {party.trn}</p>}
+              <p className="font-semibold text-xs text-slate-900">{both(party.name, party.nameAr)}</p>
+              {config.parties.showAddress && <p className="text-[11px] text-slate-500 mt-0.5">{both(party.address, party.addressAr)}</p>}
+              {config.parties.showEmail && <p className="text-[11px] text-slate-500"><span dir="ltr">{party.email}</span></p>}
+              {config.parties.showPhone && <p className="text-[11px] text-slate-500"><span dir="ltr">{party.phone}</span></p>}
+              {config.parties.showTaxId && <p className="text-[11px] text-slate-500">{`${lbl('TRN', 'trn')} ${party.trn}`}</p>}
             </div>
 
             {activeType === 'DELIVERY_NOTE' && (
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: secondaryColor }}>
-                  {config.parties.shipToLabel || 'Ship To'}
+                  {localizedLabel(config.parties.shipToLabel || 'Ship To', DOCUMENT_LABELS.shipTo.ar, language)}
                 </p>
-                <p className="font-semibold text-xs text-slate-900">{SAMPLE_CUSTOMER.name}, receiving bay 2</p>
-                <p className="text-[11px] text-slate-500 mt-0.5">{SAMPLE_CUSTOMER.address}</p>
-                <p className="text-[11px] text-slate-500">Carrier: own truck, DXB 4471</p>
+                <p className="font-semibold text-xs text-slate-900">{both(`${SAMPLE_CUSTOMER.name}, receiving bay 2`, SAMPLE_CUSTOMER.nameAr)}</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">{both(SAMPLE_CUSTOMER.address, SAMPLE_CUSTOMER.addressAr)}</p>
+                <p className="text-[11px] text-slate-500">{lbl('Carrier', 'carrier')}: own truck, DXB 4471</p>
               </div>
             )}
           </div>
@@ -400,21 +459,21 @@ export function TemplatePreviewPanel({ config, onDownloadPdf }: TemplatePreviewP
           {activeType === 'STATEMENT' && (
             <div className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-2 tabular-nums">
               <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 items-center text-xs">
-                <span className="text-slate-600">Opening balance: <strong className="text-slate-800">{formatMoney(SAMPLE_OPENING_BALANCE)}</strong></span>
-                <span className="text-slate-600">Invoices: <strong className="text-slate-800">{formatMoney(invoiceTotal)}</strong></span>
-                <span className="text-slate-600">Payments: <strong className="text-slate-800">-{formatMoney(SAMPLE_AMOUNT_PAID)}</strong></span>
-                <span className="text-slate-900 font-bold">Closing balance: {formatMoney(closingBalance)}</span>
+                <span className="text-slate-600">{lbl('Opening balance', 'openingBalance')}: <strong className="text-slate-800">{fmt(SAMPLE_OPENING_BALANCE)}</strong></span>
+                <span className="text-slate-600">{lbl('Invoices', 'invoices')}: <strong className="text-slate-800">{fmt(invoiceTotal)}</strong></span>
+                <span className="text-slate-600">{lbl('Payments', 'payments')}: <strong className="text-slate-800">-{fmt(SAMPLE_AMOUNT_PAID)}</strong></span>
+                <span className="text-slate-900 font-bold">{lbl('Closing balance', 'closingBalance')}: {fmt(closingBalance)}</span>
               </div>
               <div className="grid grid-cols-4 gap-2 pt-2 border-t border-slate-200 text-center text-[10px]">
                 {[
-                  ['Current', agedCurrent],
-                  ['1–30 days', SAMPLE_OPENING_BALANCE],
-                  ['31–60 days', 0],
-                  ['Over 60 days', 0],
+                  [lbl('Current', 'agingCurrent'), agedCurrent],
+                  [lbl('1–30 days', 'aging30'), SAMPLE_OPENING_BALANCE],
+                  [lbl('31–60 days', 'aging60'), 0],
+                  [lbl('Over 60 days', 'agingOver60'), 0],
                 ].map(([label, amount]) => (
                   <div key={label} className="bg-white p-1.5 rounded border border-slate-200">
                     <p className="text-slate-500 font-medium">{label}</p>
-                    <p className="font-bold text-slate-800">{formatMoney(amount as number)}</p>
+                    <p className="font-bold text-slate-800">{fmt(amount as number)}</p>
                   </div>
                 ))}
               </div>
@@ -423,7 +482,7 @@ export function TemplatePreviewPanel({ config, onDownloadPdf }: TemplatePreviewP
 
           {/* Items Table */}
           <div className="overflow-hidden rounded-md border border-slate-200">
-            <table className="w-full text-left border-collapse text-xs">
+            <table className="w-full text-start border-collapse text-xs">
               <thead
                 style={{
                   backgroundColor: config.itemsTable.headerBackgroundColor || primaryColor,
@@ -431,13 +490,13 @@ export function TemplatePreviewPanel({ config, onDownloadPdf }: TemplatePreviewP
                 }}
               >
                 <tr>
-                  {config.itemsTable.showItemCode && <th className={`${tableDensity} font-semibold w-24`}>Code</th>}
-                  {config.itemsTable.showDescription && <th className={`${tableDensity} font-semibold`}>Description</th>}
-                  {config.itemsTable.showQuantity && <th className={`${tableDensity} font-semibold text-right w-16`}>Qty</th>}
-                  {config.itemsTable.showUnitPrice && <th className={`${tableDensity} font-semibold text-right w-24`}>Unit Price</th>}
-                  {config.itemsTable.showDiscount && <th className={`${tableDensity} font-semibold text-right w-16`}>Disc %</th>}
-                  {config.itemsTable.showTaxRate && <th className={`${tableDensity} font-semibold text-right w-16`}>VAT %</th>}
-                  {config.itemsTable.showLineTotal && <th className={`${tableDensity} font-semibold text-right w-28`}>Total</th>}
+                  {config.itemsTable.showItemCode && <th className={`${tableDensity} font-semibold w-24`}>{lbl('Code', 'itemCode')}</th>}
+                  {config.itemsTable.showDescription && <th className={`${tableDensity} font-semibold`}>{lbl('Description', 'description')}</th>}
+                  {config.itemsTable.showQuantity && <th className={`${tableDensity} font-semibold text-end w-16`}>{lbl('Qty', 'quantity')}</th>}
+                  {config.itemsTable.showUnitPrice && <th className={`${tableDensity} font-semibold text-end w-24`}>{lbl('Unit Price', 'unitPrice')}</th>}
+                  {config.itemsTable.showDiscount && <th className={`${tableDensity} font-semibold text-end w-16`}>{lbl('Disc %', 'discountPercent')}</th>}
+                  {config.itemsTable.showTaxRate && <th className={`${tableDensity} font-semibold text-end w-16`}>{lbl('VAT %', 'taxPercent')}</th>}
+                  {config.itemsTable.showLineTotal && <th className={`${tableDensity} font-semibold text-end w-28`}>{lbl('Total', 'lineTotal')}</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 tabular-nums">
@@ -450,25 +509,25 @@ export function TemplatePreviewPanel({ config, onDownloadPdf }: TemplatePreviewP
                       <td className={`${tableDensity} font-mono text-[11px] text-slate-500`}>{row.code}</td>
                     )}
                     {config.itemsTable.showDescription && (
-                      <td className={`${tableDensity} font-medium text-slate-800`}>{row.description}</td>
+                      <td className={`${tableDensity} font-medium text-slate-800`}>{both(row.description, row.descriptionAr)}</td>
                     )}
                     {config.itemsTable.showQuantity && (
-                      <td className={`${tableDensity} text-right text-slate-600`}>{row.quantity.toLocaleString('en-AE')}</td>
+                      <td className={`${tableDensity} text-end text-slate-600`}>{toDigits(row.quantity.toLocaleString('en-AE'))}</td>
                     )}
                     {config.itemsTable.showUnitPrice && (
-                      <td className={`${tableDensity} text-right text-slate-600`}>{unitMoney.format(row.unitPrice)}</td>
+                      <td className={`${tableDensity} text-end text-slate-600`}>{fmt(row.unitPrice, true)}</td>
                     )}
                     {config.itemsTable.showDiscount && (
-                      <td className={`${tableDensity} text-right text-slate-500`}>
-                        {row.discount > 0 ? `${row.discount}%` : '-'}
+                      <td className={`${tableDensity} text-end text-slate-500`}>
+                        {row.discount > 0 ? toDigits(`${row.discount}%`) : '-'}
                       </td>
                     )}
                     {config.itemsTable.showTaxRate && (
-                      <td className={`${tableDensity} text-right text-slate-500`}>{row.taxRate}%</td>
+                      <td className={`${tableDensity} text-end text-slate-500`}>{toDigits(`${row.taxRate}%`)}</td>
                     )}
                     {config.itemsTable.showLineTotal && (
-                      <td className={`${tableDensity} text-right font-medium text-slate-800`}>
-                        {formatMoney(lineNet(row))}
+                      <td className={`${tableDensity} text-end font-medium text-slate-800`}>
+                        {fmt(lineNet(row))}
                       </td>
                     )}
                   </tr>
@@ -482,20 +541,20 @@ export function TemplatePreviewPanel({ config, onDownloadPdf }: TemplatePreviewP
             <div data-testid="template-totals" className="w-72 space-y-1.5 text-xs tabular-nums">
               {config.totals.showSubtotal && (
                 <div className="flex justify-between text-slate-600">
-                  <span>Subtotal:</span>
-                  <span>{formatMoney(subtotal)}</span>
+                  <span>{lbl('Subtotal', 'subtotal')}:</span>
+                  <span>{fmt(subtotal)}</span>
                 </div>
               )}
               {showDiscountRow && (
                 <div className="flex justify-between text-slate-600">
-                  <span>Discount:</span>
-                  <span>-{formatMoney(totals.discounts)}</span>
+                  <span>{lbl('Discount', 'discount')}:</span>
+                  <span>-{fmt(totals.discounts)}</span>
                 </div>
               )}
               {config.totals.showTaxSummary && (
                 <div className="flex justify-between text-slate-600">
-                  <span>VAT ({SAMPLE_VAT_RATE}%):</span>
-                  <span>{formatMoney(totals.tax)}</span>
+                  <span>{lbl('VAT', 'vat')} ({toDigits(`${SAMPLE_VAT_RATE}%`)}):</span>
+                  <span>{fmt(totals.tax)}</span>
                 </div>
               )}
               <div
@@ -508,19 +567,19 @@ export function TemplatePreviewPanel({ config, onDownloadPdf }: TemplatePreviewP
                     : { borderColor: '#e2e8f0', color: '#0f172a' }
                 }
               >
-                <span className="text-sm">Total:</span>
-                <span className="text-sm">{formatMoney(totals.total)}</span>
+                <span className="text-sm">{lbl('Total', 'total')}:</span>
+                <span className="text-sm">{fmt(totals.total)}</span>
               </div>
               {showsPayment && config.totals.showAmountPaid && (
                 <div className="flex justify-between text-slate-600 text-[11px]">
-                  <span>Amount paid:</span>
-                  <span>{formatMoney(totals.amountPaid)}</span>
+                  <span>{lbl('Amount paid', 'amountPaid')}:</span>
+                  <span>{fmt(totals.amountPaid)}</span>
                 </div>
               )}
               {showsPayment && config.totals.showBalanceDue && (
                 <div className="flex justify-between font-semibold text-slate-900 text-xs border-t border-slate-100 pt-1">
-                  <span>Balance due:</span>
-                  <span style={{ color: primaryColor }}>{formatMoney(totals.balanceDue)}</span>
+                  <span>{lbl('Balance due', 'balanceDue')}:</span>
+                  <span style={{ color: primaryColor }}>{fmt(totals.balanceDue)}</span>
                 </div>
               )}
             </div>
@@ -530,7 +589,7 @@ export function TemplatePreviewPanel({ config, onDownloadPdf }: TemplatePreviewP
           <div className="pt-6 border-t border-slate-100 space-y-4 text-[11px] text-slate-500">
             {config.footer.paymentTerms && (
               <div>
-                <p className="font-semibold text-slate-700">Payment Terms</p>
+                <p className="font-semibold text-slate-700">{lbl('Payment Terms', 'paymentTerms')}</p>
                 <p className="mt-0.5">{config.footer.paymentTerms}</p>
               </div>
             )}
@@ -538,22 +597,22 @@ export function TemplatePreviewPanel({ config, onDownloadPdf }: TemplatePreviewP
             {config.footer.bankDetails &&
               (config.footer.bankDetails.bankName || config.footer.bankDetails.accountNumber) && (
                 <div className="rounded border border-slate-100 bg-slate-50 p-2.5 space-y-1">
-                  <p className="font-semibold text-slate-700">Bank & Wire Transfer Details</p>
+                  <p className="font-semibold text-slate-700">{lbl('Bank & Wire Transfer Details', 'bankDetails')}</p>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px]">
                     {config.footer.bankDetails.bankName && (
-                      <p>Bank: <span className="font-medium text-slate-800">{config.footer.bankDetails.bankName}</span></p>
+                      <p>{lbl('Bank', 'bank')}: <span className="font-medium text-slate-800">{config.footer.bankDetails.bankName}</span></p>
                     )}
                     {config.footer.bankDetails.accountName && (
-                      <p>Beneficiary: <span className="font-medium text-slate-800">{config.footer.bankDetails.accountName}</span></p>
+                      <p>{lbl('Beneficiary', 'accountName')}: <span className="font-medium text-slate-800">{config.footer.bankDetails.accountName}</span></p>
                     )}
                     {config.footer.bankDetails.accountNumber && (
-                      <p>Account #: <span className="font-mono text-slate-800">{config.footer.bankDetails.accountNumber}</span></p>
+                      <p>{lbl('Account #', 'accountNumber')}: <span className="font-mono text-slate-800">{config.footer.bankDetails.accountNumber}</span></p>
                     )}
                     {config.footer.bankDetails.routingOrIban && (
-                      <p>Routing / IBAN: <span className="font-mono text-slate-800">{config.footer.bankDetails.routingOrIban}</span></p>
+                      <p>{lbl('Routing / IBAN', 'iban')}: <span className="font-mono text-slate-800">{config.footer.bankDetails.routingOrIban}</span></p>
                     )}
                     {config.footer.bankDetails.swiftBic && (
-                      <p>SWIFT/BIC: <span className="font-mono text-slate-800">{config.footer.bankDetails.swiftBic}</span></p>
+                      <p>{lbl('SWIFT/BIC', 'swift')}: <span className="font-mono text-slate-800">{config.footer.bankDetails.swiftBic}</span></p>
                     )}
                   </div>
                 </div>
@@ -561,7 +620,7 @@ export function TemplatePreviewPanel({ config, onDownloadPdf }: TemplatePreviewP
 
             {config.footer.notes && (
               <div>
-                <p className="font-semibold text-slate-700">Notes</p>
+                <p className="font-semibold text-slate-700">{lbl('Notes', 'notes')}</p>
                 <p className="mt-0.5 text-slate-500">{config.footer.notes}</p>
               </div>
             )}
@@ -571,19 +630,21 @@ export function TemplatePreviewPanel({ config, onDownloadPdf }: TemplatePreviewP
                 <div className="w-56">
                   <div className="border-b border-slate-400 h-8" />
                   <p className="mt-1 text-[10px] text-slate-600 font-medium">
-                    {config.footer.signatureLabel || 'Authorized Signature'}
+                    {localizedLabel(config.footer.signatureLabel || 'Authorized Signature', DOCUMENT_LABELS.authorizedSignature.ar, language)}
                   </p>
                 </div>
                 <div className="w-36">
                   <div className="border-b border-slate-400 h-8" />
-                  <p className="mt-1 text-[10px] text-slate-600 font-medium">Date</p>
+                  <p className="mt-1 text-[10px] text-slate-600 font-medium">{lbl('Date', 'date')}</p>
                 </div>
               </div>
             )}
 
             {config.footer.showPageNumbers && (
               <div className="text-center text-[10px] text-slate-500 pt-2 border-t border-slate-50">
-                Page 1 of 1
+                {toDigits(
+                  localizedLabel('Page 1 of 1', `${DOCUMENT_LABELS.page.ar} 1 ${DOCUMENT_LABELS.of.ar} 1`, language),
+                )}
               </div>
             )}
           </div>

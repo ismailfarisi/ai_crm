@@ -42,6 +42,7 @@ import {
   provisionOrderForQuoteInTransaction,
 } from '../orders/order-provisioning';
 import { DocumentTemplatesService } from '../document-templates/document-templates.service';
+import { DocumentLocalizationService } from '../document-templates/document-localization.service';
 import { DocumentPdfRendererService } from '../document-templates/document-pdf-renderer.service';
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -66,6 +67,8 @@ export class InvoicesService {
     private readonly documentTemplatesService?: DocumentTemplatesService,
     private readonly pdfRenderer?: DocumentPdfRendererService,
     @Optional() private readonly moduleRef?: ModuleRef,
+    @Optional()
+    private readonly documentLocalization?: DocumentLocalizationService,
   ) {}
 
   /**
@@ -530,6 +533,7 @@ export class InvoicesService {
       items: (invoice.items || []).map((item) => ({
         code: (item as any).sku || (item as any).code || undefined,
         description: item.description || '',
+        descriptionAr: item.descriptionAr || undefined,
         quantity: item.quantity != null ? Number(item.quantity) : undefined,
         unitPrice: item.unitPrice != null ? Number(item.unitPrice) : undefined,
         discount: item.discount != null ? Number(item.discount) : undefined,
@@ -560,8 +564,15 @@ export class InvoicesService {
     };
 
     const config = template?.config ?? DEFAULT_DOCUMENT_TEMPLATE_CONFIG;
+    const localized =
+      (await this.documentLocalization?.localize(
+        tenantId,
+        invoice.customerId,
+        docData,
+        config,
+      )) ?? docData;
     const buffer = this.pdfRenderer
-      ? await this.pdfRenderer.render(docData, config)
+      ? await this.pdfRenderer.render(localized, config)
       : await this.invoicePdfService.generate(
           invoice,
           organization?.name || 'Kerf',

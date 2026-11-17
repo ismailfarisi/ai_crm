@@ -7,6 +7,8 @@ import type { z } from 'zod';
 import {
   createCustomerSchema,
   defaultVatStatus,
+  DOCUMENT_LANGUAGE_LABELS,
+  DOCUMENT_LANGUAGES,
   EMIRATE_NAMES,
   EMIRATES,
   isUaeCountry,
@@ -37,11 +39,13 @@ type SubmitValues = z.output<typeof createCustomerSchema>;
 
 const EMPTY: FormValues = {
   companyName: '',
+  companyNameAr: '',
   contactName: '',
   email: '',
   phone: '',
   addressLine1: '',
   addressLine2: '',
+  addressAr: '',
   city: '',
   postalCode: '',
   country: '',
@@ -51,6 +55,7 @@ const EMPTY: FormValues = {
   currency: 'USD',
   paymentTermsDays: 30,
   notes: '',
+  documentLanguage: null,
 };
 
 const VAT_STATUS_OPTIONS = [
@@ -106,6 +111,9 @@ export function CustomerFormDialog({ open, onClose, customer }: CustomerFormDial
             phone: customer.phone ?? '',
             addressLine1: customer.addressLine1 ?? '',
             addressLine2: customer.addressLine2 ?? '',
+            companyNameAr: customer.companyNameAr ?? '',
+            addressAr: customer.addressAr ?? '',
+            documentLanguage: customer.documentLanguage ?? null,
             city: customer.city ?? '',
             postalCode: customer.postalCode ?? '',
             country: customer.country ?? '',
@@ -206,6 +214,34 @@ export function CustomerFormDialog({ open, onClose, customer }: CustomerFormDial
           label="Address line 2"
           error={errors.addressLine2?.message}
           {...register('addressLine2')}
+        />
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Input
+            label="Name in Arabic"
+            dir="auto"
+            lang="ar"
+            hint="Printed on Arabic and bilingual documents."
+            error={errors.companyNameAr?.message}
+            {...register('companyNameAr')}
+          />
+          <Select
+            label="Document language"
+            hint="Quotes and invoices print in this language."
+            options={[
+              { value: '', label: 'Use the template default' },
+              ...DOCUMENT_LANGUAGES.map((value) => ({ value, label: DOCUMENT_LANGUAGE_LABELS[value] })),
+            ]}
+            error={errors.documentLanguage?.message}
+            {...register('documentLanguage', { setValueAs: (v) => v || null })}
+          />
+        </div>
+        <Input
+          label="Address in Arabic"
+          dir="auto"
+          lang="ar"
+          error={errors.addressAr?.message}
+          {...register('addressAr')}
         />
 
         <div className="grid gap-4 sm:grid-cols-3">

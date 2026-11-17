@@ -28,6 +28,7 @@ const ITEM: CatalogItemDto = {
   sku: 'BOX-MAILER-S',
   name: 'Small mailer box',
   description: null,
+  descriptionAr: null,
   uom: 'Units',
   listPrice: 1.4,
   standardCost: 0.82,

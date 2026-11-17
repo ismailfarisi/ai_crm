@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import PDFDocument from 'pdfkit';
@@ -14,6 +14,7 @@ import type {
 import type { SalesOrder } from './entities/sales-order.entity';
 import { Organization } from '../organizations/entities/organization.entity';
 import { DocumentTemplatesService } from '../document-templates/document-templates.service';
+import { DocumentLocalizationService } from '../document-templates/document-localization.service';
 import { DocumentPdfRendererService } from '../document-templates/document-pdf-renderer.service';
 
 /**
@@ -27,6 +28,8 @@ export class PackingSlipPdfService {
     private readonly documentTemplatesService?: DocumentTemplatesService,
     @InjectRepository(Organization)
     private readonly organizationRepository?: Repository<Organization>,
+    @Optional()
+    private readonly documentLocalization?: DocumentLocalizationService,
   ) {}
 
   async generate(
@@ -59,6 +62,13 @@ export class PackingSlipPdfService {
           .filter(Boolean)
           .join(', ') || undefined;
 
+      const descriptionsAr =
+        (await this.documentLocalization?.orderLineDescriptionsAr(
+          note.tenantId,
+          order?.quoteId,
+          lines.map((line) => line.salesOrderLineId),
+        )) ?? new Map<string, string>();
+
       const docData: UniversalDocumentData = {
         type: 'DELIVERY_NOTE',
         number: note.deliveryNoteNumber,
@@ -85,8 +95,8 @@ export class PackingSlipPdfService {
           trackingReference: note.trackingReference || undefined,
         },
         items: lines.map((line) => ({
-          code: line.salesOrderLineId || undefined,
           description: line.description + (line.uom ? ` (${line.uom})` : ''),
+          descriptionAr: descriptionsAr.get(line.salesOrderLineId),
           quantity: Number(line.qty || 0),
         })),
         totals: {
@@ -135,7 +145,17 @@ export class PackingSlipPdfService {
         },
       };
 
-      return this.pdfRenderer.render(docData, config);
+      const localized =
+        (await this.documentLocalization?.localize(
+          note.tenantId,
+          order?.customerId,
+          docData,
+          config,
+        )) ?? docData;
+      // The ship-to is typed per delivery. The customer's Arabic address is
+      // their billing address and must not replace it.
+      localized.party = { ...localized.party, addressAr: undefined };
+      return this.pdfRenderer.render(localized, config);
     }
 
     return this.legacyGenerate(note, lines, order, organizationName);

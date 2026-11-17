@@ -19,6 +19,9 @@ import {
 } from 'lucide-react';
 import {
   DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+  DOCUMENT_LANGUAGE_LABELS,
+  DOCUMENT_LANGUAGES,
+  type DocumentLanguage,
   type DocumentTemplateConfig,
   type DocumentType,
 } from '@saas/shared';
@@ -404,6 +407,50 @@ export function TemplateStudio({ templateId }: TemplateStudioProps) {
                       ]}
                     />
                   </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <Select
+                      label="Document language"
+                      value={config.localization?.language ?? 'en'}
+                      onChange={(e) =>
+                        setConfig((prev) => ({
+                          ...prev,
+                          localization: {
+                            ...DEFAULT_DOCUMENT_TEMPLATE_CONFIG.localization,
+                            ...prev.localization,
+                            language: e.target.value as DocumentLanguage,
+                          },
+                        }))
+                      }
+                      options={DOCUMENT_LANGUAGES.map((value) => ({
+                        value,
+                        label: DOCUMENT_LANGUAGE_LABELS[value],
+                      }))}
+                    />
+
+                    <Select
+                      label="Digits"
+                      value={config.localization?.digits ?? 'western'}
+                      disabled={(config.localization?.language ?? 'en') === 'en'}
+                      onChange={(e) =>
+                        setConfig((prev) => ({
+                          ...prev,
+                          localization: {
+                            ...DEFAULT_DOCUMENT_TEMPLATE_CONFIG.localization,
+                            ...prev.localization,
+                            digits: e.target.value as 'western' | 'arabic-indic',
+                          },
+                        }))
+                      }
+                      options={[
+                        { value: 'western', label: 'Western (123)' },
+                        { value: 'arabic-indic', label: 'Arabic-Indic (١٢٣)' },
+                      ]}
+                    />
+                  </div>
+                  <p className="text-[11px] text-ink-muted">
+                    A customer&apos;s own language setting wins over this one.
+                  </p>
 
                   <Input
                     label="Logo URL"

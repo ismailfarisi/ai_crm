@@ -68,6 +68,8 @@ export interface CatalogItemDto {
   sku: string;
   name: string;
   description: string | null;
+  /** Copied onto quote lines as their Arabic description. */
+  descriptionAr: string | null;
   uom: string;
   listPrice: number;
   /** Zeroed by the API for an actor without `quote:view_cost`. */

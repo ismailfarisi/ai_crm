@@ -365,6 +365,24 @@ export function QuoteLinesTable({
                           className={cn(CONTROL, 'w-full px-2.5 placeholder:text-ink-subtle')}
                         />
                       )}
+                      {readOnly ? (
+                        item.descriptionAr ? (
+                          <span className="mt-0.5 block text-xs text-ink-muted" lang="ar" dir="rtl">
+                            {item.descriptionAr}
+                          </span>
+                        ) : null
+                      ) : (
+                        <input
+                          type="text"
+                          value={item.descriptionAr ?? ''}
+                          placeholder="Arabic description (optional)"
+                          aria-label={name('Arabic description')}
+                          lang="ar"
+                          dir="auto"
+                          onChange={(e) => handleItemChange(item.id, 'descriptionAr', e.target.value || undefined)}
+                          className={cn(CONTROL, 'mt-1 h-8 w-full px-2.5 text-xs placeholder:text-ink-subtle')}
+                        />
+                      )}
                       {/* A typed line has a price but no cost, so the margin counts it as pure profit. */}
                       {!readOnly && onFindInCatalog && !item.cost && (item.description.trim() || price > 0) && (
                         <button

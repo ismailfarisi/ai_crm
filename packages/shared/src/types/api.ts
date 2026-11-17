@@ -1,6 +1,7 @@
 import type { Permission } from '../rbac/permissions';
 import type { Emirate, VatStatus } from '../tax/uae';
 import type { ContactSource, ContactStatus } from '../schemas/contact';
+import type { DocumentLanguage } from '../templates/document-language';
 
 export interface PaginatedResult<T> {
   items: T[];
@@ -116,16 +117,21 @@ export interface CustomerDto {
   contactName: string | null;
   email: string | null;
   phone: string | null;
+  /** Arabic company name and address, printed on Arabic and bilingual documents. */
+  companyNameAr: string | null;
   addressLine1: string | null;
   addressLine2: string | null;
   city: string | null;
   postalCode: string | null;
+  addressAr: string | null;
   country: string | null;
   taxId: string | null;
   emirate: Emirate | null;
   vatStatus: VatStatus;
   currency: string | null;
   paymentTermsDays: number | null;
+  /** Null: documents use the template's language. */
+  documentLanguage: DocumentLanguage | null;
   notes: string | null;
   createdAt: string;
   updatedAt: string;

@@ -65,6 +65,15 @@ export class Organization extends BaseEntity {
   @Column({ name: 'legal_name', type: 'varchar', length: 200, nullable: true })
   legalName: string | null;
 
+  /** The legal name in Arabic, for Arabic and bilingual documents. */
+  @Column({
+    name: 'legal_name_ar',
+    type: 'varchar',
+    length: 200,
+    nullable: true,
+  })
+  legalNameAr: string | null;
+
   /** VAT or sales tax registration, printed on every tax document. */
   @Column({ name: 'tax_id', type: 'varchar', length: 60, nullable: true })
   taxId: string | null;
@@ -116,6 +125,10 @@ export class Organization extends BaseEntity {
   /** ISO 3166-1 alpha-2, so tax rules can match on it. */
   @Column({ type: 'char', length: 2, nullable: true })
   country: string | null;
+
+  /** The whole address in Arabic as it should print, one line per row. */
+  @Column({ name: 'address_ar', type: 'varchar', length: 500, nullable: true })
+  addressAr: string | null;
 
   /** Printed under the totals: payment instructions, bank details, terms. */
   @Column({ name: 'document_footer', type: 'text', nullable: true })
