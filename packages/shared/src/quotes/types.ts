@@ -358,6 +358,12 @@ export interface QuoteDto {
   version?: number;
   parentQuoteId?: string | null;
   supersededAt?: string | null;
+  /** Null follows the organisation's default until the quote is first sent. */
+  proofRequired?: boolean | null;
+  customerResponse?: 'DECLINED' | 'CHANGES_REQUESTED' | null;
+  customerResponseNote?: string | null;
+  customerRespondedAt?: string | null;
+  customerRespondedByName?: string | null;
   createdAt: string;
   updatedAt: string;
 }

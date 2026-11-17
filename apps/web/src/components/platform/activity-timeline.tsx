@@ -23,7 +23,14 @@ export function describeAction(action: string): string {
     login: 'Signed in',
     'change password': 'Changed password',
     execute: 'Ran from chat',
+    'customer accept': 'Accepted',
+    'customer decline': 'Declined',
+    'customer request changes': 'Changes requested on',
     'mark accepted': 'Marked accepted',
+    'proof approve': 'Proof approved',
+    'proof request changes': 'Proof sent back',
+    'proof requirement': 'Proof rule changed',
+    proofs: 'Proof uploaded',
     revise: 'Revised',
     send: 'Sent',
     submit: 'Submitted',
@@ -49,6 +56,11 @@ const FIELD_NAMES: Record<string, string> = {
   termsAndConditions: 'terms',
   billingSchedule: 'billing',
   supersededAt: 'superseded',
+  customerResponse: 'customer response',
+  customerResponseNote: 'customer response',
+  customerRespondedAt: 'customer response',
+  customerRespondedByName: 'customer response',
+  proofRequired: 'proof rule',
 };
 
 /** `acceptedByName` → "acceptance", `leadTimeDays` → "lead time days"; each said once. */

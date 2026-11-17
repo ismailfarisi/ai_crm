@@ -197,6 +197,31 @@ export class Quote {
   @Column({ name: 'superseded_at', type: 'timestamptz', nullable: true })
   supersededAt: Date | null;
 
+  /**
+   * Accepting waits for the latest proof to be approved. Null follows the
+   * organisation's default; sending the link settles it.
+   */
+  @Column({ name: 'proof_required', type: 'boolean', nullable: true })
+  proofRequired: boolean | null;
+
+  /** The customer's last word short of accepting. Cleared when the link is sent again. */
+  @Column({ name: 'customer_response', type: 'varchar', length: 30, nullable: true })
+  customerResponse: 'DECLINED' | 'CHANGES_REQUESTED' | null;
+
+  @Column({ name: 'customer_response_note', type: 'text', nullable: true })
+  customerResponseNote: string | null;
+
+  @Column({ name: 'customer_responded_at', type: 'timestamptz', nullable: true })
+  customerRespondedAt: Date | null;
+
+  @Column({
+    name: 'customer_responded_by_name',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  customerRespondedByName: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

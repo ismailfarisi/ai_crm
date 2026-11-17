@@ -492,6 +492,59 @@ wrote. Slot schemas strip unknown keys, so a model cannot set them either.
 
 ---
 
+## Customer quote link
+
+### Proof links are minted per page load, not per token — by design
+
+The public quote page gets a signed link for each proof file when it loads.
+The link is the same short-lived attachment link staff get (minutes, not
+days), and it is only minted for files a `quote_proofs` row names on the quote
+the token resolved to. Other quote attachments never reach the public DTO.
+The link itself is not bound to the token: anyone holding it can open that
+one file until it lapses. The page refetches shortly before expiry, so a tab
+left open still opens the artwork.
+
+### The proof rule is fixed when the link is issued — by design
+
+A quote that follows the organisation default takes the default's value when
+its link is issued or it is sent. Changing the default later does not change
+what a customer who already holds a link must do. Staff can still switch the
+rule on the quote itself.
+
+### A revision carries the proofs over, verdicts included — by design
+
+Revising a quote usually changes the price, not the artwork. The revision
+gets copies of the proof rows (same attachments, same versions and verdicts),
+so a customer who approved v2 does not have to approve it again because the
+quantity moved. Upload a new version if the artwork changed too.
+
+### Answering a proof is allowed after acceptance — by design
+
+Artwork is often signed off after the order is placed. Accept, decline and
+request changes stop once the quote is accepted; approving or sending back a
+proof does not. Expired, replaced and declined links refuse both, as before.
+
+### The quote owner is the first person on its audit trail — open
+
+Quotes have no owner column. Customer responses notify active holders of
+quote approve or update, plus the first signed-in actor on the quote's audit
+trail (or on the quote it revises). A quote created by a chat skill or a
+script before auditing existed may have no such person; the permission
+holders still hear about it.
+
+### One unread bell item per quote and per proof — by design
+
+A second response on the same quote while the first is still unread updates
+that bell item rather than adding another. Every response still sends its own
+email and audit row.
+
+### Staff notes on proof uploads are API-only — open
+
+`POST /quotes/:id/proofs` takes an optional `note` shown to the customer under
+the proof. The upload button sends the file alone; a note field is deferred.
+
+---
+
 ## Bill capture
 
 ### Capture proposes; it never saves — by design

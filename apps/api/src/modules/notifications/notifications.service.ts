@@ -63,7 +63,7 @@ export class NotificationsService {
          JOIN "roles" r ON r."id" = ur."roleId"
          LEFT JOIN "role_permissions" rp ON rp."roleId" = r."id"
          LEFT JOIN "permissions" p ON p."id" = rp."permissionId"
-         WHERE u."organizationId" = $1
+         WHERE u."tenant_id" = $1
            AND u."isActive"
            AND (r."grantsAllPermissions" OR p."key" = $2)`,
         [tenantId, permission],
@@ -109,6 +109,49 @@ export class NotificationsService {
       }
       this.logger.warn(
         `Could not notify holders of ${permission}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return 0;
+    }
+  }
+
+  /**
+   * Notifies these users by id. A repeat about the same thing while the first
+   * is still unread refreshes it rather than stacking a second bell item.
+   */
+  async notifyUsers(
+    tenantId: string,
+    userIds: string[],
+    input: NotificationInput,
+  ): Promise<number> {
+    const recipients = [...new Set(userIds)];
+    if (!recipients.length) return 0;
+    try {
+      const values: unknown[] = [];
+      const tuples = recipients.map((userId, i) => {
+        const o = i * 8;
+        values.push(
+          tenantId,
+          userId,
+          input.type,
+          input.title.slice(0, 200),
+          input.body ?? null,
+          input.link ?? null,
+          input.entityType ?? null,
+          input.entityId ?? null,
+        );
+        return `($${o + 1}, $${o + 2}, $${o + 3}, $${o + 4}, $${o + 5}, $${o + 6}, $${o + 7}, $${o + 8})`;
+      });
+      await this.dataSource.manager.query(
+        `INSERT INTO "notifications" ("tenant_id", "user_id", "type", "title", "body", "link", "entity_type", "entity_id")
+         VALUES ${tuples.join(', ')}
+         ON CONFLICT ("user_id", "type", "entity_id") WHERE "read_at" IS NULL AND "entity_id" IS NOT NULL
+         DO UPDATE SET "title" = EXCLUDED."title", "body" = EXCLUDED."body", "created_at" = now()`,
+        values,
+      );
+      return recipients.length;
+    } catch (err) {
+      this.logger.warn(
+        `Could not notify users: ${err instanceof Error ? err.message : String(err)}`,
       );
       return 0;
     }

@@ -92,6 +92,8 @@ export function billingRestriction(
  * ------------------------------------------------------------------ */
 
 export type NotificationType =
+  | 'QUOTE_CUSTOMER_RESPONSE'
+  | 'QUOTE_PROOF_RESPONSE'
   | 'QUOTE_AWAITING_APPROVAL'
   | 'APPROVAL_REQUESTED'
   | 'APPROVAL_REMINDER'

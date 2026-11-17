@@ -24,6 +24,7 @@ import {
   type Permission,
   type QuoteLineItem,
 } from '@saas/shared';
+import { carryProofsOver } from './quote-proofs.service';
 import { Quote, QuoteCreatedBy, QuoteStatus } from './entities/quote.entity';
 import { Invoice } from './entities/invoice.entity';
 import { Organization } from '../organizations/entities/organization.entity';
@@ -861,12 +862,15 @@ export class QuotesService {
           termsAndConditions: original.termsAndConditions,
           notes: original.notes,
           billingSchedule: original.billingSchedule,
+          proofRequired: original.proofRequired,
           version: original.version + 1,
           parentQuoteId: original.id,
           status: QuoteStatus.DRAFT,
           workflowId: null,
         });
-        return repo.save(revision);
+        const saved = await repo.save(revision);
+        await carryProofsOver(manager, tenantId, original.id, saved.id);
+        return saved;
       })
       .then(async (saved) => {
         // Outside the transaction: a workflow that starts for a revision that

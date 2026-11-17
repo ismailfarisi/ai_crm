@@ -7,6 +7,8 @@
  * agreeing to) and copied onto the order when the order is created.
  */
 
+import type { CustomerQuoteResponse, PublicQuoteProofDto } from '../quotes/proofs';
+
 export type SalesOrderStatus = 'OPEN' | 'IN_PRODUCTION' | 'FULFILLED' | 'CLOSED' | 'CANCELLED';
 
 export type BillingKind = 'DEPOSIT' | 'MILESTONE' | 'FINAL';
@@ -153,7 +155,12 @@ export const ACCEPTANCE_LINK_DEFAULT_DAYS = 30;
  * someone else. Each case tells the customer to contact the sender, which is
  * the only useful thing they can do.
  */
-export type AcceptanceRefusal = 'NOT_FOUND' | 'EXPIRED' | 'ALREADY_ACCEPTED' | 'NO_LONGER_AVAILABLE';
+export type AcceptanceRefusal =
+  | 'NOT_FOUND'
+  | 'EXPIRED'
+  | 'ALREADY_ACCEPTED'
+  | 'NO_LONGER_AVAILABLE'
+  | 'DECLINED';
 
 export function acceptanceRefusalMessage(reason: AcceptanceRefusal): string {
   switch (reason) {
@@ -161,6 +168,8 @@ export function acceptanceRefusalMessage(reason: AcceptanceRefusal): string {
       return 'This quote has already been accepted. Nothing more is needed.';
     case 'EXPIRED':
       return 'This link has expired. Please ask for an updated quote.';
+    case 'DECLINED':
+      return 'You declined this quote. Please contact the sender if you have changed your mind.';
     case 'NO_LONGER_AVAILABLE':
       return 'This quote is no longer available. Please contact the sender for the current version.';
     default:
@@ -265,4 +274,17 @@ export interface PublicQuoteDto {
   billingSchedule: { label: string; percent: number; totalAmount: number }[];
   acceptedAt: string | null;
   acceptedByName: string | null;
+  /** The customer's last word short of accepting: a decline or a request for changes. */
+  customerResponse: {
+    kind: CustomerQuoteResponse;
+    note: string | null;
+    name: string | null;
+    at: string | null;
+  } | null;
+  /** Artwork proofs, newest first. Only this quote's proof files, never its other attachments. */
+  proofs: PublicQuoteProofDto[];
+  /** Accepting waits for the latest proof to be approved. */
+  proofRequired: boolean;
+  /** True while that requirement is not yet met. */
+  proofBlocksAcceptance: boolean;
 }

@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CheckCircle2, CircleAlert, Loader2 } from 'lucide-react';
+import { CircleAlert, Loader2 } from 'lucide-react';
 import type { PublicQuoteDto } from '@saas/shared';
 import { API_PUBLIC_URL } from '@/lib/api/config';
+import { PublicQuoteProofs, PublicQuoteRespond } from './public-quote-responses';
 
 type LoadState =
   | { kind: 'loading' }
@@ -39,9 +40,7 @@ async function call(path: string, init?: RequestInit): Promise<PublicQuoteDto> {
 export function PublicQuoteView({ token }: { token: string }) {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [name, setName] = useState('');
-  const [agreed, setAgreed] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const setQuote = (quote: PublicQuoteDto) => setState({ kind: 'ready', quote });
 
   useEffect(() => {
     let ignore = false;
@@ -53,21 +52,24 @@ export function PublicQuoteView({ token }: { token: string }) {
     };
   }, [token]);
 
-  const accept = async () => {
-    setSubmitting(true);
-    setSubmitError(null);
-    try {
-      const quote = await call(`${encodeURIComponent(token)}/accept`, {
-        method: 'POST',
-        body: JSON.stringify({ name: name.trim() }),
-      });
-      setState({ kind: 'ready', quote });
-    } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  // Proof links are signed for minutes, not days. Fetch fresh ones shortly
+  // before they lapse, so a page left open still opens the artwork.
+  const nextExpiry = state.kind === 'ready'
+    ? Math.min(
+        ...state.quote.proofs
+          .map((p) => (p.urlExpiresAt ? new Date(p.urlExpiresAt).getTime() : Infinity)),
+      )
+    : Infinity;
+  useEffect(() => {
+    if (!Number.isFinite(nextExpiry)) return;
+    const wait = Math.max(nextExpiry - Date.now() - 30_000, 5_000);
+    const timer = setTimeout(() => {
+      call(encodeURIComponent(token))
+        .then((quote) => setState({ kind: 'ready', quote }))
+        .catch(() => undefined);
+    }, wait);
+    return () => clearTimeout(timer);
+  }, [nextExpiry, token]);
 
   if (state.kind === 'loading') {
     return (
@@ -225,57 +227,24 @@ export function PublicQuoteView({ token }: { token: string }) {
           </section>
         )}
 
+        <PublicQuoteProofs
+          quote={quote}
+          token={token}
+          call={call}
+          name={name}
+          onNameChange={setName}
+          onChange={setQuote}
+        />
+
         <footer className="border-t border-line p-6">
-          {quote.acceptedAt ? (
-            <p className="flex items-center gap-2 text-sm text-success">
-              <CheckCircle2 className="size-5" />
-              Accepted by {quote.acceptedByName} on {new Date(quote.acceptedAt).toLocaleDateString()}. Thank
-              you — {quote.organizationName || 'the team'} will be in touch.
-            </p>
-          ) : (
-            <form
-              className="space-y-3"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void accept();
-              }}
-            >
-              <label className="block text-sm">
-                <span className="mb-1 block text-ink">Your full name</span>
-                <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  autoComplete="name"
-                  required
-                  minLength={2}
-                  maxLength={255}
-                  className="w-full max-w-sm rounded border border-line bg-surface px-3 py-2 text-ink"
-                />
-              </label>
-              <label className="flex items-start gap-2 text-sm text-ink-muted">
-                <input
-                  type="checkbox"
-                  checked={agreed}
-                  onChange={(e) => setAgreed(e.target.checked)}
-                  className="mt-0.5"
-                />
-                I accept this quote and its terms on behalf of {quote.customerName}.
-              </label>
-              {submitError && (
-                <p role="alert" className="text-sm text-danger">
-                  {submitError}
-                </p>
-              )}
-              <button
-                type="submit"
-                disabled={!agreed || name.trim().length < 2 || submitting}
-                className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-2 text-sm font-semibold text-on-brand disabled:opacity-50"
-              >
-                {submitting && <Loader2 className="size-4 animate-spin" />}
-                Accept quote
-              </button>
-            </form>
-          )}
+          <PublicQuoteRespond
+            quote={quote}
+            token={token}
+            call={call}
+            name={name}
+            onNameChange={setName}
+            onChange={setQuote}
+          />
         </footer>
       </article>
     </main>

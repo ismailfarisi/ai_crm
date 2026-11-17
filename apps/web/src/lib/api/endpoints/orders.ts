@@ -1,11 +1,13 @@
 /* One slice of the browser's API surface. Composed in ./index.ts. */
 import type {
   QuoteDto,
+  QuoteProofsSummaryDto,
   SendQuoteInput,
   SalesOrderDto,
   SalesOrderStatus,
+  WorkOrderProofDto,
 } from '@saas/shared';
-import { apiFetch } from '../client';
+import { apiFetch, apiUpload } from '../client';
 
 export interface SalesOrderListParams {
   status?: SalesOrderStatus;
@@ -43,6 +45,17 @@ export const ordersEndpoints = {
     /** For a customer who said yes some other way; raises the order like accepting the link does. */
     markAccepted: (quoteId: string, body: { name: string }) =>
       apiFetch<QuoteDto>(`/quotes/${quoteId}/mark-accepted`, { method: 'POST', body }),
+    proofs: (quoteId: string) => apiFetch<QuoteProofsSummaryDto>(`/quotes/${quoteId}/proofs`),
+    uploadProof: (quoteId: string, file: File) =>
+      apiUpload<QuoteProofsSummaryDto>(`/quotes/${quoteId}/proofs`, file),
+    setProofRequired: (quoteId: string, required: boolean) =>
+      apiFetch<{ proofRequired: boolean }>(`/quotes/${quoteId}/proof-requirement`, {
+        method: 'PUT',
+        body: { required },
+      }),
+    /** The approved artwork behind a work order, for the floor. */
+    workOrderProof: (workOrderId: string) =>
+      apiFetch<WorkOrderProofDto | null>(`/work-orders/${workOrderId}/proof`),
   },
 };
 
