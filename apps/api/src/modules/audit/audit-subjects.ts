@@ -152,6 +152,10 @@ export const AUDIT_REDACTED_BODY_KEYS = new Set(
     'newPassword',
     // An automation webhook's HMAC secret (`triggerConfig.signatureSecret`).
     'signatureSecret',
+    // A tenant's payment provider keys (`PUT /payments/settings`).
+    'encryptedCredentials',
+    'secretKey',
+    'webhookSecret',
   ].map((k) => k.toLowerCase()),
 );
 

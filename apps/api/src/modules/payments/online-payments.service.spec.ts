@@ -1,4 +1,4 @@
-import { ServiceUnavailableException } from '@nestjs/common';
+import { NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { OnlinePaymentsService } from './online-payments.service';
 import { FakePaymentProvider } from './providers/fake-payment.provider';
 import type { PaymentEvent } from './providers/payment-provider';
@@ -301,5 +301,105 @@ describe('OnlinePaymentsService.applyEvent', () => {
       null,
       expect.anything(),
     );
+  });
+});
+
+describe('OnlinePaymentsService outside a provider event', () => {
+  const tenantContext = {
+    runAsSystem: (fn: () => unknown) => fn(),
+    runWithTenant: (_t: string, fn: () => unknown) => fn(),
+  };
+  const config = { get: jest.fn(() => 'https://app.test') };
+  const make = (deps: {
+    checkouts?: unknown;
+    payLinks?: unknown;
+    invoices?: unknown;
+    settingsService?: unknown;
+  }) =>
+    new OnlinePaymentsService(
+      (deps.checkouts ?? {}) as never,
+      (deps.payLinks ?? {}) as never,
+      (deps.invoices ?? {}) as never,
+      {} as never,
+      (deps.settingsService ?? {}) as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      tenantContext as never,
+      {} as never,
+      config as never,
+    );
+
+  it('keeps earlier pay links working when a new one is issued', async () => {
+    const payLinks = { insert: jest.fn(() => Promise.resolve()) };
+    const invoices = {
+      findOne: jest.fn(() =>
+        Promise.resolve({ id: 'inv-1', status: InvoiceStatus.ISSUED }),
+      ),
+    };
+    const service = make({ payLinks, invoices });
+    const first = await service.issuePayLink(tenantId, 'inv-1');
+    const second = await service.issuePayLink(tenantId, 'inv-1');
+    expect(first.url).not.toBe(second.url);
+    expect(payLinks.insert).toHaveBeenCalledTimes(2);
+  });
+
+  it('still takes Stripe events after Stripe is switched off, while its secret is saved', async () => {
+    const settingsService = {
+      findByWebhookKey: jest.fn(() =>
+        Promise.resolve(settings({ provider: 'NONE' })),
+      ),
+      credentials: jest.fn(() => ({ webhookSecret: 'whsec_test' })),
+    };
+    const service = make({ settingsService });
+    const applyEvent = jest
+      .spyOn(service, 'applyEvent')
+      .mockResolvedValue({ received: true });
+    jest
+      .spyOn(service['providers'].STRIPE, 'parseWebhook')
+      .mockReturnValue(paidEvent());
+    await expect(
+      service.handleStripeWebhook('k'.repeat(32), Buffer.from('{}'), {}),
+    ).resolves.toEqual({ received: true });
+    expect(applyEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'NONE' }),
+      'STRIPE',
+      expect.objectContaining({ kind: 'PAID' }),
+    );
+  });
+
+  it('refuses a Stripe event when no webhook secret is saved', async () => {
+    const settingsService = {
+      findByWebhookKey: jest.fn(() =>
+        Promise.resolve(settings({ encryptedCredentials: null })),
+      ),
+      credentials: jest.fn(() => ({})),
+    };
+    await expect(
+      make({ settingsService }).handleStripeWebhook(
+        'k'.repeat(32),
+        Buffer.from('{}'),
+        {},
+      ),
+    ).rejects.toThrow(NotFoundException);
+  });
+
+  it('refuses an old test checkout once the tenant uses a real provider', async () => {
+    const checkouts = {
+      findOne: jest.fn(() =>
+        Promise.resolve({ id: 'c1', tenantId, provider: 'FAKE' }),
+      ),
+    };
+    const settingsService = {
+      fakeAllowed: true,
+      find: jest.fn(() => Promise.resolve(settings({ provider: 'STRIPE' }))),
+    };
+    const service = make({ checkouts, settingsService });
+    const applyEvent = jest.spyOn(service, 'applyEvent');
+    await expect(
+      service.completeFake(`fake_cs_${'a'.repeat(32)}`, 'PAID'),
+    ).rejects.toThrow(NotFoundException);
+    expect(applyEvent).not.toHaveBeenCalled();
   });
 });

@@ -9,7 +9,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, In, MoreThan, Repository } from 'typeorm';
 import {
   fromMinorUnits,
   invoicePosition,
@@ -109,7 +109,10 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
    * Pay links
    * ------------------------------------------------------------------ */
 
-  /** A fresh link; any earlier link for the invoice stops working. */
+  /**
+   * A fresh link. Earlier links keep working until they expire, so copying
+   * one for a chat does not break the one already in the customer's email.
+   */
   async issuePayLink(tenantId: string, invoiceId: string): Promise<PayLinkDto> {
     const invoice = await this.invoices.findOne({
       where: { id: invoiceId, tenantId },
@@ -123,10 +126,12 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
     }
     const token = randomBytes(32).toString('base64url');
     const expiresAt = new Date(Date.now() + PAY_LINK_DAYS * DAY_MS);
-    await this.payLinks.upsert(
-      { tenantId, invoiceId, tokenHash: hashToken(token), expiresAt },
-      { conflictPaths: ['invoiceId'] },
-    );
+    await this.payLinks.insert({
+      tenantId,
+      invoiceId,
+      tokenHash: hashToken(token),
+      expiresAt,
+    });
     return {
       url: `${this.webUrl}/pay/${token}`,
       expiresAt: expiresAt.toISOString(),
@@ -282,11 +287,14 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
     const settings = await this.tenantContext.runAsSystem(() =>
       this.settingsService.findByWebhookKey(webhookKey),
     );
-    if (!settings || settings.provider !== 'STRIPE')
-      throw new NotFoundException();
+    // Accepted while the webhook secret is saved, even after the tenant turns
+    // Stripe off: a customer may still finish a checkout started before.
+    if (!settings?.encryptedCredentials) throw new NotFoundException();
+    const credentials = this.settingsService.credentials(settings);
+    if (!credentials.webhookSecret) throw new NotFoundException();
     return this.tenantContext.runWithTenant(settings.tenantId, async () => {
       const event = this.providers.STRIPE.parseWebhook(
-        this.settingsService.credentials(settings),
+        credentials,
         rawBody,
         headers,
       );
@@ -310,7 +318,9 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
     if (!checkout) throw new NotFoundException('This checkout is not valid.');
     return this.tenantContext.runWithTenant(checkout.tenantId, async () => {
       const settings = await this.settingsService.find(checkout.tenantId);
-      if (!settings) throw new NotFoundException();
+      // Only while the tenant still uses the test checkout: after switching
+      // to a real provider, an old test session must not record money.
+      if (settings?.provider !== 'FAKE') throw new NotFoundException();
       await this.applyEvent(
         settings,
         'FAKE',
@@ -482,7 +492,9 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
   async invoiceStatuses(tenantId: string): Promise<InvoiceOnlinePaymentDto[]> {
     const [checkouts, links] = await Promise.all([
       this.checkouts.find({ where: { tenantId }, order: { createdAt: 'ASC' } }),
-      this.payLinks.find({ where: { tenantId } }),
+      this.payLinks.find({
+        where: { tenantId, expiresAt: MoreThan(new Date()) },
+      }),
     ]);
     const byInvoice = new Map<string, InvoiceOnlinePaymentDto>();
     const entry = (invoiceId: string) => {
@@ -508,8 +520,11 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
           Math.round((row.paidOnline + Number(c.amount)) * 100) / 100;
     }
     for (const link of links) {
-      if (link.expiresAt.getTime() > Date.now()) {
-        entry(link.invoiceId).payLinkExpiresAt = link.expiresAt.toISOString();
+      if (link.expiresAt.getTime() <= Date.now()) continue;
+      const row = entry(link.invoiceId);
+      const expires = link.expiresAt.toISOString();
+      if (!row.payLinkExpiresAt || expires > row.payLinkExpiresAt) {
+        row.payLinkExpiresAt = expires;
       }
     }
     return [...byInvoice.values()];

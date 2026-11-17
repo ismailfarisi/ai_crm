@@ -10,7 +10,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *   provider's paid event does, through the invoice payment path.
  * - `payment_webhook_events`: provider event ids already handled, so a
  *   redelivered event records nothing twice.
- * - `invoice_pay_links`: the hashed token behind an invoice's public pay link.
+ * - `invoice_pay_links`: the hashed tokens behind an invoice's public pay links.
  */
 export class OnlinePayments1791400000000 implements MigrationInterface {
   name = 'OnlinePayments1791400000000';
@@ -54,7 +54,7 @@ export class OnlinePayments1791400000000 implements MigrationInterface {
       `CREATE UNIQUE INDEX "uq_invoice_pay_links_token" ON "invoice_pay_links"  ("token_hash") `,
     );
     await queryRunner.query(
-      `CREATE UNIQUE INDEX "uq_invoice_pay_links_invoice" ON "invoice_pay_links"  ("invoice_id") `,
+      `CREATE INDEX "idx_invoice_pay_links_invoice" ON "invoice_pay_links"  ("tenant_id", "invoice_id") `,
     );
     await queryRunner.query(
       `ALTER TABLE "payment_settings" ADD CONSTRAINT "FK_payment_settings_tenant" FOREIGN KEY ("tenant_id") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
@@ -97,7 +97,7 @@ export class OnlinePayments1791400000000 implements MigrationInterface {
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `DROP INDEX "public"."uq_invoice_pay_links_invoice"`,
+      `DROP INDEX "public"."idx_invoice_pay_links_invoice"`,
     );
     await queryRunner.query(`DROP INDEX "public"."uq_invoice_pay_links_token"`);
     await queryRunner.query(`DROP TABLE "invoice_pay_links"`);

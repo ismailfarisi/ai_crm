@@ -61,4 +61,9 @@ describe('redactBody', () => {
     });
     expect(JSON.stringify(out)).not.toContain('sss');
   });
+
+  it('redacts payment provider keys', () => {
+    const out = redactBody({ provider: 'STRIPE', secretKey: 'sk_test_x', webhookSecret: 'whsec_x' });
+    expect(out).toEqual({ provider: 'STRIPE', secretKey: '[redacted]', webhookSecret: '[redacted]' });
+  });
 });

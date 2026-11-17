@@ -114,11 +114,12 @@ export class PaymentWebhookEvent extends TenantBaseEntity {
 }
 
 /**
- * The customer's pay link for an invoice. Only the SHA-256 of the token is
- * kept; one live link per invoice, replaced each time a new one is issued.
+ * A customer's pay link for an invoice. Only the SHA-256 of the token is
+ * kept. Each link works until it expires, so copying a fresh one does not
+ * break the link already sent by email.
  */
 @Entity('invoice_pay_links')
-@Index('uq_invoice_pay_links_invoice', ['invoiceId'], { unique: true })
+@Index('idx_invoice_pay_links_invoice', ['tenantId', 'invoiceId'])
 @Index('uq_invoice_pay_links_token', ['tokenHash'], { unique: true })
 export class InvoicePayLink extends TenantBaseEntity {
   @Column({ name: 'invoice_id', type: 'uuid' })
