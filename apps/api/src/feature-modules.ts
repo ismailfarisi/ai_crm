@@ -19,6 +19,7 @@ import { TaxModule } from '@/modules/tax/tax.module';
 import { CreditsModule } from '@/modules/credits/credits.module';
 import { NotificationsModule } from '@/modules/notifications/notifications.module';
 import { BillingModule } from '@/modules/billing/billing.module';
+import { PaymentsModule } from '@/modules/payments/payments.module';
 import { AuditModule } from '@/modules/audit/audit.module';
 import { StorageModule } from '@/modules/storage/storage.module';
 import { PurchasingModule } from '@/modules/purchasing/purchasing.module';
@@ -76,6 +77,7 @@ export const FEATURE_MODULES = [
   CreditsModule,
   NotificationsModule,
   BillingModule,
+  PaymentsModule,
   SavedViewsModule,
   CustomObjectsModule,
   AssistantModule,

@@ -56,6 +56,10 @@ function makeService(overrides: Record<string, unknown> = {}) {
     update: jest.fn(async (_where: any, patch: any) =>
       Object.assign(quote, patch),
     ),
+    // No order or deposit invoice yet unless a test adds them.
+    manager: {
+      getRepository: jest.fn(() => ({ findOne: jest.fn(async () => null) })),
+    },
     createQueryBuilder: jest.fn(() => {
       let patch: any;
       const qb: any = {
@@ -87,7 +91,7 @@ function makeService(overrides: Record<string, unknown> = {}) {
     undefined,
     quotesService as any,
   );
-  return { service, quote, events, quotesService };
+  return { service, quote, quotes, events, quotesService };
 }
 
 const tokenFrom = (url: string) => url.split('/q/')[1];
@@ -133,6 +137,42 @@ describe('QuoteAcceptanceService', () => {
       service.accept(token, { name: 'Someone Else' }, undefined),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(quote.acceptedByName).toBe('Jo Bloggs');
+  });
+
+  it('shows the deposit invoice raised on acceptance, and its balance', async () => {
+    const { service, quotes } = makeService();
+    const token = tokenFrom((await service.createLink(tenantId, 'q1')).url);
+    await service.accept(token, { name: 'Jo Bloggs' }, undefined);
+
+    const rows: Record<string, unknown> = {
+      SalesOrder: { id: 'so1' },
+      BillingScheduleLine: { kind: 'DEPOSIT', invoiceId: 'inv1', label: '30% deposit' },
+      Invoice: {
+        id: 'inv1',
+        tenantId,
+        status: 'ISSUED',
+        invoiceNumber: 'INV-0001',
+        stageLabel: '30% deposit',
+        amount: 72,
+        paidAmount: 20,
+        creditedAmount: 0,
+        refundedAmount: 0,
+      },
+      PaymentSettings: null,
+    };
+    quotes.manager.getRepository.mockImplementation((entity: { name: string }) => ({
+      findOne: jest.fn(async () => rows[entity.name] ?? null),
+    }));
+
+    expect((await service.view(token)).deposit).toEqual({
+      label: '30% deposit',
+      invoiceNumber: 'INV-0001',
+      amount: 72,
+      balanceDue: 52,
+      paid: false,
+      // Payment settings were never saved.
+      canPayOnline: false,
+    });
   });
 
   it('refuses an expired link', async () => {

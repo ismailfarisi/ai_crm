@@ -6,6 +6,7 @@ export const ORG_PERMISSIONS = {
   ORG_READ: 'org:read',
   ORG_UPDATE: 'org:update',
   ORG_MANAGE_BILLING: 'org:manage_billing',
+  ORG_MANAGE_PAYMENTS: 'org:manage_payments',
 } as const;
 
 type OrgPermission = PermissionValues<typeof ORG_PERMISSIONS>;
@@ -18,14 +19,16 @@ export const orgDomain: PermissionDomain<OrgPermission> = {
     [ORG_PERMISSIONS.ORG_READ]: 'View organization settings',
     [ORG_PERMISSIONS.ORG_UPDATE]: 'Edit organization settings',
     [ORG_PERMISSIONS.ORG_MANAGE_BILLING]: 'Manage subscription and billing',
+    [ORG_PERMISSIONS.ORG_MANAGE_PAYMENTS]: 'Manage online payments from customers',
   },
   groupPermissions: [
     ORG_PERMISSIONS.ORG_READ,
     ORG_PERMISSIONS.ORG_UPDATE,
     ORG_PERMISSIONS.ORG_MANAGE_BILLING,
+    ORG_PERMISSIONS.ORG_MANAGE_PAYMENTS,
   ],
   grants: {
-    admin: [ORG_PERMISSIONS.ORG_READ, ORG_PERMISSIONS.ORG_UPDATE],
+    admin: [ORG_PERMISSIONS.ORG_READ, ORG_PERMISSIONS.ORG_UPDATE, ORG_PERMISSIONS.ORG_MANAGE_PAYMENTS],
     manager: [ORG_PERMISSIONS.ORG_READ],
     member: [ORG_PERMISSIONS.ORG_READ],
     viewer: [ORG_PERMISSIONS.ORG_READ],

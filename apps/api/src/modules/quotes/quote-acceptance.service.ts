@@ -16,7 +16,9 @@ import {
   allocateStageAmounts,
   DEFAULT_BILLING_SCHEDULE,
   formatOrganizationAddress,
+  invoicePosition,
   type AcceptanceRefusal,
+  type PublicDepositDto,
   type PublicQuoteDto,
 } from '@saas/shared';
 import type { AppConfig } from '@/config/configuration';
@@ -26,6 +28,14 @@ import { AutomationEventBridgeService } from '../automations/services/automation
 import { MailService } from '../mail/mail.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { Quote, QuoteStatus } from './entities/quote.entity';
+import { Invoice, InvoiceStatus } from './entities/invoice.entity';
+import {
+  BillingScheduleLine,
+  SalesOrder,
+} from '../orders/entities/sales-order.entity';
+import { PaymentSettings } from '../payments/entities/payments.entity';
+import { paymentsReady } from '../payments/payment-readiness';
+import { ChannelCryptoService } from '../channels/services/channel-crypto.service';
 import { QuotesService } from './quotes.service';
 
 const hashToken = (token: string) =>
@@ -73,7 +83,73 @@ export class QuoteAcceptanceService {
     private readonly mail: MailService,
     @Optional() private readonly tenantContext?: TenantContextService,
     @Optional() private readonly quotesService?: QuotesService,
+    @Optional() private readonly crypto?: ChannelCryptoService,
   ) {}
+
+  /**
+   * The deposit invoice raised when the quote behind this link was accepted,
+   * for the payments module to take the customer to checkout. Runs the
+   * callback as the quote's tenant.
+   */
+  async withDepositInvoice<T>(
+    token: string,
+    fn: (invoice: Invoice, quote: Quote) => Promise<T>,
+  ): Promise<T> {
+    return this.withQuoteFor(token, async (quote) => {
+      if (!quote || !quote.acceptedAt) this.refuse('NOT_FOUND');
+      const invoice = await this.depositInvoice(quote);
+      if (!invoice) {
+        throw new BadRequestException('There is no deposit to pay on this quote.');
+      }
+      return fn(invoice, quote);
+    });
+  }
+
+  private async depositInvoice(quote: Quote): Promise<Invoice | null> {
+    const manager = this.quotes.manager;
+    const order = await manager
+      .getRepository(SalesOrder)
+      .findOne({ where: { quoteId: quote.id, tenantId: quote.tenantId } });
+    if (!order) return null;
+    const stage = await manager.getRepository(BillingScheduleLine).findOne({
+      where: { salesOrderId: order.id, kind: 'DEPOSIT' },
+      order: { sequence: 'ASC' },
+    });
+    if (!stage?.invoiceId) return null;
+    const invoice = await manager
+      .getRepository(Invoice)
+      .findOne({ where: { id: stage.invoiceId, tenantId: quote.tenantId } });
+    return invoice && invoice.status !== InvoiceStatus.CANCELLED ? invoice : null;
+  }
+
+  private async publicDeposit(quote: Quote): Promise<PublicDepositDto | null> {
+    if (!quote.acceptedAt) return null;
+    const invoice = await this.depositInvoice(quote);
+    if (!invoice) return null;
+    const settings = await this.quotes.manager
+      .getRepository(PaymentSettings)
+      .findOne({ where: { tenantId: quote.tenantId } });
+    const credentials =
+      settings?.encryptedCredentials && this.crypto
+        ? this.crypto.decrypt<{ secretKey?: string; webhookSecret?: string }>(
+            settings.encryptedCredentials,
+          )
+        : null;
+    const ready = paymentsReady(
+      settings,
+      credentials,
+      Boolean(this.config.get('payments', { infer: true })?.fakeCheckout),
+    );
+    const balanceDue = Math.max(0, invoicePosition(invoice).balance);
+    return {
+      label: invoice.stageLabel ?? 'Deposit',
+      invoiceNumber: invoice.invoiceNumber,
+      amount: Number(invoice.amount),
+      balanceDue,
+      paid: balanceDue <= 0,
+      canPayOnline: Boolean(ready && settings?.payDeposits && balanceDue > 0),
+    };
+  }
 
   /**
    * The quote a link names, and the rest of the request run as its tenant.
@@ -468,6 +544,7 @@ export class QuoteAcceptanceService {
       })),
       acceptedAt: quote.acceptedAt ? quote.acceptedAt.toISOString() : null,
       acceptedByName: quote.acceptedByName,
+      deposit: await this.publicDeposit(quote),
     };
   }
 }

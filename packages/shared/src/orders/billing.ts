@@ -29,6 +29,11 @@ export interface BillingStage {
   label: string;
   /** Share of the quote total, 0-100. */
   percent: number;
+  /**
+   * A fixed amount, incl. tax, instead of a share: "AED 2,000 deposit".
+   * `percent` still holds the approximate share so the stages add to 100.
+   */
+  amount?: number | null;
   trigger: BillingTrigger;
 }
 
@@ -129,6 +134,20 @@ export function allocateStageAmounts(amounts: QuoteAmounts, stages: BillingStage
   return stages.map((stage, index) => {
     const isLast = index === stages.length - 1;
     const row = {} as StageAmounts;
+    if (!isLast && stage.amount != null && totals.totalAmount > 0) {
+      // A fixed amount sets the stage's total; tax and discount follow in the
+      // same ratio, and the net is whatever keeps net - discount + tax = total.
+      const total = Math.min(cents(stage.amount), totals.totalAmount - allocated.totalAmount);
+      const ratio = total / totals.totalAmount;
+      const tax = Math.round(totals.taxAmount * ratio);
+      const discount = Math.round(totals.discountAmount * ratio);
+      const share = { totalAmount: total, taxAmount: tax, discountAmount: discount, subtotalAmount: total - tax + discount };
+      for (const f of fields) {
+        allocated[f] += share[f];
+        row[f] = share[f] / 100;
+      }
+      return row;
+    }
     for (const f of fields) {
       const share = isLast ? totals[f] - allocated[f] : Math.round((totals[f] * stage.percent) / 100);
       allocated[f] += share;
@@ -265,4 +284,6 @@ export interface PublicQuoteDto {
   billingSchedule: { label: string; percent: number; totalAmount: number }[];
   acceptedAt: string | null;
   acceptedByName: string | null;
+  /** The deposit invoice raised on acceptance, once there is one. */
+  deposit?: import('../payments/online-payments').PublicDepositDto | null;
 }

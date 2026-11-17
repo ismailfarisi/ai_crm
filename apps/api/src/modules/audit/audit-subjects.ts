@@ -28,6 +28,7 @@ import { Settlement } from '../payroll/entities/settlement.entity';
 import { Role } from '../rbac/entities/role.entity';
 import { TimesheetEntry } from '../job-costing/entities/timesheet-entry.entity';
 import { Branch } from '../organizations/entities/branch.entity';
+import { PaymentSettings } from '../payments/entities/payments.entity';
 import { VatSettings } from '../tax/entities/vat-settings.entity';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
 import { LedgerAccount } from '../finance/entities/ledger-account.entity';
@@ -103,6 +104,11 @@ export const AUDIT_SUBJECTS: Record<string, AuditSubject> = {
     singleton: true,
   },
   'finance/journal-entries': { subject: 'JOURNAL_ENTRY', entity: JournalEntry },
+  'payments/settings': {
+    subject: 'PAYMENT_SETTINGS',
+    entity: PaymentSettings,
+    singleton: true,
+  },
   'finance/ledger-accounts': {
     subject: 'LEDGER_ACCOUNT',
     entity: LedgerAccount,

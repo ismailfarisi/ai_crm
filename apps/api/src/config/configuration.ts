@@ -137,6 +137,10 @@ const envSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
   // plan code → Stripe price id, e.g. "starter:price_123,growth:price_456"
   STRIPE_PRICE_IDS: z.string().optional(),
+  // Online payments from tenants' customers (see modules/payments). The test
+  // checkout lets anyone holding a pay link mark it paid: off in production
+  // unless a staging deploy opts in.
+  PAYMENTS_FAKE_CHECKOUT: z.string().optional(),
 
   // AI — DEAD as of the per-org AiConfig table (see modules/ai/entities/ai-config.entity.ts).
   // AiService now resolves provider credentials from the DB only, per organization;
@@ -319,6 +323,12 @@ export function configuration() {
       // Download links are signed with the access-token secret: same lifetime
       // assumptions, same rotation, one fewer secret to manage.
       signingSecret: env.JWT_ACCESS_SECRET,
+    },
+    payments: {
+      fakeCheckout:
+        env.PAYMENTS_FAKE_CHECKOUT === undefined
+          ? env.NODE_ENV !== 'production'
+          : env.PAYMENTS_FAKE_CHECKOUT === 'true',
     },
     billing: {
       provider: env.BILLING_PROVIDER,

@@ -3,7 +3,9 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import {
@@ -22,6 +24,10 @@ import { Organization } from '../organizations/entities/organization.entity';
 import { FinanceService } from '../finance/finance.service';
 import { MailService } from '../mail/mail.service';
 import { InvoicePdfService } from './invoice-pdf.service';
+import {
+  INVOICE_PAY_LINK_ISSUER,
+  type InvoicePayLinkIssuer,
+} from './invoice-pay-link-issuer';
 import { AutomationEventBridgeService } from '../automations/services/automation-event-bridge.service';
 import { LedgerService } from '../finance/ledger.service';
 import { fxRateFor } from '../finance/fx';
@@ -59,6 +65,7 @@ export class InvoicesService {
     private readonly dataSource: DataSource,
     private readonly documentTemplatesService?: DocumentTemplatesService,
     private readonly pdfRenderer?: DocumentPdfRendererService,
+    @Optional() private readonly moduleRef?: ModuleRef,
   ) {}
 
   /**
@@ -149,9 +156,13 @@ export class InvoicesService {
     tenantId: string,
     id: string,
     payload: RecordInvoicePaymentPayload,
-    actorId: string,
+    actorId: string | null,
+    /** Join the caller's transaction, as an online payment's webhook does. */
+    outer?: EntityManager,
   ): Promise<Invoice> {
-    const saved = await this.dataSource.transaction(async (manager) => {
+    const inTransaction = <T>(fn: (manager: EntityManager) => Promise<T>) =>
+      outer ? fn(outer) : this.dataSource.transaction(fn);
+    const saved = await inTransaction(async (manager) => {
       // Locked so two payments recorded at once cannot both pass the
       // remaining-balance check and overpay the invoice between them.
       const invoice = await this.lockInvoice(manager, tenantId, id);
@@ -413,12 +424,17 @@ export class InvoicesService {
     const organizationName = organization?.name || 'Kerf';
 
     const { buffer: pdf } = await this.getPdf(tenantId, id);
+    const payUrl = await this.payLinkForEmail(tenantId, invoice);
+    const payHtml = payUrl
+      ? `<p><a href="${escapeHtml(payUrl)}">Pay online</a></p>`
+      : '';
+    const payText = payUrl ? `\n\nPay online: ${payUrl}` : '';
 
     await this.mailService.sendMail({
       to: invoice.customerEmail,
       subject: `Invoice ${invoice.invoiceNumber} from ${organizationName}`,
-      html: `<p>Hi ${escapeHtml(invoice.customerName)},</p><p>Please find attached invoice <strong>${escapeHtml(invoice.invoiceNumber)}</strong> for ${escapeHtml(String(invoice.amount))} ${escapeHtml(invoice.currency)}.</p>`,
-      text: `Hi ${invoice.customerName},\n\nPlease find attached invoice ${invoice.invoiceNumber} for ${invoice.amount} ${invoice.currency}.`,
+      html: `<p>Hi ${escapeHtml(invoice.customerName)},</p><p>Please find attached invoice <strong>${escapeHtml(invoice.invoiceNumber)}</strong> for ${escapeHtml(String(invoice.amount))} ${escapeHtml(invoice.currency)}.</p>${payHtml}`,
+      text: `Hi ${invoice.customerName},\n\nPlease find attached invoice ${invoice.invoiceNumber} for ${invoice.amount} ${invoice.currency}.${payText}`,
       attachments: [
         {
           filename: `${invoice.invoiceNumber}.pdf`,
@@ -439,6 +455,29 @@ export class InvoicesService {
     const saved = await this.findById(tenantId, id);
     await this.emitInvoiceEvent(tenantId, saved, 'invoice.sent');
     return saved;
+  }
+
+  /**
+   * The customer's pay link, when the tenant has online payment switched on
+   * for invoices. Resolved lazily: online payments live in their own module,
+   * which depends on this one, and a mail must go out without it.
+   */
+  private async payLinkForEmail(
+    tenantId: string,
+    invoice: Invoice,
+  ): Promise<string | null> {
+    if (!this.moduleRef || invoice.status === InvoiceStatus.PAID) return null;
+    try {
+      const links = this.moduleRef.get<InvoicePayLinkIssuer>(
+        INVOICE_PAY_LINK_ISSUER,
+        { strict: false },
+      );
+      return await links.linkForEmail(tenantId, invoice.id);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`No pay link for invoice ${invoice.id}: ${msg}`);
+      return null;
+    }
   }
 
   async sendPdf(tenantId: string, id: string): Promise<Invoice> {
