@@ -404,14 +404,14 @@ export class QuoteAcceptanceService {
 
   /** Whitelisted field by field. Never spread the entity: it carries cost and internal notes. */
   private async toPublic(quote: Quote): Promise<PublicQuoteDto> {
-    const [organization, localization] = await Promise.all([
-      this.organizations.findOne({ where: { id: quote.tenantId } }),
-      this.documentLocalization?.forCustomer(
-        quote.tenantId,
-        quote.customerId,
-        'QUOTE',
-      ),
-    ]);
+    const organization = await this.organizations.findOne({
+      where: { id: quote.tenantId },
+    });
+    const localization = await this.documentLocalization?.forCustomer(
+      quote.tenantId,
+      quote.customerId,
+      'QUOTE',
+    );
     const stages = quote.billingSchedule?.length
       ? quote.billingSchedule
       : DEFAULT_BILLING_SCHEDULE;
