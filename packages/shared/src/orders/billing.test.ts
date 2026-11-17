@@ -57,6 +57,27 @@ describe('allocateStageAmounts', () => {
     expect(allocateStageAmounts(quote, DEFAULT_BILLING_SCHEDULE)).toEqual([quote]);
   });
 
+  it('bills a fixed deposit to the cent and leaves the rest for the balance', () => {
+    const [deposit, balance] = allocateStageAmounts(quote, [
+      stage(41.67, { kind: 'DEPOSIT', amount: 500 }),
+      stage(58.33, { kind: 'FINAL' }),
+    ]);
+    expect(deposit.totalAmount).toBe(500);
+    expect(deposit.taxAmount).toBeCloseTo(83.33, 2);
+    expect(deposit.subtotalAmount - deposit.discountAmount + deposit.taxAmount).toBeCloseTo(500, 2);
+    expect(balance.totalAmount).toBe(700);
+    expect(deposit.taxAmount + balance.taxAmount).toBeCloseTo(200, 2);
+  });
+
+  it('never lets a fixed deposit bill more than the quote', () => {
+    const [deposit, balance] = allocateStageAmounts(quote, [
+      stage(50, { kind: 'DEPOSIT', amount: 5000 }),
+      stage(50, { kind: 'FINAL' }),
+    ]);
+    expect(deposit.totalAmount).toBe(1200);
+    expect(balance.totalAmount).toBe(0);
+  });
+
   it('splits a 30/70 deposit', () => {
     const [deposit, balance] = allocateStageAmounts(quote, BILLING_PRESETS[1].stages);
     expect(deposit).toEqual({ subtotalAmount: 300, discountAmount: 0, taxAmount: 60, totalAmount: 360 });

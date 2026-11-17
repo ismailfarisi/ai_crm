@@ -44,7 +44,12 @@ export interface AuditRecordInput {
 export const AUDIT_OUTBOX_KIND = 'audit';
 
 /** Never copied into a snapshot: ciphertext and credentials have no business in the trail. */
-export const AUDIT_REDACTED_COLUMNS = new Set(['ibanEncrypted', 'passwordHash']);
+export const AUDIT_REDACTED_COLUMNS = new Set([
+  'ibanEncrypted',
+  'passwordHash',
+  // A tenant's payment provider keys (payment_settings).
+  'encryptedCredentials',
+]);
 
 interface QueuedAuditRow {
   row: Record<string, unknown> & { id: string };

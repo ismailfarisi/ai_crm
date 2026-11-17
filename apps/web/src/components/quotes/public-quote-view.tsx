@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { CircleAlert, Loader2 } from 'lucide-react';
 import type { PublicQuoteDto } from '@saas/shared';
+import { DepositPanel } from '@/components/payments/deposit-panel';
 import { API_PUBLIC_URL } from '@/lib/api/config';
 import { PublicQuoteProofs, PublicQuoteRespond } from './public-quote-responses';
 
@@ -246,6 +247,12 @@ export function PublicQuoteView({ token }: { token: string }) {
             onChange={setQuote}
           />
         </footer>
+
+        {quote.acceptedAt && quote.deposit && (
+          <div className="px-6 pb-6">
+            <DepositPanel token={token} deposit={quote.deposit} currency={quote.currency} />
+          </div>
+        )}
       </article>
     </main>
   );

@@ -25,9 +25,10 @@ const PUBLIC_ROUTES = ['/login', '/register'];
  * in PUBLIC_ROUTES either: someone already signed in on the browser may still
  * need to open an invite for a different account.
  *
- * `/q` is a customer's quote acceptance link.
+ * `/q` is a customer's quote acceptance link, `/pay` an invoice's pay link
+ * and the test checkout.
  */
-const OPEN_ROUTES = ['/accept-invite', '/q', CONTINUE_ROUTE];
+const OPEN_ROUTES = ['/accept-invite', '/pay', '/q', CONTINUE_ROUTE];
 
 const matches = (pathname: string, routes: string[]) =>
   routes.some((route) => pathname === route || pathname.startsWith(`${route}/`));

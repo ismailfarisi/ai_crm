@@ -60,6 +60,7 @@ export * from './finance/currency';
 export * from './billing/subscriptions';
 export * from './notifications/preferences';
 export * from './schemas/billing';
+export * from './payments/online-payments';
 export * from './platform/audit';
 export * from './platform/attachments';
 export * from './platform/countries';

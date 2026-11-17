@@ -1167,6 +1167,9 @@ function normaliseSchedule(
         .trim()
         .slice(0, 120) || 'Stage',
     percent: Math.round(Number(stage.percent) * 1000) / 1000,
+    ...(stage.amount != null && Number(stage.amount) > 0
+      ? { amount: Math.round(Number(stage.amount) * 100) / 100 }
+      : {}),
     trigger: (['ON_APPROVAL', 'MANUAL', 'ON_DELIVERY'] as const).includes(
       stage.trigger,
     )

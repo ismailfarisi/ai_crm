@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import { Receipt, Banknote, CheckCircle, type LucideIcon } from 'lucide-react';
 import { formatOrganizationAddress, quoteDocumentTaxes, type InvoiceDto } from '@saas/shared';
 import {
@@ -11,6 +12,7 @@ import {
   useVoidInvoice,
 } from '@/hooks/use-invoices';
 import { useFinanceAccounts } from '@/hooks/use-finance';
+import { useInvoiceOnlinePayments, useIssuePayLink } from '@/hooks/use-online-payments';
 import { PageHeader } from '@/components/ui/primitives';
 import { InvoicesTable } from '@/components/invoices/invoices-table';
 import { RecordPaymentModal } from '@/components/invoices/record-payment-modal';
@@ -80,6 +82,9 @@ export function InvoicesView() {
   const sendInvoice = useSendInvoice();
   const voidInvoice = useVoidInvoice();
   const downloadPdf = useDownloadInvoicePdf();
+  const { data: onlineRows } = useInvoiceOnlinePayments();
+  const online = useMemo(() => new Map((onlineRows ?? []).map((row) => [row.invoiceId, row])), [onlineRows]);
+  const issuePayLink = useIssuePayLink();
 
   const orgName = orgProfile?.name || 'Your Company';
   const orgAddress = orgProfile
@@ -102,6 +107,16 @@ export function InvoicesView() {
     summary.otherCurrencies > 0
       ? `Plus ${summary.otherCurrencies} in other currencies`
       : undefined;
+
+  const copyPayLink = (invoice: InvoiceDto) =>
+    issuePayLink.mutate(invoice.id, {
+      onSuccess: ({ url }) =>
+        void navigator.clipboard.writeText(url).then(
+          () => toast.success('Pay link copied'),
+          () => toast.message(url),
+        ),
+      onError: (err) => toast.error(err instanceof Error ? err.message : 'Could not create a pay link'),
+    });
 
   const handleSend = async (invoice: InvoiceDto) => {
     setSendingId(invoice.id);
@@ -152,6 +167,8 @@ export function InvoicesView() {
         onVoid={setVoidingInvoice}
         onCredit={(invoice) => setCreditingId(invoice.id)}
         sendingId={sendingId}
+        online={online}
+        onCopyPayLink={copyPayLink}
       />
 
       <RecordPaymentModal

@@ -24,6 +24,7 @@ import {
   Store,
   UserRoundCog,
   Users,
+  Wallet,
   Wrench,
   Zap,
 } from 'lucide-react';
@@ -211,6 +212,12 @@ export const SECONDARY_SECTIONS: NavSection[] = [
         label: 'Billing',
         icon: CreditCard,
         rule: { permission: PERMISSIONS.ORG_MANAGE_BILLING },
+      },
+      {
+        href: '/settings/payments',
+        label: 'Online payments',
+        icon: Wallet,
+        rule: { permission: PERMISSIONS.ORG_MANAGE_PAYMENTS },
       },
       {
         href: '/settings/audit',

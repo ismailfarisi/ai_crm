@@ -33,6 +33,8 @@ import { TaxModule } from '../tax/tax.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ApprovalNotifierModule } from '../approval-notifications/approval-notifier.module';
 import { DocumentTemplatesModule } from '../document-templates/document-templates.module';
+import { PaymentSettings } from '../payments/entities/payments.entity';
+import { ChannelCryptoService } from '../channels/services/channel-crypto.service';
 
 @Module({
   imports: [
@@ -48,6 +50,7 @@ import { DocumentTemplatesModule } from '../document-templates/document-template
       SalesOrder,
       SalesOrderLine,
       BillingScheduleLine,
+      PaymentSettings,
     ]),
     FinanceModule,
     MailModule,
@@ -68,10 +71,11 @@ import { DocumentTemplatesModule } from '../document-templates/document-template
     InvoicesService,
     InvoicePdfService,
     InvoiceOverdueService,
+    ChannelCryptoService,
     QuoteAcceptanceService,
     QuoteProofsService,
     QuoteResponsesService,
   ],
-  exports: [QuotesService, InvoicesService],
+  exports: [QuotesService, InvoicesService, QuoteAcceptanceService],
 })
 export class QuotesModule {}

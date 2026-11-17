@@ -3,8 +3,8 @@
 import React, { useMemo } from 'react';
 import Link from 'next/link';
 import { ColumnDef } from '@tanstack/react-table';
-import { AlertTriangle, Ban, CheckCircle, Clock, Download, History, Mail, Wallet, Undo2, Printer } from 'lucide-react';
-import type { InvoiceDto, InvoiceStatus } from '@saas/shared';
+import { AlertTriangle, Ban, CheckCircle, Clock, Download, History, Link2, Mail, Wallet, Undo2, Printer } from 'lucide-react';
+import type { InvoiceDto, InvoiceOnlinePaymentDto, InvoiceStatus } from '@saas/shared';
 import { PERMISSIONS, isInvoiceOverdue } from '@saas/shared';
 import { Badge } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,18 @@ interface InvoicesTableProps {
   onVoid?: (invoice: InvoiceDto) => void;
   onCredit?: (invoice: InvoiceDto) => void;
   sendingId?: string | null;
+  /** Online payment state per invoice id. */
+  online?: Map<string, InvoiceOnlinePaymentDto>;
+  onCopyPayLink?: (invoice: InvoiceDto) => void;
+}
+
+/** What the customer has done online, when it is worth a second badge. */
+export function OnlinePaymentBadge({ online }: { online?: InvoiceOnlinePaymentDto }) {
+  if (!online) return null;
+  if (online.paidOnline > 0) return <Badge tone="info">Paid online</Badge>;
+  if (online.lastCheckoutStatus === 'OPEN') return <Badge tone="info">Checkout started</Badge>;
+  if (online.lastCheckoutStatus === 'FAILED') return <Badge tone="danger">Card payment failed</Badge>;
+  return null;
 }
 
 export function InvoiceStatusBadge({ status }: { status: InvoiceStatus }) {
@@ -71,6 +83,8 @@ export function InvoicesTable({
   onVoid,
   onCredit,
   sendingId = null,
+  online,
+  onCopyPayLink,
 }: InvoicesTableProps) {
   const canManage = useCan({ permission: PERMISSIONS.INVOICE_MANAGE });
   const canCredit = useCan({ permission: PERMISSIONS.CREDIT_NOTE_READ });
@@ -125,6 +139,7 @@ export function InvoicesTable({
         cell: ({ row }) => (
           <div className="flex items-center gap-1.5">
             <InvoiceStatusBadge status={row.original.status} />
+            <OnlinePaymentBadge online={online?.get(row.original.id)} />
             {isInvoiceOverdue(row.original) && (
               <Badge tone="danger" className="gap-1">
                 <AlertTriangle className="size-3" />
@@ -178,6 +193,9 @@ export function InvoicesTable({
               onSelect: () => onSend(invoice),
             });
           }
+          if (canManage && onCopyPayLink && !isFinal) {
+            more.push({ key: 'pay-link', label: 'Copy pay link', icon: Link2, onSelect: () => onCopyPayLink(invoice) });
+          }
           if (canCredit && onCredit && invoice.status !== 'CANCELLED') {
             more.push({
               key: 'credit',
@@ -209,7 +227,7 @@ export function InvoicesTable({
         },
       },
     ],
-    [canManage, canCredit, onRecordPayment, onSend, onDownload, onPrint, onViewHistory, onVoid, onCredit, sendingId]
+    [canManage, canCredit, onRecordPayment, onSend, onDownload, onPrint, onViewHistory, onVoid, onCredit, sendingId, online, onCopyPayLink]
   );
 
   return (

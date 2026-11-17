@@ -157,4 +157,20 @@ describe('AuditService.snapshot', () => {
     expect(snap).toEqual({ id: 'e1', firstName: 'Ada', ibanLast4: '3456', tenantId: TENANT });
     expect(JSON.stringify(snap)).not.toContain('SECRETCIPHER');
   });
+
+  it("omits a tenant's encrypted payment keys", async () => {
+    const { service } = setup();
+    const columns = ['id', 'provider', 'encryptedCredentials', 'tenantId'].map(
+      (propertyName) => ({ propertyName }),
+    );
+    const row = { id: 's1', provider: 'STRIPE', encryptedCredentials: 'PAYCIPHER', tenantId: TENANT };
+    const manager = {
+      getRepository: () => ({
+        metadata: { columns },
+        findOne: jest.fn().mockResolvedValue(row),
+      }),
+    };
+    const snap = await service.snapshot({} as never, TENANT, 's1', manager as never);
+    expect(snap).toEqual({ id: 's1', provider: 'STRIPE', tenantId: TENANT });
+  });
 });

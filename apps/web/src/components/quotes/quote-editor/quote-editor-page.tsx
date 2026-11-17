@@ -24,7 +24,13 @@ import type {
   UpdateQuotePayload,
   GuardrailViolation,
 } from '@saas/shared';
-import { calculateQuoteTotals, DEFAULT_UNIT, evaluateGuardrails, PERMISSIONS } from '@saas/shared';
+import {
+  calculateQuoteTotals,
+  DEFAULT_UNIT,
+  depositSchedule,
+  evaluateGuardrails,
+  PERMISSIONS,
+} from '@saas/shared';
 import { useCostingPolicy } from '@/hooks/use-catalog';
 import { useTaxCodes } from '@/hooks/use-credits';
 import { useOrganization } from '@/hooks/use-organization';
@@ -55,6 +61,8 @@ import { AttachmentsPanel } from '@/components/platform/attachments-panel';
 import { QuoteProofsPanel } from '@/components/quotes/quote-proofs-panel';
 import { ActivityTimeline } from '@/components/platform/activity-timeline';
 import { useQuoteSalesOrder } from '@/hooks/use-sales-orders';
+import { useQuoteDepositDefault } from '@/hooks/use-online-payments';
+import { QuoteDepositStatus } from './quote-deposit-status';
 import { QuoteCustomerPanel, type CustomerDialog } from './quote-customer-panel';
 
 /** A field to focus once the line it belongs to is on screen. */
@@ -189,6 +197,14 @@ export function QuoteEditorPage({
   // Shared with the customer panel, which fetches the same order.
   const { data: orderResult } = useQuoteSalesOrder(id, status === 'APPROVED' || Boolean(acceptance.acceptedAt));
   const existingOrder = orderResult?.order ?? null;
+  // A new quote starts with the deposit set in payment settings.
+  const { data: depositDefault } = useQuoteDepositDefault(!id && canCreate);
+  const defaultDepositPercent = depositDefault?.defaultDepositPercent ?? 0;
+  const [seededDeposit, setSeededDeposit] = useState(false);
+  if (!id && !initialQuote && !seededDeposit && defaultDepositPercent > 0) {
+    setSeededDeposit(true);
+    if (billingSchedule === null) setBillingSchedule(depositSchedule({ percent: defaultDepositPercent }));
+  }
   const [customerDialog, setCustomerDialog] = useState<CustomerDialog>(null);
 
   /*
@@ -877,12 +893,15 @@ export function QuoteEditorPage({
       </div>
 
       <QuoteBillingCard
+        defaultDepositPercent={defaultDepositPercent}
         schedule={billingSchedule}
         onChange={setBillingSchedule}
         totals={totals}
         currency={currency}
         readOnly={isReadOnly}
       />
+
+      {id && acceptance.acceptedAt && <QuoteDepositStatus quoteId={id} currency={currency} />}
 
       {items.some((item) => item.taxReverseCharge) && (
         <p className="rounded-2xl border border-border bg-surface-muted px-4 py-3 text-sm text-ink-muted">
