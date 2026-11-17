@@ -153,6 +153,9 @@ export interface TemplatePricing {
   roundUnitPriceTo?: number;
 }
 
+/** A flat-blank drawing the quote configurator knows how to draw. */
+export type BlankPreviewKind = 'RIGID_BOX';
+
 export interface ProductTemplate {
   id: string;
   tenantId?: string;
@@ -161,6 +164,11 @@ export interface ProductTemplate {
   name: string;
   description?: string;
   currency?: string;
+  /**
+   * Which flat blank the quote configurator draws. Only box templates set
+   * it: a sign or cabinet also has length/width/height but no box net.
+   */
+  blankPreview?: BlankPreviewKind | null;
   parameters: TemplateParameter[];
   derived?: DerivedVariable[];
   materials: TemplateMaterial[];

@@ -229,6 +229,8 @@ export const createProductTemplateSchema = z.object({
     .toUpperCase()
     .regex(/^[A-Z]{3}$/, 'Enter a 3-letter currency code')
     .default('USD'),
+  /** Only box templates set this; absent means no flat-blank drawing. */
+  blankPreview: z.enum(['RIGID_BOX']).nullable().optional(),
   parameters: z.array(templateParameterSchema).max(60),
   derived: z.array(derivedVariableSchema).max(100).default([]),
   materials: z.array(templateMaterialSchema).max(100),
