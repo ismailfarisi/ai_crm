@@ -44,6 +44,10 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { DocumentTemplatesService } from '../document-templates/document-templates.service';
 import { DocumentPdfRendererService } from '../document-templates/document-pdf-renderer.service';
 import {
+  ApprovalNotifierService,
+  type ApprovalRequestInput,
+} from '../approval-notifications/approval-notifier.service';
+import {
   allocateNextSequenceValue,
   formatSequenceNumber,
   peekNextSequenceValue,
@@ -71,7 +75,55 @@ export class QuotesService {
     private readonly pdfRenderer?: DocumentPdfRendererService,
     @Optional()
     private readonly eventBus?: CrmEventBusService,
+    @Optional()
+    private readonly approvalNotifier?: ApprovalNotifierService,
   ) {}
+
+  /**
+   * Who may approve this quote: `quote:approve`, plus the margin override
+   * when its lines break the floor or the discount cap.
+   */
+  private async approvalNoticeFor(
+    tenantId: string,
+    quote: Quote,
+    requestedByUserId: string | null,
+  ): Promise<ApprovalRequestInput> {
+    const permissions: Permission[] = [PERMISSIONS.QUOTE_APPROVE];
+    try {
+      const { violations } = await this.recost(
+        tenantId,
+        quote.items || [],
+        quote.customerId,
+      );
+      if (violations.length) {
+        permissions.push(PERMISSIONS.QUOTE_APPROVE_BELOW_MARGIN);
+      }
+    } catch {
+      // Re-costing is only used to narrow the audience; ask the wider one.
+    }
+    const quoteNumber = quote.quoteNumber ?? 'A quote';
+    return {
+      tenantId,
+      itemType: 'QUOTE',
+      itemId: quote.id,
+      requestedByUserId,
+      permissions,
+      title: `${quoteNumber} for ${quote.customerName}`,
+      body: `${Number(quote.totalAmount).toFixed(2)} ${quote.currency}`,
+      link: `/quotes/${quote.id}`,
+      // What the chat reply needs to run the quote approval skill.
+      meta: {
+        quote: {
+          quoteId: quote.id,
+          quoteNumber: quote.quoteNumber ?? '(unnumbered)',
+          customerName: quote.customerName,
+          totalAmount: Number(quote.totalAmount),
+          currency: quote.currency,
+          alsoSend: false,
+        },
+      },
+    };
+  }
 
   /**
    * Re-prices every line from the catalog and checks the tenant's floors.
@@ -303,6 +355,7 @@ export class QuotesService {
     tenantId: string,
     id: string,
     payload: UpdateQuotePayload,
+    actorUserId: string | null = null,
   ): Promise<Quote> {
     const { saved, beforeSnapshot, submittedForApproval } =
       await this.quoteRepository.manager.transaction(async (manager) => {
@@ -442,23 +495,18 @@ export class QuotesService {
             { manager },
           );
         }
+        if (submittedForApproval && this.approvalNotifier) {
+          await this.approvalNotifier.requested(
+            await this.approvalNoticeFor(
+              tenantId,
+              saved,
+              actorUserId,
+            ),
+            manager,
+          );
+        }
         return { saved, beforeSnapshot, submittedForApproval };
       });
-
-    if (submittedForApproval) {
-      await this.notifications.notifyHolders(
-        tenantId,
-        PERMISSIONS.QUOTE_APPROVE,
-        {
-          type: 'QUOTE_AWAITING_APPROVAL',
-          title: `${saved.quoteNumber ?? 'A quote'} is waiting for approval`,
-          body: `${saved.customerName} · ${Number(saved.totalAmount).toFixed(2)} ${saved.currency}`,
-          link: `/quotes/${saved.id}`,
-          entityType: 'QUOTE',
-          entityId: saved.id,
-        },
-      );
-    }
 
     return saved;
   }
@@ -526,6 +574,18 @@ export class QuotesService {
             { status: QuoteStatus.REJECTED },
           );
           quote.status = QuoteStatus.REJECTED;
+          await this.approvalNotifier?.decided(
+            {
+              tenantId,
+              itemType: 'QUOTE',
+              itemId: quote.id,
+              outcome: 'REJECTED',
+              decidedByUserId: actorUserId ?? null,
+              comment:
+                typeof payload?.reason === 'string' ? payload.reason : null,
+            },
+            manager,
+          );
           return { quote, decided: true, invoicesRaised: [] as Invoice[] };
         }
 
@@ -602,6 +662,16 @@ export class QuotesService {
               manager,
             )
           : { invoicesRaised: [] as Invoice[] };
+        await this.approvalNotifier?.decided(
+          {
+            tenantId,
+            itemType: 'QUOTE',
+            itemId: quote.id,
+            outcome: 'APPROVED',
+            decidedByUserId: actorUserId ?? null,
+          },
+          manager,
+        );
         return { quote, decided: true, invoicesRaised };
       });
 

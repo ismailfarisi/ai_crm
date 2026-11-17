@@ -34,6 +34,7 @@ import { AutomationExecution } from './modules/automations/entities/automation-e
 import { TemporalService } from './modules/temporal/temporal.service';
 import { BillingService } from './modules/billing/billing.service';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { ApprovalNotifierService } from './modules/approval-notifications/approval-notifier.service';
 
 /**
  * Standalone Temporal worker process — separate from the NestJS API server.
@@ -98,6 +99,9 @@ async function run(): Promise<void> {
     const runRecordActivities = createRunRecordActivities({
       executions: appContext.get(getRepositoryToken(AutomationExecution)),
       tenantContext: appContext.get(TenantContextService),
+      approvalNotifier: appContext.get(ApprovalNotifierService, {
+        strict: false,
+      }),
     });
     const assistantActivities = createAssistantActivities({
       events: appContext.get(AssistantEventsService),

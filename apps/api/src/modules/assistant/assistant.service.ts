@@ -1,5 +1,6 @@
 // assistant.service.ts
-import { ConflictException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
+import { ApprovalNotifierService } from '../approval-notifications/approval-notifier.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, MoreThan, QueryFailedError, Repository, IsNull } from 'typeorm';
 import {
@@ -40,6 +41,7 @@ export class AssistantService {
     @InjectRepository(AssistantMessage) private readonly messages: Repository<AssistantMessage>,
     private readonly temporal: TemporalService,
     private readonly events: AssistantEventsService,
+    @Optional() private readonly approvalNotifier?: ApprovalNotifierService,
   ) {}
 
   private ownWhere(actor: AuthenticatedUser) {
@@ -215,6 +217,14 @@ export class AssistantService {
       await this.turns.update({ id: turn.id, status: 'RUNNING' }, { status: 'AWAITING_APPROVAL' });
       throw new ServiceUnavailableException('Could not reach the assistant worker; try again');
     }
+    await this.approvalNotifier?.decided({
+      tenantId: actor.organizationId,
+      itemType: 'ASSISTANT_ACTION',
+      itemId: turn.id,
+      outcome: body.approved ? 'APPROVED' : 'REJECTED',
+      decidedByUserId: actor.id,
+      comment: body.note ?? null,
+    });
     return toTurnDto({ ...turn, status: 'RUNNING' });
   }
 

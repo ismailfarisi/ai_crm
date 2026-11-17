@@ -1,4 +1,6 @@
 import type { Repository } from 'typeorm';
+import { PERMISSIONS } from '@saas/shared';
+import type { ApprovalNotifierService } from '../../approval-notifications/approval-notifier.service';
 import type { TenantContextService } from '@/common/context/tenant-context.service';
 import type { AutomationExecution } from '../entities/automation-execution.entity';
 import type {
@@ -15,6 +17,8 @@ const PREVIEW_CHARS = 4096;
 export interface RunRecordActivityDeps {
   executions: Repository<AutomationExecution>;
   tenantContext: Pick<TenantContextService, 'runWithTenant'>;
+  /** Queues the approvers' notice with the approval row. Optional in tests. */
+  approvalNotifier?: Pick<ApprovalNotifierService, 'requested'>;
 }
 
 /** Keeps a step's input/output from bloating the run row. */
@@ -55,7 +59,7 @@ export function endedInTimeout(p: RecordNodeResultParams): boolean {
 }
 
 export function createRunRecordActivities(deps: RunRecordActivityDeps) {
-  const { executions, tenantContext } = deps;
+  const { executions, tenantContext, approvalNotifier } = deps;
 
   return {
     async recordNodeResultActivity(
@@ -117,6 +121,31 @@ export function createRunRecordActivities(deps: RunRecordActivityDeps) {
                 p.approval.expiresAt,
               ],
             );
+            if (approvalNotifier) {
+              // The automation's owner is who asked: told the outcome, not asked.
+              const owner: Array<{ activatedByUserId: string | null }> =
+                await m.query(
+                  `SELECT "activatedByUserId" FROM automation_workflows WHERE id = $1 AND "tenantId" = $2`,
+                  [p.workflowId, tenantId],
+                );
+              await approvalNotifier.requested(
+                {
+                  tenantId,
+                  itemType: 'AUTOMATION_APPROVAL',
+                  itemId: p.approval.id,
+                  requestedByUserId: owner[0]?.activatedByUserId ?? null,
+                  permissions: [PERMISSIONS.AUTOMATION_APPROVE],
+                  title: fitTitle(p.approval.title).slice(0, 200),
+                  body:
+                    p.approval.kind === 'agent_action'
+                      ? 'An AI step wants to act.'
+                      : 'An automation step is waiting.',
+                  link: '/automations/approvals',
+                  expiresAt: p.approval.expiresAt ?? null,
+                },
+                m,
+              );
+            }
           } else if (p.status !== 'WAITING') {
             if (endedInTimeout(p)) {
               // A decision can be claimed in the moment the step times out:

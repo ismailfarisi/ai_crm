@@ -4,8 +4,10 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { ApprovalNotifierService } from '../../approval-notifications/approval-notifier.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { WorkflowNotFoundError } from '@temporalio/client';
@@ -122,6 +124,8 @@ export class AutomationApprovalsService {
     @InjectRepository(User)
     private readonly users: Repository<User>,
     private readonly temporalService: TemporalService,
+    @Optional()
+    private readonly approvalNotifier?: ApprovalNotifierService,
   ) {}
 
   async listPending(tenantId: string): Promise<AutomationApprovalDto[]> {
@@ -242,6 +246,14 @@ export class AutomationApprovalsService {
     }
 
     await this.resumeRunIfNothingPending(tenantId, exec.id);
+    await this.approvalNotifier?.decided({
+      tenantId,
+      itemType: 'AUTOMATION_APPROVAL',
+      itemId: row.id,
+      outcome: status,
+      decidedByUserId: user.id,
+      comment,
+    });
 
     // The decision is delivered: failing to dress up the answer is no 500.
     const decided = { ...claimed, execution: exec };

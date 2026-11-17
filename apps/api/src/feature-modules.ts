@@ -18,6 +18,7 @@ import { ProductionModule } from '@/modules/production/production.module';
 import { TaxModule } from '@/modules/tax/tax.module';
 import { CreditsModule } from '@/modules/credits/credits.module';
 import { NotificationsModule } from '@/modules/notifications/notifications.module';
+import { ApprovalNotificationsModule } from '@/modules/approval-notifications/approval-notifications.module';
 import { BillingModule } from '@/modules/billing/billing.module';
 import { AuditModule } from '@/modules/audit/audit.module';
 import { StorageModule } from '@/modules/storage/storage.module';
@@ -75,6 +76,8 @@ export const FEATURE_MODULES = [
   TaxModule,
   CreditsModule,
   NotificationsModule,
+  // Delivers approval notices from the outbox: API process only.
+  ApprovalNotificationsModule,
   BillingModule,
   SavedViewsModule,
   CustomObjectsModule,

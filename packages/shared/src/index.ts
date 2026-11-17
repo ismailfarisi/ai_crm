@@ -56,6 +56,7 @@ export * from './schemas/credits';
 export * from './schemas/vat';
 export * from './finance/currency';
 export * from './billing/subscriptions';
+export * from './notifications/preferences';
 export * from './schemas/billing';
 export * from './platform/audit';
 export * from './platform/attachments';

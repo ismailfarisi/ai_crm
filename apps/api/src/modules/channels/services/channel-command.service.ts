@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'crypto';
 import { In, IsNull, LessThan, MoreThan, Not, Repository } from 'typeorm';
@@ -13,6 +13,7 @@ import { ChannelProviderType } from '../entities/channel-config.entity';
 import { AuditService } from '../../audit/audit.service';
 import { RbacService } from '../../rbac/rbac.service';
 import { SkillRegistry } from '../skills/skill.registry';
+import { ApprovalReplyService, approvalSlotOf } from './approval-reply.service';
 import {
   AiUnavailableError,
   SkillRouterService,
@@ -82,6 +83,7 @@ export class ChannelCommandService {
     private readonly registry: SkillRegistry,
     private readonly router: SkillRouterService,
     private readonly audit: AuditService,
+    @Optional() private readonly approvalReplies?: ApprovalReplyService,
   ) {}
 
   // ---- Settings-facing API (linking codes + identity management) ----
@@ -191,6 +193,13 @@ export class ChannelCommandService {
       senderIdentifier,
     );
 
+    const approval = live ? approvalSlotOf(live) : null;
+    if (live && approval && this.approvalReplies) {
+      // A reply to an approval notice. A quote's YES falls through to the
+      // quote approval skill's own confirmation below.
+      const answer = await this.approvalReplies.handle(live, approval, ctx);
+      if (answer !== null) return this.reply(ctx, answer);
+    }
     if (live?.status === 'AWAITING_CONFIRM') {
       return this.handleConfirmation(live, ctx);
     }

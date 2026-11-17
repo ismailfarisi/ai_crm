@@ -93,6 +93,9 @@ export function billingRestriction(
 
 export type NotificationType =
   | 'QUOTE_AWAITING_APPROVAL'
+  | 'APPROVAL_REQUESTED'
+  | 'APPROVAL_REMINDER'
+  | 'APPROVAL_DECIDED'
   | 'BILL_VARIANCE'
   | 'LOW_STOCK'
   | 'CREDIT_NOTE_AWAITING_APPROVAL'

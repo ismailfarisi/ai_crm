@@ -21,6 +21,7 @@ import { AiAgent } from './entities/ai-agent.entity';
 import { IntentAgentConfig } from './entities/intent-agent-config.entity';
 import { ChannelCryptoService } from './services/channel-crypto.service';
 import { ChannelCommandService } from './services/channel-command.service';
+import { ApprovalReplyService } from './services/approval-reply.service';
 import { ChannelIdempotencyService } from './services/channel-idempotency.service';
 import { AiAgentService } from './services/ai-agent.service';
 import { IntentAgentConfigService } from './services/intent-agent-config.service';
@@ -59,6 +60,7 @@ import { ChannelsWebhookController } from './channels-webhook.controller';
     { provide: CHANNEL_SENDER, useExisting: ChannelsService },
     ChannelCryptoService,
     ChannelCommandService,
+    ApprovalReplyService,
     ChannelIdempotencyService,
     SkillActorService,
     SkillRegistry,
