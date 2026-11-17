@@ -155,6 +155,7 @@ describe('PackingSlipPdfService', () => {
       descriptionAr: 'صندوق مموج',
     });
     expect(doc.items[1].descriptionAr).toBeUndefined();
+    expect(doc.items[0].code).toBeUndefined();
     expect(doc.party).toMatchObject({
       nameAr: 'حلويات النور',
       address: 'Warehouse 4, Al Quoz',

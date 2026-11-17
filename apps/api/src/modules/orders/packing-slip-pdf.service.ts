@@ -95,7 +95,6 @@ export class PackingSlipPdfService {
           trackingReference: note.trackingReference || undefined,
         },
         items: lines.map((line) => ({
-          code: line.salesOrderLineId || undefined,
           description: line.description + (line.uom ? ` (${line.uom})` : ''),
           descriptionAr: descriptionsAr.get(line.salesOrderLineId),
           quantity: Number(line.qty || 0),
