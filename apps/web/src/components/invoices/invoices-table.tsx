@@ -96,7 +96,12 @@ export function InvoicesTable({
         header: ({ column }) => <DataTableColumnHeader column={column} title="Invoice Number" />,
         cell: ({ row }) => (
           <div>
-            <span className="font-mono font-medium text-ink">{row.original.invoiceNumber}</span>
+            <Link
+              href={`/invoices/${row.original.id}`}
+              className="font-mono font-medium text-ink underline-offset-2 hover:underline"
+            >
+              {row.original.invoiceNumber}
+            </Link>
             {row.original.stageLabel && (
               <p className="text-xs text-ink-subtle">{row.original.stageLabel}</p>
             )}

@@ -38,6 +38,14 @@ export function useInvoices() {
   };
 }
 
+export function useInvoice(invoiceId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.invoice(invoiceId ?? ''),
+    queryFn: () => api.invoices.get(invoiceId as string),
+    enabled: Boolean(invoiceId),
+  });
+}
+
 export function useInvoicePayments(invoiceId: string | null, enabled = true) {
   return useQuery({
     queryKey: queryKeys.invoicePayments(invoiceId ?? ''),
