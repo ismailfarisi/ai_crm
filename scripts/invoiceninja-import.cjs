@@ -133,6 +133,13 @@ const dt = (s) => {
   return `${v.slice(0, 10)}T10:00:00Z`;
 };
 const norm = (s) => String(s ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+/* For single-line fields like names: source data carries stray \r inside
+   "MIDDLE \rEAST" and "TRN 1004…" prefixes inside tax ids. */
+const clean = (s, max) => {
+  const v = str(s, max);
+  return v ? v.replace(/\s+/g, ' ').trim() : null;
+};
+const taxId = (s) => clean(s, 40)?.replace(/^\s*TRN[: ]*/i, '') ?? null;
 const EMIRATE = {
   dubai: 'DXB',
   'abu dhabi': 'AUH',
@@ -266,7 +273,7 @@ async function main() {
     const customerIdByName = new Map();
     const usedNames = new Set();
     const addCustomer = async (name, fields = {}) => {
-      let company = str(name, 120) ?? 'Unknown';
+      let company = clean(name, 120) ?? 'Unknown';
       let candidate = company;
       for (let i = 2; usedNames.has(norm(candidate)); i++) candidate = `${company.slice(0, 110)} (${i})`;
       company = candidate;
@@ -285,7 +292,7 @@ async function main() {
           str(fields.city, 80),
           str(fields.postal, 20),
           str(fields.country, 80),
-          str(fields.taxId, 40),
+          taxId(fields.taxId),
           emirateOf(fields.state),
           fields.country && norm(fields.country) !== 'united arab emirates'
             ? 'OUTSIDE_UAE'
@@ -434,10 +441,10 @@ async function main() {
       const id = await insertQuote({
         number,
         customerId: custId,
-        customerName: str(r['Client Name'], 255) ?? 'General Customer',
+        customerName: clean(r['Client Name'], 255) ?? 'General Customer',
         customerEmail: customerEmail.get(custId) ?? null,
         status,
-        title: `${number} — ${str(r['Client Name'], 200) ?? 'quote'}`,
+        title: `${number} — ${clean(r['Client Name'], 200) ?? 'quote'}`,
         validUntil: dt(r['Quotation Valid Until']),
         currency: str(r['Client Currency'], 3) ?? 'AED',
         items,
@@ -475,10 +482,10 @@ async function main() {
         const id = await insertQuote({
           number,
           customerId: custId,
-          customerName: str(r['Client Name'], 255) ?? 'General Customer',
+          customerName: clean(r['Client Name'], 255) ?? 'General Customer',
           customerEmail: customerEmail.get(custId) ?? null,
           status: 'DRAFT',
-          title: `Draft invoice ${number} — ${str(r['Client Name'], 180) ?? ''}`,
+          title: `Draft invoice ${number} — ${clean(r['Client Name'], 180) ?? ''}`,
           validUntil: dt(r['Tax Invoice Due Date']),
           currency: str(r['Client Currency'], 3) ?? 'AED',
           items,
@@ -514,10 +521,10 @@ async function main() {
         quoteId = await insertQuote({
           number: null,
           customerId: custId,
-          customerName: str(r['Client Name'], 255) ?? 'General Customer',
+          customerName: clean(r['Client Name'], 255) ?? 'General Customer',
           customerEmail: customerEmail.get(custId) ?? null,
           status: 'APPROVED',
-          title: `Imported invoice ${number} — ${str(r['Client Name'], 180) ?? ''}`,
+          title: `Imported invoice ${number} — ${clean(r['Client Name'], 180) ?? ''}`,
           validUntil: null,
           currency: str(r['Client Currency'], 3) ?? 'AED',
           items,
@@ -550,7 +557,7 @@ async function main() {
           quoteId,
           number,
           custId,
-          str(r['Client Name'], 255) ?? 'General Customer',
+          clean(r['Client Name'], 255) ?? 'General Customer',
           customerEmail.get(custId) ?? null,
           str(r['Client Currency'], 3) ?? 'AED',
           JSON.stringify(items),
@@ -694,7 +701,7 @@ async function main() {
           status,
           target,
           custId,
-          str(r['Client Name'], 255) ?? 'Customer',
+          clean(r['Client Name'], 255) ?? 'Customer',
           str(r['Client Currency'], 3) ?? 'AED',
           str(r['Credit Public Notes']) ?? `Imported credit note ${number}`,
           sub,
@@ -729,9 +736,9 @@ async function main() {
     /* ---------- suppliers ---------- */
     const supplierIdByName = new Map();
     for (const r of csv('vendors.csv')) {
-      const name = str(r['Vendor Name'], 120);
+      const name = clean(r['Vendor Name'], 120);
       if (!name) continue;
-      const contactName = [str(r['Vendor First Name']), str(r['Vendor Last Name'])].filter(Boolean).join(' ') || null;
+      const contactName = [clean(r['Vendor First Name']), clean(r['Vendor Last Name'])].filter(Boolean).join(' ') || null;
       const res = await client.query(
         `INSERT INTO suppliers (tenant_id, company_name, contact_name, email, phone, address_line1, address_line2,
            city, postal_code, country, tax_id, emirate, currency, notes)
@@ -747,7 +754,7 @@ async function main() {
           str(r['Vendor City'], 80),
           str(r['Vendor Postal Code'], 20),
           str(r['Vendor Country'], 80),
-          str(r['Vendor VAT Number'], 40),
+          taxId(r['Vendor VAT Number']),
           emirateOf(r['Vendor State/Province']),
           str(r['Vendor Currency'], 3),
           [
@@ -770,7 +777,7 @@ async function main() {
     for (const r of csv('purchase_orders.csv')) {
       const number = str(r['Purchase Order Number']);
       if (!number) continue;
-      const vendorName = str(r['Vendor Name']) ?? str(r['Purchase Order Vendor']) ?? 'Unknown supplier';
+      const vendorName = clean(r['Vendor Name'], 120) ?? clean(r['Purchase Order Vendor'], 120) ?? 'Unknown supplier';
       let supId = supplierIdByName.get(norm(vendorName));
       if (!supId) {
         const res = await client.query(
