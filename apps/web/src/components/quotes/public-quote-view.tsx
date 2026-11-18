@@ -283,6 +283,8 @@ export function PublicQuoteView({ token }: { token: string }) {
           name={name}
           onNameChange={setName}
           onChange={setQuote}
+          copy={t}
+          formatDate={formatDate}
         />
 
         <footer className="border-t border-line p-6">
@@ -301,7 +303,7 @@ export function PublicQuoteView({ token }: { token: string }) {
 
         {quote.acceptedAt && quote.deposit && (
           <div className="px-6 pb-6">
-            <DepositPanel token={token} deposit={quote.deposit} currency={quote.currency} />
+            <DepositPanel token={token} deposit={quote.deposit} currency={quote.currency} copy={t} />
           </div>
         )}
       </article>
