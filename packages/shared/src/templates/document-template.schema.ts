@@ -27,7 +27,9 @@ export const documentTemplateConfigSchema = z.object({
     }),
   }),
   header: z.object({
-    layout: z.enum(['split', 'centered', 'banner']).default('split'),
+    layout: z
+      .enum(['split', 'centered', 'banner', 'invoice-ninja'])
+      .default('split'),
     showLogo: z.boolean().default(true),
     showCompanyTaxId: z.boolean().default(true),
     showCompanyPhone: z.boolean().default(true),

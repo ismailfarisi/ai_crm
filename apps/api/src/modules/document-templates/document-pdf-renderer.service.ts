@@ -427,6 +427,19 @@ export class DocumentPdfRendererService {
           config.header.layout === 'banner' ? ' / ' : '\n',
         );
 
+        if (config.header.layout === 'invoice-ninja') {
+          this.renderInvoiceNinjaLayout(doc, docData, config, {
+            logoBuffer,
+            regularFont,
+            boldFont,
+            docTitle,
+            orgName,
+            partyName,
+            partyAddress,
+          });
+          return;
+        }
+
         let y = margins.top;
 
         // --- 1. HEADER SECTION ---
@@ -1684,5 +1697,413 @@ export class DocumentPdfRendererService {
         reject(err);
       }
     });
+  }
+
+  /**
+   * Replica of the tenant's legacy Invoice Ninja design: maroon wedge top
+   * right holding the company block, logo top left, centred title between
+   * hairlines, client/meta row, charcoal-banded items table, totals beside
+   * the terms, and a maroon wave footer with contact details.
+   */
+  private renderInvoiceNinjaLayout(
+    doc: PDFKit.PDFDocument,
+    docData: UniversalDocumentData,
+    config: DocumentTemplateConfig,
+    ctx: {
+      logoBuffer: Buffer | null;
+      regularFont: string;
+      boldFont: string;
+      docTitle: string;
+      orgName: string;
+      partyName: string;
+      partyAddress?: string;
+    },
+  ): void {
+    const {
+      logoBuffer,
+      regularFont,
+      boldFont,
+      docTitle,
+      orgName,
+      partyName,
+      partyAddress,
+    } = ctx;
+    // This layout positions everything absolutely, right into the page
+    // edges — pdfkit must not auto-break on the template's margins.
+    doc.page.margins = { top: 0, bottom: 0, left: 0, right: 0 };
+    const PW = doc.page.width;
+    const PH = doc.page.height;
+    const ACCENT = '#94436e';
+    const OLIVE = '#6b8e23';
+    const HDR = '#696969';
+    const ROWBG = '#f5f5f5';
+    const RULE = '#d8d8d8';
+    const BLACK = '#000000';
+    const LEFT = 13.4;
+    const RIGHT = 582.8;
+    const TABLE_W = RIGHT - LEFT;
+    const BOTTOM_LIMIT = 715;
+
+    const ccy = docData.currency || 'AED';
+    const money = (v: number | null | undefined) =>
+      v == null
+        ? ''
+        : `${Number(v).toLocaleString('en-US', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })} ${ccy}`;
+    const MONTHS = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    const nDate = (v: Date | string | null | undefined) => {
+      if (!v) return '';
+      const d = v instanceof Date ? v : new Date(v);
+      if (isNaN(d.getTime())) return '';
+      const zoned = new Date(
+        d.toLocaleString('en-US', { timeZone: DOCUMENT_TIME_ZONE }),
+      );
+      return `${zoned.getDate()}/${MONTHS[zoned.getMonth()]}/${zoned.getFullYear()}`;
+    };
+    const typeName =
+      {
+        INVOICE: 'Invoice',
+        QUOTE: 'Quote',
+        PURCHASE_ORDER: 'Purchase Order',
+        DELIVERY_NOTE: 'Delivery Note',
+        STATEMENT: 'Statement',
+      }[docData.type as string] || 'Document';
+
+    const org = docData.organization;
+    const orgParts = (org.address || '')
+      .split(/,\s*/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const orgAddrLines =
+      orgParts.length > 2
+        ? [
+            orgParts[0],
+            orgParts.slice(1, -1).join(', '),
+            orgParts[orgParts.length - 1],
+          ]
+        : orgParts;
+    const companyLines = [
+      orgName,
+      ...(config.header.showCompanyAddress ? orgAddrLines : []),
+      config.header.showCompanyTaxId && org.taxId
+        ? `TRN : ${org.taxId}`
+        : null,
+    ].filter(Boolean) as string[];
+
+    const WAVE_TOP: Array<[number, number]> = [
+      [0, 788.6],
+      [11, 788.6],
+      [22, 788.6],
+      [44.2, 788.6],
+      [66.1, 784.2],
+      [88.1, 779.9],
+      [110.3, 770.8],
+      [132.2, 766.6],
+      [154.2, 762.1],
+      [176.4, 762.1],
+      [198.3, 770.9],
+      [220.3, 779.9],
+      [242.5, 797.2],
+      [264.3, 790.8],
+      [286.4, 784],
+      [308.5, 753.5],
+      [330.4, 751.1],
+      [352.5, 748.9],
+      [374.6, 775.4],
+      [396.5, 779.8],
+      [418.5, 784],
+      [440.7, 766.7],
+      [462.6, 762.1],
+      [484.6, 757.6],
+      [506.8, 766.7],
+      [528.7, 764.3],
+      [550.7, 762.1],
+      [572.9, 748.9],
+      [583.6, 742.3],
+      [594.8, 735.7],
+    ];
+
+    // Furniture drawn on every page after the content is laid out, so it
+    // always sits above anything flowing underneath.
+    const drawChrome = () => {
+      doc.save();
+      doc
+        .moveTo(289.5, 3.7)
+        .lineTo(594.8, 3.7)
+        .lineTo(594.8, 95.4)
+        .lineTo(497.1, 95.4)
+        .closePath()
+        .fill(ACCENT);
+
+      doc.font(regularFont).fontSize(9).fillColor('#ffffff');
+      companyLines.forEach((line, i) => {
+        doc.text(line, 295, 18 + i * 13.1, {
+          width: 290,
+          align: 'right',
+          lineBreak: false,
+        });
+      });
+
+      if (logoBuffer && config.header.showLogo) {
+        try {
+          doc.image(logoBuffer, 12, 10, { fit: [78, 54] });
+        } catch {
+          /* logo simply doesn't print */
+        }
+      }
+
+      doc.moveTo(WAVE_TOP[0][0], WAVE_TOP[0][1]);
+      for (let i = 1; i < WAVE_TOP.length - 1; i++) {
+        const [px, py] = WAVE_TOP[i];
+        const [nx, ny] = WAVE_TOP[i + 1];
+        doc.quadraticCurveTo(px, py, (px + nx) / 2, (py + ny) / 2);
+      }
+      doc
+        .quadraticCurveTo(
+          WAVE_TOP[WAVE_TOP.length - 1][0],
+          WAVE_TOP[WAVE_TOP.length - 1][1],
+          WAVE_TOP[WAVE_TOP.length - 1][0],
+          WAVE_TOP[WAVE_TOP.length - 1][1],
+        )
+        .lineTo(PW, PH)
+        .lineTo(0, PH)
+        .closePath()
+        .fill(ACCENT);
+
+      doc.font(regularFont).fontSize(8).fillColor('#ffffff');
+      if (org.website) doc.text(org.website, 10, 811, { lineBreak: false });
+      if (org.email) {
+        doc.text(org.email, 0, 811, {
+          width: PW,
+          align: 'center',
+          lineBreak: false,
+        });
+      }
+      if (org.phone) {
+        doc.text(org.phone, 0, 811, {
+          width: 585,
+          align: 'right',
+          lineBreak: false,
+        });
+      }
+      doc.restore();
+    };
+
+    const hairline = (y: number) => {
+      doc
+        .moveTo(LEFT, y)
+        .lineTo(RIGHT, y)
+        .strokeColor(RULE)
+        .lineWidth(0.7)
+        .stroke();
+    };
+
+    // Page 1: hairlines, centred title, client block and meta table.
+    for (const ry of [141.2, 182.5, 251.2]) hairline(ry);
+
+    doc
+      .font(regularFont)
+      .fontSize(24)
+      .fillColor('#1a2233')
+      .text(docTitle, 0, 150, { width: PW, align: 'center', lineBreak: false });
+
+    let blockY = 191;
+    doc
+      .font(boldFont)
+      .fontSize(9)
+      .fillColor(BLACK)
+      .text(partyName, 22, blockY, { width: 290 });
+    blockY += 13;
+    doc.font(regularFont);
+    const partyLines = (partyAddress || '')
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const clientLines =
+      partyLines.length > 2
+          ? [
+              [partyLines[0], partyLines[1]].join(', '),
+              ...partyLines.slice(2),
+            ]
+          : partyLines;
+    for (const line of clientLines) {
+      doc.text(line, 22, blockY, { width: 290, lineBreak: false });
+      blockY += 13;
+    }
+    if (docData.party.taxId && config.parties.showTaxId) {
+      doc.text(`TRN ${docData.party.taxId}`, 22, blockY, {
+        width: 290,
+        lineBreak: false,
+      });
+    }
+
+    const metaRows: Array<[string, string]> = [
+      [`${typeName} Number`, docData.number],
+      [`${typeName} Date`, nDate(docData.issuedAt)],
+      ['Total', money(docData.totals?.total)],
+    ];
+    metaRows.forEach(([label, value], i) => {
+      doc
+        .font(regularFont)
+        .fontSize(9)
+        .fillColor(BLACK)
+        .text(label, 443, 191 + i * 13, { width: 60, lineBreak: false })
+        .text(value, 504, 191 + i * 13, { width: 80, lineBreak: false });
+    });
+
+    // Items table: charcoal band, white labels, light-grey rows.
+    const cols = [
+      { label: 'Item', x: 22, w: 107, align: 'left' as const },
+      { label: 'Description', x: 146, w: 188, align: 'left' as const },
+      { label: 'Unit Cost', x: 351, w: 62, align: 'left' as const },
+      { label: 'Quantity', x: 429, w: 35, align: 'left' as const },
+      { label: 'Tax', x: 480, w: 24, align: 'left' as const },
+      { label: 'Line Total', x: 504.5, w: 78.5, align: 'right' as const },
+    ];
+    const drawTableHeader = (top: number) => {
+      doc.rect(LEFT, top, TABLE_W, 35).fill(HDR);
+      doc.font(regularFont).fontSize(9).fillColor('#ffffff');
+      for (const c of cols) {
+        doc.text(c.label, c.x, top + 13.5, {
+          width: c.w,
+          align: c.align,
+          lineBreak: false,
+        });
+      }
+      return top + 35;
+    };
+
+    let y = drawTableHeader(260.1);
+
+    for (const item of docData.items || []) {
+      const name = item.code || (item.description || '').split('\n')[0];
+      const desc = item.description || '';
+      doc.font(regularFont).fontSize(9);
+      const descH = desc
+        ? doc.heightOfString(desc, { width: 188 })
+        : 0;
+      const nameH = name
+        ? doc.heightOfString(name, { width: 107 })
+        : 0;
+      const rowH = Math.max(descH, nameH, 11) + 16;
+
+      if (y + rowH > BOTTOM_LIMIT) {
+        doc.addPage();
+        doc.page.margins = { top: 0, bottom: 0, left: 0, right: 0 };
+        y = drawTableHeader(110);
+      }
+
+      doc.rect(LEFT, y, TABLE_W, rowH).fill(ROWBG);
+      hairline(y);
+      hairline(y + rowH);
+
+      const mid = y + (rowH - 9.5) / 2;
+      doc.font(regularFont).fontSize(9).fillColor(OLIVE).text(name, 22, mid, {
+        width: 107,
+      });
+      doc
+        .fillColor(BLACK)
+        .text(desc, 146, y + 8, { width: 188 })
+        .text(item.unitPrice != null ? money(item.unitPrice) : '', 351, mid, {
+          width: 62,
+          lineBreak: false,
+        })
+        .text(item.quantity != null ? String(item.quantity) : '', 429, mid, {
+          width: 35,
+          lineBreak: false,
+        })
+        .text(item.taxRate != null ? `${item.taxRate}%` : '', 480, mid, {
+          width: 24,
+          lineBreak: false,
+        })
+        .text(item.amount != null ? money(item.amount) : '', 504.5, mid, {
+          width: 78.5,
+          align: 'right',
+          lineBreak: false,
+        });
+
+      y += rowH;
+    }
+
+    // Terms left, totals right — side by side under the table.
+    if (y + 130 > BOTTOM_LIMIT) {
+      doc.addPage();
+      doc.page.margins = { top: 0, bottom: 0, left: 0, right: 0 };
+      y = 110;
+    }
+    let ty = y + 40;
+    const gy0 = ty;
+
+    doc
+      .font(boldFont)
+      .fontSize(9)
+      .fillColor(BLACK)
+      .text(`${typeName} Terms:`, 14, ty, { lineBreak: false });
+    ty += 11;
+    doc.font(regularFont);
+    const writeWrapped = (text: string, gap = 0) => {
+      for (const line of (text || '')
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean)) {
+        doc.text(line, 14, ty, { width: 350, lineGap: -1 });
+        ty = doc.y + 1 + gap;
+      }
+    };
+    writeWrapped(docData.paymentTerms || '');
+    writeWrapped(docData.notes || '');
+
+    let gy = gy0;
+    const totalRow = (label: string, value: string) => {
+      doc
+        .font(regularFont)
+        .fontSize(9)
+        .fillColor(BLACK)
+        .text(label, 401, gy, { width: 80, lineBreak: false })
+        .text(value, 483, gy, {
+          width: 100,
+          align: 'right',
+          lineBreak: false,
+        });
+      gy += 15;
+    };
+    const t = docData.totals;
+    if (t) {
+      const discounts = t.discounts || 0;
+      totalRow('Net', money((t.subtotal ?? 0) + discounts));
+      if (t.subtotal != null) totalRow('Subtotal', money(t.subtotal));
+      if (discounts > 0) totalRow('Discount', money(-discounts));
+      for (const tax of t.taxes || []) {
+        const label = /vat/i.test(tax.label || '')
+          ? `VAT ${tax.rate}%`
+          : tax.label || `Tax ${tax.rate}%`;
+        totalRow(label, money(tax.amount));
+      }
+      totalRow('Total', money(t.total));
+      if (t.amountPaid != null) totalRow('Paid to Date', money(t.amountPaid));
+      if (t.balanceDue != null) totalRow('Balance Due', money(t.balanceDue));
+    }
+
+    const range = doc.bufferedPageRange();
+    for (let i = range.start; i < range.start + range.count; i++) {
+      doc.switchToPage(i);
+      drawChrome();
+    }
+    doc.end();
   }
 }
