@@ -51,7 +51,7 @@ import {
 } from '../approval-notifications/approval-notifier.service';
 import {
   allocateNextSequenceValue,
-  formatSequenceNumber,
+  formatTenantSequenceNumber,
   peekNextSequenceValue,
 } from '../../database/tenant-sequence.util';
 
@@ -207,7 +207,7 @@ export class QuotesService {
       tenantId,
       'quote_number',
     );
-    return formatSequenceNumber('QT', value);
+    return formatTenantSequenceNumber(this.quoteRepository.manager, tenantId, 'quote_number', 'QT', value);
   }
 
   /** Atomically allocates the next quote number — call only when actually creating a quote. */
@@ -217,7 +217,7 @@ export class QuotesService {
       tenantId,
       'quote_number',
     );
-    return formatSequenceNumber('QT', value);
+    return formatTenantSequenceNumber(this.quoteRepository.manager, tenantId, 'quote_number', 'QT', value);
   }
 
   /**

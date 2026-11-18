@@ -22,7 +22,7 @@ import {
 } from '@saas/shared';
 import {
   allocateNextSequenceValue,
-  formatSequenceNumber,
+  formatTenantSequenceNumber,
 } from '@/database/tenant-sequence.util';
 import { Organization } from '../organizations/entities/organization.entity';
 import { Employee } from './entities/employee.entity';
@@ -247,7 +247,7 @@ export class PayrollRunsService {
         const run = await runs.save(
           runs.create({
             tenantId,
-            runNumber: formatSequenceNumber('PR', seq),
+            runNumber: await formatTenantSequenceNumber(manager, tenantId, 'payroll_run_number', 'PR', seq),
             period,
             payDate: input.payDate ?? `${period}-28`,
             status: 'DRAFT',

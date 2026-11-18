@@ -21,7 +21,7 @@ import {
 } from '@saas/shared';
 import {
   allocateNextSequenceValue,
-  formatSequenceNumber,
+  formatTenantSequenceNumber,
 } from '@/database/tenant-sequence.util';
 import { LedgerService } from '../finance/ledger.service';
 import { FinanceAccount } from '../finance/entities/finance-account.entity';
@@ -314,7 +314,7 @@ export class CreditNotesService {
         tenantId,
         'credit_note_number',
       );
-      note.creditNoteNumber = formatSequenceNumber('CN', number);
+      note.creditNoteNumber = await formatTenantSequenceNumber(manager, tenantId, 'credit_note_number', 'CN', number);
       await this.notifications.resolve(tenantId, note.id, manager);
       note.status = 'ISSUED';
       note.issuedAt = new Date();

@@ -68,3 +68,41 @@ export function formatSequenceNumber(
   const year = new Date().getFullYear();
   return `${prefix}-${year}-${String(value).padStart(pad, '0')}`;
 }
+
+/**
+ * Renders a tenant's custom number pattern (tenant_sequences.number_pattern,
+ * migration 1791700000000). Tokens: `{Y}` = current 4-digit year, `{N}` =
+ * raw value, `{N:k}` = value zero-padded to k digits. Everything else is
+ * literal. `INV{N:4}` → `INV1035`; `{N:5}` → `00723`.
+ */
+export function renderNumberPattern(pattern: string, value: number): string {
+  return pattern
+    .replace(/\{Y\}/g, String(new Date().getFullYear()))
+    .replace(/\{N(?::(\d+))?\}/g, (_m, p) =>
+      p ? String(value).padStart(Number(p), '0') : String(value),
+    );
+}
+
+/**
+ * Formats an allocated sequence value with the tenant's `number_pattern`
+ * when the sequence row carries one, otherwise the default
+ * `PREFIX-YYYY-NNNN` shape. Identical to formatSequenceNumber for every
+ * sequence that has no pattern set, so existing tenants are unaffected.
+ */
+export async function formatTenantSequenceNumber(
+  manager: EntityManager,
+  tenantId: string,
+  sequenceName: TenantSequenceName,
+  fallbackPrefix: string,
+  value: number,
+  pad = 4,
+): Promise<string> {
+  const rows: Array<{ number_pattern: string | null }> = await manager.query(
+    `SELECT "number_pattern" FROM "tenant_sequences" WHERE "tenant_id" = $1 AND "sequence_name" = $2`,
+    [tenantId, sequenceName],
+  );
+  const pattern = rows[0]?.number_pattern;
+  return pattern
+    ? renderNumberPattern(pattern, value)
+    : formatSequenceNumber(fallbackPrefix, value, pad);
+}

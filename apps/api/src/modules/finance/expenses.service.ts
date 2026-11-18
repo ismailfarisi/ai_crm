@@ -48,7 +48,7 @@ import {
 } from '@saas/shared';
 import {
   allocateNextSequenceValue,
-  formatSequenceNumber,
+  formatTenantSequenceNumber,
 } from '../../database/tenant-sequence.util';
 
 const POSTGRES_UNIQUE_VIOLATION = '23505';
@@ -101,7 +101,7 @@ export class ExpensesService {
       tenantId,
       'claim_number',
     );
-    return formatSequenceNumber('EXP', value);
+    return formatTenantSequenceNumber(this.expenseRepository.manager, tenantId, 'claim_number', 'EXP', value);
   }
 
   async findAll(tenantId: string): Promise<ExpenseClaim[]> {

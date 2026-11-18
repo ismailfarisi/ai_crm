@@ -33,7 +33,7 @@ import {
 } from '@saas/shared';
 import {
   allocateNextSequenceValue,
-  formatSequenceNumber,
+  formatTenantSequenceNumber,
 } from '@/database/tenant-sequence.util';
 import { CostingService } from '../catalog/costing.service';
 import { LedgerService } from '../finance/ledger.service';
@@ -361,7 +361,7 @@ export class ProductionService {
     const wo = await repo.save(
       repo.create({
         tenantId: p.tenantId,
-        woNumber: formatSequenceNumber('WO', number),
+        woNumber: await formatTenantSequenceNumber(manager, p.tenantId, 'work_order_number', 'WO', number),
         status: 'PLANNED',
         salesOrderId: p.order.id,
         salesOrderLineId: p.line.id,

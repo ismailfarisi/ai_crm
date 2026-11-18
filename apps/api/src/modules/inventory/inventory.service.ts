@@ -20,7 +20,7 @@ import {
 } from '@saas/shared';
 import {
   allocateNextSequenceValue,
-  formatSequenceNumber,
+  formatTenantSequenceNumber,
 } from '@/database/tenant-sequence.util';
 import { LedgerService } from '../finance/ledger.service';
 import { fxRateFor } from '../finance/fx';
@@ -656,7 +656,7 @@ export class InventoryService {
       const receipt = await manager.getRepository(GoodsReceipt).save(
         manager.getRepository(GoodsReceipt).create({
           tenantId,
-          receiptNumber: formatSequenceNumber('GRN', sequenceValue),
+          receiptNumber: await formatTenantSequenceNumber(manager, tenantId, 'goods_receipt_number', 'GRN', sequenceValue),
           purchaseOrderId: order.id,
           locationId: location.id,
           receivedById: actorId,

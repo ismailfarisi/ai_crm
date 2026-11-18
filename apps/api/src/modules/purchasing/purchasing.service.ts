@@ -23,7 +23,7 @@ import {
 } from '@saas/shared';
 import {
   allocateNextSequenceValue,
-  formatSequenceNumber,
+  formatTenantSequenceNumber,
 } from '@/database/tenant-sequence.util';
 import { Material } from '../catalog/entities/material.entity';
 import { PurchaseOrder } from './entities/purchase-order.entity';
@@ -706,7 +706,7 @@ ${from}`,
         tenantId,
         'purchase_order_number',
       );
-      const poNumber = formatSequenceNumber('PO', sequenceValue);
+      const poNumber = await formatTenantSequenceNumber(manager, tenantId, 'purchase_order_number', 'PO', sequenceValue);
 
       const lines = input.lines.map((line) =>
         manager.create(PurchaseOrderLine, {

@@ -16,7 +16,7 @@ import {
 } from '@saas/shared';
 import {
   allocateNextSequenceValue,
-  formatSequenceNumber,
+  formatTenantSequenceNumber,
 } from '../../database/tenant-sequence.util';
 import type { LedgerService } from '../finance/ledger.service';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
@@ -130,7 +130,7 @@ export async function provisionOrderForQuoteInTransaction(
   const order = await orders.save(
     orders.create({
       tenantId,
-      orderNumber: formatSequenceNumber('SO', number),
+      orderNumber: await formatTenantSequenceNumber(manager, tenantId, 'sales_order_number', 'SO', number),
       quoteId: quote.id,
       quoteNumber: quote.quoteNumber,
       customerId: quote.customerId,
@@ -389,7 +389,7 @@ export async function issueInvoice(
       billingScheduleLineId: p.billingScheduleLineId,
       deliveryNoteId: p.deliveryNoteId,
       stageLabel: p.stageLabel,
-      invoiceNumber: formatSequenceNumber('INV', value),
+      invoiceNumber: await formatTenantSequenceNumber(manager, tenantId, 'invoice_number', 'INV', value),
       customerId: p.order.customerId,
       customerName: p.order.customerName,
       customerEmail: p.order.customerEmail,

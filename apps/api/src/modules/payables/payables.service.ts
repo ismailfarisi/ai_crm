@@ -40,7 +40,7 @@ import {
 } from '@saas/shared';
 import {
   allocateNextSequenceValue,
-  formatSequenceNumber,
+  formatTenantSequenceNumber,
 } from '@/database/tenant-sequence.util';
 import { LedgerService } from '../finance/ledger.service';
 import { FinanceAccount } from '../finance/entities/finance-account.entity';
@@ -445,7 +445,7 @@ export class PayablesService {
       const created = await manager.getRepository(SupplierBill).save(
         manager.getRepository(SupplierBill).create({
           tenantId,
-          billNumber: formatSequenceNumber('BILL', sequence),
+          billNumber: await formatTenantSequenceNumber(manager, tenantId, 'bill_number', 'BILL', sequence),
           supplierInvoiceNumber: input.supplierInvoiceNumber,
           supplierId: supplier.id,
           supplierName: supplier.companyName,

@@ -28,7 +28,7 @@ import {
 } from '@saas/shared';
 import {
   allocateNextSequenceValue,
-  formatSequenceNumber,
+  formatTenantSequenceNumber,
 } from '@/database/tenant-sequence.util';
 import { FinanceAccount } from '../finance/entities/finance-account.entity';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
@@ -197,7 +197,7 @@ export class SettlementsService {
         const saved = await repo.save(
           repo.create({
             tenantId,
-            settlementNumber: formatSequenceNumber('FS', seq),
+            settlementNumber: await formatTenantSequenceNumber(manager, tenantId, 'settlement_number', 'FS', seq),
             employeeId: b.employee.id,
             employeeName: b.name,
             leavingDate: b.leavingDate,

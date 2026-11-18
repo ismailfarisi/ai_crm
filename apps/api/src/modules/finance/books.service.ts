@@ -25,7 +25,7 @@ import {
 } from '@saas/shared';
 import {
   allocateNextSequenceValue,
-  formatSequenceNumber,
+  formatTenantSequenceNumber,
 } from '@/database/tenant-sequence.util';
 import { Organization } from '../organizations/entities/organization.entity';
 import { FinanceAccount } from './entities/finance-account.entity';
@@ -322,7 +322,10 @@ export class BooksService {
       input.lines,
       manager,
     );
-    const entryNumber = formatSequenceNumber(
+    const entryNumber = await formatTenantSequenceNumber(
+      manager,
+      tenantId,
+      'journal_number',
       'JNL',
       await allocateNextSequenceValue(manager, tenantId, 'journal_number'),
     );

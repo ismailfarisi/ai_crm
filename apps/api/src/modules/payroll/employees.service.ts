@@ -17,7 +17,7 @@ import {
 } from '@saas/shared';
 import {
   allocateNextSequenceValue,
-  formatSequenceNumber,
+  formatTenantSequenceNumber,
 } from '@/database/tenant-sequence.util';
 import { User } from '../users/entities/user.entity';
 import { Employee } from './entities/employee.entity';
@@ -125,7 +125,7 @@ export class EmployeesService {
       const iban = bank ? input.iban : null;
       const row = repo.create({
         tenantId,
-        employeeNumber: formatSequenceNumber('EMP', seq),
+        employeeNumber: await formatTenantSequenceNumber(manager, tenantId, 'employee_number', 'EMP', seq),
         firstName: input.firstName,
         lastName: input.lastName,
         jobTitle: input.jobTitle ?? null,
