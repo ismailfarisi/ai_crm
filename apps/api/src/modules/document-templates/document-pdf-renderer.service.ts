@@ -1785,10 +1785,22 @@ export class DocumentPdfRendererService {
       }[docData.type as string] || 'Document';
 
     const org = docData.organization;
+    const COUNTRY_NAMES: Record<string, string> = {
+      AE: 'United Arab Emirates',
+      SA: 'Saudi Arabia',
+      QA: 'Qatar',
+      KW: 'Kuwait',
+      BH: 'Bahrain',
+      OM: 'Oman',
+      US: 'United States',
+      GB: 'United Kingdom',
+      IN: 'India',
+    };
     const orgParts = (org.address || '')
       .split(/,\s*/)
       .map((s) => s.trim())
-      .filter(Boolean);
+      .filter(Boolean)
+      .map((s) => COUNTRY_NAMES[s] || s);
     const orgAddrLines =
       orgParts.length > 2
         ? [
@@ -1962,8 +1974,8 @@ export class DocumentPdfRendererService {
         .font(regularFont)
         .fontSize(9)
         .fillColor(BLACK)
-        .text(label, 443, 191 + i * 13, { width: 60, lineBreak: false })
-        .text(value, 504, 191 + i * 13, { width: 80, lineBreak: false });
+        .text(label, 440, 191 + i * 13, { width: 64, lineBreak: false })
+        .text(value, 507, 191 + i * 13, { width: 76, lineBreak: false });
     });
 
     // Items table: charcoal band, white labels, light-grey rows.
@@ -2091,12 +2103,21 @@ export class DocumentPdfRendererService {
       for (const tax of t.taxes || []) {
         const label = /vat/i.test(tax.label || '')
           ? `VAT ${tax.rate}%`
-          : tax.label || `Tax ${tax.rate}%`;
+          : `${tax.label || 'Tax'} ${tax.rate}%`;
         totalRow(label, money(tax.amount));
       }
       totalRow('Total', money(t.total));
-      if (t.amountPaid != null) totalRow('Paid to Date', money(t.amountPaid));
-      if (t.balanceDue != null) totalRow('Balance Due', money(t.balanceDue));
+      // Invoice Ninja always prints Paid to Date on quotes and invoices.
+      if (
+        docData.type === 'QUOTE' ||
+        docData.type === 'INVOICE' ||
+        t.amountPaid != null
+      ) {
+        totalRow('Paid to Date', money(t.amountPaid ?? 0));
+      }
+      if (t.balanceDue != null) {
+        totalRow('Balance Due', money(t.balanceDue));
+      }
     }
 
     const range = doc.bufferedPageRange();
