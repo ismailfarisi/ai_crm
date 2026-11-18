@@ -13,6 +13,7 @@ import {
   calculateQuoteTotals,
   CreateQuotePayload,
   DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+  formatCustomerAddress,
   formatOrganizationAddress,
   PERMISSIONS,
   quoteDocumentTaxes,
@@ -28,6 +29,7 @@ import { carryProofsOver } from './quote-proofs.service';
 import { Quote, QuoteCreatedBy, QuoteStatus } from './entities/quote.entity';
 import { Invoice } from './entities/invoice.entity';
 import { Organization } from '../organizations/entities/organization.entity';
+import { Customer } from '../customers/entities/customer.entity';
 import { InvoicesService } from './invoices.service';
 import { TemporalService } from '../temporal/temporal.service';
 import { quoteWorkflow } from './workflows/quote.workflow';
@@ -953,6 +955,11 @@ export class QuotesService {
     const organization = await this.organizationRepository?.findOne({
       where: { id: tenantId },
     });
+    const customer = quote.customerId
+      ? await this.quoteRepository.manager
+          .getRepository(Customer)
+          .findOne({ where: { id: quote.customerId, tenantId } })
+      : null;
     const template =
       await this.documentTemplatesService?.resolveForDocumentType(
         tenantId,
@@ -976,7 +983,7 @@ export class QuotesService {
       validUntil: quote.validUntil || undefined,
       currency: quote.currency || 'USD',
       organization: {
-        name: organization?.name || 'Your Company',
+        name: organization?.legalName || organization?.name || 'Your Company',
         address,
         taxId: organization?.taxId || undefined,
         phone: organization?.phone || undefined,
@@ -986,7 +993,10 @@ export class QuotesService {
       },
       party: {
         name: quote.customerName || 'Customer',
-        email: quote.customerEmail || undefined,
+        address: customer ? formatCustomerAddress(customer) : undefined,
+        email: quote.customerEmail || customer?.email || undefined,
+        phone: customer?.phone || undefined,
+        taxId: customer?.taxId || undefined,
       },
       items: (quote.items || []).map((item) => ({
         code: (item as any).sku || (item as any).code || undefined,

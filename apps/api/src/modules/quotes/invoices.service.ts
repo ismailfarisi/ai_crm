@@ -10,6 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import {
   DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
+  formatCustomerAddress,
   formatOrganizationAddress,
   invoicePosition,
   quoteDocumentTaxes,
@@ -21,6 +22,7 @@ import { Invoice, InvoiceStatus } from './entities/invoice.entity';
 import { InvoicePayment } from './entities/invoice-payment.entity';
 import { Quote } from './entities/quote.entity';
 import { Organization } from '../organizations/entities/organization.entity';
+import { Customer } from '../customers/entities/customer.entity';
 import { FinanceService } from '../finance/finance.service';
 import { MailService } from '../mail/mail.service';
 import { InvoicePdfService } from './invoice-pdf.service';
@@ -495,6 +497,11 @@ export class InvoicesService {
     const organization = await this.organizationRepository.findOne({
       where: { id: tenantId },
     });
+    const customer = invoice.customerId
+      ? await this.invoiceRepository.manager
+          .getRepository(Customer)
+          .findOne({ where: { id: invoice.customerId, tenantId } })
+      : null;
     const template =
       await this.documentTemplatesService?.resolveForDocumentType(
         tenantId,
@@ -518,7 +525,7 @@ export class InvoicesService {
       dueDate: invoice.dueDate || undefined,
       currency: invoice.currency || 'USD',
       organization: {
-        name: organization?.name || 'Your Company',
+        name: organization?.legalName || organization?.name || 'Your Company',
         address,
         taxId: organization?.taxId || undefined,
         phone: organization?.phone || undefined,
@@ -528,7 +535,10 @@ export class InvoicesService {
       },
       party: {
         name: invoice.customerName || 'Customer',
-        email: invoice.customerEmail || undefined,
+        address: customer ? formatCustomerAddress(customer) : undefined,
+        email: invoice.customerEmail || customer?.email || undefined,
+        phone: customer?.phone || undefined,
+        taxId: customer?.taxId || undefined,
       },
       items: (invoice.items || []).map((item) => ({
         code: (item as any).sku || (item as any).code || undefined,

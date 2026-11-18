@@ -123,3 +123,25 @@ export type CustomerQuery = z.input<typeof customerQuerySchema>;
 /** What the schema produces, and what actually goes over the wire. */
 export type CreateCustomerPayload = z.output<typeof createCustomerSchema>;
 export type UpdateCustomerPayload = z.output<typeof updateCustomerSchema>;
+
+/**
+ * Customer address as it prints in a document's "bill to" block — one line
+ * per row, undefined when the customer carries no address at all.
+ */
+export function formatCustomerAddress(
+  customer: Pick<
+    CreateCustomerPayload,
+    'addressLine1' | 'addressLine2' | 'city' | 'postalCode' | 'country'
+  >,
+): string | undefined {
+  const lines = [
+    [customer.addressLine1, customer.addressLine2]
+      .filter(Boolean)
+      .join(', ') || null,
+    [customer.city, customer.postalCode].filter(Boolean).join(', ') || null,
+    customer.country,
+  ]
+    .map((line) => (line ?? '').trim())
+    .filter((line) => line.length > 0);
+  return lines.length ? lines.join('\n') : undefined;
+}
