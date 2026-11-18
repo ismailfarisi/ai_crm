@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Receipt, Banknote, CheckCircle, type LucideIcon } from 'lucide-react';
 import { formatOrganizationAddress, quoteDocumentTaxes, type InvoiceDto } from '@saas/shared';
@@ -8,6 +9,7 @@ import {
   useDownloadInvoicePdf,
   useInvoices,
   useRecordInvoicePayment,
+  useReplaceInvoice,
   useSendInvoice,
   useVoidInvoice,
 } from '@/hooks/use-invoices';
@@ -17,6 +19,7 @@ import { PageHeader } from '@/components/ui/primitives';
 import { InvoicesTable } from '@/components/invoices/invoices-table';
 import { RecordPaymentModal } from '@/components/invoices/record-payment-modal';
 import { InvoicePaymentsModal } from '@/components/invoices/invoice-payments-modal';
+import { ReplaceInvoiceModal } from '@/components/invoices/replace-invoice-modal';
 import { VoidInvoiceModal } from '@/components/invoices/void-invoice-modal';
 import { InvoiceCreditsDialog } from '@/components/credits/invoice-credits-dialog';
 import { DocumentPrintModal } from '@/components/documents/document-print-modal';
@@ -78,9 +81,11 @@ export function InvoicesView() {
   const { invoices, isLoading } = useInvoices();
   const { data: orgProfile } = useOrganization();
   const { data: accounts = [] } = useFinanceAccounts();
+  const router = useRouter();
   const recordPayment = useRecordInvoicePayment();
   const sendInvoice = useSendInvoice();
   const voidInvoice = useVoidInvoice();
+  const replaceInvoice = useReplaceInvoice();
   const downloadPdf = useDownloadInvoicePdf();
   const { data: onlineRows } = useInvoiceOnlinePayments();
   const online = useMemo(() => new Map((onlineRows ?? []).map((row) => [row.invoiceId, row])), [onlineRows]);
@@ -96,6 +101,7 @@ export function InvoicesView() {
   const [payingInvoice, setPayingInvoice] = useState<InvoiceDto | null>(null);
   const [historyInvoice, setHistoryInvoice] = useState<InvoiceDto | null>(null);
   const [voidingInvoice, setVoidingInvoice] = useState<InvoiceDto | null>(null);
+  const [replacingInvoice, setReplacingInvoice] = useState<InvoiceDto | null>(null);
   const [printingInvoice, setPrintingInvoice] = useState<InvoiceDto | null>(null);
   const [creditingId, setCreditingId] = useState<string | null>(null);
   // Looked up from the list so the dialog shows figures refreshed after each action.
@@ -164,6 +170,7 @@ export function InvoicesView() {
         onDownload={downloadPdf}
         onPrint={setPrintingInvoice}
         onViewHistory={setHistoryInvoice}
+        onReplace={setReplacingInvoice}
         onVoid={setVoidingInvoice}
         onCredit={(invoice) => setCreditingId(invoice.id)}
         sendingId={sendingId}
@@ -190,6 +197,19 @@ export function InvoicesView() {
       />
 
       <InvoiceCreditsDialog invoice={creditingInvoice} onClose={() => setCreditingId(null)} />
+
+      <ReplaceInvoiceModal
+        open={replacingInvoice !== null}
+        onClose={() => setReplacingInvoice(null)}
+        invoice={replacingInvoice}
+        isLoading={replaceInvoice.isPending}
+        onSubmit={async ({ reason }) => {
+          if (!replacingInvoice) return;
+          const quote = await replaceInvoice.mutateAsync({ invoice: replacingInvoice, reason });
+          setReplacingInvoice(null);
+          router.push(`/quotes/${quote.id}`);
+        }}
+      />
 
       <VoidInvoiceModal
         open={voidingInvoice !== null}

@@ -6,6 +6,7 @@ import type {
   InvoiceDto,
   InvoicePaymentDto,
   InvoiceStatus,
+  QuoteLineItem,
   RecordInvoicePaymentPayload,
   VoidInvoicePayload,
 } from '@saas/shared';
@@ -93,6 +94,75 @@ export function useVoidInvoice() {
       toast.success(`Invoice ${invoice.invoiceNumber} voided`);
     },
     onError: (error) => toast.error(describe(error, 'Could not void invoice')),
+  });
+}
+
+/**
+ * A voided invoice's lines as new draft-quote lines: fresh ids and no cost,
+ * template or catalog links, so the recosting on create treats every line as
+ * hand-entered and never re-prices it from the catalog.
+ */
+function cloneItemsForReissue(invoice: InvoiceDto): QuoteLineItem[] {
+  return (invoice.items || []).map((item) => ({
+    id: crypto.randomUUID(),
+    type: item.type ?? 'product',
+    description: item.description,
+    descriptionAr: item.descriptionAr ?? null,
+    sku: item.sku ?? null,
+    quantity: item.quantity,
+    uom: item.uom,
+    unitPrice: item.unitPrice,
+    discount: item.discount,
+    taxRate: item.taxRate,
+    taxReverseCharge: item.taxReverseCharge,
+    subtotal: item.subtotal,
+  }));
+}
+
+/**
+ * Replace an issued invoice: voids it (reversing payments and freeing the
+ * billing stage) and clones its lines into a fresh draft quote, which the user
+ * corrects and approves to raise the corrected invoice. Issued invoices are
+ * never edited in place — the books keep both documents.
+ */
+export function useReplaceInvoice() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ invoice, reason }: { invoice: InvoiceDto; reason?: string }) => {
+      await api.invoices.void(invoice.id, { reason });
+      try {
+        return await api.quotes.create({
+          title: `Reissue of ${invoice.invoiceNumber} — ${invoice.customerName}`,
+          customerId: invoice.customerId ?? null,
+          customerName: invoice.customerName,
+          customerEmail: invoice.customerEmail ?? null,
+          currency: invoice.currency,
+          paymentTerms: invoice.paymentTerms || 'immediate',
+          items: cloneItemsForReissue(invoice),
+          notes:
+            `Replaces voided invoice ${invoice.invoiceNumber}` +
+            (reason ? ` — ${reason}` : '') +
+            '.',
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'unknown error';
+        throw new Error(
+          `Invoice ${invoice.invoiceNumber} was voided, but the replacement draft quote could not be created: ${msg}`,
+        );
+      }
+    },
+    onSuccess: async (quote, { invoice }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.invoices }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.invoice(invoice.id) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.quotes }),
+      ]);
+      toast.success(
+        `Draft quote ${quote.quoteNumber ?? ''} created — correct it and approve to re-issue invoice ${invoice.invoiceNumber}`,
+      );
+    },
+    onError: (error) => toast.error(describe(error, 'Could not replace invoice')),
   });
 }
 

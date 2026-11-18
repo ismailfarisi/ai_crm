@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -10,6 +11,7 @@ import {
   Loader2,
   Mail,
   Printer,
+  RefreshCw,
   Undo2,
   Wallet,
 } from 'lucide-react';
@@ -28,6 +30,7 @@ import {
   useInvoice,
   useInvoicePayments,
   useRecordInvoicePayment,
+  useReplaceInvoice,
   useSendInvoice,
   useVoidInvoice,
 } from '@/hooks/use-invoices';
@@ -36,6 +39,7 @@ import { useOrganization } from '@/hooks/use-organization';
 import { api } from '@/lib/api/endpoints';
 import { InvoiceStatusBadge } from './invoices-table';
 import { RecordPaymentModal } from './record-payment-modal';
+import { ReplaceInvoiceModal } from './replace-invoice-modal';
 import { VoidInvoiceModal } from './void-invoice-modal';
 import { InvoiceCreditsDialog } from '@/components/credits/invoice-credits-dialog';
 import { DocumentPrintModal } from '@/components/documents/document-print-modal';
@@ -63,9 +67,11 @@ export function InvoiceDetailPage({ invoiceId }: { invoiceId: string }) {
   const { data: payments = [] } = useInvoicePayments(invoiceId);
   const { data: accounts = [] } = useFinanceAccounts();
   const { data: orgProfile } = useOrganization();
+  const router = useRouter();
   const recordPayment = useRecordInvoicePayment();
   const sendInvoice = useSendInvoice();
   const voidInvoice = useVoidInvoice();
+  const replaceInvoice = useReplaceInvoice();
   const downloadPdf = useDownloadInvoicePdf();
 
   const canManage = useCan({ permission: PERMISSIONS.INVOICE_MANAGE });
@@ -74,6 +80,7 @@ export function InvoiceDetailPage({ invoiceId }: { invoiceId: string }) {
   const [paying, setPaying] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [voiding, setVoiding] = useState(false);
+  const [replacing, setReplacing] = useState(false);
   const [crediting, setCrediting] = useState(false);
   const [sending, setSending] = useState(false);
 
@@ -366,7 +373,7 @@ export function InvoiceDetailPage({ invoiceId }: { invoiceId: string }) {
             )}
           </section>
 
-          {(canManage || canCredit) && !isFinal && (
+          {(canManage || canCredit) && invoice.status !== 'CANCELLED' && (
             <section className="flex flex-wrap gap-2">
               {canManage && (
                 <Button
@@ -387,15 +394,26 @@ export function InvoiceDetailPage({ invoiceId }: { invoiceId: string }) {
                 </Button>
               )}
               {canManage && !(invoice.creditedAmount ?? 0) && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setVoiding(true)}
-                  className="text-danger"
-                >
-                  <Ban className="size-3.5" aria-hidden />
-                  Void invoice
-                </Button>
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setReplacing(true)}
+                    title="Void this invoice and open a draft quote with the same lines to correct and re-issue"
+                  >
+                    <RefreshCw className="size-3.5" aria-hidden />
+                    Replace invoice
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setVoiding(true)}
+                    className="text-danger"
+                  >
+                    <Ban className="size-3.5" aria-hidden />
+                    Void invoice
+                  </Button>
+                </>
               )}
             </section>
           )}
@@ -410,6 +428,18 @@ export function InvoiceDetailPage({ invoiceId }: { invoiceId: string }) {
         isLoading={recordPayment.isPending}
         onSubmit={async (payload) => {
           await recordPayment.mutateAsync({ id: invoice.id, payload });
+        }}
+      />
+
+      <ReplaceInvoiceModal
+        open={replacing}
+        onClose={() => setReplacing(false)}
+        invoice={invoice}
+        isLoading={replaceInvoice.isPending}
+        onSubmit={async ({ reason }) => {
+          const quote = await replaceInvoice.mutateAsync({ invoice, reason });
+          setReplacing(false);
+          router.push(`/quotes/${quote.id}`);
         }}
       />
 

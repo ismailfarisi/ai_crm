@@ -3,7 +3,7 @@
 import React, { useMemo } from 'react';
 import Link from 'next/link';
 import { ColumnDef } from '@tanstack/react-table';
-import { AlertTriangle, Ban, CheckCircle, Clock, Download, History, Link2, Mail, Wallet, Undo2, Printer } from 'lucide-react';
+import { AlertTriangle, Ban, CheckCircle, Clock, Download, History, Link2, Mail, RefreshCw, Wallet, Undo2, Printer } from 'lucide-react';
 import type { InvoiceDto, InvoiceOnlinePaymentDto, InvoiceStatus } from '@saas/shared';
 import { PERMISSIONS, isInvoiceOverdue } from '@saas/shared';
 import { Badge } from '@/components/ui/primitives';
@@ -22,6 +22,7 @@ interface InvoicesTableProps {
   onDownload?: (invoice: InvoiceDto) => void;
   onPrint?: (invoice: InvoiceDto) => void;
   onViewHistory?: (invoice: InvoiceDto) => void;
+  onReplace?: (invoice: InvoiceDto) => void;
   onVoid?: (invoice: InvoiceDto) => void;
   onCredit?: (invoice: InvoiceDto) => void;
   sendingId?: string | null;
@@ -80,6 +81,7 @@ export function InvoicesTable({
   onDownload,
   onPrint,
   onViewHistory,
+  onReplace,
   onVoid,
   onCredit,
   sendingId = null,
@@ -209,8 +211,13 @@ export function InvoicesTable({
               onSelect: () => onCredit(invoice),
             });
           }
-          if (canManage && onVoid && invoice.status !== 'CANCELLED' && !(invoice.creditedAmount ?? 0)) {
-            more.push({ key: 'void', label: 'Void invoice', icon: Ban, tone: 'danger', onSelect: () => onVoid(invoice) });
+          if (canManage && invoice.status !== 'CANCELLED' && !(invoice.creditedAmount ?? 0)) {
+            if (onReplace) {
+              more.push({ key: 'replace', label: 'Replace invoice', icon: RefreshCw, onSelect: () => onReplace(invoice) });
+            }
+            if (onVoid) {
+              more.push({ key: 'void', label: 'Void invoice', icon: Ban, tone: 'danger', onSelect: () => onVoid(invoice) });
+            }
           }
 
           return (
@@ -232,7 +239,7 @@ export function InvoicesTable({
         },
       },
     ],
-    [canManage, canCredit, onRecordPayment, onSend, onDownload, onPrint, onViewHistory, onVoid, onCredit, sendingId, online, onCopyPayLink]
+    [canManage, canCredit, onRecordPayment, onSend, onDownload, onPrint, onViewHistory, onReplace, onVoid, onCredit, sendingId, online, onCopyPayLink]
   );
 
   return (
