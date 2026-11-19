@@ -1457,6 +1457,26 @@ a subject line ("Invoice") can merge into one thread.
 
 ---
 
+## Slack channel
+
+### One bot per organisation, not a marketplace install — by design
+
+Slack is wired like Telegram: an org admin creates a Slack app in their own
+workspace (Bot Token `xoxb-…` + Signing Secret) and pastes the pair into
+Settings → Channels → Slack, then points the app's Event Subscriptions at the
+webhook URL shown there. There is no public Slack App Directory listing or
+OAuth install flow — every org runs its own app, which keeps each tenant's
+token inside its own workspace.
+
+Inbound needs the `message.channels`, `message.groups` and `message.im` events
+plus `chat:write` (and `im:write` for DM replies). A channel's messages share
+one CRM conversation keyed on the Slack channel id, so a reply from the inbox
+posts back into that channel rather than to the individual sender — there is
+no per-Slack-user contact resolution yet, and Slack file attachments are not
+ingested.
+
+---
+
 ## Staging environment
 
 True of the staging box (`ssh ismail`, `~/ai_crm`), not of the code.

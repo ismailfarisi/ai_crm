@@ -38,7 +38,7 @@ export type RecordOrigin = 'HUMAN' | 'AI_ASSISTED' | 'AI_DRAFTED';
 export interface OriginMetadata {
   origin: RecordOrigin;
   /** Present when the record arrived through a chat channel rather than the web app. */
-  originChannel?: 'TELEGRAM' | 'WHATSAPP_META' | 'EMAIL_SMTP' | 'EMAIL_RESEND' | 'WEB';
+  originChannel?: 'TELEGRAM' | 'WHATSAPP_META' | 'SLACK' | 'EMAIL_SMTP' | 'EMAIL_RESEND' | 'WEB';
   /** The inbound message that caused it, for reconstructing what was actually said. */
   originMessageId?: string;
   /** The model that produced the structured parse, as reported by the provider. */

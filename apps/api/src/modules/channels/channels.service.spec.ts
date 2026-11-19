@@ -203,15 +203,16 @@ describe('ChannelsService', () => {
   });
 
   describe('getConfigs', () => {
-    it('returns default unconfigured list for all 4 providers when empty', async () => {
+    it('returns default unconfigured list for all 5 providers when empty', async () => {
       const { service } = makeService();
       const res = await service.getConfigs(orgId);
-      expect(res).toHaveLength(4);
+      expect(res).toHaveLength(5);
       expect(res.map((c) => c.provider)).toEqual([
         ChannelProviderType.WHATSAPP_META,
         ChannelProviderType.TELEGRAM,
         ChannelProviderType.EMAIL_SMTP,
         ChannelProviderType.EMAIL_RESEND,
+        ChannelProviderType.SLACK,
       ]);
       expect(res[0].status).toBe(ChannelStatus.UNCONFIGURED);
     });

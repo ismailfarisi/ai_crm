@@ -11,6 +11,7 @@ import { ChannelIdentityLinking } from './channel-identity-linking';
 const DEFAULT_PROVIDERS: ChannelConfigDto['provider'][] = [
   'WHATSAPP_META',
   'TELEGRAM',
+  'SLACK',
   'EMAIL_SMTP',
   'EMAIL_RESEND',
 ];

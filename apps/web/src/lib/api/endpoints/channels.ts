@@ -25,7 +25,12 @@ export interface ChannelMessageDto {
     email: string;
     role?: string;
   } | null;
-  provider: 'WHATSAPP_META' | 'TELEGRAM' | 'EMAIL_SMTP' | 'EMAIL_RESEND';
+  provider:
+    | 'WHATSAPP_META'
+    | 'TELEGRAM'
+    | 'SLACK'
+    | 'EMAIL_SMTP'
+    | 'EMAIL_RESEND';
   direction: 'INBOUND' | 'OUTBOUND';
   sender: string;
   recipient: string;
@@ -38,7 +43,12 @@ export interface ChannelMessageDto {
 export interface ChannelConfigDto {
   id: string | null;
   organizationId: string;
-  provider: 'WHATSAPP_META' | 'TELEGRAM' | 'EMAIL_SMTP' | 'EMAIL_RESEND';
+  provider:
+    | 'WHATSAPP_META'
+    | 'TELEGRAM'
+    | 'SLACK'
+    | 'EMAIL_SMTP'
+    | 'EMAIL_RESEND';
   isEnabled: boolean;
   status: 'unconfigured' | 'configured' | 'error';
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

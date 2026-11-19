@@ -7,6 +7,7 @@ import { Check, Copy, Eye, EyeOff, Globe } from 'lucide-react';
 import {
   metaWhatsAppConfigSchema,
   telegramConfigSchema,
+  slackConfigSchema,
   emailSmtpConfigSchema,
   emailResendConfigSchema,
 } from '@saas/shared';
@@ -26,6 +27,7 @@ interface ChannelConfigModalProps {
 const PROVIDER_TITLES: Record<ChannelConfigDto['provider'], string> = {
   WHATSAPP_META: 'Meta WhatsApp Cloud API Configuration',
   TELEGRAM: 'Telegram Bot Configuration',
+  SLACK: 'Slack App Configuration',
   EMAIL_SMTP: 'SMTP Email Configuration',
   EMAIL_RESEND: 'Resend Email Configuration',
 };
@@ -75,6 +77,9 @@ export function ChannelConfigModal({ open, onClose, config }: ChannelConfigModal
         break;
       case 'TELEGRAM':
         result = telegramConfigSchema.safeParse(formData);
+        break;
+      case 'SLACK':
+        result = slackConfigSchema.safeParse(formData);
         break;
       case 'EMAIL_SMTP':
         result = emailSmtpConfigSchema.safeParse({
@@ -201,7 +206,9 @@ export function ChannelConfigModal({ open, onClose, config }: ChannelConfigModal
           <p className="text-[11px] text-ink-subtle">
             {provider === 'TELEGRAM'
               ? 'Registered with Telegram automatically when you save — no manual setup needed.'
-              : `Paste this URL into your ${PROVIDER_TITLES[provider].split(' ')[0]} webhook settings.`}
+              : provider === 'SLACK'
+                ? 'Paste this URL into Slack → Event Subscriptions → Request URL, then enable message events.'
+                : `Paste this URL into your ${PROVIDER_TITLES[provider].split(' ')[0]} webhook settings.`}
           </p>
         </div>
 
@@ -261,6 +268,29 @@ export function ChannelConfigModal({ open, onClose, config }: ChannelConfigModal
               value={formData.botUsername || ''}
               error={errors.botUsername}
               onChange={(e) => updateField('botUsername', e.target.value)}
+              required
+            />
+          </div>
+        )}
+
+        {provider === 'SLACK' && (
+          <div className="space-y-4">
+            <SecretInput
+              label="Bot Token"
+              placeholder="xoxb-..."
+              value={formData.botToken || ''}
+              error={errors.botToken}
+              onChange={(val) => updateField('botToken', val)}
+              hint="From your Slack app → OAuth & Permissions → Bot User OAuth Token. Needs chat:write, im:history, channels:history, groups:history scopes."
+              required
+            />
+            <SecretInput
+              label="Signing Secret"
+              placeholder="a1b2c3d4e5f6..."
+              value={formData.signingSecret || ''}
+              error={errors.signingSecret}
+              onChange={(val) => updateField('signingSecret', val)}
+              hint="From your Slack app → Basic Information → Signing Secret. Verifies inbound events come from Slack."
               required
             />
           </div>

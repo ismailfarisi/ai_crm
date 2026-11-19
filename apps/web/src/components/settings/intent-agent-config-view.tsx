@@ -15,6 +15,7 @@ import { PageHeader, Skeleton } from '@/components/ui/primitives';
 
 const PROVIDER_OPTIONS = [
   { value: 'TELEGRAM', label: 'Telegram' },
+  { value: 'SLACK', label: 'Slack' },
   { value: 'WHATSAPP_META', label: 'WhatsApp' },
   { value: 'EMAIL_SMTP', label: 'Email (SMTP)' },
   { value: 'EMAIL_RESEND', label: 'Email (Resend)' },

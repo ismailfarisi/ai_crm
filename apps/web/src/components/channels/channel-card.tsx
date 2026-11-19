@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Mail, MessageSquare, Send, Settings, TestTube, Zap } from 'lucide-react';
+import { Hash, Mail, MessageSquare, Send, Settings, TestTube, Zap } from 'lucide-react';
 import { api, queryKeys, type ChannelConfigDto } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/client';
 import { Badge, Card, CardBody, CardHeader, CardTitle } from '@/components/ui/primitives';
@@ -28,6 +28,12 @@ const PROVIDER_INFO: Record<
     shortName: 'Telegram',
     description: 'Receive messages and reply to customers via a Telegram Bot.',
     icon: Send,
+  },
+  SLACK: {
+    title: 'Slack',
+    shortName: 'Slack',
+    description: 'Receive Slack messages and reply via a Slack app bot.',
+    icon: Hash,
   },
   EMAIL_SMTP: {
     title: 'SMTP Email',

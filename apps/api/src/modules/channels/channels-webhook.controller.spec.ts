@@ -67,6 +67,7 @@ describe('ChannelsWebhookController', () => {
         'org-123',
         { 'content-type': 'application/json' },
         { message: { text: 'hello' } },
+        { rawBody: Buffer.from('{}') },
       );
 
       expect(channelsService.processInboundWebhook).toHaveBeenCalledWith(
@@ -74,6 +75,7 @@ describe('ChannelsWebhookController', () => {
         ChannelProviderType.TELEGRAM,
         { 'content-type': 'application/json' },
         { message: { text: 'hello' } },
+        Buffer.from('{}'),
       );
       expect(result).toEqual({ success: true, messageId: 'msg-456' });
     });

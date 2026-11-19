@@ -13,6 +13,7 @@ export enum ChannelProviderType {
   TELEGRAM = 'TELEGRAM',
   EMAIL_SMTP = 'EMAIL_SMTP',
   EMAIL_RESEND = 'EMAIL_RESEND',
+  SLACK = 'SLACK',
 }
 
 export enum ChannelStatus {

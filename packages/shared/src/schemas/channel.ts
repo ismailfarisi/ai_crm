@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const ChannelProviderEnum = z.enum([
   'WHATSAPP_META',
   'TELEGRAM',
+  'SLACK',
   'EMAIL_SMTP',
   'EMAIL_RESEND',
 ]);
@@ -30,6 +31,11 @@ export const emailSmtpConfigSchema = z.object({
   fromName: z.string().min(1),
 });
 
+export const slackConfigSchema = z.object({
+  botToken: z.string().min(1, 'Bot Token is required'),
+  signingSecret: z.string().min(1, 'Signing Secret is required'),
+});
+
 export const emailResendConfigSchema = z.object({
   apiKey: z.string().min(1, 'Resend API Key is required'),
   fromEmail: z.string().email(),
@@ -39,6 +45,7 @@ export const emailResendConfigSchema = z.object({
 export const channelConfigSchema = z.union([
   metaWhatsAppConfigSchema,
   telegramConfigSchema,
+  slackConfigSchema,
   emailSmtpConfigSchema,
   emailResendConfigSchema,
 ]);
@@ -53,6 +60,7 @@ export const sendChannelMessageSchema = z.object({
 
 export type MetaWhatsAppConfig = z.infer<typeof metaWhatsAppConfigSchema>;
 export type TelegramConfig = z.infer<typeof telegramConfigSchema>;
+export type SlackConfig = z.infer<typeof slackConfigSchema>;
 export type EmailSmtpConfig = z.infer<typeof emailSmtpConfigSchema>;
 export type EmailResendConfig = z.infer<typeof emailResendConfigSchema>;
 export type ChannelConfigPayload = z.infer<typeof channelConfigSchema>;

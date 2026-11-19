@@ -123,7 +123,7 @@ export function ContactMessagesTab({ contact }: ContactMessagesTabProps) {
           )}
 
           <Textarea
-            placeholder={`Type a message via ${provider === 'WHATSAPP_META' ? 'WhatsApp' : provider === 'TELEGRAM' ? 'Telegram' : 'Email'}...`}
+            placeholder={`Type a message via ${provider === 'WHATSAPP_META' ? 'WhatsApp' : provider === 'TELEGRAM' ? 'Telegram' : provider === 'SLACK' ? 'Slack' : 'Email'}...`}
             value={body}
             onChange={(e) => setBody(e.target.value)}
             rows={3}

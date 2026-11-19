@@ -65,7 +65,7 @@
   "CREATE TYPE \"public\".\"automation_executions_status_enum\" AS ENUM('RUNNING', 'WAITING_APPROVAL', 'COMPLETED', 'FAILED', 'CANCELLED', 'UNKNOWN')",
   "CREATE TYPE \"public\".\"automation_workflows_status_enum\" AS ENUM('DRAFT', 'ACTIVE', 'PAUSED')",
   "CREATE TYPE \"public\".\"category_budgets_period_enum\" AS ENUM('MONTHLY', 'QUARTERLY', 'ANNUAL')",
-  "CREATE TYPE \"public\".\"channel_conversations_provider_enum\" AS ENUM('WHATSAPP_META', 'TELEGRAM', 'EMAIL_SMTP', 'EMAIL_RESEND')",
+  "CREATE TYPE \"public\".\"channel_conversations_provider_enum\" AS ENUM('WHATSAPP_META', 'TELEGRAM', 'EMAIL_SMTP', 'EMAIL_RESEND', 'SLACK')",
   "CREATE TYPE \"public\".\"channel_conversations_status_enum\" AS ENUM('COLLECTING', 'AWAITING_CONFIRM', 'CONFIRMED', 'CANCELLED', 'EXPIRED')",
   "CREATE TYPE \"public\".\"channel_messages_aiintent_enum\" AS ENUM('GENERAL_QUESTION', 'QUOTATION_REQUEST', 'ORDER_STATUS', 'PRICING_QUESTION', 'COMPLAINT', 'SUPPORT_REQUEST', 'SCHEDULING', 'SPAM', 'OTHER')",
   "CREATE TYPE \"public\".\"channel_messages_aiprocessingstatus_enum\" AS ENUM('NONE', 'PENDING', 'AWAITING_REPLY', 'COMPLETED', 'FAILED', 'SKIPPED')",

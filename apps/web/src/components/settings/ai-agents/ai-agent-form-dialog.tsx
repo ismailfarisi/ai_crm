@@ -43,6 +43,7 @@ const PROVIDER_OPTIONS = [
   { value: 'EMAIL_RESEND', label: 'Email (Resend)' },
   { value: 'WHATSAPP_META', label: 'WhatsApp' },
   { value: 'TELEGRAM', label: 'Telegram' },
+  { value: 'SLACK', label: 'Slack' },
 ];
 
 const EMPTY: FormValues = {

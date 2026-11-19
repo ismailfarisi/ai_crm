@@ -35,6 +35,7 @@ import {
 import { ChannelDriver } from './interfaces/channel-driver.interface';
 import { MetaWhatsAppDriver } from './drivers/meta-whatsapp.driver';
 import { TelegramDriver } from './drivers/telegram.driver';
+import { SlackDriver } from './drivers/slack.driver';
 import { EmailSmtpDriver } from './drivers/email-smtp.driver';
 import { EmailResendDriver } from './drivers/email-resend.driver';
 import {
@@ -86,6 +87,8 @@ export class ChannelsService {
         return new MetaWhatsAppDriver();
       case ChannelProviderType.TELEGRAM:
         return new TelegramDriver();
+      case ChannelProviderType.SLACK:
+        return new SlackDriver();
       case ChannelProviderType.EMAIL_SMTP:
         return new EmailSmtpDriver();
       case ChannelProviderType.EMAIL_RESEND:
@@ -516,11 +519,13 @@ export class ChannelsService {
     provider: ChannelProviderType,
     headers: any,
     body: any,
+    rawBody?: Buffer,
   ): Promise<{
     ignored?: boolean;
     success?: boolean;
     messageId?: string;
     duplicate?: boolean;
+    challenge?: string;
   }> {
     const run = <T>(fn: () => Promise<T>): Promise<T> =>
       this.tenantContext ? this.tenantContext.runWithTenant(orgId, fn) : fn();
@@ -544,7 +549,27 @@ export class ChannelsService {
       }
 
       const driver = this.getDriver(provider);
-      const parsed = await driver.parseWebhookPayload(credentials, headers, body);
+
+      // Slack's Events API handshake: echo the challenge back, but only after
+      // the request signature checks out — the URL is public.
+      const slackEnvelope = body as { type?: string; challenge?: string };
+      if (
+        provider === ChannelProviderType.SLACK &&
+        slackEnvelope?.type === 'url_verification'
+      ) {
+        const slack = driver as SlackDriver;
+        if (!slack.verifySlackSignature(credentials, headers, rawBody)) {
+          throw new UnauthorizedException('Invalid Slack request signature');
+        }
+        return { challenge: slackEnvelope.challenge };
+      }
+
+      const parsed = await driver.parseWebhookPayload(
+        credentials,
+        headers,
+        body,
+        rawBody,
+      );
       if (!parsed || !parsed.senderIdentifier) {
         return { ignored: true };
       }

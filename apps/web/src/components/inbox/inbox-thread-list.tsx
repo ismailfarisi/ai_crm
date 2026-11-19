@@ -199,6 +199,7 @@ export function InboxThreadList({
 export function channelName(provider: string): string {
   if (provider === 'WHATSAPP_META') return 'WhatsApp';
   if (provider === 'TELEGRAM') return 'Telegram';
+  if (provider === 'SLACK') return 'Slack';
   return 'Email';
 }
 

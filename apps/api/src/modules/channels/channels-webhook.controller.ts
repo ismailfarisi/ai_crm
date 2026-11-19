@@ -7,9 +7,12 @@ import {
   Param,
   Query,
   Post,
+  Req,
+  type RawBodyRequest,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '@/common/decorators';
+import type { Request } from 'express';
 import { ChannelsService } from './channels.service';
 import { ChannelProviderType } from './entities/channel-config.entity';
 
@@ -43,12 +46,14 @@ export class ChannelsWebhookController {
     @Param('orgId') orgId: string,
     @Headers() headers: any,
     @Body() body: any,
+    @Req() req: RawBodyRequest<Request>,
   ) {
     return this.channelsService.processInboundWebhook(
       orgId,
       provider,
       headers,
       body,
+      req.rawBody,
     );
   }
 }
