@@ -79,6 +79,7 @@ export class StandardizeTenantIdColumns1787500000000 implements MigrationInterfa
       `ALTER TABLE "users" RENAME COLUMN "tenant_id" TO "organizationId"`,
     );
 
+    await queryRunner.query(`DROP INDEX IF EXISTS "idx_teams_tenant_name"`);
     await queryRunner.query(
       `ALTER TABLE "teams" RENAME COLUMN "tenant_id" TO "organizationId"`,
     );
