@@ -63,7 +63,7 @@ describe('SlackDriver', () => {
   });
 
   describe('parseWebhookPayload', () => {
-    it('parses a channel message keyed on the channel id', async () => {
+    it('parses a message keyed on the sender user id', async () => {
       const eventBody = {
         type: 'event_callback',
         event: {
@@ -83,10 +83,65 @@ describe('SlackDriver', () => {
         rawBody,
       );
       expect(parsed).toMatchObject({
-        senderIdentifier: 'C0123',
+        senderIdentifier: 'U0456',
         body: 'hello from slack',
         externalMessageId: 'msg-1',
       });
+    });
+
+    it('carries the first attached file as media with the text as caption', async () => {
+      const eventBody = {
+        type: 'event_callback',
+        event: {
+          type: 'message',
+          channel: 'D0999',
+          user: 'U0456',
+          text: 'here is the quote',
+          ts: '1700000000.000100',
+          files: [
+            {
+              id: 'F0ABC',
+              mimetype: 'application/pdf',
+              name: 'quote.pdf',
+              url_private_download: 'https://files.slack.com/quote.pdf',
+            },
+          ],
+        },
+      };
+      const { rawBody, headers } = signedRequest(eventBody);
+      const parsed = await driver.parseWebhookPayload(
+        credentials,
+        headers,
+        eventBody,
+        rawBody,
+      );
+      expect(parsed?.media).toEqual({
+        id: 'F0ABC',
+        mimeType: 'application/pdf',
+        filename: 'quote.pdf',
+        caption: 'here is the quote',
+      });
+    });
+
+    it('names the file when a file-only message has no text', async () => {
+      const eventBody = {
+        type: 'event_callback',
+        event: {
+          type: 'message',
+          channel: 'D0999',
+          user: 'U0456',
+          ts: '1700000000.000100',
+          files: [{ id: 'F0ABC', mimetype: 'image/png', name: 'shot.png' }],
+        },
+      };
+      const { rawBody, headers } = signedRequest(eventBody);
+      const parsed = await driver.parseWebhookPayload(
+        credentials,
+        headers,
+        eventBody,
+        rawBody,
+      );
+      expect(parsed?.body).toBe('[Slack file: shot.png]');
     });
 
     it('falls back to the event ts when there is no client_msg_id', async () => {
@@ -203,6 +258,59 @@ describe('SlackDriver', () => {
         }),
       );
       expect(res.externalId).toBe('1700.2');
+    });
+  });
+
+  describe('downloadMedia', () => {
+    it('resolves files.info then downloads with the bot token', async () => {
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce({
+          json: jest.fn().mockResolvedValue({
+            ok: true,
+            file: {
+              mimetype: 'application/pdf',
+              url_private_download: 'https://files.slack.com/quote.pdf',
+            },
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          arrayBuffer: jest
+            .fn()
+            .mockResolvedValue(new Uint8Array([1, 2, 3]).buffer),
+        }) as any;
+      const res = await driver.downloadMedia(credentials, 'F0ABC', 1024);
+      expect(res.buffer).toEqual(Buffer.from([1, 2, 3]));
+      expect(res.mimeType).toBe('application/pdf');
+      expect(global.fetch).toHaveBeenNthCalledWith(
+        2,
+        'https://files.slack.com/quote.pdf',
+        expect.objectContaining({
+          headers: { Authorization: 'Bearer xoxb-test' },
+        }),
+      );
+    });
+
+    it('rejects files larger than the limit', async () => {
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce({
+          json: jest.fn().mockResolvedValue({
+            ok: true,
+            file: {
+              mimetype: 'application/pdf',
+              url_private_download: 'https://files.slack.com/big.pdf',
+            },
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          arrayBuffer: jest.fn().mockResolvedValue(new Uint8Array(10).buffer),
+        }) as any;
+      await expect(
+        driver.downloadMedia(credentials, 'F0ABC', 5),
+      ).rejects.toThrow('exceeds');
     });
   });
 

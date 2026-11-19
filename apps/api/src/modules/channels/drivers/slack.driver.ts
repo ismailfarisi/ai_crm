@@ -22,6 +22,13 @@ interface SlackEventBody {
     ts?: string;
     client_msg_id?: string;
     thread_ts?: string;
+    files?: {
+      id: string;
+      mimetype?: string;
+      name?: string;
+      url_private_download?: string;
+      url_private?: string;
+    }[];
   };
 }
 
@@ -154,14 +161,71 @@ export class SlackDriver implements ChannelDriver {
       return Promise.resolve(null);
     }
     const text = (event.text ?? '').trim();
+    const file = event.files?.[0];
+    const media = file
+      ? {
+          id: file.id,
+          mimeType: file.mimetype ?? 'application/octet-stream',
+          filename: file.name,
+          caption: text || undefined,
+        }
+      : undefined;
     return Promise.resolve({
-      // The channel, not the user: replies post back into the same Slack
-      // context and one conversation groups a channel's messages.
-      senderIdentifier: event.channel,
-      body: text || '(Slack message without text)',
+      // The user, not the channel: each Slack user gets their own contact
+      // and conversation, and a reply DMs them (conversations.open on send).
+      senderIdentifier: event.user,
+      body:
+        text ||
+        (file
+          ? `[Slack file: ${file.name ?? file.id}]`
+          : '(Slack message without text)'),
       externalMessageId: event.client_msg_id ?? event.ts,
       rawPayload: body as Record<string, any>,
+      media,
     });
+  }
+
+  /**
+   * Slack files are fetched by reference: files.info resolves the private
+   * download URL, then the bytes stream with the bot token. Needs files:read.
+   */
+  async downloadMedia(
+    credentials: Record<string, any>,
+    mediaId: string,
+    maxBytes: number,
+  ): Promise<{ buffer: Buffer; mimeType: string }> {
+    const botToken = credentials?.botToken as string | undefined;
+    if (!botToken) throw new Error('Missing botToken in credentials');
+    const info = await fetch(`${SLACK_API}/files.info?file=${mediaId}`, {
+      headers: { Authorization: `Bearer ${botToken}` },
+    });
+    const data = (await info.json()) as {
+      ok: boolean;
+      error?: string;
+      file?: {
+        mimetype?: string;
+        url_private_download?: string;
+        url_private?: string;
+      };
+    };
+    const url = data.file?.url_private_download ?? data.file?.url_private;
+    if (!data.ok || !url) {
+      throw new Error(data.error || 'Slack file has no download URL');
+    }
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${botToken}` },
+    });
+    if (!res.ok) {
+      throw new Error(`Slack file download failed with ${res.status}`);
+    }
+    const buffer = Buffer.from(await res.arrayBuffer());
+    if (buffer.byteLength > maxBytes) {
+      throw new Error(`Slack file exceeds the ${maxBytes}-byte limit`);
+    }
+    return {
+      buffer,
+      mimeType: data.file?.mimetype ?? 'application/octet-stream',
+    };
   }
 
   private async apiCall(

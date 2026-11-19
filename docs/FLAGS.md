@@ -1469,11 +1469,12 @@ OAuth install flow — every org runs its own app, which keeps each tenant's
 token inside its own workspace.
 
 Inbound needs the `message.channels`, `message.groups` and `message.im` events
-plus `chat:write` (and `im:write` for DM replies). A channel's messages share
-one CRM conversation keyed on the Slack channel id, so a reply from the inbox
-posts back into that channel rather than to the individual sender — there is
-no per-Slack-user contact resolution yet, and Slack file attachments are not
-ingested.
+plus `chat:write`, `im:write` (DM replies) and `files:read` (attachments).
+Every Slack user gets their own contact and conversation — a reply from the
+inbox opens a DM with that sender rather than posting back into the channel
+the message came from, so staff replies to a shared-channel question arrive
+privately. Only the first file on a message is ingested; contact names start
+as the Slack user id until someone renames the contact.
 
 ---
 

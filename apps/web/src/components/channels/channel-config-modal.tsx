@@ -281,7 +281,7 @@ export function ChannelConfigModal({ open, onClose, config }: ChannelConfigModal
               value={formData.botToken || ''}
               error={errors.botToken}
               onChange={(val) => updateField('botToken', val)}
-              hint="From your Slack app → OAuth & Permissions → Bot User OAuth Token. Needs chat:write, im:history, channels:history, groups:history scopes."
+              hint="From your Slack app → OAuth & Permissions → Bot User OAuth Token. Needs chat:write, im:write, files:read, im:history, channels:history, groups:history scopes."
               required
             />
             <SecretInput
