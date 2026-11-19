@@ -468,6 +468,27 @@ async function main() {
     const invoiceRows = csv('invoices.csv');
     const invItemRows = csv('invoice_items.csv');
     const iItems = byNumber(invItemRows, 'Tax Invoice Invoice Number');
+    // The export carries no quote<->invoice reference, so links are inferred:
+    // same client plus identical line items (or, historically, identical
+    // totals on a converted quote). A link is taken only when exactly one
+    // candidate exists — a wrong guess is worse than a backing quote.
+    const docSig = (rows) =>
+      rows
+        .map((r) =>
+          [
+            norm(r['Item Product']),
+            norm(r['Item Notes']),
+            String(num(r['Item Quantity'])),
+            num(r['Item Line Total']).toFixed(2),
+          ]
+            .sort()
+            .join('~'),
+        )
+        .sort()
+        .join('|');
+    for (const [n, q] of quoteIdByNumber) {
+      q.sig = docSig(qItems.get(n) ?? []);
+    }
     const invoiceById = new Map(); // uuid -> {number, amount, clientKey, paidToDate, currency, issuedAt}
     let draftAsQuotes = 0;
     for (const r of invoiceRows) {
@@ -509,14 +530,24 @@ async function main() {
         draftAsQuotes++;
         continue;
       }
-      // match to a converted quote of the same client with the same total
+      // Match to the source quote: same client and either the identical item
+      // signature or (for a Converted quote) the identical total. Only an
+      // unambiguous match is linked.
       const clientKey = norm(r['Client Name']);
       const total = num(r['Tax Invoice Amount']);
+      const sig = docSig(iItems.get(number) ?? []);
       let quoteId = null;
-      const candidates = [...quoteIdByNumber.entries()].filter(
-        ([, q]) => q.status === 'Converted' && q.client === clientKey && Math.abs(q.total - total) < 0.05,
+      const candidates = new Set(
+        [...quoteIdByNumber.entries()]
+          .filter(
+            ([, q]) =>
+              q.client === clientKey &&
+              ((q.status === 'Converted' && Math.abs(q.total - total) < 0.05) ||
+                (q.status !== 'Draft' && q.status !== 'DraftInvoice' && sig !== '' && q.sig === sig)),
+          )
+          .map(([, q]) => q.id),
       );
-      if (candidates.length === 1) quoteId = candidates[0][1].id;
+      if (candidates.size === 1) quoteId = [...candidates][0];
       if (!quoteId) {
         quoteId = await insertQuote({
           number: null,
