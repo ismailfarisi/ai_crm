@@ -74,6 +74,40 @@ try {
       migrations.length - 1,
       `${latest.name} did not remove exactly one migration record`,
     );
+    step = `re-up ${latest.name}`;
+    console.log(`[roundtrip] ${step} (restore ${migrations.length} recorded)`);
+    const allMigrations = dataSource.migrations;
+    try {
+      dataSource.migrations = allMigrations.filter(
+        (migration) =>
+          (migration.name ?? migration.constructor.name) === latest.name,
+      );
+      assert.equal(
+        dataSource.migrations.length,
+        1,
+        `Cannot isolate ${latest.name}`,
+      );
+      const applied = await dataSource.runMigrations({ transaction: 'all' });
+      assert.deepEqual(
+        applied.map((migration) => migration.name),
+        [latest.name],
+      );
+    } finally {
+      dataSource.migrations = allMigrations;
+    }
+    assert.equal(
+      (await recorded()).length,
+      migrations.length,
+      `${latest.name} re-up did not restore the migration count`,
+    );
+    step = `second down ${latest.name}`;
+    console.log(`[roundtrip] ${step}`);
+    await dataSource.undoLastMigration({ transaction: 'all' });
+    assert.equal(
+      (await recorded()).length,
+      migrations.length - 1,
+      `${latest.name} second down did not remove exactly one migration record`,
+    );
   }
   step = 'assert zero after rollback';
   assert.equal(
@@ -83,7 +117,9 @@ try {
   );
   console.log('[roundtrip] down: 0 migrations recorded');
   await up('second up');
-  console.log(`[roundtrip] PASS: ${expected} up -> 0 -> ${expected} up`);
+  console.log(
+    `[roundtrip] PASS: each migration down->up->down; ${expected} up -> 0 -> ${expected} up`,
+  );
 } catch (error) {
   console.error(`[roundtrip] FAIL during ${step}: ${error.message}`);
   process.exitCode = 1;
