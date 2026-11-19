@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type {
+  ConnectImapAccountPayload,
   SendEmailPayload,
   UpdateEmailThreadPayload,
 } from '@saas/shared';
@@ -39,6 +40,20 @@ export function useConnectGoogle() {
     },
     onError: (error) =>
       toast.error(describe(error, 'Could not start Google sign-in')),
+  });
+}
+
+/** App-password connect — verified server-side before anything is saved. */
+export function useConnectImap() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ConnectImapAccountPayload) =>
+      api.email.accounts.connectImap(input),
+    onSuccess: (account) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.emailAccounts });
+      toast.success(`Connected ${account.emailAddress} — syncing now`);
+    },
+    onError: (error) => toast.error(describe(error, 'Could not connect')),
   });
 }
 

@@ -1435,6 +1435,26 @@ A shared mailbox is readable by every `email:read` holder, but
 `email:manage`). Delegated sending — assistant@ replying from the shared
 support mailbox as themselves — is a real Gmail feature this does not model.
 
+### App-password connect is Gmail-only and unverified at scale — open
+
+The IMAP/SMTP provider exists because OAuth's Internal consent screen only
+admits our own domain; customer users connect with a 16-char Google app
+password instead. Two things follow: it only works for Google accounts
+(Workspace or gmail.com — Microsoft/others have no path), and a Workspace
+admin can disable app passwords entirely, which surfaces as a rejected
+login at connect time. The fix for both is a real provider abstraction
+(Microsoft Graph, generic IMAP hosts) when a customer asks for it.
+
+### IMAP sync sees a window, and threading is heuristic — open
+
+The IMAP poll watches INBOX + Sent, backfills the newest 100 messages per
+mailbox, and re-checks flags on a trailing 200-UID window — mail outside
+INBOX/Sent (custom labels, archived threads) and flag changes older than
+the window are not mirrored. Threading reconstructs conversations from
+References/In-Reply-To anchors plus a normalized-subject hash, which is
+close to Gmail threading but not identical — unrelated messages that share
+a subject line ("Invoice") can merge into one thread.
+
 ---
 
 ## Staging environment

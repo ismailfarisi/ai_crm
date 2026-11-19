@@ -3,6 +3,7 @@ import { TenantBaseEntity } from '@/common/entities/base.entity';
 
 export enum EmailProviderType {
   GMAIL_OAUTH = 'GMAIL_OAUTH',
+  IMAP_SMTP = 'IMAP_SMTP',
 }
 
 export enum EmailSyncStatus {
@@ -12,8 +13,9 @@ export enum EmailSyncStatus {
 }
 
 /**
- * A mailbox one user connected through OAuth. Credentials are AES-256-GCM
- * encrypted via ChannelCryptoService and never leave the API.
+ * A mailbox one user connected — Google OAuth, or an IMAP/SMTP app password.
+ * Credentials are AES-256-GCM encrypted via ChannelCryptoService and never
+ * leave the API.
  */
 @Entity('email_accounts')
 @Unique('UQ_email_accounts_tenant_user_address', [
@@ -42,13 +44,16 @@ export class EmailAccount extends TenantBaseEntity {
   })
   providerType: EmailProviderType;
 
-  /** { accessToken, refreshToken, expiryDate, scope } — encrypted at rest. */
+  /** OAuth tokens or { username, appPassword } — encrypted at rest. */
   @Column({ type: 'text', nullable: true })
   encryptedCredentials: string | null;
 
-  /** Gmail incremental-sync cursor (`historyId` from the last profile fetch). */
-  @Column({ type: 'varchar', length: 64, nullable: true })
-  historyId: string | null;
+  /**
+   * Incremental-sync cursor. Gmail stores a `historyId`; IMAP stores a JSON
+   * map of `{ mailboxPath: "uidvalidity:lastUid" }` per watched mailbox.
+   */
+  @Column({ type: 'text', nullable: true })
+  syncCursor: string | null;
 
   /**
    * A shared mailbox is visible to every `email:read` holder in the tenant,

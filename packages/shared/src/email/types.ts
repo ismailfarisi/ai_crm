@@ -1,6 +1,9 @@
 /* Email client DTOs shared between the API and the web app. */
 
-export const EMAIL_PROVIDER_TYPES = ['GMAIL_OAUTH'] as const;
+export const EMAIL_PROVIDER_TYPES = [
+  'GMAIL_OAUTH',
+  'IMAP_SMTP',
+] as const;
 export type EmailProviderType = (typeof EMAIL_PROVIDER_TYPES)[number];
 
 export const EMAIL_SYNC_STATUSES = ['ACTIVE', 'ERROR', 'PAUSED'] as const;

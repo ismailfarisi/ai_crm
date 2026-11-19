@@ -15,6 +15,15 @@ import {
   type GmailMessage,
 } from './gmail/gmail-client.service';
 import {
+  imapThreadKey,
+  parseRaw,
+  imapToNormalized,
+  threadAnchors,
+  type ImapMessageContext,
+} from './imap/imap-mime';
+import type { NormalizedMessage } from './normalized-message';
+import type { Email } from 'postal-mime';
+import {
   displayNameFromAddress,
   extractBody,
   firstEmailFromAddress,
@@ -54,6 +63,8 @@ export class EmailIngestService {
     private readonly gmail: GmailClientService,
   ) {}
 
+  /* ------------------------------------------------------------ providers */
+
   /** Fetch + store one Gmail message. Safe to call on already-known ids. */
   async ingest(account: EmailAccount, gmailMessageId: string): Promise<void> {
     let message: GmailMessage;
@@ -68,40 +79,73 @@ export class EmailIngestService {
     await this.store(account, message);
   }
 
-  /** Store a message we already have the payload for (e.g. right after send). */
-  async store(account: EmailAccount, message: GmailMessage): Promise<void> {
-    const headers = message.payload?.headers;
-    const labelIds = message.labelIds ?? [];
+  /** Parse + store one IMAP message handed over as raw RFC822. */
+  async ingestImap(
+    account: EmailAccount,
+    raw: Buffer,
+    ctx: ImapMessageContext,
+  ): Promise<void> {
+    let parsed: Email;
+    try {
+      parsed = await parseRaw(raw);
+    } catch (err) {
+      this.logger.warn(
+        `Could not parse ${ctx.mailboxPath}:${ctx.uid} for ${account.emailAddress}: ${String(err)}`,
+      );
+      return;
+    }
+    const normalized = imapToNormalized(parsed, ctx);
+    normalized.providerThreadId = await this.resolveImapThreadKey(
+      account,
+      parsed,
+      normalized.providerThreadId,
+    );
+    await this.storeNormalized(account, normalized);
+  }
 
-    const thread =
-      (await this.threads.findOne({
+  /**
+   * Chains a new message onto an existing thread when any of its reference
+   * anchors already lives in the mailbox — a subject-hash key only ever
+   * stands up genuinely new threads.
+   */
+  private async resolveImapThreadKey(
+    account: EmailAccount,
+    parsed: Email,
+    fallback: string,
+  ): Promise<string> {
+    for (const anchor of threadAnchors(parsed)) {
+      const parent = await this.messages.findOne({
         where: {
           tenantId: account.tenantId,
           emailAccountId: account.id,
-          gmailThreadId: message.threadId,
+          messageIdHeader: anchor,
         },
-      })) ??
-      (await this.threads.save(
-        this.threads.create({
-          tenantId: account.tenantId,
-          emailAccountId: account.id,
-          gmailThreadId: message.threadId,
-          subject: '',
-          snippet: '',
-          participants: [],
-          lastMessageAt: new Date(Number(message.internalDate ?? Date.now())),
-          messageCount: 0,
-        }),
-      ));
+      });
+      if (!parent) continue;
+      const thread = await this.threads.findOne({
+        where: { id: parent.threadId },
+      });
+      if (thread) return thread.providerThreadId;
+    }
+    return fallback || imapThreadKey(parsed);
+  }
 
-    const existing = await this.messages.findOne({
-      where: {
-        tenantId: account.tenantId,
-        emailAccountId: account.id,
-        gmailMessageId: message.id,
-      },
-    });
+  /* --------------------------------------------------------------- store */
 
+  /** Store a message we already have the Gmail payload for (post-send). */
+  async store(account: EmailAccount, message: GmailMessage): Promise<void> {
+    await this.storeNormalized(
+      account,
+      this.gmailToNormalized(account, message),
+    );
+  }
+
+  private gmailToNormalized(
+    account: EmailAccount,
+    message: GmailMessage,
+  ): NormalizedMessage {
+    const headers = message.payload?.headers;
+    const labelIds = message.labelIds ?? [];
     const parsed = extractBody(message.payload ?? {});
     const fromHeader = headerValue(headers, 'From');
     const isDraft = labelIds.includes('DRAFT');
@@ -110,21 +154,19 @@ export class EmailIngestService {
       firstEmailFromAddress(fromHeader) === account.emailAddress.toLowerCase()
         ? EmailDirection.OUTBOUND
         : EmailDirection.INBOUND;
-    const status = isDraft
-      ? EmailMessageStatus.DRAFT
-      : direction === EmailDirection.OUTBOUND
-        ? EmailMessageStatus.SENT
-        : EmailMessageStatus.RECEIVED;
 
-    const row = existing ?? this.messages.create();
-    Object.assign(row, {
-      tenantId: account.tenantId,
-      threadId: thread.id,
-      emailAccountId: account.id,
-      gmailMessageId: message.id,
+    return {
+      providerMessageId: message.id,
+      providerThreadId: message.threadId,
+      labelIds,
       messageIdHeader: headerValue(headers, 'Message-ID') || null,
       inReplyToHeader: headerValue(headers, 'In-Reply-To') || null,
       direction,
+      status: isDraft
+        ? EmailMessageStatus.DRAFT
+        : direction === EmailDirection.OUTBOUND
+          ? EmailMessageStatus.SENT
+          : EmailMessageStatus.RECEIVED,
       fromEmail: firstEmailFromAddress(fromHeader) || 'unknown',
       fromName: displayNameFromAddress(fromHeader),
       toEmails: parseAddressHeader(headerValue(headers, 'To')),
@@ -133,30 +175,136 @@ export class EmailIngestService {
       subject: headerValue(headers, 'Subject'),
       bodyText: parsed.text,
       bodyHtml: parsed.html,
-      labelIds,
-      hasAttachments: parsed.attachments.length > 0,
-      status,
+      attachments: parsed.attachments.map((a) => ({
+        providerAttachmentId: a.gmailAttachmentId,
+        filename: a.filename,
+        mimeType: a.mimeType,
+        sizeBytes: a.sizeBytes,
+      })),
       sentAt: new Date(Number(message.internalDate ?? Date.now())),
+      snippet: message.snippet,
+    };
+  }
+
+  /**
+   * The provider-agnostic write path. Rows are keyed on the provider id;
+   * a message first stored optimistically (SMTP send) is re-keyed to its
+   * real IMAP id when the server copy arrives, matched by Message-ID.
+   */
+  async storeNormalized(
+    account: EmailAccount,
+    n: NormalizedMessage,
+  ): Promise<EmailMessage> {
+    const thread =
+      (await this.threads.findOne({
+        where: {
+          tenantId: account.tenantId,
+          emailAccountId: account.id,
+          providerThreadId: n.providerThreadId,
+        },
+      })) ??
+      (await this.threads.save(
+        this.threads.create({
+          tenantId: account.tenantId,
+          emailAccountId: account.id,
+          providerThreadId: n.providerThreadId,
+          subject: '',
+          snippet: '',
+          participants: [],
+          lastMessageAt: n.sentAt,
+          messageCount: 0,
+        }),
+      ));
+
+    let existing = await this.messages.findOne({
+      where: {
+        tenantId: account.tenantId,
+        emailAccountId: account.id,
+        providerMessageId: n.providerMessageId,
+      },
+    });
+    if (!existing && n.messageIdHeader) {
+      // Optimistically stored SMTP sends carry a `sent:` id; the real IMAP
+      // copy adopts this row instead of duplicating.
+      existing = await this.messages.findOne({
+        where: {
+          tenantId: account.tenantId,
+          emailAccountId: account.id,
+          messageIdHeader: n.messageIdHeader,
+        },
+      });
+    }
+
+    const row = existing ?? this.messages.create();
+    Object.assign(row, {
+      tenantId: account.tenantId,
+      threadId: thread.id,
+      emailAccountId: account.id,
+      providerMessageId: n.providerMessageId,
+      messageIdHeader: n.messageIdHeader,
+      inReplyToHeader: n.inReplyToHeader,
+      direction: n.direction,
+      fromEmail: n.fromEmail,
+      fromName: n.fromName,
+      toEmails: n.toEmails,
+      ccEmails: n.ccEmails,
+      bccEmails: n.bccEmails,
+      subject: n.subject,
+      bodyText: n.bodyText,
+      bodyHtml: n.bodyHtml,
+      labelIds: n.labelIds,
+      hasAttachments: n.attachments.length > 0,
+      status: n.status,
+      sentAt: n.sentAt,
     });
     const saved = await this.messages.save(row);
 
-    if (parsed.attachments.length > 0) {
+    if (n.attachments.length > 0 || row.hasAttachments) {
       await this.attachments.delete({ emailMessageId: saved.id });
-      await this.attachments.save(
-        parsed.attachments.map((a) =>
-          this.attachments.create({
-            tenantId: account.tenantId,
-            emailMessageId: saved.id,
-            gmailAttachmentId: a.gmailAttachmentId,
-            filename: a.filename,
-            mimeType: a.mimeType,
-            sizeBytes: a.sizeBytes,
-          }),
-        ),
-      );
+      if (n.attachments.length > 0) {
+        await this.attachments.save(
+          n.attachments.map((a) =>
+            this.attachments.create({
+              tenantId: account.tenantId,
+              emailMessageId: saved.id,
+              providerAttachmentId: a.providerAttachmentId,
+              filename: a.filename,
+              mimeType: a.mimeType,
+              sizeBytes: a.sizeBytes,
+            }),
+          ),
+        );
+      }
     }
 
-    await this.recomputeThread(thread.id, account, message.snippet);
+    await this.recomputeThread(thread.id, account, n.snippet);
+    return saved;
+  }
+
+  /**
+   * Flag-only refresh for a stored message (IMAP poll saw different flags).
+   * Returns the threadId if the row existed so the caller can recompute.
+   */
+  async updateLabels(
+    account: EmailAccount,
+    providerMessageId: string,
+    labelIds: string[],
+  ): Promise<string | null> {
+    const message = await this.messages.findOne({
+      where: {
+        tenantId: account.tenantId,
+        emailAccountId: account.id,
+        providerMessageId,
+      },
+    });
+    if (!message) return null;
+    const changed =
+      labelIds.length !== message.labelIds.length ||
+      labelIds.some((l) => !message.labelIds.includes(l));
+    if (!changed) return message.threadId;
+    message.labelIds = labelIds;
+    await this.messages.save(message);
+    return message.threadId;
   }
 
   /**
@@ -165,13 +313,13 @@ export class EmailIngestService {
    */
   async removeMessage(
     account: EmailAccount,
-    gmailMessageId: string,
+    providerMessageId: string,
   ): Promise<void> {
     const message = await this.messages.findOne({
       where: {
         tenantId: account.tenantId,
         emailAccountId: account.id,
-        gmailMessageId,
+        providerMessageId,
       },
     });
     if (!message) return;

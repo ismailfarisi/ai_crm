@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -8,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository, type SelectQueryBuilder } from 'typeorm';
 import {
   PERMISSIONS,
+  type ConnectImapAccountPayload,
   type EmailAccountDto,
   type EmailFolder,
   type EmailMessageDto,
@@ -19,9 +21,17 @@ import {
 } from '@saas/shared';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { TenantContextService } from '@/common/context/tenant-context.service';
-import { EmailAccount, EmailSyncStatus } from './entities/email-account.entity';
+import {
+  EmailAccount,
+  EmailProviderType,
+  EmailSyncStatus,
+} from './entities/email-account.entity';
 import { EmailAttachment } from './entities/email-attachment.entity';
-import { EmailMessage } from './entities/email-message.entity';
+import {
+  EmailDirection,
+  EmailMessage,
+  EmailMessageStatus,
+} from './entities/email-message.entity';
 import {
   EmailThread,
   EmailFolder as EmailFolderEntity,
@@ -30,6 +40,8 @@ import { EmailIngestService } from './email-ingest.service';
 import { EmailSyncService } from './email-sync.service';
 import { GmailClientService } from './gmail/gmail-client.service';
 import { GoogleOAuthService } from './gmail/google-oauth.service';
+import { ImapAuthError, ImapClientService } from './imap/imap-client.service';
+import { subjectThreadKey } from './imap/imap-mime';
 import { composeRfc822, toBase64Url } from './gmail/mime';
 
 @Injectable()
@@ -47,6 +59,7 @@ export class EmailService {
     private readonly attachments: Repository<EmailAttachment>,
     private readonly oauth: GoogleOAuthService,
     private readonly gmail: GmailClientService,
+    private readonly imap: ImapClientService,
     private readonly ingest: EmailIngestService,
     private readonly sync: EmailSyncService,
     private readonly tenantContext: TenantContextService,
@@ -157,7 +170,8 @@ export class EmailService {
         });
       }
       account.name = identity.name;
-      account.historyId = null; // force a fresh initial sync
+      account.providerType = EmailProviderType.GMAIL_OAUTH;
+      account.syncCursor = null; // force a fresh initial sync
       account.syncStatus = EmailSyncStatus.ACTIVE;
       account.syncError = null;
       account.encryptedCredentials = this.gmail.persistTokens(account, tokens);
@@ -173,6 +187,66 @@ export class EmailService {
         );
       return { emailAddress: saved.emailAddress };
     });
+  }
+
+  /**
+   * App-password connect — the path for customers on their own Workspace
+   * domain (or plain Gmail) where our OAuth client cannot consent. The
+   * password is verified against Gmail before anything is stored, then kept
+   * encrypted exactly like the OAuth tokens.
+   */
+  async connectImap(
+    actor: AuthenticatedUser,
+    payload: ConnectImapAccountPayload,
+  ): Promise<EmailAccountDto> {
+    const emailAddress = payload.emailAddress.toLowerCase();
+    // Google renders app passwords as four space-separated groups.
+    const appPassword = payload.appPassword.replace(/\s+/g, '');
+    try {
+      await this.imap.verifyCredentials(emailAddress, appPassword);
+    } catch (err) {
+      if (err instanceof ImapAuthError) {
+        throw new BadRequestException(err.message);
+      }
+      throw new BadRequestException(
+        'Could not reach Gmail to verify the password — try again',
+      );
+    }
+
+    let account = await this.accounts.findOne({
+      where: {
+        tenantId: actor.organizationId,
+        userId: actor.id,
+        emailAddress,
+      },
+    });
+    if (!account) {
+      account = this.accounts.create({
+        tenantId: actor.organizationId,
+        userId: actor.id,
+        emailAddress,
+      });
+    }
+    account.providerType = EmailProviderType.IMAP_SMTP;
+    account.name = '';
+    account.isShared = payload.isShared;
+    account.syncCursor = null;
+    account.syncStatus = EmailSyncStatus.ACTIVE;
+    account.syncError = null;
+    account.encryptedCredentials = this.imap.writeCredentials({
+      username: emailAddress,
+      appPassword,
+    });
+    const saved = await this.accounts.save(account);
+
+    void this.sync
+      .syncAccount(saved)
+      .catch((err) =>
+        this.logger.warn(
+          `Initial sync for ${saved.emailAddress} failed: ${String(err)}`,
+        ),
+      );
+    return this.accountDto(actor, saved);
   }
 
   async disconnect(actor: AuthenticatedUser, accountId: string): Promise<void> {
@@ -383,10 +457,10 @@ export class EmailService {
       updates.folder = patch.folder as EmailFolderEntity;
     await this.threads.update(thread.id, updates);
 
-    // Best-effort push to Gmail — the next sync reconciles regardless.
-    void this.pushLabelsToGmail(thread, patch).catch((err) =>
+    // Best-effort push upstream — the next sync reconciles regardless.
+    void this.pushPatchToProvider(thread, patch).catch((err) =>
       this.logger.debug(
-        `Label push failed for thread ${thread.id}: ${String(err)}`,
+        `Provider push failed for thread ${thread.id}: ${String(err)}`,
       ),
     );
 
@@ -397,13 +471,28 @@ export class EmailService {
     return this.threadDto(fresh);
   }
 
-  private async pushLabelsToGmail(
+  private async pushPatchToProvider(
     thread: EmailThread,
     patch: { isRead?: boolean; isStarred?: boolean; folder?: EmailFolder },
   ): Promise<void> {
     const account = await this.accounts.findOneByOrFail({
       id: thread.emailAccountId,
     });
+    const messages = await this.messages.find({
+      where: { threadId: thread.id },
+    });
+
+    if (account.providerType === EmailProviderType.IMAP_SMTP) {
+      for (const message of messages) {
+        await this.imap.applyPatch(account, message.providerMessageId, {
+          isRead: patch.isRead,
+          isStarred: patch.isStarred,
+          folder: patch.folder,
+        });
+      }
+      return;
+    }
+
     const add: string[] = [];
     const remove: string[] = [];
     if (patch.isRead === true) remove.push('UNREAD');
@@ -416,13 +505,10 @@ export class EmailService {
     if (patch.folder === 'SPAM') add.push('SPAM');
     if (add.length === 0 && remove.length === 0) return;
 
-    const messages = await this.messages.find({
-      where: { threadId: thread.id },
-    });
     for (const message of messages) {
       await this.gmail.modifyMessage(
         account,
-        message.gmailMessageId,
+        message.providerMessageId,
         add,
         remove,
       );
@@ -460,6 +546,13 @@ export class EmailService {
       references = last?.messageIdHeader ? [last.messageIdHeader] : [];
     }
 
+    if (account.providerType === EmailProviderType.IMAP_SMTP) {
+      return this.sendViaSmtp(account, payload, thread, {
+        inReplyTo,
+        references,
+      });
+    }
+
     const raw = composeRfc822({
       fromEmail: account.emailAddress,
       fromName: account.name || undefined,
@@ -476,7 +569,7 @@ export class EmailService {
     const sent = await this.gmail.sendMessage(
       account,
       toBase64Url(raw),
-      thread?.gmailThreadId,
+      thread?.providerThreadId,
     );
 
     // Store immediately so the UI can show it; dedupe keeps the cron's copy.
@@ -484,7 +577,57 @@ export class EmailService {
     await this.ingest.store(account, full);
 
     const stored = await this.messages.findOneOrFail({
-      where: { emailAccountId: account.id, gmailMessageId: sent.id },
+      where: { emailAccountId: account.id, providerMessageId: sent.id },
+    });
+    return {
+      threadId: stored.threadId,
+      message: this.messageDto(stored),
+    };
+  }
+
+  /**
+   * SMTP send for app-password accounts. The row is stored optimistically
+   * under a `sent:` id; Gmail files the real copy into Sent, and the next
+   * sync re-keys this row by Message-ID instead of duplicating.
+   */
+  private async sendViaSmtp(
+    account: EmailAccount,
+    payload: SendEmailPayload,
+    thread: EmailThread | null,
+    threading: { inReplyTo: string | null; references: string[] },
+  ) {
+    const { messageId } = await this.imap.send(account, {
+      fromEmail: account.emailAddress,
+      fromName: account.name || undefined,
+      to: payload.to,
+      cc: payload.cc,
+      bcc: payload.bcc,
+      subject: payload.subject,
+      bodyText: payload.bodyText,
+      bodyHtml: payload.bodyHtml,
+      inReplyTo: threading.inReplyTo,
+      references: threading.references,
+    });
+
+    const stored = await this.ingest.storeNormalized(account, {
+      providerMessageId: `sent:${messageId || Date.now()}`,
+      providerThreadId:
+        thread?.providerThreadId ?? subjectThreadKey(payload.subject),
+      labelIds: ['SENT'],
+      messageIdHeader: messageId || null,
+      inReplyToHeader: threading.inReplyTo,
+      direction: EmailDirection.OUTBOUND,
+      status: EmailMessageStatus.SENT,
+      fromEmail: account.emailAddress,
+      fromName: account.name || null,
+      toEmails: payload.to.map((email) => ({ email })),
+      ccEmails: payload.cc.map((email) => ({ email })),
+      bccEmails: payload.bcc.map((email) => ({ email })),
+      subject: payload.subject,
+      bodyText: payload.bodyText,
+      bodyHtml: payload.bodyHtml ?? '',
+      attachments: [],
+      sentAt: new Date(),
     });
     return {
       threadId: stored.threadId,
@@ -511,10 +654,22 @@ export class EmailService {
     const account = await this.accounts.findOneByOrFail({
       id: message.emailAccountId,
     });
+    if (account.providerType === EmailProviderType.IMAP_SMTP) {
+      const file = await this.imap.fetchAttachment(
+        account,
+        attachment.providerAttachmentId,
+      );
+      if (!file) throw new NotFoundException('Attachment not found upstream');
+      return {
+        filename: attachment.filename,
+        mimeType: attachment.mimeType,
+        data: file.data,
+      };
+    }
     const res = await this.gmail.getAttachment(
       account,
-      message.gmailMessageId,
-      attachment.gmailAttachmentId,
+      message.providerMessageId,
+      attachment.providerAttachmentId,
     );
     return {
       filename: attachment.filename,

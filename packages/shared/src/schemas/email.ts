@@ -37,7 +37,19 @@ export const updateEmailAccountSchema = z.object({
   isShared: z.boolean(),
 });
 
+/**
+ * Connect a mailbox with a Gmail app password — the no-OAuth path that works
+ * for any Google Workspace domain or plain Gmail account. Google shows the
+ * password as four blocks of four; pasted spaces are stripped server-side.
+ */
+export const connectImapAccountSchema = z.object({
+  emailAddress: z.string().email(),
+  appPassword: z.string().min(8).max(200),
+  isShared: z.boolean().default(false),
+});
+
 export type SendEmailPayload = z.infer<typeof sendEmailSchema>;
 export type EmailThreadQuery = z.infer<typeof emailThreadQuerySchema>;
 export type UpdateEmailThreadPayload = z.infer<typeof updateEmailThreadSchema>;
 export type UpdateEmailAccountPayload = z.infer<typeof updateEmailAccountSchema>;
+export type ConnectImapAccountPayload = z.infer<typeof connectImapAccountSchema>;

@@ -1,5 +1,6 @@
 /* Per-user connected mailboxes (Gmail OAuth) and their synced mail. */
 import type {
+  ConnectImapAccountPayload,
   EmailAccountDto,
   EmailFolder,
   EmailThreadDetailDto,
@@ -37,6 +38,11 @@ export const emailEndpoints = {
         }),
       disconnect: (id: string) =>
         apiFetch<void>(`/email/accounts/${id}`, { method: 'DELETE' }),
+      connectImap: (input: ConnectImapAccountPayload) =>
+        apiFetch<EmailAccountDto>('/email/accounts/imap', {
+          method: 'POST',
+          body: input,
+        }),
     },
     googleAuthUrl: () =>
       apiFetch<GoogleOAuthStartDto>('/email/oauth/google/start'),

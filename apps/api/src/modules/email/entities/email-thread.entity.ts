@@ -13,7 +13,10 @@ export enum EmailFolder {
 }
 
 @Entity('email_threads')
-@Unique('UQ_email_threads_account_thread', ['emailAccountId', 'gmailThreadId'])
+@Unique('UQ_email_threads_account_provider', [
+  'emailAccountId',
+  'providerThreadId',
+])
 @Index('idx_email_threads_tenant_folder', ['tenantId', 'folder'])
 @Index('idx_email_threads_tenant_last_message', ['tenantId', 'lastMessageAt'])
 export class EmailThread extends TenantBaseEntity {
@@ -25,9 +28,12 @@ export class EmailThread extends TenantBaseEntity {
   @JoinColumn({ name: 'emailAccountId' })
   emailAccount: EmailAccount;
 
-  /** The provider's own thread id — Gmail hands us threading for free. */
-  @Column({ type: 'varchar', length: 64 })
-  gmailThreadId: string;
+  /**
+   * Provider thread key. Gmail hands us its thread id; the IMAP path derives
+   * one from References/In-Reply-To, falling back to a subject hash.
+   */
+  @Column({ type: 'varchar', length: 255 })
+  providerThreadId: string;
 
   /** The contact this thread was auto-associated with, if any. */
   @Column({ type: 'uuid', nullable: true })

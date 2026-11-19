@@ -12,6 +12,7 @@ import { EmailService } from './email.service';
 import { EmailSyncService } from './email-sync.service';
 import { GmailClientService } from './gmail/gmail-client.service';
 import { GoogleOAuthService } from './gmail/google-oauth.service';
+import { ImapClientService } from './imap/imap-client.service';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { GoogleOAuthService } from './gmail/google-oauth.service';
     EmailSyncService,
     GmailClientService,
     GoogleOAuthService,
+    ImapClientService,
   ],
   exports: [EmailService],
 })

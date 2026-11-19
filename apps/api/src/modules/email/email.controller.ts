@@ -14,10 +14,12 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import {
   PERMISSIONS,
+  connectImapAccountSchema,
   sendEmailSchema,
   updateEmailAccountSchema,
   updateEmailThreadSchema,
   emailThreadQuerySchema,
+  type ConnectImapAccountPayload,
   type SendEmailPayload,
   type UpdateEmailAccountPayload,
   type UpdateEmailThreadPayload,
@@ -90,6 +92,20 @@ export class EmailController {
   }
 
   /* ------------------------------------------------------------- accounts */
+
+  /**
+   * App-password connect — works for any Workspace domain or Gmail account,
+   * unlike the OAuth flow which Google limits to our own organisation.
+   */
+  @Post('accounts/imap')
+  @RequirePermissions(PERMISSIONS.EMAIL_SEND)
+  @ApiOperation({ summary: 'Connect a Gmail mailbox with an app password' })
+  connectImap(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(zodBody(connectImapAccountSchema)) body: ConnectImapAccountPayload,
+  ) {
+    return this.email.connectImap(user, body);
+  }
 
   @Get('accounts')
   @RequirePermissions(PERMISSIONS.EMAIL_READ)

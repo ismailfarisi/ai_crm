@@ -23,9 +23,9 @@ export enum EmailMessageStatus {
 }
 
 @Entity('email_messages')
-@Unique('UQ_email_messages_account_message', [
+@Unique('UQ_email_messages_account_provider', [
   'emailAccountId',
-  'gmailMessageId',
+  'providerMessageId',
 ])
 @Index('idx_email_messages_tenant_thread', ['tenantId', 'threadId'])
 export class EmailMessage extends TenantBaseEntity {
@@ -41,9 +41,9 @@ export class EmailMessage extends TenantBaseEntity {
   @Index('IDX_email_messages_account')
   emailAccountId: string;
 
-  /** The provider's immutable message id. */
-  @Column({ type: 'varchar', length: 64 })
-  gmailMessageId: string;
+  /** Provider message id — a Gmail id, or `mailbox:uid` for IMAP. */
+  @Column({ type: 'varchar', length: 255 })
+  providerMessageId: string;
 
   /** RFC822 Message-ID header — used to thread our own replies. */
   @Column({ type: 'varchar', length: 500, nullable: true })

@@ -7,9 +7,9 @@ import { EmailMessage } from './email-message.entity';
  * fetched on demand through the Gmail API, so nothing is stored locally.
  */
 @Entity('email_attachments')
-@Unique('UQ_email_attachments_message_attachment', [
+@Unique('UQ_email_attachments_message_provider', [
   'emailMessageId',
-  'gmailAttachmentId',
+  'providerAttachmentId',
 ])
 export class EmailAttachment extends TenantBaseEntity {
   @Column('uuid')
@@ -22,9 +22,12 @@ export class EmailAttachment extends TenantBaseEntity {
   @JoinColumn({ name: 'emailMessageId' })
   emailMessage: EmailMessage;
 
-  /** Provider-side attachment id used by messages.attachments.get. */
+  /**
+   * Provider attachment locator — a Gmail attachment id, or
+   * `mailbox:uid:index` for IMAP (the raw part is re-parsed on download).
+   */
   @Column({ type: 'varchar', length: 500 })
-  gmailAttachmentId: string;
+  providerAttachmentId: string;
 
   @Column({ type: 'varchar', length: 255 })
   filename: string;

@@ -1,26 +1,39 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, Like, Repository } from 'typeorm';
 import { TenantContextService } from '@/common/context/tenant-context.service';
-import { EmailAccount, EmailSyncStatus } from './entities/email-account.entity';
+import {
+  EmailAccount,
+  EmailProviderType,
+  EmailSyncStatus,
+} from './entities/email-account.entity';
+import { EmailMessage } from './entities/email-message.entity';
 import { EmailIngestService } from './email-ingest.service';
 import {
   GmailApiError,
   GmailAuthError,
   GmailClientService,
 } from './gmail/gmail-client.service';
+import { ImapAuthError, ImapClientService } from './imap/imap-client.service';
+import { labelsFor } from './imap/imap-mime';
+import type { ImapFlow } from 'imapflow';
 
 /** How far back the first sync reaches — keeps onboarding quick. */
 const INITIAL_SYNC_MAX = 100;
 /** Cap on history pages per pass so a busy mailbox cannot starve others. */
 const MAX_HISTORY_PAGES = 5;
+/** Trailing window re-checked each poll for flag changes and deletions. */
+const FLAG_WINDOW = 200;
+
+/** Cursor per watched IMAP mailbox: `{ "INBOX": "uidvalidity:lastUid" }`. */
+type ImapCursor = Record<string, string>;
 
 /**
  * Polls every connected mailbox for changes. Gmail offers push notifications
  * via Pub/Sub (`users.watch`), which needs a public endpoint plus a GCP topic
- * — polling `history.list` every minute is the dependency-free version and
- * costs one request per account when nothing changed.
+ * — polling `history.list` / IMAP every minute is the dependency-free version
+ * and costs one request per account when nothing changed.
  */
 @Injectable()
 export class EmailSyncService {
@@ -30,7 +43,10 @@ export class EmailSyncService {
   constructor(
     @InjectRepository(EmailAccount)
     private readonly accounts: Repository<EmailAccount>,
+    @InjectRepository(EmailMessage)
+    private readonly messages: Repository<EmailMessage>,
     private readonly gmail: GmailClientService,
+    private readonly imap: ImapClientService,
     private readonly ingest: EmailIngestService,
     private readonly tenantContext: TenantContextService,
   ) {}
@@ -69,7 +85,9 @@ export class EmailSyncService {
    */
   async syncAccount(account: EmailAccount): Promise<void> {
     try {
-      if (!account.historyId) {
+      if (account.providerType === EmailProviderType.IMAP_SMTP) {
+        await this.imapSync(account);
+      } else if (!account.syncCursor) {
         await this.initialSync(account);
       } else {
         await this.incrementalSync(account);
@@ -80,7 +98,7 @@ export class EmailSyncService {
         lastSyncedAt: new Date(),
       });
     } catch (err) {
-      if (err instanceof GmailAuthError) {
+      if (err instanceof GmailAuthError || err instanceof ImapAuthError) {
         await this.accounts.update(account.id, {
           syncStatus: EmailSyncStatus.ERROR,
           syncError: err.message,
@@ -90,6 +108,8 @@ export class EmailSyncService {
       throw err;
     }
   }
+
+  /* -------------------------------------------------------------- Gmail */
 
   /** First connect (or a lapsed history cursor): recent mail + a fresh cursor. */
   private async initialSync(account: EmailAccount): Promise<void> {
@@ -111,7 +131,7 @@ export class EmailSyncService {
     } while (pageToken && ingested < INITIAL_SYNC_MAX);
 
     await this.accounts.update(account.id, {
-      historyId: profile.historyId ?? null,
+      syncCursor: profile.historyId ?? null,
     });
   }
 
@@ -125,14 +145,14 @@ export class EmailSyncService {
       try {
         page = await this.gmail.listHistory(
           account,
-          account.historyId!,
+          account.syncCursor!,
           pageToken,
         );
       } catch (err) {
         // HTTP 404 = the cursor is older than Gmail keeps — fall back to a
         // fresh list sync rather than failing forever.
         if (err instanceof GmailApiError && err.status === 404) {
-          await this.accounts.update(account.id, { historyId: null });
+          await this.accounts.update(account.id, { syncCursor: null });
           await this.initialSync(account);
           return;
         }
@@ -170,8 +190,160 @@ export class EmailSyncService {
 
     if (newestHistoryId) {
       await this.accounts.update(account.id, {
-        historyId: newestHistoryId,
+        syncCursor: newestHistoryId,
       });
+    }
+  }
+
+  /* --------------------------------------------------------------- IMAP */
+
+  /**
+   * Polls INBOX + the Sent special-use mailbox. Each mailbox carries its own
+   * `uidvalidity:lastUid` cursor; a UIDVALIDITY change or first run backfills
+   * the newest INITIAL_SYNC_MAX, then incremental passes pick up new UIDs,
+   * refresh flags in a trailing window and drop vanished messages.
+   */
+  private async imapSync(account: EmailAccount): Promise<void> {
+    const client = await this.imap.connect(account);
+    try {
+      const boxes = await this.imap.listMailboxes(client);
+      const watched = boxes.filter(
+        (b) => b.specialUse === '\\Inbox' || b.specialUse === '\\Sent',
+      );
+      const cursor = JSON.parse(account.syncCursor ?? '{}') as ImapCursor;
+
+      for (const box of watched) {
+        await this.syncImapMailbox(client, account, box, cursor);
+      }
+
+      await this.accounts.update(account.id, {
+        syncCursor: JSON.stringify(cursor),
+      });
+    } finally {
+      await client.logout().catch(() => undefined);
+    }
+  }
+
+  private async syncImapMailbox(
+    client: ImapFlow,
+    account: EmailAccount,
+    box: { path: string; specialUse?: string; uidValidity: bigint },
+    cursor: ImapCursor,
+  ): Promise<void> {
+    const uidValidity = box.uidValidity.toString();
+    const entry = cursor[box.path];
+    const [, lastUidStr] = entry?.startsWith(`${uidValidity}:`)
+      ? entry.split(':')
+      : [];
+    const lastUid = lastUidStr ? Number(lastUidStr) : 0;
+
+    const ctx = {
+      mailboxPath: box.path,
+      specialUse: box.specialUse,
+      accountEmail: account.emailAddress,
+    };
+
+    const lock = await client.getMailboxLock(box.path);
+    try {
+      const toDate = (v: string | Date | undefined): Date | undefined =>
+        v instanceof Date ? v : v ? new Date(v) : undefined;
+
+      let newest = lastUid;
+      if (lastUid === 0) {
+        // Initial pass: newest N by sequence — no cursor to trust.
+        const status = await client.status(box.path, { messages: true });
+        const exists = status ? (status.messages ?? 0) : 0;
+        const start = Math.max(1, exists - INITIAL_SYNC_MAX + 1);
+        for await (const msg of client.fetch(`${start}:*`, {
+          uid: true,
+          flags: true,
+          source: true,
+          internalDate: true,
+        })) {
+          if (typeof msg === 'object' && msg.source) {
+            await this.ingest.ingestImap(account, msg.source, {
+              ...ctx,
+              uid: msg.uid,
+              flags: msg.flags,
+              internalDate: toDate(msg.internalDate),
+            });
+            newest = Math.max(newest, msg.uid);
+          }
+        }
+      } else {
+        // New arrivals strictly after the cursor.
+        const range = `${lastUid + 1}:*`;
+        for await (const msg of client.fetch(range, {
+          uid: true,
+          flags: true,
+          source: true,
+          internalDate: true,
+        })) {
+          if (typeof msg === 'object' && msg.source) {
+            await this.ingest.ingestImap(account, msg.source, {
+              ...ctx,
+              uid: msg.uid,
+              flags: msg.flags,
+              internalDate: toDate(msg.internalDate),
+            });
+            newest = Math.max(newest, msg.uid);
+          }
+        }
+
+        await this.refreshImapWindow(account, client, box, lastUid);
+      }
+      cursor[box.path] = `${uidValidity}:${newest}`;
+    } finally {
+      lock.release();
+    }
+  }
+
+  /**
+   * Re-reads flags for the trailing window: updates labels on rows that
+   * changed, and removes rows whose UID vanished from the mailbox.
+   */
+  private async refreshImapWindow(
+    account: EmailAccount,
+    client: ImapFlow,
+    box: { path: string; specialUse?: string },
+    lastUid: number,
+  ): Promise<void> {
+    const windowStart = Math.max(1, lastUid - FLAG_WINDOW + 1);
+    const live = new Map<number, Set<string>>();
+    for await (const msg of client.fetch(`${windowStart}:*`, {
+      uid: true,
+      flags: true,
+    })) {
+      if (typeof msg === 'object') live.set(msg.uid, msg.flags ?? new Set());
+    }
+
+    const stored = await this.messages.find({
+      where: {
+        tenantId: account.tenantId,
+        emailAccountId: account.id,
+        providerMessageId: Like(`${box.path}:%`),
+      },
+    });
+    const threadsToRecompute = new Set<string>();
+    for (const row of stored) {
+      const parsed = this.imap.splitProviderId(row.providerMessageId);
+      if (!parsed || parsed.uid < windowStart) continue;
+      const flags = live.get(parsed.uid);
+      if (!flags) {
+        // Inside the window but gone from the server — expunged or moved.
+        await this.ingest.removeMessage(account, row.providerMessageId);
+        continue;
+      }
+      const labels = labelsFor(box.specialUse, box.path, flags);
+      const threadId = await this.ingest.updateLabels(
+        account,
+        row.providerMessageId,
+        labels,
+      );
+      if (threadId) threadsToRecompute.add(threadId);
+    }
+    for (const threadId of threadsToRecompute) {
+      await this.ingest.recomputeThread(threadId, account);
     }
   }
 }
