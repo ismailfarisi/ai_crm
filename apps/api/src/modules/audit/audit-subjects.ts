@@ -37,6 +37,7 @@ import { BankStatementLine } from '../finance/entities/bank-statement-line.entit
 import { BankMatch } from '../finance/entities/bank-match.entity';
 import { AutomationApproval } from '../automations/entities/automation-approval.entity';
 import { ImportRun } from '../imports/entities/import-run.entity';
+import { EmailAccount } from '../email/entities/email-account.entity';
 
 /**
  * The one file to touch when a sprint adds a document type worth auditing.
@@ -133,6 +134,7 @@ export const AUDIT_SUBJECTS: Record<string, AuditSubject> = {
     subject: 'BANK_MATCH',
     entity: BankMatch,
   },
+  'email/accounts': { subject: 'EMAIL_ACCOUNT', entity: EmailAccount },
 };
 
 /**

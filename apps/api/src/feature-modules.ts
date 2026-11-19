@@ -12,6 +12,7 @@ import { ImportsModule } from '@/modules/imports/imports.module';
 import { InventoryModule } from '@/modules/inventory/inventory.module';
 import { InvitationsModule } from '@/modules/invitations/invitations.module';
 import { MailModule } from '@/modules/mail/mail.module';
+import { EmailModule } from '@/modules/email/email.module';
 import { OrdersModule } from '@/modules/orders/orders.module';
 import { OrganizationsModule } from '@/modules/organizations/organizations.module';
 import { PayablesModule } from '@/modules/payables/payables.module';
@@ -66,6 +67,8 @@ export const FEATURE_MODULES = [
   QuotesModule,
   CatalogModule,
   ChannelsModule,
+  // Per-user OAuth mailboxes — Gmail sync runs on @Cron, so API process only.
+  EmailModule,
   AutomationsModule,
   // Rewrites automations' Temporal Schedules at boot: API process only.
   AutomationScheduleReconcileModule,

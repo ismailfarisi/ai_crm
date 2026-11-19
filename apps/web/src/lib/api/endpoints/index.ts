@@ -29,6 +29,7 @@ import { assistantEndpoints, assistantKeys } from './assistant';
 import { payrollEndpoints, payrollKeys } from './payroll';
 import { timesheetsEndpoints, timesheetsKeys } from './timesheets';
 import { booksEndpoints, booksKeys } from './books';
+import { emailEndpoints, emailKeys } from './email';
 
 export * from './auth';
 export * from './contacts';
@@ -54,6 +55,7 @@ export * from './assistant';
 export * from './payroll';
 export * from './timesheets';
 export * from './books';
+export * from './email';
 
 export const api = {
   ...authEndpoints,
@@ -80,6 +82,7 @@ export const api = {
   ...payrollEndpoints,
   ...timesheetsEndpoints,
   ...booksEndpoints,
+  ...emailEndpoints,
 };
 
 export const queryKeys = {
@@ -107,4 +110,5 @@ export const queryKeys = {
   ...payrollKeys,
   ...timesheetsKeys,
   ...booksKeys,
+  ...emailKeys,
 };

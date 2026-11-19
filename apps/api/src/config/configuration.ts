@@ -116,6 +116,16 @@ const envSchema = z.object({
   PRODUCTION_CHECK_IN_START_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(7),
   PRODUCTION_CHECK_IN_END_HOUR_UTC: z.coerce.number().int().min(1).max(24).default(19),
 
+  // Google OAuth for the per-user Gmail client (see modules/email). Created
+  // in Google Cloud Console → APIs & Services → Credentials; the consent
+  // screen can stay "internal" for a Workspace-only deployment. Without both
+  // values the Connect button reports itself unconfigured.
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  // Must exactly match an Authorised redirect URI on the OAuth client.
+  // Defaults to <PUBLIC_API_URL>/email/oauth/google/callback.
+  GOOGLE_OAUTH_REDIRECT_URI: z.string().optional(),
+
   // Mail (see modules/mail — providers are switchable via this enum)
   MAIL_PROVIDER: z.enum(['console', 'ses']).default('console'),
   MAIL_FROM: z.string().default('Kerf <no-reply@kerf.local>'),
@@ -313,6 +323,11 @@ export function configuration() {
       provider: env.MAIL_PROVIDER,
       from: env.MAIL_FROM,
       region: env.MAIL_REGION,
+    },
+    google: {
+      clientId: env.GOOGLE_CLIENT_ID,
+      clientSecret: env.GOOGLE_CLIENT_SECRET,
+      redirectUri: env.GOOGLE_OAUTH_REDIRECT_URI,
     },
     storage: {
       provider: env.STORAGE_PROVIDER,

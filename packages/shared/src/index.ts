@@ -2,6 +2,8 @@ export * from './rbac/permissions';
 export * from './rbac/roles';
 export * from './schemas/auth';
 export * from './schemas/channel';
+export * from './schemas/email';
+export * from './email/types';
 export * from './schemas/ai-provider';
 export * from './schemas/ai-model';
 export * from './schemas/ai-agent';

@@ -14,6 +14,7 @@ import {
   Landmark,
   LayoutDashboard,
   LayoutTemplate,
+  Mail,
   MessageSquare,
   Package,
   PackageCheck,
@@ -62,6 +63,12 @@ export const CORE_ACTION_ITEMS: NavItem[] = [
     label: 'Inbox',
     icon: MessageSquare,
     rule: { permission: PERMISSIONS.CHANNEL_READ },
+  },
+  {
+    href: '/email',
+    label: 'Email',
+    icon: Mail,
+    rule: { permission: PERMISSIONS.EMAIL_READ },
   },
   {
     href: '/assistant',
@@ -201,6 +208,12 @@ export const SECONDARY_SECTIONS: NavSection[] = [
         label: 'Channels',
         icon: Radio,
         rule: { permission: PERMISSIONS.CHANNEL_MANAGE },
+      },
+      {
+        href: '/settings/email',
+        label: 'Email accounts',
+        icon: Mail,
+        rule: { permission: PERMISSIONS.EMAIL_READ },
       },
       {
         href: '/settings/notifications',

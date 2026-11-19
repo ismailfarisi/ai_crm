@@ -105,13 +105,11 @@ describe('system role definitions', () => {
    * permission nobody grants is unreachable for every role except owner, and
    * nothing in the type system notices.
    *
-   * The email permissions below are currently in exactly that state — the
-   * email client works only for the owner. That is a separate, pre-existing
-   * gap and deciding who should hold `email:read_all` is a policy call, so it
-   * is recorded here rather than quietly fixed. Pinning the exact set means a
-   * NEW orphan still fails this test.
+   * Email used to be the known gap — it is granted now that the Gmail client
+   * exists — so the pinned expectation is an empty list and a NEW orphan
+   * fails this test.
    */
-  it('leaves no permission unreachable beyond the known email gap', () => {
+  it('leaves no permission unreachable by any system role', () => {
     const granted = new Set(
       SYSTEM_ROLE_DEFINITIONS.flatMap((role) => role.permissions ?? []),
     );
@@ -123,12 +121,7 @@ describe('system role definitions', () => {
       (permission) => !granted.has(permission) && !ownerOnly.includes(permission),
     );
 
-    expect(orphaned).toEqual([
-      PERMISSIONS.EMAIL_READ,
-      PERMISSIONS.EMAIL_READ_ALL,
-      PERMISSIONS.EMAIL_SEND,
-      PERMISSIONS.EMAIL_MANAGE,
-    ]);
+    expect(orphaned).toEqual([]);
   });
 
   it('grants strictly less access as the role level rises', () => {

@@ -1391,6 +1391,52 @@ Consequences worth knowing:
 
 ---
 
+## Email client
+
+### Mailboxes sync by polling, not push — open
+
+`EmailSyncService` runs `history.list` against every connected Gmail account
+once a minute (`@Cron(EVERY_MINUTE)`). Gmail's real-time path is `users.watch`
+→ Pub/Sub push, which needs a GCP topic, a subscription and a public push
+endpoint — dependencies the rest of the stack does not have. Polling costs one
+request per account when nothing changed; at ~60s latency, inbound mail is
+near-real-time without them. Closing this means a Pub/Sub topic per
+environment plus a `@Public` push controller that resolves the `emailAddress`
+in the notification back to an account.
+
+### First sync backfills the newest 100 messages — open
+
+`initialSync` fetches one page (`INITIAL_SYNC_MAX`) and then lets the
+`historyId` cursor carry the account forward. Older mail is reachable by
+nothing today — there is no "load older" path. A real backfill needs a
+paginated `messages.list` walk, ideally queued so a 50k-message mailbox does
+not stall the cron pass.
+
+### Email is its own workspace, not part of `/inbox` — open
+
+`/inbox` renders channel conversations (WhatsApp, Telegram, channel email);
+synced Gmail threads live at `/email` instead. Merging them means teaching the
+inbox a second message shape with threading — the plan that predates the
+client (`docs/superpowers/plans/2026-08-10-email-client-implementation.md`)
+listed it as a separate task for that reason.
+
+### Attachments are fetched on demand, never stored — by design
+
+`email_attachments` keeps metadata plus the provider attachment id; the bytes
+are pulled through `users.messages.attachments.get` when someone clicks, so
+the CRM stores no message files. The trade is that a download needs the
+mailbox still connected — disconnecting an account deletes its synced copies
+with it.
+
+### Gmail send-from is owner-only — by design
+
+A shared mailbox is readable by every `email:read` holder, but
+`email.messages.send` refuses unless the account is yours (or you hold
+`email:manage`). Delegated sending — assistant@ replying from the shared
+support mailbox as themselves — is a real Gmail feature this does not model.
+
+---
+
 ## Staging environment
 
 True of the staging box (`ssh ismail`, `~/ai_crm`), not of the code.

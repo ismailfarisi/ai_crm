@@ -52,10 +52,10 @@ export const emailDomain: PermissionDomain<EmailPermission> = {
   label: 'Email client',
   permissions: EMAIL_PERMISSIONS,
   descriptions: {
-    [EMAIL_PERMISSIONS.EMAIL_READ]: 'View assigned email accounts and threads',
+    [EMAIL_PERMISSIONS.EMAIL_READ]: 'View own and shared email accounts and threads',
     [EMAIL_PERMISSIONS.EMAIL_READ_ALL]: 'View all organization email accounts and threads',
-    [EMAIL_PERMISSIONS.EMAIL_SEND]: 'Compose, send, and manage email drafts',
-    [EMAIL_PERMISSIONS.EMAIL_MANAGE]: 'Manage email accounts (IMAP/SMTP/Resend)',
+    [EMAIL_PERMISSIONS.EMAIL_SEND]: 'Connect a mailbox and compose and send email',
+    [EMAIL_PERMISSIONS.EMAIL_MANAGE]: 'Manage any email account (connect, share, disconnect)',
   },
   groupPermissions: [
     EMAIL_PERMISSIONS.EMAIL_READ,
@@ -63,7 +63,23 @@ export const emailDomain: PermissionDomain<EmailPermission> = {
     EMAIL_PERMISSIONS.EMAIL_SEND,
     EMAIL_PERMISSIONS.EMAIL_MANAGE,
   ],
-  // No system role holds an email permission today — they are assignable only
-  // through a custom role. Preserved as-is from the single-file catalog.
-  grants: {},
+  // Everyone who can read mail can connect their own mailbox; org-wide
+  // visibility and managing other people's accounts stay with admins.
+  grants: {
+    admin: [
+      EMAIL_PERMISSIONS.EMAIL_READ,
+      EMAIL_PERMISSIONS.EMAIL_READ_ALL,
+      EMAIL_PERMISSIONS.EMAIL_SEND,
+      EMAIL_PERMISSIONS.EMAIL_MANAGE,
+    ],
+    manager: [
+      EMAIL_PERMISSIONS.EMAIL_READ,
+      EMAIL_PERMISSIONS.EMAIL_SEND,
+    ],
+    member: [
+      EMAIL_PERMISSIONS.EMAIL_READ,
+      EMAIL_PERMISSIONS.EMAIL_SEND,
+    ],
+    viewer: [EMAIL_PERMISSIONS.EMAIL_READ],
+  },
 };
