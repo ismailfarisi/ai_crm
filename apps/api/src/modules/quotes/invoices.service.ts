@@ -207,6 +207,7 @@ export class InvoicesService {
           invoiceId: invoice.id,
           accountId: payload.accountId,
           amount,
+          entryDate: paidAt,
           description: `Invoice ${invoice.invoiceNumber} payment`,
           fx: {
             currency: invoice.currency,

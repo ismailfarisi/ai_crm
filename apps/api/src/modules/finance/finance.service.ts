@@ -877,6 +877,12 @@ export class FinanceService {
       amount: number;
       description?: string;
       /**
+       * Posting date for the journal entry — the payment's date, not the
+       * recording date. A back-dated receipt (migration, late capture) must
+       * land in the month the money moved.
+       */
+      entryDate?: Date;
+      /**
        * Currency and rates, when the invoice is not in base currency. The
        * receivable clears at the invoice's rate; the cash arrives at the
        * payment's. Omitted, everything is at 1, as before.
@@ -928,7 +934,7 @@ export class FinanceService {
       entryNumber,
       referenceType: 'INVOICE',
       referenceId: params.invoiceId,
-      entryDate: new Date(),
+      entryDate: params.entryDate ?? new Date(),
       totalAmount: params.amount,
       currency: params.fx?.currency ?? null,
       fxRate: params.fx?.paymentRate ?? 1,
