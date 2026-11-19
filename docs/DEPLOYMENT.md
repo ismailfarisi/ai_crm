@@ -16,6 +16,22 @@ cd /opt/ai_crm && git fetch && git checkout --force <sha> && IMAGE_TAG=<short sh
 
 Nightly backups land in `/opt/ai_crm-backups` on the same disk; the off-host copy described under Backups is still to do.
 
+## Local deployment over a Cloudflare tunnel
+
+To show the app to someone from this machine, run production builds locally and publish them through `cloudflared`:
+
+```bash
+pnpm local:deploy --seed     # first run: also loads the demo tenant
+pnpm local:deploy            # later runs; add --skip-build to reuse the last build
+node scripts/local-deploy.mjs  # same thing when pnpm isn't on PATH (goes through corepack)
+```
+
+Needs Docker Desktop running and `cloudflared` installed. The script creates `.env` and `apps/api/.env` from their examples if missing, starts postgres/redis/temporal, builds shared/api/web, runs migrations, then starts a small router on `:8080` (`/api/*` → API `:4000`, everything else → web `:3000`), the tunnel, the API, the worker and `next start`. Everything sits on one origin, so cookies need no `COOKIE_DOMAIN` and there is no CORS. The web build uses `NEXT_PUBLIC_API_URL=/api/v1`, which the browser resolves against its own origin, so a new tunnel URL doesn't need a rebuild. `PUBLIC_WEB_URL`, `PUBLIC_API_URL` and `WEB_ORIGIN` are set to the tunnel URL when the API starts.
+
+With no token it opens a quick tunnel: a random `*.trycloudflare.com` URL that changes on every run, with no Cloudflare account needed. For a stable hostname, create a tunnel in the Cloudflare dashboard (Zero Trust → Networks → Tunnels), give it a public hostname pointing at `http://localhost:8080`, and run with `CLOUDFLARE_TUNNEL_TOKEN=<token> LOCAL_PUBLIC_URL=https://<hostname>`. Don't put the token in the repo.
+
+The API runs with the dev secrets from `apps/api/.env` (`NODE_ENV=development`). That's fine for a demo but not for real data. Ctrl+C stops the app processes, and `pnpm db:down` stops the containers.
+
 ## Staging Host
 
 The staging checkout lives at `/home/deploy/ai_crm` on SSH host `ismail`. The active Caddy configuration is `/etc/caddy/Caddyfile` (not `/home/deploy/Caddyfile`). Current routes are:

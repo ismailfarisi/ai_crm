@@ -3,9 +3,19 @@
  * carry credentials. `NEXT_PUBLIC_API_URL` is what the browser calls;
  * `API_INTERNAL_URL` lets server components reach the API over a private
  * network in production (falls back to the public URL in development).
+ *
+ * A relative `NEXT_PUBLIC_API_URL` (`/api/v1`) means the API sits behind the
+ * same origin as the web app — the Cloudflare tunnel setup in
+ * `scripts/local-deploy.mjs` — so one build works under any tunnel hostname.
+ * The browser resolves it against its own origin; the server must then be
+ * given an absolute `API_INTERNAL_URL`.
  */
+const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+
 export const API_PUBLIC_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+  configuredApiUrl.startsWith('/') && typeof window !== 'undefined'
+    ? `${window.location.origin}${configuredApiUrl}`
+    : configuredApiUrl;
 
 export const API_INTERNAL_URL = process.env.API_INTERNAL_URL ?? API_PUBLIC_URL;
 

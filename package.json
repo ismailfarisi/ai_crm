@@ -25,7 +25,8 @@
     "seed": "pnpm --filter api seed",
     "check:drift": "node scripts/check-drift.mjs",
     "check:books": "pnpm --filter api exec node dist/database/check-trial-balance.js",
-    "dev:marketing": "pnpm --filter marketing dev"
+    "dev:marketing": "pnpm --filter marketing dev",
+    "local:deploy": "node scripts/local-deploy.mjs"
   },
   "devDependencies": {
     "typescript": "^5.9.3"
