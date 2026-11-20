@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
-import type {
-  ChannelAgentTestResultDto,
-  Permission,
-  TestChannelAgentPayload,
+import { ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  PERMISSIONS,
+  type ChannelAgentTestResultDto,
+  type Permission,
+  type TestChannelAgentPayload,
 } from '@saas/shared';
 import { AiService } from '../../ai/ai.service';
 import { ChannelAgentRunner } from '../agents/channel-agent-runner';
@@ -12,6 +13,18 @@ import {
   SkillRouterService,
 } from '../skills/skill-router.service';
 import { ChannelAgentService } from './channel-agent.service';
+import { CustomerLookupService } from './customer-lookup.service';
+import {
+  CustomerSenderService,
+  type VerifiedSender,
+} from './customer-sender.service';
+
+/** What a reply written as a customer can quote, so what the tester must be able to see. */
+const AS_CUSTOMER_PERMISSIONS: Permission[] = [
+  PERMISSIONS.CUSTOMER_READ,
+  PERMISSIONS.SALES_ORDER_READ,
+  PERMISSIONS.QUOTE_READ,
+];
 
 const EMPTY: Omit<ChannelAgentTestResultDto, 'outcome'> = {
   agent: null,
@@ -37,8 +50,10 @@ export class ChannelAgentPreviewService {
     private readonly agents: ChannelAgentService,
     private readonly registry: SkillRegistry,
     private readonly router: SkillRouterService,
+    private readonly senders: CustomerSenderService,
+    lookup: CustomerLookupService,
   ) {
-    this.runner = new ChannelAgentRunner({ aiService, agents });
+    this.runner = new ChannelAgentRunner({ aiService, agents, lookup });
   }
 
   async preview(
@@ -49,9 +64,24 @@ export class ChannelAgentPreviewService {
     },
     input: TestChannelAgentPayload,
   ): Promise<ChannelAgentTestResultDto> {
+    // Without a customer the sender is a stranger, as an unknown number is.
+    let previewSender: VerifiedSender | null = null;
+    if (input.kind === 'CUSTOMER' && input.asCustomerId) {
+      if (
+        !AS_CUSTOMER_PERMISSIONS.every((p) => actor.permissions.includes(p))
+      ) {
+        throw new ForbiddenException(
+          'Trying a message as a customer shows their orders and quotes, which your role cannot see.',
+        );
+      }
+      previewSender = await this.senders.asCustomer(
+        actor.organizationId,
+        input.asCustomerId,
+      );
+    }
     try {
       return input.kind === 'CUSTOMER'
-        ? await this.previewCustomer(actor.organizationId, input)
+        ? await this.previewCustomer(actor.organizationId, input, previewSender)
         : await this.previewStaff(actor, input);
     } catch {
       // No provider, no model, over budget, or the provider failed.
@@ -62,6 +92,7 @@ export class ChannelAgentPreviewService {
   private async previewCustomer(
     organizationId: string,
     input: TestChannelAgentPayload,
+    previewSender: VerifiedSender | null,
   ): Promise<ChannelAgentTestResultDto> {
     const result = await this.runner.runCustomerTurn({
       organizationId,
@@ -70,6 +101,7 @@ export class ChannelAgentPreviewService {
       senderIdentifier: '',
       transcript: [{ role: 'customer', body: input.body }],
       dryRun: true,
+      previewSender,
     });
     return {
       ...EMPTY,

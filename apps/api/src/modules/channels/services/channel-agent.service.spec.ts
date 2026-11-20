@@ -49,6 +49,8 @@ describe('ChannelAgentService', () => {
     ]);
     expect(service.toolOptions('CUSTOMER').map((tool) => tool.name)).toEqual([
       'draft_quote',
+      'check_order_status',
+      'check_quote_status',
     ]);
   });
 

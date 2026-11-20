@@ -39,6 +39,20 @@ import { FinanceModule } from '../finance/finance.module';
 import { ChannelAiPreviewService } from './services/channel-ai-preview.service';
 import { ChannelAgentService } from './services/channel-agent.service';
 import { ChannelAgentPreviewService } from './services/channel-agent-preview.service';
+import { CustomerChannelSender } from './entities/customer-channel-sender.entity';
+import { CustomerSenderService } from './services/customer-sender.service';
+import { CustomerLookupService } from './services/customer-lookup.service';
+import { CustomerSendersController } from './customer-senders.controller';
+import { Customer } from '../customers/entities/customer.entity';
+import { Organization } from '../organizations/entities/organization.entity';
+import {
+  SalesOrder,
+  SalesOrderLine,
+} from '../orders/entities/sales-order.entity';
+import { Invoice } from '../quotes/entities/invoice.entity';
+import { Quote } from '../quotes/entities/quote.entity';
+import { WorkOrder } from '../production/entities/work-order.entity';
+import { DeliveryNote } from '../credits/entities/credit-note.entity';
 
 @Module({
   imports: [
@@ -53,6 +67,16 @@ import { ChannelAgentPreviewService } from './services/channel-agent-preview.ser
       IntentAgentConfig,
       ChannelThread,
       ChannelAgent,
+      CustomerChannelSender,
+      // Read by the customer agents' order and quote lookups.
+      Customer,
+      Organization,
+      SalesOrder,
+      SalesOrderLine,
+      Invoice,
+      Quote,
+      WorkOrder,
+      DeliveryNote,
     ]),
     ContactsModule,
     UsersModule,
@@ -66,13 +90,19 @@ import { ChannelAgentPreviewService } from './services/channel-agent-preview.ser
     NotificationsModule,
     FinanceModule,
   ],
-  controllers: [ChannelsController, ChannelsWebhookController],
+  controllers: [
+    ChannelsController,
+    ChannelsWebhookController,
+    CustomerSendersController,
+  ],
   providers: [
     ChannelsService,
     ChannelAiPreviewService,
     ChannelThreadService,
     ChannelAgentService,
     ChannelAgentPreviewService,
+    CustomerSenderService,
+    CustomerLookupService,
     { provide: CHANNEL_SENDER, useExisting: ChannelsService },
     ChannelCryptoService,
     ChannelCommandService,
@@ -89,6 +119,8 @@ import { ChannelAgentPreviewService } from './services/channel-agent-preview.ser
     ChannelsService,
     ChannelThreadService,
     ChannelAgentService,
+    CustomerSenderService,
+    CustomerLookupService,
     ChannelCryptoService,
     AiAgentService,
     ProductionCheckInService,
