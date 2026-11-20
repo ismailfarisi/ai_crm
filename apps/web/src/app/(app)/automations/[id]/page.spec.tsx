@@ -1,7 +1,7 @@
 import React, { Suspense } from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
-import type { AutomationWorkflowDto } from '@saas/shared';
+import type { AutomationAgentOptionDto, AutomationWorkflowDto } from '@saas/shared';
 import AutomationStudioPage from './page';
 
 const mutateAsync = vi.fn();
@@ -15,6 +15,8 @@ const automationState: { current: { data: AutomationWorkflowDto | null; isLoadin
   current: { data: null, isLoading: true },
 };
 
+const agentOptionsState: { current: AutomationAgentOptionDto[] | undefined } = { current: [] };
+
 const push = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push }),
@@ -27,6 +29,7 @@ vi.mock('@/hooks/use-automations', () => ({
   useRegenerateAutomationWebhook: () => ({ mutateAsync: regenerateMutateAsync }),
   useTestRunAutomation: () => ({ mutateAsync: vi.fn(), getExecution: vi.fn() }),
   useAutomationSettings: () => ({ data: { aiEmailToCustomers: false } }),
+  useAutomationAgentOptions: () => ({ data: agentOptionsState.current }),
 }));
 
 vi.mock('@/components/automations/canvas/automation-canvas', () => ({
@@ -210,6 +213,93 @@ describe('AutomationStudioPage', () => {
       );
       await screen.findByTestId('canvas');
     };
+
+    describe('with an AI agent step', () => {
+      const withAgentStep = (config: Record<string, unknown>, status: 'DRAFT' | 'ACTIVE' = 'DRAFT') => ({
+        ...quoteAlert,
+        status,
+        nodes: [
+          ...quoteAlert.nodes,
+          { id: 'a', type: 'aiAgentNode' as const, position: { x: 0, y: 120 }, data: { label: 'Chase quote', config } },
+        ],
+      });
+      const chaser = { id: 'agent-1', name: 'Quote chaser', description: '', isEnabled: true, tools: [] };
+
+      it('cannot be activated while the step has no task, and says which step', async () => {
+        agentOptionsState.current = [chaser];
+        await open(withAgentStep({ goal: '' }));
+
+        const activate = screen.getByTestId('status-toggle-btn');
+        expect(activate).toBeDisabled();
+        expect(activate).toHaveAttribute(
+          'title',
+          'The AI agent step "Chase quote" has no task. Say what the agent should do before switching this automation on.',
+        );
+      });
+
+      it('can be activated once the task is typed, and the task is saved with it', async () => {
+        agentOptionsState.current = [chaser];
+        const wf = withAgentStep({ goal: '', agentId: 'agent-1' });
+        await open(wf);
+        mutateAsync.mockResolvedValue({ ...wf, status: 'ACTIVE' });
+
+        fireEvent.click(screen.getByText('Chase quote'));
+        fireEvent.change(screen.getByTestId('agent-step-task-input'), {
+          target: { value: 'Follow up quote {{ $trigger.payload.quoteNumber }}' },
+        });
+        const activate = screen.getByTestId('status-toggle-btn');
+        expect(activate).toBeEnabled();
+        fireEvent.click(activate);
+        fireEvent.click(screen.getByRole('button', { name: 'Activate automation' }));
+
+        await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
+        const input = mutateAsync.mock.calls[0][0].input;
+        expect(input.status).toBe('ACTIVE');
+        expect(input.nodes.find((n: { id: string }) => n.id === 'a').data.config).toEqual({
+          goal: 'Follow up quote {{ $trigger.payload.quoteNumber }}',
+          agentId: 'agent-1',
+        });
+      });
+
+      it('cannot be activated while its agent is switched off', async () => {
+        agentOptionsState.current = [{ ...chaser, isEnabled: false }];
+        await open(withAgentStep({ goal: 'Chase it', agentId: 'agent-1' }));
+
+        expect(screen.getByTestId('status-toggle-btn')).toBeDisabled();
+        expect(screen.getByTestId('status-toggle-btn').getAttribute('title')).toContain(
+          '"Quote chaser" is switched off in Settings → AI',
+        );
+      });
+
+      it('a draft with an unfinished step can still be saved', async () => {
+        agentOptionsState.current = [chaser];
+        const wf = withAgentStep({ goal: 'Chase it' });
+        await open(wf);
+        mutateAsync.mockResolvedValue(wf);
+
+        fireEvent.click(screen.getByText('Chase quote'));
+        fireEvent.change(screen.getByTestId('agent-step-task-input'), { target: { value: '' } });
+        expect(screen.getByTestId('save-workflow-btn')).toBeEnabled();
+        fireEvent.click(screen.getByTestId('save-workflow-btn'));
+
+        await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
+        expect(mutateAsync.mock.calls[0][0].input).not.toHaveProperty('status');
+      });
+
+      it('an automation that is on cannot be saved with the task removed', async () => {
+        agentOptionsState.current = [chaser];
+        await open(withAgentStep({ goal: 'Chase it' }, 'ACTIVE'));
+
+        fireEvent.click(screen.getByText('Chase quote'));
+        fireEvent.change(screen.getByTestId('agent-step-task-input'), { target: { value: '  ' } });
+
+        const save = screen.getByTestId('save-workflow-btn');
+        expect(save).toBeDisabled();
+        expect(save.getAttribute('title')).toContain('has no task');
+        // Switching it off is still possible.
+        expect(screen.getByTestId('status-toggle-btn')).toBeEnabled();
+      });
+    });
 
     it('asks first, naming what it runs on, then saves only the status', async () => {
       await open(quoteAlert);
