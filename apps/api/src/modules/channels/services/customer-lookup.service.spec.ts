@@ -313,7 +313,7 @@ describe('CustomerLookupService', () => {
       expectNothingOfAnyoneElse(result);
     });
 
-    it.each(['7', '0007', '#SO-0007', 'so 0007', 'Q-0001'])(
+    it.each(['7', '0007', '#SO-0007', 'so 0007', 'Q-0001', 'O-0007'])(
       'finds their order when they write %p',
       async (asked) => {
         const { service } = setup();
@@ -364,6 +364,25 @@ describe('CustomerLookupService', () => {
             'o-a2',
           ]);
         }
+      }
+    });
+
+    it('finds a year-numbered order by its tail or its serial', async () => {
+      const { service, repos } = setup();
+      const rows = (await repos.orders.find({ where: {} })) as Record<
+        string,
+        unknown
+      >[];
+      rows.find((row) => row.id === 'o-a1')!.orderNumber = 'SO-2026-0007';
+      rows.find((row) => row.id === 'o-b1')!.orderNumber = 'SO-2026-0042';
+      for (const asked of ['SO-2026-0007', '2026-0007', '7', 'so 2026 0007']) {
+        const result = await service.orders(ORG, 'cust-a', asked);
+        expect(result.records.map((o) => o.orderNumber)).toEqual([
+          'SO-2026-0007',
+        ]);
+      }
+      for (const theirs of ['SO-2026-0042', '2026-0042', '42']) {
+        expect((await service.orders(ORG, 'cust-a', theirs)).found).toBe(false);
       }
     });
 

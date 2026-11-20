@@ -74,23 +74,22 @@ const round2 = (value: number) => Math.round(value * 100) / 100;
 const fold = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
 /**
- * Whether what the customer typed names this record: the whole number, or
- * its digits ("12" for SO-0012). Only ever run over the customer's own
- * records, so a number that belongs to someone else finds nothing here.
+ * Whether what the customer typed names this record: the whole number
+ * ("SO-2026-0012"), its tail ("2026-0012") or its last run of digits ("12").
+ * Loose on purpose, and safe to be: it only ever runs over the customer's
+ * own records, so a number that belongs to someone else finds nothing here.
  */
 function names(asked: string, ...numbers: (string | null)[]): boolean {
   const wanted = fold(asked);
   if (!wanted) return false;
-  const wantedDigits = /^\d+$/.test(wanted) ? String(Number(wanted)) : null;
+  const wantedSerial = /^\d+$/.test(wanted) ? Number(wanted) : null;
   return numbers.some((number) => {
     if (!number) return false;
-    if (fold(number) === wanted) return true;
-    const digits = number.replace(/\D/g, '');
-    return (
-      wantedDigits !== null &&
-      digits !== '' &&
-      String(Number(digits)) === wantedDigits
-    );
+    const folded = fold(number);
+    if (folded === wanted) return true;
+    if (wanted.length >= 4 && folded.endsWith(wanted)) return true;
+    const serial = number.match(/(\d+)\D*$/)?.[1];
+    return wantedSerial !== null && !!serial && Number(serial) === wantedSerial;
   });
 }
 
