@@ -27,6 +27,21 @@ const {
   retry: { maximumAttempts: 3 },
 });
 
+// An agent turn is several model calls, so it gets longer than the rest and
+// is tried twice at most: a third attempt would mostly buy a third bill.
+const { runCustomerAgentTurnActivity } = proxyActivities<
+  ReturnType<typeof activities.createChannelAiActivities>
+>({
+  startToCloseTimeout: '3 minutes',
+  retry: { maximumAttempts: 2 },
+});
+const { sendAgentReplyActivity } = proxyActivities<
+  ReturnType<typeof activities.createChannelAiActivities>
+>({
+  startToCloseTimeout: '30 seconds',
+  retry: { maximumAttempts: 3 },
+});
+
 /**
  * Intents that always end with a person. A request for one skips the rules
  * entirely; a complaint still runs its rule first (so an acknowledgement an
@@ -65,6 +80,97 @@ async function handOver(
   }
 }
 
+/**
+ * Offers the message to the organization's own agents before anything else.
+ *
+ * Returns true when an agent dealt with it, by replying or by passing the
+ * conversation to a person. False means no agent answers here or none took
+ * it (or the attempt failed), and the caller carries on exactly as it did
+ * before agents existed. `patched` keeps older executions replaying cleanly.
+ */
+async function tryAgents(
+  input: Pick<
+    ChannelConversationWorkflowInput,
+    'organizationId' | 'provider' | 'contactId' | 'senderIdentifier'
+  >,
+  messageId: string,
+  notifyCustomerOnHandover: boolean,
+): Promise<{ handled: boolean; handedOver: boolean; createdQuoteId?: string }> {
+  const notHandled = { handled: false, handedOver: false };
+  if (!patched('agents-v1')) return notHandled;
+  let turn: Awaited<ReturnType<typeof runCustomerAgentTurnActivity>>;
+  try {
+    turn = await runCustomerAgentTurnActivity({
+      organizationId: input.organizationId,
+      provider: input.provider,
+      contactId: input.contactId,
+      senderIdentifier: input.senderIdentifier,
+      messageId,
+    });
+  } catch {
+    return notHandled;
+  }
+  if (turn.outcome === 'NO_AGENT') return notHandled;
+
+  const summary =
+    turn.outcome === 'HANDOVER'
+      ? (turn.handoverSummary ?? `Passed to a person by ${turn.agentName}`)
+      : `Answered by ${turn.agentName}`;
+
+  if (turn.outcome === 'REPLIED' && turn.reply) {
+    try {
+      await sendAgentReplyActivity({
+        organizationId: input.organizationId,
+        provider: input.provider,
+        senderIdentifier: input.senderIdentifier,
+        contactId: input.contactId,
+        messageId,
+        reply: turn.reply,
+      });
+    } catch {
+      // The reply could not be delivered: a person must see this one.
+      await persistClassificationActivity({
+        organizationId: input.organizationId,
+        messageId,
+        status: 'COMPLETED',
+        summary,
+        suggestedReply: turn.reply,
+      });
+      await handOver(input, 'ERROR', summary, false);
+      return { handled: true, handedOver: true };
+    }
+  }
+
+  await persistClassificationActivity({
+    organizationId: input.organizationId,
+    messageId,
+    status: 'COMPLETED',
+    summary,
+  });
+  if (turn.createdQuoteId || turn.outcome === 'REPLIED') {
+    await persistDispatchResultActivity({
+      organizationId: input.organizationId,
+      messageId,
+      autoAcked: turn.outcome === 'REPLIED',
+      createdQuoteId: turn.createdQuoteId,
+    });
+  }
+  if (turn.outcome === 'HANDOVER') {
+    await handOver(
+      input,
+      turn.handoverReason ?? 'UNRESOLVED',
+      summary,
+      notifyCustomerOnHandover,
+    );
+    return {
+      handled: true,
+      handedOver: true,
+      createdQuoteId: turn.createdQuoteId,
+    };
+  }
+  return { handled: true, handedOver: false, createdQuoteId: turn.createdQuoteId };
+}
+
 /** Why dispatch did not act, as a handover reason. */
 function reasonFor(dispatchReason: string): ChannelHandoverReason {
   return dispatchReason === 'LOW_CONFIDENCE' ? 'LOW_CONFIDENCE' : 'NO_AGENT';
@@ -81,6 +187,15 @@ function reasonFor(dispatchReason: string): ChannelHandoverReason {
 export async function channelAiWorkflow(
   input: ChannelAiWorkflowInput,
 ): Promise<ChannelAiWorkflowResult> {
+  const byAgent = await tryAgents(input, input.messageId, false);
+  if (byAgent.handled) {
+    return {
+      status: 'COMPLETED',
+      autoAcked: !byAgent.handedOver,
+      createdQuoteId: byAgent.createdQuoteId,
+    };
+  }
+
   let classified: Awaited<ReturnType<typeof classifyMessageActivity>>;
   try {
     classified = await classifyMessageActivity({
@@ -213,6 +328,23 @@ export async function channelConversationWorkflow(
     }
     const message = queue.shift()!;
     transcript.push({ role: 'customer', body: message.body });
+
+    const byAgent = await tryAgents(input, message.messageId, true);
+    if (byAgent.handled) {
+      // An agent reads the conversation from the inbox, not from this
+      // workflow, so there is nothing to keep it open for: the customer's
+      // next message starts a fresh run. Messages that arrived meanwhile are
+      // answered first, without counting against the clarifying turns.
+      if (byAgent.handedOver || queue.length === 0) {
+        return {
+          status: 'COMPLETED',
+          autoAcked: !byAgent.handedOver,
+          createdQuoteId: byAgent.createdQuoteId,
+        };
+      }
+      turn--;
+      continue;
+    }
 
     let classified: Awaited<ReturnType<typeof classifyMessageActivity>>;
     try {

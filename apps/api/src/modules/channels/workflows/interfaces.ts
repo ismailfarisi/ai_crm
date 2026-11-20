@@ -134,3 +134,31 @@ export interface HandOverToHumanParams {
   /** Tell the customer a person will reply. Only where the AI has been chatting with them. */
   notifyCustomer: boolean;
 }
+
+export interface RunCustomerAgentTurnParams {
+  organizationId: string;
+  provider: ChannelProviderType;
+  contactId: string;
+  senderIdentifier: string;
+  /** The inbound message being answered. Keys the idempotency guard. */
+  messageId: string;
+}
+
+export interface RunCustomerAgentTurnResult {
+  outcome: 'REPLIED' | 'HANDOVER' | 'NO_AGENT';
+  agentName: string | null;
+  reply: string | null;
+  handoverReason: ChannelHandoverReason | null;
+  handoverSummary: string | null;
+  createdQuoteId?: string;
+}
+
+export interface SendAgentReplyParams {
+  organizationId: string;
+  provider: ChannelProviderType;
+  senderIdentifier: string;
+  contactId: string;
+  /** The inbound message this answers, so a retry never sends it twice. */
+  messageId: string;
+  reply: string;
+}

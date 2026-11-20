@@ -58,6 +58,13 @@ export const AI_MODEL_FEATURES = [
     ],
   },
   {
+    key: 'agents',
+    label: 'Agents',
+    description:
+      'Choosing which agent takes a message, and agents that have no model of their own.',
+    features: ['channels.route_agent', 'channels.customer_agent'],
+  },
+  {
     key: 'bill_capture',
     label: 'Supplier invoice reading',
     description: 'Reading a supplier invoice photo or PDF into a draft bill.',

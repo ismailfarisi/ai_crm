@@ -52,3 +52,49 @@ export interface ChannelAgentSkillOptionDto {
   /** True when the tool creates or changes a record, and so asks before acting. */
   isMutating: boolean;
 }
+
+/** Tools a customer agent can be given. Staff agents take the chat skills instead. */
+export const CUSTOMER_AGENT_TOOLS = [
+  {
+    name: 'draft_quote',
+    description:
+      'Draft a quote from what the customer asked for. Staff review it before anything goes to the customer.',
+    isMutating: true,
+  },
+] as const satisfies ReadonlyArray<ChannelAgentSkillOptionDto>;
+
+/** Try a message against the agents without sending or saving anything. */
+export const testChannelAgentSchema = z.object({
+  body: z.string().trim().min(1, 'Type a message to try').max(2000),
+  provider: ChannelProviderEnum,
+  kind: ChannelAgentKindEnum,
+});
+export type TestChannelAgentPayload = z.infer<typeof testChannelAgentSchema>;
+
+export type ChannelAgentTestOutcome =
+  /** An agent would answer the customer. */
+  | 'REPLY'
+  /** A staff agent would take the command with one of its tools. */
+  | 'TOOL'
+  /** An agent would take it and pass the conversation to a person. */
+  | 'HANDOVER'
+  /** No agent fits; the message is handled as it was before agents existed. */
+  | 'NO_AGENT'
+  /** The AI could not be reached: no provider, no model, or over budget. */
+  | 'UNAVAILABLE';
+
+export interface ChannelAgentTestResultDto {
+  outcome: ChannelAgentTestOutcome;
+  /** The agent that ends up with the message. */
+  agent: { id: string; name: string } | null;
+  /** Agents the message passed through first, in order, with why each passed it on. */
+  transfers: { from: string; to: string; reason: string }[];
+  /** What the agent would write to the customer, for REPLY. */
+  reply: string | null;
+  /** The tool a staff agent would use, for TOOL. */
+  tool: string | null;
+  /** Things the agent would have done, described; nothing is done in a test. */
+  actions: string[];
+  /** Why the conversation would go to a person, for HANDOVER. */
+  handoverSummary: string | null;
+}
