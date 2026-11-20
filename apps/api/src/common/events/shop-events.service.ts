@@ -460,6 +460,9 @@ export class ShopEventsService {
     contactId: string | null,
     provider: string,
   ): Promise<Payload> {
+    // The name only, for the event's own organisation. No user is asking, so
+    // there is no ownership filter to apply; who may read the event is decided
+    // by who may edit automations.
     const contact = contactId
       ? await manager
           .getRepository(Contact)
