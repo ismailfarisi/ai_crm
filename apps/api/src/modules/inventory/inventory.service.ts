@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, IsNull, Repository } from 'typeorm';
@@ -37,6 +38,7 @@ import {
 import { StockItem } from './entities/stock-item.entity';
 import { StockLocation } from './entities/stock-location.entity';
 import { StockMovement } from './entities/stock-movement.entity';
+import { ShopEventsService } from '@/common/events';
 
 /** A stock row with everything needed to display it. */
 /** Money to the cent, matching how bills clear GRNI line by line. */
@@ -102,6 +104,8 @@ export class InventoryService {
     private readonly ledger: LedgerService,
     private readonly dataSource: DataSource,
     private readonly notifications: NotificationsService,
+    @Optional()
+    private readonly shopEvents?: ShopEventsService,
   ) {}
 
   /* ------------------------------------------------------------------ *
@@ -441,6 +445,9 @@ export class InventoryService {
         },
         { manager },
       );
+      await this.shopEvents?.emit('stock.low', tenantId, locked.id, {
+        manager,
+      });
     } else if (wasLow && !isLow) {
       await this.notifications.resolve(tenantId, locked.id, manager);
     }
@@ -656,7 +663,13 @@ export class InventoryService {
       const receipt = await manager.getRepository(GoodsReceipt).save(
         manager.getRepository(GoodsReceipt).create({
           tenantId,
-          receiptNumber: await formatTenantSequenceNumber(manager, tenantId, 'goods_receipt_number', 'GRN', sequenceValue),
+          receiptNumber: await formatTenantSequenceNumber(
+            manager,
+            tenantId,
+            'goods_receipt_number',
+            'GRN',
+            sequenceValue,
+          ),
           purchaseOrderId: order.id,
           locationId: location.id,
           receivedById: actorId,
@@ -733,6 +746,16 @@ export class InventoryService {
         .getRepository(PurchaseOrder)
         .update({ id: order.id, tenantId }, { status });
       order.status = status;
+      if (fullyReceived) {
+        await this.shopEvents?.emit(
+          'purchase_order.received',
+          tenantId,
+          order.id,
+          {
+            manager,
+          },
+        );
+      }
 
       return receipt;
     });

@@ -45,6 +45,7 @@ import {
 import { newInboundMessageSignal } from './workflows/interfaces';
 import { IntentAgentConfigService } from './services/intent-agent-config.service';
 import { ChannelThreadService } from './services/channel-thread.service';
+import { ShopEventsService } from '@/common/events';
 
 export interface SendMessageDto {
   contactId?: string;
@@ -73,6 +74,8 @@ export class ChannelsService {
     private readonly tenantContext?: TenantContextService,
     @Optional()
     private readonly threads?: ChannelThreadService,
+    @Optional()
+    private readonly shopEvents?: ShopEventsService,
   ) {}
 
   /** The URL the given provider's inbound webhook is reachable at — must match the route in ChannelsWebhookController. */
@@ -478,15 +481,22 @@ export class ChannelsService {
         identityMap.get(`${message.provider}:${message.sender}`) ||
         identityMap.get(`${message.provider}:${message.recipient}`);
 
-      let staffUser: { id: string; name: string; email: string; role?: string } | undefined = undefined;
+      let staffUser:
+        { id: string; name: string; email: string; role?: string } | undefined =
+        undefined;
       if (ident?.user) {
         const u = ident.user as any;
-        const name = `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email;
+        const name =
+          `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email;
         staffUser = {
           id: u.id,
           name,
           email: u.email,
-          ...(u.role ? { role: u.role } : (u.roles?.[0]?.name ? { role: u.roles[0].name } : {})),
+          ...(u.role
+            ? { role: u.role }
+            : u.roles?.[0]?.name
+              ? { role: u.roles[0].name }
+              : {}),
         };
       }
 
@@ -695,6 +705,9 @@ export class ChannelsService {
         }
         return { success: true };
       }
+
+      // A customer wrote, whoever answers it: a person or the AI.
+      await this.shopEvents?.emit('message.received', orgId, saved.id);
 
       // A conversation a person holds, or is waiting to be picked up, is
       // left to them: the AI neither classifies nor replies.

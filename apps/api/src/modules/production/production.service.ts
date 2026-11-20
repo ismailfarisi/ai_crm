@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
@@ -54,6 +55,7 @@ import {
   WorkOrderOperation,
 } from './entities/work-order.entity';
 import { ProductionBoardSetting } from './entities/production-board-settings.entity';
+import { ShopEventsService } from '@/common/events';
 
 const POSTGRES_UNIQUE_VIOLATION = '23505';
 const money = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -101,6 +103,8 @@ export class ProductionService {
     private readonly jobCost: JobCostService,
     private readonly timesheets: TimesheetsService,
     private readonly absorption: LabourAbsorptionService,
+    @Optional()
+    private readonly shopEvents?: ShopEventsService,
   ) {}
 
   /* ------------------------------------------------------------------ *
@@ -361,7 +365,13 @@ export class ProductionService {
     const wo = await repo.save(
       repo.create({
         tenantId: p.tenantId,
-        woNumber: await formatTenantSequenceNumber(manager, p.tenantId, 'work_order_number', 'WO', number),
+        woNumber: await formatTenantSequenceNumber(
+          manager,
+          p.tenantId,
+          'work_order_number',
+          'WO',
+          number,
+        ),
         status: 'PLANNED',
         salesOrderId: p.order.id,
         salesOrderLineId: p.line.id,
@@ -552,6 +562,7 @@ export class ProductionService {
         );
       }
 
+      const wasPlanned = wo.status === 'PLANNED';
       if (targetCol.status !== wo.status) {
         if (wo.status === 'PLANNED' && targetCol.status === 'IN_PROGRESS') {
           wo.releasedAt = new Date();
@@ -576,6 +587,11 @@ export class ProductionService {
         columnId: targetCol.id,
       };
       await manager.getRepository(WorkOrder).save(wo);
+      if (wasPlanned && wo.status !== 'PLANNED') {
+        await this.shopEvents?.emit('work_order.released', tenantId, wo.id, {
+          manager,
+        });
+      }
     });
 
     return this.get(tenantId, id, canSeeCost);
@@ -596,6 +612,9 @@ export class ProductionService {
       wo.status = 'RELEASED';
       wo.releasedAt = new Date();
       await manager.getRepository(WorkOrder).save(wo);
+      await this.shopEvents?.emit('work_order.released', tenantId, wo.id, {
+        manager,
+      });
     });
     return this.get(tenantId, id, canSeeCost);
   }
@@ -717,6 +736,29 @@ export class ProductionService {
         });
       }
       await this.absorption.clear(manager, tenantId, labour.ids, 'COGS');
+
+      await this.shopEvents?.emit('work_order.completed', tenantId, wo.id, {
+        manager,
+        actorUserId: actorId,
+      });
+      // The order is ready once none of its jobs is still being made.
+      if (wo.salesOrderId) {
+        const unfinished = await manager.getRepository(WorkOrder).count({
+          where: {
+            tenantId,
+            salesOrderId: wo.salesOrderId,
+            status: Not(In(['COMPLETE', 'CANCELLED'])),
+          },
+        });
+        if (unfinished === 0) {
+          await this.shopEvents?.emit(
+            'sales_order.ready',
+            tenantId,
+            wo.salesOrderId,
+            { manager, actorUserId: actorId },
+          );
+        }
+      }
     });
     return this.get(tenantId, id, canSeeCost);
   }
@@ -779,16 +821,17 @@ export class ProductionService {
           { workOrderId: wo.id, status: 'RUNNING' },
           { status: 'PAUSED', runningSince: null },
         );
-      await manager
-        .getRepository(WorkOrder)
-        .update(
-          { id: wo.id, tenantId },
-          {
-            status: 'CANCELLED',
-            cancelledAt: new Date(),
-            cancelReason: reason,
-          },
-        );
+      await manager.getRepository(WorkOrder).update(
+        { id: wo.id, tenantId },
+        {
+          status: 'CANCELLED',
+          cancelledAt: new Date(),
+          cancelReason: reason,
+        },
+      );
+      await this.shopEvents?.emit('work_order.cancelled', tenantId, wo.id, {
+        manager,
+      });
     });
     return this.get(tenantId, id, canSeeCost);
   }

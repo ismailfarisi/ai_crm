@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
@@ -22,6 +23,7 @@ import {
 } from './entities/sales-order.entity';
 import { raiseStageInvoice } from './order-provisioning';
 import { ProductionService } from '../production/production.service';
+import { ShopEventsService } from '@/common/events';
 
 /**
  * Where an order can go next. Invoicing is deliberately not tied to these:
@@ -55,6 +57,8 @@ export class OrdersService {
     private readonly dataSource: DataSource,
     private readonly events: AutomationEventBridgeService,
     private readonly production: ProductionService,
+    @Optional()
+    private readonly shopEvents?: ShopEventsService,
   ) {}
 
   async list(
@@ -211,8 +215,7 @@ export class OrdersService {
         // A per-delivery order has no stage invoice; it is billed once the
         // delivery that completed it has been invoiced.
         const unbilled = stages.filter(
-          (s) =>
-            !s.invoiceId && !(s.trigger === 'ON_DELIVERY' && s.invoicedAt),
+          (s) => !s.invoiceId && !(s.trigger === 'ON_DELIVERY' && s.invoicedAt),
         );
         if (unbilled.length) {
           throw new BadRequestException(
@@ -239,6 +242,10 @@ export class OrdersService {
           .set({ qtyFulfilled: () => 'qty_ordered' })
           .where('sales_order_id = :id', { id: order.id })
           .execute();
+        await this.shopEvents?.emit('sales_order.fulfilled', tenantId, id, {
+          manager,
+          actorUserId: actorId,
+        });
       }
     });
     return this.get(tenantId, id);
@@ -303,6 +310,9 @@ export class OrdersService {
         .execute();
       throw err;
     }
+    await this.shopEvents?.emit('sales_order.in_production', tenantId, id, {
+      actorUserId: actorId,
+    });
     return this.get(tenantId, order.id);
   }
 
@@ -398,6 +408,9 @@ export class OrdersService {
         order.cancelledAt = new Date();
         order.cancelReason = reason;
         await manager.getRepository(SalesOrder).save(order);
+        await this.shopEvents?.emit('sales_order.cancelled', tenantId, id, {
+          manager,
+        });
         return order;
       })
       .then((order) => this.get(tenantId, order.id));

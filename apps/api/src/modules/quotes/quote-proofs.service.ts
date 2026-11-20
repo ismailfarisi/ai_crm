@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, In, Repository } from 'typeorm';
@@ -23,6 +24,7 @@ import type { UploadedFileLike } from '../storage/storage.types';
 import { User } from '../users/entities/user.entity';
 import { QuoteProof } from './entities/quote-proof.entity';
 import { Quote, QuoteStatus } from './entities/quote.entity';
+import { ShopEventsService } from '@/common/events';
 
 /**
  * Copies a quote's proofs onto its revision, verdicts included.
@@ -71,6 +73,8 @@ export class QuoteProofsService {
     @InjectRepository(User) private readonly users: Repository<User>,
     private readonly attachmentsService: AttachmentsService,
     private readonly storage: StorageService,
+    @Optional()
+    private readonly shopEvents?: ShopEventsService,
   ) {}
 
   async list(
@@ -145,7 +149,7 @@ export class QuoteProofsService {
          WHERE "tenant_id" = $1 AND "quote_id" = $2 AND "superseded_at" IS NULL`,
         [tenantId, quoteId, now],
       );
-      await repo.save(
+      const proof = await repo.save(
         repo.create({
           tenantId,
           quoteId,
@@ -156,6 +160,10 @@ export class QuoteProofsService {
           uploadedById: user.id,
         }),
       );
+      await this.shopEvents?.emit('proof.sent', tenantId, proof.id, {
+        manager,
+        actorUserId: user.id,
+      });
     });
     return this.list(tenantId, quoteId);
   }
