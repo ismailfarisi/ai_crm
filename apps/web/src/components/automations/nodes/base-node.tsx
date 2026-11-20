@@ -4,6 +4,7 @@ import React from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { type LucideIcon } from 'lucide-react';
 import clsx from 'clsx';
+import { AddStepButton } from './add-step-button';
 
 export type NodeExecutionStatus = 'SUCCESS' | 'FAILED' | 'WAITING' | 'IDLE' | 'SKIPPED' | 'RUNNING';
 
@@ -54,7 +55,7 @@ export function BaseNode({
     <div
       data-testid={testId || 'base-node'}
       className={clsx(
-        'w-64 rounded-xl border bg-surface p-3.5 shadow-sm transition duration-200 relative select-none',
+        'group/step w-64 rounded-xl border bg-surface p-3.5 shadow-sm transition duration-200 relative select-none',
         selected
           ? 'border-brand ring-2 ring-brand/20 shadow-md'
           : 'border-border hover:border-border-strong',
@@ -151,6 +152,7 @@ export function BaseNode({
           className="!w-3 !h-3 !bg-brand !border-2 !border-surface transition !right-[-6px]"
         />
       )}
+      {hasOutput && <AddStepButton handle={outputHandleId ?? null} />}
     </div>
   );
 }

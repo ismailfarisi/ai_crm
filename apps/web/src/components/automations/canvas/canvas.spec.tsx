@@ -45,7 +45,7 @@ describe('CanvasHeader', () => {
 
     expect(screen.getByTestId('canvas-header')).toBeDefined();
     expect(screen.getByDisplayValue('Order Routing Flow')).toBeDefined();
-    expect(screen.getByTestId('workflow-status-badge').textContent).toBe('ACTIVE');
+    expect(screen.getByTestId('workflow-status-badge').textContent).toBe('On');
 
     // Title change
     const nameInput = screen.getByTestId('workflow-name-input');
@@ -70,7 +70,7 @@ describe('CanvasHeader', () => {
   });
 
   describe('owner warning', () => {
-    const copy = 'Saving makes you the owner: steps will run with your permissions';
+    const copy = /Saving makes you its owner: steps run with your permissions/;
     const base = {
       workflowName: 'Flow',
       onNameChange: vi.fn(),

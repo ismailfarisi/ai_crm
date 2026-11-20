@@ -6,6 +6,8 @@ import type { NodeProps, Node } from '@xyflow/react';
 import type { AutomationNodeData, AutomationNodeType } from '@saas/shared';
 import { BaseNode } from './base-node';
 import { crmEventOf, findCrmEvent } from '../crm-events';
+import { plainStepName } from '../step-wording';
+import { useCanvasActions } from '../canvas/canvas-actions';
 
 export interface TriggerNodeData extends AutomationNodeData {
   config: {
@@ -26,6 +28,7 @@ export function TriggerNode({
   const nodeData = data || { label: 'Trigger', config: {} };
   const config = nodeData.config || {};
   const status = (nodeData as any).status || (nodeData as any).executionStatus;
+  const scheduleSummary = useCanvasActions()?.scheduleSummary;
 
   let Icon = Play;
   let defaultTitle = 'Manual Trigger';
@@ -41,7 +44,7 @@ export function TriggerNode({
       defaultTitle = 'Webhook Trigger';
       iconBg = 'bg-brand-soft';
       iconColor = 'text-ink';
-      previewText = config.slug ? `/webhooks/${config.slug}` : 'POST /webhooks/...';
+      previewText = config.slug ? `/webhooks/${config.slug}` : 'Its web address is in the settings';
       break;
 
     case 'scheduleTrigger':
@@ -49,7 +52,8 @@ export function TriggerNode({
       defaultTitle = 'Schedule Trigger';
       iconBg = 'bg-info-soft';
       iconColor = 'text-info';
-      previewText = config.cron ? `Cron: ${config.cron}` : 'Recurring Schedule (e.g. 0 9 * * 1-5)';
+      // The schedule itself is the automation's, not the step's: the canvas passes it down.
+      previewText = scheduleSummary ?? (config.cron ? `Cron: ${config.cron}` : 'Open to set the days and time');
       break;
 
     case 'crmEventTrigger':
@@ -72,17 +76,17 @@ export function TriggerNode({
       defaultTitle = 'Manual Trigger';
       iconBg = 'bg-info-soft';
       iconColor = 'text-info';
-      previewText = 'Manual execution from UI or API';
+      previewText = 'Runs when you press Run';
       break;
   }
 
-  const title = nodeData.label || defaultTitle;
+  const title = plainStepName(type, nodeData.label) || defaultTitle;
 
   return (
     <BaseNode
       icon={Icon}
       title={title}
-      category="Trigger"
+      category="Starts it"
       status={status}
       selected={selected}
       hasInput={false}
@@ -102,7 +106,7 @@ export function TriggerNode({
       ) : (
         <div
           className={`flex items-center justify-between text-[11px] text-ink-muted bg-surface-muted px-2 py-1 rounded border border-border/40 truncate ${
-            type === 'crmEventTrigger' ? '' : 'font-mono'
+            type === 'webhookTrigger' && config.slug ? 'font-mono' : ''
           }`}
         >
           <span className="truncate">{previewText}</span>

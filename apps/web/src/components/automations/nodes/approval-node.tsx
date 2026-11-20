@@ -5,6 +5,8 @@ import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
 import { ShieldAlert } from 'lucide-react';
 import type { AutomationNodeData } from '@saas/shared';
 import { BaseNode } from './base-node';
+import { AddStepButton } from './add-step-button';
+import { plainStepName } from '../step-wording';
 
 export interface ApprovalNodeData extends AutomationNodeData {
   config: {
@@ -26,8 +28,8 @@ export function ApprovalNode({
   return (
     <BaseNode
       icon={ShieldAlert}
-      title={nodeData.label || 'Human Approval'}
-      category="Human-in-the-Loop"
+      title={plainStepName('approvalNode', nodeData.label)}
+      category="Decide or wait"
       status={status}
       selected={selected}
       hasInput={true}
@@ -43,7 +45,7 @@ export function ApprovalNode({
             <p className="line-clamp-2 text-ink">{config.message}</p>
           ) : null}
           <div className="flex items-center justify-between">
-            <span className="text-ink-muted">Timeout:</span>
+            <span className="text-ink-muted">Waits up to</span>
             <span className="font-semibold text-ink">{timeoutDuration}</span>
           </div>
         </div>
@@ -63,6 +65,7 @@ export function ApprovalNode({
                 id="approved"
                 className="!w-3 !h-3 !bg-success !border-2 !border-surface transition !right-[-16px]"
               />
+              <AddStepButton handle="approved" outputName="Approved" className="right-[-48px]" />
             </div>
           </div>
 
@@ -79,13 +82,14 @@ export function ApprovalNode({
                 id="rejected"
                 className="!w-3 !h-3 !bg-danger !border-2 !border-surface transition !right-[-16px]"
               />
+              <AddStepButton handle="rejected" outputName="Rejected" className="right-[-48px]" />
             </div>
           </div>
 
           {/* Timeout */}
           <div className="relative flex items-center justify-between rounded-lg bg-brand-soft/60 px-2.5 py-1 border border-brand/30">
             <span className="text-[11px] font-semibold text-ink">
-              Timeout
+              No answer
             </span>
             <div className="relative flex items-center">
               <span className="text-[11px] font-medium text-ink-muted me-2">Expired</span>
@@ -95,6 +99,7 @@ export function ApprovalNode({
                 id="timeout"
                 className="!w-3 !h-3 !bg-brand !border-2 !border-surface transition !right-[-16px]"
               />
+              <AddStepButton handle="timeout" outputName="No answer" className="right-[-48px]" />
             </div>
           </div>
         </div>

@@ -16,13 +16,13 @@ import {
   Search,
   X,
   Plus,
-  GripVertical,
   type LucideIcon,
   MessageSquareText,
   Route,
 } from 'lucide-react';
 import clsx from 'clsx';
 import type { AutomationNodeType } from '@saas/shared';
+import { isTriggerType, stepWording, type StepWording } from '../step-wording';
 
 export type PaletteCategory =
   | 'All'
@@ -204,23 +204,48 @@ export interface NodePaletteDrawerProps {
   onAddNode?: (type: AutomationNodeType) => void;
   onDragStart?: (event: React.DragEvent, type: AutomationNodeType) => void;
   className?: string;
+  /** The automation already has what starts it: offer only steps, not a second start. */
+  hasTrigger?: boolean;
+  /** The step the new one will follow, when opened from a step's "+". */
+  afterStepName?: string | null;
 }
 
+const SECTIONS: StepWording['kind'][] = ['Starts it', 'Do something', 'Decide or wait'];
+
+/** A palette item in the builder's plain words; an item without wording keeps its own. */
+function plain(item: NodePaletteItem) {
+  const wording = stepWording(item.type);
+  return {
+    ...item,
+    label: wording?.label ?? item.label,
+    description: wording?.description ?? item.description,
+    kind: wording?.kind ?? (item.category === 'Triggers' ? 'Starts it' : 'Do something'),
+    advanced: wording?.advanced ?? false,
+  };
+}
+
+/**
+ * The step chooser. It floats over the canvas instead of pushing it aside,
+ * lists steps by what they do, and leaves out the ways to start an automation
+ * once it has one.
+ */
 export function NodePaletteDrawer({
   isOpen = true,
   onClose,
   onAddNode,
   onDragStart,
   className,
+  hasTrigger = false,
+  afterStepName,
 }: NodePaletteDrawerProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<PaletteCategory>('All');
+  const [showMore, setShowMore] = useState(false);
   const onCloseRef = useRef(onClose);
   useEffect(() => {
     onCloseRef.current = onClose;
   });
 
-  // Escape closes the palette, as it would any other panel. A modal dialog
+  // Escape closes the chooser, as it would any other panel. A modal dialog
   // above it (a confirmation) handles its own Escape first.
   useEffect(() => {
     if (!isOpen) return;
@@ -233,20 +258,18 @@ export function NodePaletteDrawer({
     return () => document.removeEventListener('keydown', handleKey);
   }, [isOpen]);
 
-  const filteredItems = useMemo(() => {
-    return NODE_PALETTE_ITEMS.filter((item) => {
-      const matchesCategory =
-        selectedCategory === 'All' || item.category === selectedCategory;
-      const q = searchQuery.toLowerCase().trim();
-      const matchesSearch =
-        !q ||
-        item.label.toLowerCase().includes(q) ||
-        item.description.toLowerCase().includes(q) ||
-        item.category.toLowerCase().includes(q) ||
-        item.type.toLowerCase().includes(q);
-      return matchesCategory && matchesSearch;
-    });
-  }, [searchQuery, selectedCategory]);
+  const q = searchQuery.toLowerCase().trim();
+  const items = useMemo(
+    () =>
+      NODE_PALETTE_ITEMS.map(plain).filter((item) => {
+        if (hasTrigger && isTriggerType(item.type)) return false;
+        return !q || item.label.toLowerCase().includes(q) || item.description.toLowerCase().includes(q);
+      }),
+    [q, hasTrigger],
+  );
+  // Searching looks through everything; otherwise the rarely needed steps stay folded away.
+  const visible = items.filter((item) => q || showMore || !item.advanced);
+  const hiddenCount = items.length - visible.length;
 
   const handleDragStart = (e: React.DragEvent, item: NodePaletteItem) => {
     e.dataTransfer.setData('application/reactflow', item.type);
@@ -257,48 +280,50 @@ export function NodePaletteDrawer({
 
   if (!isOpen) return null;
 
+  const heading = !hasTrigger ? 'What should start it?' : afterStepName ? 'What happens next?' : 'Add a step';
+  const sub = !hasTrigger
+    ? 'Choose what sets this automation off.'
+    : afterStepName
+      ? `Runs after “${afterStepName}”, already connected.`
+      : 'Click a step to add it, or drag it onto the canvas.';
+
   return (
     <aside
       data-testid="node-palette-drawer"
+      aria-label={heading}
       className={clsx(
-        'w-80 border-r border-border bg-surface flex flex-col h-full select-none shadow-sm z-20',
+        'absolute inset-y-0 left-0 w-80 max-w-[85%] border-r border-border bg-surface flex flex-col select-none shadow-xl z-30',
         className,
       )}
     >
-      {/* Drawer Header */}
       <div className="p-4 border-b border-border/40 space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-start justify-between gap-2">
           <div>
-            <h3 className="text-sm font-semibold text-ink flex items-center gap-1.5">
-              <span>Node Palette</span>
-              <span className="text-[11px] font-semibold bg-brand-soft text-ink px-1.5 py-0.5 rounded-full border border-brand/30">
-                {NODE_PALETTE_ITEMS.length}
-              </span>
-            </h3>
-            <p className="text-[11px] text-ink-muted mt-0.5">
-              Drag nodes onto canvas or click + to add
+            <h3 className="text-sm font-semibold text-ink">{heading}</h3>
+            <p data-testid="node-palette-sub" className="text-[11px] text-ink-muted mt-0.5">
+              {sub}
             </p>
           </div>
           {onClose && (
             <button
               onClick={onClose}
-              className="rounded-lg p-1 text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors"
-              aria-label="Close palette"
+              className="rounded-lg p-1 text-ink-subtle hover:bg-surface-muted hover:text-ink transition-colors cursor-pointer"
+              aria-label="Close"
             >
               <X className="h-4 w-4" />
             </button>
           )}
         </div>
 
-        {/* Search Bar */}
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ink-subtle pointer-events-none" />
           <input
             type="text"
             data-testid="node-palette-search"
+            aria-label="Search steps"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search nodes (e.g. Webhook, AI)..."
+            placeholder="Search, e.g. email or wait"
             className="w-full pl-8 pr-7 py-1.5 text-xs bg-surface-muted border border-border rounded-lg text-ink placeholder:text-ink-subtle focus:bg-surface focus:border-brand focus:outline-none transition-colors"
           />
           {searchQuery && (
@@ -311,100 +336,67 @@ export function NodePaletteDrawer({
             </button>
           )}
         </div>
-
-        {/* Category Pills */}
-        <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none no-scrollbar">
-          {PALETTE_CATEGORIES.map((cat) => (
-            <button
-              key={cat}
-              data-testid={`category-filter-${cat.toLowerCase().replace(/\s+/g, '-')}`}
-              onClick={() => setSelectedCategory(cat)}
-              className={clsx(
-                'px-2.5 py-1 text-[11px] font-medium rounded-md whitespace-nowrap transition cursor-pointer',
-                selectedCategory === cat
-                  ? 'bg-brand text-on-brand shadow-2xs font-semibold'
-                  : 'bg-surface-muted text-ink-muted hover:bg-surface-muted hover:text-ink',
-              )}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
       </div>
 
-      {/* Node Cards List */}
-      <div
-        data-testid="node-palette-list"
-        className="flex-1 overflow-y-auto p-3 space-y-2"
-      >
-        {filteredItems.length === 0 ? (
+      <div data-testid="node-palette-list" className="flex-1 overflow-y-auto p-3 space-y-4">
+        {visible.length === 0 && (
           <div className="py-12 text-center text-ink-subtle space-y-1">
             <Search className="h-6 w-6 mx-auto stroke-1" />
-            <p className="text-xs font-medium text-ink-muted">No nodes found</p>
-            <p className="text-[11px]">Try searching for something else</p>
+            <p className="text-xs font-medium text-ink-muted">Nothing matches “{searchQuery}”</p>
+            <p className="text-[11px]">Try another word, such as email, wait or approve.</p>
           </div>
-        ) : (
-          filteredItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <div
-                key={item.type}
-                draggable
-                data-testid={`palette-item-${item.type}`}
-                onDragStart={(e) => handleDragStart(e, item)}
-                onClick={() => onAddNode?.(item.type)}
-                className="group relative flex items-start gap-2.5 p-2.5 bg-surface border border-border rounded-xl hover:border-brand hover:shadow-xs transition cursor-grab active:cursor-grabbing hover:bg-surface-muted/50"
-              >
-                {/* Drag Handle Indicator */}
-                <div className="pt-1 text-ink-subtle group-hover:text-ink-subtle">
-                  <GripVertical className="h-3.5 w-3.5" />
-                </div>
+        )}
 
-                {/* Node Icon */}
-                <div
-                  className={clsx(
-                    'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg shadow-2xs mt-0.5',
-                    item.iconBg,
-                    item.iconColor,
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                </div>
+        {SECTIONS.map((section) => {
+          const inSection = visible.filter((item) => item.kind === section);
+          if (inSection.length === 0) return null;
+          return (
+            <section key={section} className="space-y-2">
+              {/* The heading already says "start" when only triggers are listed. */}
+              {hasTrigger && <h4 className="px-1 text-[11px] font-semibold text-ink-muted">{section}</h4>}
+              {inSection.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.type}
+                    type="button"
+                    draggable
+                    data-testid={`palette-item-${item.type}`}
+                    onDragStart={(e) => handleDragStart(e, item)}
+                    onClick={() => onAddNode?.(item.type)}
+                    className="group flex w-full items-start gap-2.5 p-2.5 text-left bg-surface border border-border rounded-xl hover:border-brand hover:bg-surface-muted/50 hover:shadow-xs transition cursor-pointer"
+                  >
+                    <div
+                      className={clsx(
+                        'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg shadow-2xs mt-0.5',
+                        item.iconBg,
+                        item.iconColor,
+                      )}
+                    >
+                      <Icon aria-hidden className="h-4 w-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className="block text-xs font-semibold text-ink">{item.label}</span>
+                      <span className="block text-[11px] text-ink-muted leading-snug mt-0.5">{item.description}</span>
+                    </div>
+                    <Plus aria-hidden className="h-3.5 w-3.5 mt-1 shrink-0 text-ink-subtle group-hover:text-ink" />
+                  </button>
+                );
+              })}
+            </section>
+          );
+        })}
 
-                {/* Info */}
-                <div className="flex-1 min-w-0 pr-6">
-                  <div className="flex items-center gap-1.5">
-                    <h4 className="text-xs font-semibold text-ink truncate">
-                      {item.label}
-                    </h4>
-                    {item.badge && (
-                      <span className="text-[11px] font-semibold text-ink-muted bg-surface-muted px-1 py-0.2 rounded">
-                        {item.badge}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-ink-muted leading-snug line-clamp-2 mt-0.5">
-                    {item.description}
-                  </p>
-                </div>
-
-                {/* Quick Add Button */}
-                <button
-                  type="button"
-                  data-testid={`add-node-btn-${item.type}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onAddNode?.(item.type);
-                  }}
-                  className="absolute right-2 top-2 h-6 w-6 rounded-md bg-surface-muted text-ink-muted opacity-0 group-hover:opacity-100 hover:bg-brand hover:text-ink flex items-center justify-center transition shadow-2xs cursor-pointer"
-                  title="Add to canvas"
-                  aria-label={`Add ${item.label}`}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            );
-          })
+        {!q && (hiddenCount > 0 || showMore) && (
+          <button
+            type="button"
+            data-testid="palette-more-btn"
+            aria-expanded={showMore}
+            onClick={() => setShowMore((v) => !v)}
+            className="w-full rounded-lg px-2 py-1.5 text-left text-[11px] font-semibold text-ink-muted hover:bg-surface-muted hover:text-ink cursor-pointer"
+          >
+            {showMore ? 'Fewer options' : `More options (${hiddenCount}): connect to other apps`}
+          </button>
         )}
       </div>
     </aside>

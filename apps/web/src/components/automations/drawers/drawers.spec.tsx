@@ -110,8 +110,11 @@ describe('Automation Drawers', () => {
       />,
     );
 
-    expect(screen.getByTestId('approval-timeout-input')).toBeDefined();
-    expect(screen.getByDisplayValue('48 hours')).toBeDefined();
+    // "48 hours" is shown as an amount and a unit, and saved back as text.
+    expect(screen.getByTestId('approval-timeout-input-amount')).toHaveValue(48);
+    expect(screen.getByTestId('approval-timeout-input-unit')).toHaveValue('hours');
+    fireEvent.change(screen.getByTestId('approval-timeout-input-unit'), { target: { value: 'days' } });
+    expect(onUpdate).toHaveBeenCalledWith('node-2', { timeoutDuration: '48 days' });
   });
 
   it('edits the approval message without clobbering sibling config', () => {
@@ -128,7 +131,7 @@ describe('Automation Drawers', () => {
     expect(onUpdate).toHaveBeenCalledWith('node-2', {
       config: { other: 'keep', message: 'Approve {{ $trigger.payload.name }}' },
     });
-    expect(screen.getByText(/awaiting a decision from anyone who can approve automations/)).toBeDefined();
+    expect(screen.getByText(/pauses here until someone who can approve automations decides/)).toBeDefined();
   });
 
   it('renders TestRunDrawer and triggers execution', async () => {
@@ -178,7 +181,7 @@ describe('Automation Drawers', () => {
 
     fireEvent.click(screen.getByTestId('execute-test-btn'));
     expect(await screen.findByTestId('pending-agent-approval')).toBeDefined();
-    expect(screen.getByText('Approval required')).toBeDefined();
+    expect(screen.getByText('Waiting for someone to approve')).toBeDefined();
     expect(within(screen.getByTestId('pending-agent-approval')).getByText(/Create quote QT-1/)).toBeDefined();
   });
 

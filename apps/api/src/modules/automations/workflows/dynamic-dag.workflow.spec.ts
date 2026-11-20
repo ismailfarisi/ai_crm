@@ -1239,6 +1239,9 @@ describe('DynamicDagWorkflow', () => {
     [{ durationMs: '', duration: '5000' }, 5000],
     [{ durationMs: '', duration: '', delay: '' }, '1s'],
     [{ durationMs: '' }, '1s'],
+    // What older builds of the editor saved: minutes, which used to be ignored.
+    [{ delayMinutes: 5 }, 300000],
+    [{ delayMinutes: 5, duration: '1 day' }, '1 day'],
   ])('delay treats empty strings as unset: %j', async (config, expected) => {
     const { sleep } = jest.requireMock('@temporalio/workflow');
     const result = await dynamicDagWorkflow({

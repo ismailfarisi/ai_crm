@@ -5,6 +5,8 @@ import { Timer } from 'lucide-react';
 import type { NodeProps, Node } from '@xyflow/react';
 import type { AutomationNodeData } from '@saas/shared';
 import { BaseNode } from './base-node';
+import { formatDuration, readDelay } from '../duration';
+import { plainStepName } from '../step-wording';
 
 export interface DelayNodeData extends AutomationNodeData {
   config: {
@@ -21,14 +23,13 @@ export function DelayNode({
   const nodeData = data || { label: 'Delay Execution', config: {} };
   const config = nodeData.config || {};
   const status = (nodeData as any).status || (nodeData as any).executionStatus;
-  const delayMinutes = config.delayMinutes ?? 5;
-  const displayText = config.duration || `${delayMinutes} minute${delayMinutes === 1 ? '' : 's'}`;
+  const displayText = formatDuration(readDelay(config));
 
   return (
     <BaseNode
       icon={Timer}
-      title={nodeData.label || 'Delay Execution'}
-      category="Logic"
+      title={plainStepName('delayNode', nodeData.label)}
+      category="Decide or wait"
       status={status}
       selected={selected}
       hasInput={true}
@@ -38,8 +39,8 @@ export function DelayNode({
       testId="delay-node"
     >
       <div className="flex items-center justify-between rounded-md bg-surface-muted px-2.5 py-1.5 border border-border/40 text-[11px] text-ink-muted">
-        <span className="text-ink-muted font-medium">Wait Duration:</span>
-        <span className="font-mono font-semibold text-ink bg-surface px-1.5 py-0.5 rounded border border-border">
+        <span className="text-ink-muted font-medium">Waits for</span>
+        <span className="font-semibold text-ink bg-surface px-1.5 py-0.5 rounded border border-border">
           {displayText}
         </span>
       </div>

@@ -85,11 +85,12 @@ export function useUpdateAutomationWorkflow() {
   const { invalidateWorkflow } = useInvalidateAutomations();
 
   return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: UpdateAutomationWorkflowPayload }) =>
+    // `quiet` is for saves the user didn't ask for (autosave): no toast each time.
+    mutationFn: ({ id, input }: { id: string; input: UpdateAutomationWorkflowPayload; quiet?: boolean }) =>
       api.automations.update(id, input),
-    onSuccess: async (workflow) => {
+    onSuccess: async (workflow, variables) => {
       await invalidateWorkflow(workflow.id);
-      toast.success(`Workflow "${workflow.name}" updated`);
+      if (!variables.quiet) toast.success(`Saved "${workflow.name}"`);
     },
     onError: (error) => toast.error(describe(error, 'Could not update automation workflow')),
   });

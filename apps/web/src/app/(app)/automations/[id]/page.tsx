@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, use } from 'react';
+import React, { useEffect, useRef, useState, use } from 'react';
 import { notFound, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
@@ -19,8 +19,10 @@ import { TestRunDrawer } from '@/components/automations/drawers/test-run-drawer'
 import { RunsDrawer } from '@/components/automations/runs/runs-drawer';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { crmEventOf, normalizeTriggerNodes, runsWhenPhrase } from '@/components/automations/crm-events';
+import { normalizeDelayNodes } from '@/components/automations/duration';
+import { isTriggerType, plainStepName } from '@/components/automations/step-wording';
 import { useSession } from '@/lib/session-context';
-import { AUTOMATION_PERMISSIONS } from '@saas/shared';
+import { AUTOMATION_PERMISSIONS, automationScheduleSchema, describeSchedule } from '@saas/shared';
 import type { AutomationNodeType, AutomationNode, AutomationWorkflowDto } from '@saas/shared';
 
 interface PageProps {
@@ -38,7 +40,7 @@ export default function AutomationStudioPage({ params }: PageProps) {
       <div className="h-[calc(100vh-3.5rem)] flex items-center justify-center bg-surface-muted text-ink-muted">
         <div className="flex flex-col items-center gap-3">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand border-t-transparent" />
-          <p className="text-xs font-semibold">Loading Automation Studio...</p>
+          <p className="text-xs font-semibold">Opening your automation…</p>
         </div>
       </div>
     );
@@ -48,13 +50,13 @@ export default function AutomationStudioPage({ params }: PageProps) {
     return (
       <div className="h-[calc(100vh-3.5rem)] flex items-center justify-center bg-surface-muted text-ink">
         <div className="p-8 rounded-2xl bg-surface border border-border shadow-sm max-w-md text-center space-y-4">
-          <h3 className="text-sm font-semibold text-ink">Automation Not Found</h3>
-          <p className="text-xs text-ink-muted">The requested automation workflow does not exist or has been deleted.</p>
+          <h3 className="text-sm font-semibold text-ink">Automation not found</h3>
+          <p className="text-xs text-ink-muted">This automation doesn’t exist any more, or you don’t have access to it.</p>
           <button
             onClick={() => router.push('/automations')}
             className="px-4 py-2 rounded-xl bg-brand text-on-brand text-xs font-semibold hover:bg-brand-hover cursor-pointer"
           >
-            Back to Automations
+            Back to automations
           </button>
         </div>
       </div>
@@ -106,6 +108,8 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
 
   // Drawers visibility states
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+  // Set when the chooser was opened from a step's "+": the new step follows that output.
+  const [addAfter, setAddAfter] = useState<{ nodeId: string; handle: string | null } | null>(null);
   const [isTestRunOpen, setIsTestRunOpen] = useState(false);
   const [isRunsOpen, setIsRunsOpen] = useState(false);
 
@@ -130,7 +134,8 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
     getGraphPayload,
   } = useAutomationCanvas({
     // Older trigger nodes carry their event as `eventType`; read it as `event`.
-    initialNodes: normalizeTriggerNodes(workflow.nodes || []),
+    // Older Wait steps carry `delayMinutes`, which the engine never read.
+    initialNodes: normalizeDelayNodes(normalizeTriggerNodes(workflow.nodes || [])),
     initialEdges: workflow.edges || [],
   });
 
@@ -157,21 +162,46 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
 
   const afterEditsSaved = () => {
     markClean();
-    setEditedTriggerConfig(null);
+    // Keep a trigger edit made while this save was on its way.
+    setEditedTriggerConfig((current) => (current === editedTriggerConfig ? null : current));
     setTriggerInvalid(false);
     setSavedName(name);
     refresh?.();
   };
 
   // Save keeps the status as it is; only Activate / Deactivate changes it.
-  const handleSave = async () => {
+  const handleSave = async (quiet = false): Promise<boolean> => {
     try {
-      await updateWorkflowMutation.mutateAsync({ id: workflow.id, input: editsPayload() });
+      await updateWorkflowMutation.mutateAsync({ id: workflow.id, input: editsPayload(), quiet });
       afterEditsSaved();
+      return true;
     } catch {
       // The mutation's own toast says what went wrong.
+      return false;
     }
   };
+
+  // While the automation is off, changes save themselves a moment after the
+  // last edit. A live automation is never autosaved: saving it changes what
+  // runs and makes the saver its owner, so that stays a deliberate click.
+  const autosave = workflowStatus !== 'ACTIVE' && canEditTrigger;
+  const isSaving = updateWorkflowMutation.isPending;
+  const editsKey = hasUnsavedChanges ? JSON.stringify(editsPayload()) : null;
+  // The edits a failed autosave was for: don't retry (and toast) until they change.
+  const failedEditsRef = useRef<string | null>(null);
+  const saveRef = useRef(handleSave);
+  useEffect(() => {
+    saveRef.current = handleSave;
+  });
+  useEffect(() => {
+    if (!autosave || !editsKey || isSaving || triggerInvalid) return;
+    if (failedEditsRef.current === editsKey) return;
+    const timer = setTimeout(async () => {
+      const saved = await saveRef.current(true);
+      failedEditsRef.current = saved ? null : editsKey;
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [autosave, editsKey, isSaving, triggerInvalid]);
 
   const activating = workflowStatus !== 'ACTIVE';
   const triggerNode = nodes.find((n) => n.type === 'crmEventTrigger');
@@ -180,7 +210,7 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
 
   const handleStatusChange = async () => {
     if (activating && missingEvent) {
-      throw new Error('Choose the CRM event that starts this automation first: open the trigger and pick one.');
+      throw new Error('Choose what starts this automation first: click the first step and pick an event.');
     }
     const nextStatus = activating ? 'ACTIVE' : 'PAUSED';
     const saved = await updateWorkflowMutation.mutateAsync({
@@ -195,23 +225,52 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
 
   const statusDescription = activating
     ? `It runs ${runsWhenPhrase(workflow.triggerType, triggerEvent)}. Its steps run with your permissions.`
-    : 'It stops running until someone activates it again.';
+    : 'It stops running until someone turns it on again.';
+
+  const hasTrigger = nodes.some((n) => isTriggerType(n.type));
+  const schedule = automationScheduleSchema.safeParse(triggerConfig.schedule);
+  const scheduleSummary = schedule.success ? describeSchedule(schedule.data) : null;
+  const afterStep = addAfter ? nodes.find((n) => n.id === addAfter.nodeId) : undefined;
+
+  const openChooser = (after: { nodeId: string; handle: string | null } | null) => {
+    setAddAfter(after);
+    setIsTestRunOpen(false);
+    setIsRunsOpen(false);
+    setIsPaletteOpen(true);
+  };
+
+  // "Add a step" in the header continues from the last step added that still
+  // leads nowhere, so the new step arrives connected instead of loose.
+  const lastOpenStep = () => {
+    const sources = new Set(edges.map((e) => e.source));
+    const open = [...nodes].reverse().find((n) => !sources.has(n.id) && !['conditionNode', 'approvalNode'].includes(n.type ?? ''));
+    return open ? { nodeId: open.id, handle: null } : null;
+  };
 
   const handleAddNodeFromPalette = (type: AutomationNodeType) => {
-    addNode({ type });
+    addNode(afterStep && addAfter ? { type, after: addAfter } : { type });
     setIsPaletteOpen(false);
+    setAddAfter(null);
   };
 
   const handleExecuteTest = async (payload: Record<string, any>) => {
+    // A test runs the saved automation, so save what is on the canvas first.
+    if (hasUnsavedChanges) {
+      if (workflowStatus === 'ACTIVE') {
+        toast.info('This test uses the last saved version. Save your changes to test them.');
+      } else if (!triggerInvalid && !(await handleSave(true))) {
+        return null;
+      }
+    }
     try {
       const res = await testRunMutation.mutateAsync({
         id: workflow.id,
         payload,
       });
-      toast.success(`Test execution started (${res.status})`);
+      toast.success('Test started');
       return res;
     } catch (err: any) {
-      toast.error(err.message || 'Test run failed');
+      toast.error(err.message || 'The test could not start');
       return null;
     }
   };
@@ -225,25 +284,31 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
         onNameChange={setWorkflowName}
         status={workflowStatus}
         onStatusToggle={() => setStatusConfirmOpen(true)}
-        statusBlockedReason={triggerInvalid ? 'Fix the schedule before activating' : null}
+        statusBlockedReason={triggerInvalid ? 'Fix the schedule before turning this on' : null}
         onBackClick={(event) => {
           if (!hasUnsavedChanges) return;
           event.preventDefault();
           setLeaveConfirmOpen(true);
         }}
         isDirty={hasUnsavedChanges}
-        isSaving={updateWorkflowMutation.isPending}
+        isSaving={isSaving}
+        autosave={autosave}
         saveBlockedReason={triggerInvalid ? 'Fix the schedule before saving' : null}
-        onSave={handleSave}
+        onSave={() => handleSave()}
+        // One side panel at a time, so the canvas keeps its room.
         onOpenTestRun={() => {
           setIsRunsOpen(false);
+          setIsPaletteOpen(false);
+          setSelectedNode(null);
           setIsTestRunOpen(true);
         }}
         onOpenRuns={() => {
           setIsTestRunOpen(false);
+          setIsPaletteOpen(false);
+          setSelectedNode(null);
           setIsRunsOpen(true);
         }}
-        onOpenPalette={() => setIsPaletteOpen(true)}
+        onOpenPalette={() => openChooser(lastOpenStep())}
         canUndo={canUndo}
         canRedo={canRedo}
         onUndo={undo}
@@ -256,7 +321,12 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
         <NodePaletteDrawer
           isOpen={isPaletteOpen}
           onAddNode={handleAddNodeFromPalette}
-          onClose={() => setIsPaletteOpen(false)}
+          onClose={() => {
+            setIsPaletteOpen(false);
+            setAddAfter(null);
+          }}
+          hasTrigger={hasTrigger}
+          afterStepName={afterStep ? plainStepName(afterStep.type, (afterStep.data as { label?: string }).label) : null}
         />
 
         {/* Central 2D Visual Canvas */}
@@ -266,9 +336,35 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
-          onSelectNode={(n) => setSelectedNode(n?.id || null)}
-          onAddNode={(type, position) => addNode({ type, position })}
+          onSelectNode={(n) => {
+            setSelectedNode(n?.id || null);
+            if (n) {
+              setIsTestRunOpen(false);
+              setIsRunsOpen(false);
+            }
+          }}
+          onAddNode={(type, position) => {
+            // A second way to start makes no sense; the chooser doesn't offer one either.
+            if (hasTrigger && isTriggerType(type)) return;
+            addNode({ type, position });
+          }}
+          onAddAfter={(nodeId, handle) => openChooser({ nodeId, handle })}
+          scheduleSummary={scheduleSummary}
         />
+
+        {nodes.length === 0 && !isPaletteOpen && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+            <button
+              type="button"
+              data-testid="empty-canvas-start-btn"
+              onClick={() => openChooser(null)}
+              className="pointer-events-auto rounded-2xl border border-dashed border-border-strong bg-surface px-6 py-5 text-center shadow-sm hover:border-brand cursor-pointer"
+            >
+              <span className="block text-sm font-semibold text-ink">Choose what starts this automation</span>
+              <span className="mt-1 block text-xs text-ink-muted">For example: when a customer accepts a quote</span>
+            </button>
+          </div>
+        )}
 
         {/* Right Node Inspector Drawer */}
         {selectedNode && (
@@ -293,6 +389,8 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
         {isTestRunOpen && (
           <TestRunDrawer
             workflow={workflow}
+            triggerEvent={triggerEvent}
+            nodes={nodes as unknown as AutomationNode[]}
             onExecuteTest={handleExecuteTest}
             onGetExecution={testRunMutation.getExecution}
             onClose={() => setIsTestRunOpen(false)}
@@ -307,11 +405,11 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
         open={statusConfirmOpen}
         onClose={() => setStatusConfirmOpen(false)}
         onConfirm={handleStatusChange}
-        title={`${activating ? 'Activate' : 'Deactivate'} “${name}”?`}
+        title={`Turn ${activating ? 'on' : 'off'} “${name}”?`}
         description={
           hasUnsavedChanges ? `${statusDescription} Your unsaved changes are saved with it.` : statusDescription
         }
-        confirmLabel={activating ? 'Activate automation' : 'Deactivate automation'}
+        confirmLabel={activating ? 'Turn it on' : 'Turn it off'}
         tone={activating ? 'primary' : 'danger'}
       />
 
