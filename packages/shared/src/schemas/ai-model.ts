@@ -95,6 +95,8 @@ export type UpdateAiSettingsPayload = z.infer<typeof updateAiSettingsSchema>;
 export interface AiSettingsDto {
   /** Null until an administrator picks one. */
   defaultModel: string | null;
+  /** What calls fall back to now: the default, or the model a provider was set up with before models moved here. */
+  effectiveDefaultModel: string | null;
   featureModels: Record<string, { provider: string | null; model: string }>;
 }
 

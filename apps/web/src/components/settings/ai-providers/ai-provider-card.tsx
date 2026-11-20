@@ -150,12 +150,6 @@ export function AiProviderCard({ config, onConfigure }: AiProviderCardProps) {
       <CardBody className="space-y-4 pt-2">
         <p className="text-sm text-ink-muted">{info.description}</p>
 
-        {config.credentials?.model && (
-          <p className="text-xs text-ink-subtle">
-            Model: <span className="font-mono">{config.credentials.model}</span>
-          </p>
-        )}
-
         {config.lastTestedAt && (
           <p className="text-xs text-ink-subtle">
             Last tested:{' '}

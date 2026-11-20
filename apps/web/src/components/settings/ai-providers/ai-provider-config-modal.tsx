@@ -9,7 +9,6 @@ import { api, queryKeys, type AiConfigDto } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/client';
 import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 
 interface AiProviderConfigModalProps {
@@ -24,29 +23,23 @@ const PROVIDER_TITLES: Record<AiConfigDto['provider'], string> = {
   OPENROUTER: 'OpenRouter Configuration',
 };
 
-const MODEL_PLACEHOLDERS: Record<AiConfigDto['provider'], string> = {
-  OPENAI: 'gpt-4o',
-  ANTHROPIC: 'claude-sonnet-5',
-  OPENROUTER: 'meta-llama/llama-3.1-70b-instruct',
-};
-
 export function AiProviderConfigModal({ open, onClose, config }: AiProviderConfigModalProps) {
   const queryClient = useQueryClient();
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [formData, setFormData] = useState<{ apiKey?: string; model?: string }>({});
+  const [formData, setFormData] = useState<{ apiKey?: string }>({});
 
   const provider = config?.provider ?? 'OPENAI';
 
   useEffect(() => {
     if (config?.credentials) {
-      setFormData(config.credentials);
+      setFormData({ apiKey: config.credentials.apiKey });
     } else {
       setFormData({});
     }
     setErrors({});
   }, [config, open]);
 
-  const updateField = (key: 'apiKey' | 'model', value: string) => {
+  const updateField = (key: 'apiKey', value: string) => {
     setFormData((prev) => ({ ...prev, [key]: value }));
     if (errors[key]) {
       setErrors((prev) => {
@@ -107,7 +100,7 @@ export function AiProviderConfigModal({ open, onClose, config }: AiProviderConfi
       onClose={onClose}
       size="lg"
       title={PROVIDER_TITLES[provider]}
-      description="Configure API credentials and the default model for this AI provider."
+      description="Add the API key for this provider. Models are chosen under Models, below the providers."
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={saveMutation.isPending}>
@@ -126,19 +119,6 @@ export function AiProviderConfigModal({ open, onClose, config }: AiProviderConfi
           value={formData.apiKey || ''}
           error={errors.apiKey}
           onChange={(val) => updateField('apiKey', val)}
-          required
-        />
-        <Input
-          label="Model"
-          placeholder={MODEL_PLACEHOLDERS[provider]}
-          value={formData.model || ''}
-          error={errors.model}
-          onChange={(e) => updateField('model', e.target.value)}
-          hint={
-            provider === 'OPENROUTER'
-              ? 'Any model id OpenRouter proxies, e.g. meta-llama/llama-3.1-70b-instruct.'
-              : undefined
-          }
           required
         />
       </form>

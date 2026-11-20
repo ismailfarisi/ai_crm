@@ -20,7 +20,7 @@ const config: AiConfigDto = {
   isEnabled: false,
   isDefault: false,
   status: 'configured',
-  credentials: { model: 'gpt-4o-mini' },
+  credentials: { apiKey: 'sk-t••••1234' },
   lastTestedAt: null,
 };
 

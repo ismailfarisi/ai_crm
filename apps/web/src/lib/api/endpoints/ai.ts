@@ -6,6 +6,9 @@ import type {
   AiBudgetStatusDto,
   UpsertAiBudgetPayload,
   AiUsageLogDto,
+  AiModelOptionDto,
+  AiSettingsDto,
+  UpdateAiSettingsPayload,
 } from '@saas/shared';
 import { apiFetch } from '../client';
 
@@ -16,14 +19,14 @@ export interface AiConfigDto {
   isEnabled: boolean;
   isDefault: boolean;
   status: 'unconfigured' | 'configured' | 'error';
-  credentials: { apiKey?: string; model?: string } | null;
+  credentials: { apiKey?: string } | null;
   lastTestedAt: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
 export interface SaveAiConfigInput {
   isEnabled?: boolean;
-  credentials?: { apiKey?: string; model?: string };
+  credentials?: { apiKey?: string };
 }
 export interface TestAiConfigResult {
   success: boolean;
@@ -51,9 +54,17 @@ export const aiEndpoints = {
       apiFetch<AiConfigDto>(`/ai/configs/${provider}/default`, {
         method: 'POST',
       }),
+    listModels: (provider: string) =>
+      apiFetch<AiModelOptionDto[]>(`/ai/configs/${provider}/models`),
+    getSettings: () => apiFetch<AiSettingsDto>('/ai/settings'),
+    updateSettings: (payload: UpdateAiSettingsPayload) =>
+      apiFetch<AiSettingsDto>('/ai/settings', { method: 'PATCH', body: payload }),
   },
 };
 
 export const aiKeys = {
   aiConfigs: ['ai', 'configs'] as const,  // AI
-  aiBudget: ['ai', 'budget'] as const,  aiUsage: ['ai', 'usage'] as const,};
+  aiBudget: ['ai', 'budget'] as const,  aiUsage: ['ai', 'usage'] as const,
+  aiSettings: ['ai', 'settings'] as const,
+  aiModels: (provider: string) => ['ai', 'models', provider] as const,
+};
