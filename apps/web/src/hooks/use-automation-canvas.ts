@@ -21,22 +21,12 @@ import type {
   AutomationNodeData,
 } from '@saas/shared';
 import { validateWorkflowGraph } from '@saas/shared';
+import { STEP_WORDING } from '@/components/automations/step-wording';
 
-export const DEFAULT_NODE_LABELS: Record<AutomationNodeType, string> = {
-  webhookTrigger: 'Webhook Trigger',
-  scheduleTrigger: 'Schedule Trigger',
-  crmEventTrigger: 'CRM Event Trigger',
-  manualTrigger: 'Manual Trigger',
-  conditionNode: 'Condition Branch',
-  transformNode: 'Data Transform',
-  delayNode: 'Delay Execution',
-  httpRequestNode: 'HTTP Request',
-  aiPromptNode: 'AI Prompt / LLM',
-  aiAgentNode: 'Autonomous AI Agent',
-  sendEmailNode: 'Send Email',
-  crmMutateNode: 'CRM Mutation',
-  approvalNode: 'Human Approval',
-};
+/** The name a new step starts with: the plain wording for its kind. */
+export const DEFAULT_NODE_LABELS = Object.fromEntries(
+  Object.entries(STEP_WORDING).map(([type, wording]) => [type, wording.label]),
+) as Record<AutomationNodeType, string>;
 
 export const DEFAULT_NODE_CONFIGS: Record<AutomationNodeType, Record<string, any>> = {
   webhookTrigger: {},
@@ -46,7 +36,8 @@ export const DEFAULT_NODE_CONFIGS: Record<AutomationNodeType, Record<string, any
   manualTrigger: {},
   conditionNode: { condition: '' },
   transformNode: { script: '' },
-  delayNode: { delayMinutes: 5 },
+  // `duration` is what the engine reads ("5 minutes", "1 day").
+  delayNode: { duration: '5 minutes' },
   httpRequestNode: { method: 'GET', url: '', headers: {}, body: '' },
   aiPromptNode: { model: 'gpt-4o-mini', prompt: '', outputVariable: 'aiResult' },
   aiAgentNode: {
@@ -128,6 +119,68 @@ export interface AddNodeParams {
   position?: { x: number; y: number };
   data?: Partial<AutomationNodeData>;
   id?: string;
+  /**
+   * The step this one follows. The new step is placed beside it and connected
+   * to it; if that output already leads somewhere, the new step goes in between.
+   */
+  after?: { nodeId: string; handle?: string | null };
+}
+
+const STEP_GAP_X = 340;
+const STEP_GAP_Y = 160;
+
+/** Where each named output of a branching step sends its next step, so branches fan out. */
+const BRANCH_OFFSET_Y: Record<string, number> = {
+  true: -90,
+  false: 90,
+  approved: -STEP_GAP_Y,
+  rejected: 0,
+  timeout: STEP_GAP_Y,
+};
+
+/** The output a step continues from when another step is inserted after it. */
+const MAIN_OUTPUT: Partial<Record<AutomationNodeType, string>> = {
+  conditionNode: 'true',
+  approvalNode: 'approved',
+};
+
+type XY = { x: number; y: number };
+
+/** To the right of `source`, moved down until it doesn't sit on another step. */
+export function positionAfter(nodes: { position: XY }[], source: { position: XY }, handle?: string | null): XY {
+  const pos = {
+    x: source.position.x + STEP_GAP_X,
+    y: source.position.y + (handle ? (BRANCH_OFFSET_Y[handle] ?? 0) : 0),
+  };
+  const taken = (p: XY) =>
+    nodes.some((n) => Math.abs(n.position.x - p.x) < 260 && Math.abs(n.position.y - p.y) < 110);
+  while (taken(pos)) pos.y += STEP_GAP_Y;
+  return pos;
+}
+
+function downstreamOf(nodeId: string, edges: Edge[]): Set<string> {
+  const seen = new Set<string>([nodeId]);
+  const queue = [nodeId];
+  while (queue.length > 0) {
+    const current = queue.shift() as string;
+    for (const edge of edges) {
+      if (edge.source !== current || seen.has(edge.target)) continue;
+      seen.add(edge.target);
+      queue.push(edge.target);
+    }
+  }
+  return seen;
+}
+
+function edgeBetween(source: string, handle: string | null | undefined, target: string): Edge {
+  return {
+    id: `e_${source}_${handle || 'out'}_${target}`,
+    source,
+    target,
+    sourceHandle: handle || null,
+    targetHandle: null,
+    animated: true,
+  };
 }
 
 function serializeGraph(nodes: Node<AutomationNodeData>[], edges: Edge[]): string {
@@ -206,13 +259,26 @@ export function useAutomationCanvas(options: UseAutomationCanvasOptions = {}) {
       const defaultLabel = DEFAULT_NODE_LABELS[nodeType] || 'Step';
       const defaultConfig = DEFAULT_NODE_CONFIGS[nodeType] || {};
 
+      const source = params.after ? nodes.find((n) => n.id === params.after?.nodeId) : undefined;
+      const handle = params.after?.handle ?? null;
+      // The step this output already leads to, if any: the new one goes before it.
+      const existing = source
+        ? edges.find((e) => e.source === source.id && (e.sourceHandle ?? null) === handle)
+        : undefined;
+      const next = existing ? nodes.find((n) => n.id === existing.target) : undefined;
+
+      const position =
+        params.position ||
+        (source
+          ? next
+            ? { x: source.position.x + STEP_GAP_X, y: next.position.y }
+            : positionAfter(nodes, source, handle)
+          : { x: 250, y: (nodes.length + 1) * 120 });
+
       const newNode: Node<AutomationNodeData> = {
         id: nodeId,
         type: nodeType,
-        position: params.position || {
-          x: 250,
-          y: (nodes.length + 1) * 120,
-        },
+        position,
         data: {
           label: params.data?.label || defaultLabel,
           config: {
@@ -224,6 +290,30 @@ export function useAutomationCanvas(options: UseAutomationCanvasOptions = {}) {
           timeoutDuration: params.data?.timeoutDuration,
         },
       };
+
+      if (source) {
+        if (existing && next) {
+          // Make room: everything from the old next step onwards moves one column right.
+          const moved = downstreamOf(next.id, edges);
+          setNodes((prev) => [
+            ...prev.map((n) =>
+              moved.has(n.id) ? { ...n, position: { x: n.position.x + STEP_GAP_X, y: n.position.y } } : n,
+            ),
+            newNode,
+          ]);
+          setEdges((prev) => [
+            ...prev.filter((e) => e.id !== existing.id),
+            edgeBetween(source.id, handle, nodeId),
+            edgeBetween(nodeId, MAIN_OUTPUT[nodeType], next.id),
+          ]);
+        } else {
+          setNodes((prev) => [...prev, newNode]);
+          setEdges((prev) => [...prev, edgeBetween(source.id, handle, nodeId)]);
+        }
+        setSelectedNodeId(nodeId);
+        setSelectedEdgeId(null);
+        return newNode;
+      }
 
       setNodes((prev) => [...prev, newNode]);
       setSelectedNodeId(nodeId);

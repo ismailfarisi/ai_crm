@@ -5,6 +5,7 @@ import { Globe, Mail, Database, MessageSquareText } from 'lucide-react';
 import type { NodeProps, Node } from '@xyflow/react';
 import type { AutomationNodeData, AutomationNodeType } from '@saas/shared';
 import { BaseNode } from './base-node';
+import { plainStepName, stepWording } from '../step-wording';
 
 export interface ActionNodeData extends AutomationNodeData {
   config: {
@@ -115,7 +116,9 @@ export function ActionNode({
       break;
   }
 
-  const title = nodeData.label || defaultTitle;
+  const title = plainStepName(type, nodeData.label) || defaultTitle;
+  // Every action reads the same on the canvas: it does something.
+  category = stepWording(type)?.kind ?? category;
 
   return (
     <BaseNode

@@ -75,7 +75,7 @@ describe('AutomationStudioPage', () => {
 
     automationState.current = { data: null, isLoading: true };
     const view = await act(async () => render(page()));
-    expect(screen.getByText('Loading Automation Studio...')).toBeInTheDocument();
+    expect(screen.getByText('Opening your automation…')).toBeInTheDocument();
 
     automationState.current = { data: savedWorkflow, isLoading: false };
     await act(async () => view.rerender(page()));
@@ -108,7 +108,7 @@ describe('AutomationStudioPage', () => {
     );
     fireEvent.click(await screen.findByText('Hook'));
     fireEvent.click(await screen.findByTestId('webhook-secret-regenerate'));
-    expect(screen.getByTestId('save-workflow-btn')).toHaveTextContent('Save Changes*');
+    expect(screen.getByTestId('save-workflow-btn')).toHaveTextContent('Save changes');
     fireEvent.click(screen.getByTestId('save-workflow-btn'));
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
     const input = mutateAsync.mock.calls[0][0].input;
@@ -168,7 +168,7 @@ describe('AutomationStudioPage', () => {
       await open();
       fireEvent.click(screen.getByText('Tick'));
       fireEvent.change(await screen.findByTestId('schedule-frequency'), { target: { value: 'hourly' } });
-      expect(screen.getByTestId('save-workflow-btn')).toHaveTextContent('Save Changes*');
+      expect(screen.getByTestId('save-workflow-btn')).toHaveTextContent('Save changes');
       expect(screen.getByTestId('owner-warning')).toBeInTheDocument();
       fireEvent.click(screen.getByTestId('save-workflow-btn'));
       await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
@@ -216,24 +216,25 @@ describe('AutomationStudioPage', () => {
       mutateAsync.mockResolvedValue({ ...quoteAlert, status: 'ACTIVE' });
       fireEvent.click(screen.getByTestId('status-toggle-btn'));
       expect(mutateAsync).not.toHaveBeenCalled();
-      expect(screen.getByText('Activate “Big quote alert”?')).toBeInTheDocument();
+      expect(screen.getByText('Turn on “Big quote alert”?')).toBeInTheDocument();
       expect(screen.getByText(/It runs every time a customer accepts a quote./)).toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole('button', { name: 'Activate automation' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Turn it on' }));
       await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
       expect(mutateAsync.mock.calls[0][0].input).toEqual({ status: 'ACTIVE' });
-      await waitFor(() => expect(screen.getByTestId('status-toggle-btn')).toHaveTextContent('Deactivate'));
-      expect(screen.getByTestId('workflow-status-badge')).toHaveTextContent('ACTIVE');
+      await waitFor(() => expect(screen.getByTestId('status-toggle-btn')).toHaveTextContent('Turn off'));
+      expect(screen.getByTestId('workflow-status-badge')).toHaveTextContent('On');
     });
 
     it('saves pending edits with the status, and writes the event as `event`', async () => {
       await open(quoteAlert);
       mutateAsync.mockResolvedValue({ ...quoteAlert, status: 'ACTIVE' });
       fireEvent.change(screen.getByTestId('workflow-name-input'), { target: { value: 'Big quote alert 2' } });
-      expect(screen.getByTestId('save-workflow-btn')).toHaveTextContent('Save Changes*');
+      // A draft saves itself shortly; turning it on first takes the edits with it.
+      expect(screen.getByTestId('save-workflow-btn')).toHaveTextContent('Saving soon…');
       fireEvent.click(screen.getByTestId('status-toggle-btn'));
       expect(screen.getByText(/Your unsaved changes are saved with it./)).toBeInTheDocument();
-      fireEvent.click(screen.getByRole('button', { name: 'Activate automation' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Turn it on' }));
       await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
       const input = mutateAsync.mock.calls[0][0].input;
       expect(input.status).toBe('ACTIVE');
@@ -248,6 +249,37 @@ describe('AutomationStudioPage', () => {
       fireEvent.click(screen.getByTestId('save-workflow-btn'));
       await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
       expect(mutateAsync.mock.calls[0][0].input).not.toHaveProperty('status');
+    });
+
+    it('saves a draft by itself a moment after the last change, without a toast', async () => {
+      await open(quoteAlert);
+      mutateAsync.mockResolvedValue(quoteAlert);
+      fireEvent.change(screen.getByTestId('workflow-name-input'), { target: { value: 'Renamed' } });
+      expect(mutateAsync).not.toHaveBeenCalled();
+
+      await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1), { timeout: 4000 });
+      expect(mutateAsync.mock.calls[0][0]).toMatchObject({ quiet: true, input: { name: 'Renamed' } });
+      expect(mutateAsync.mock.calls[0][0].input).not.toHaveProperty('status');
+      await waitFor(() => expect(screen.getByTestId('save-workflow-btn')).toHaveTextContent('Saved'));
+    });
+
+    it('never saves an automation that is on by itself: that waits for Save', async () => {
+      await open({ ...quoteAlert, status: 'ACTIVE' });
+      fireEvent.change(screen.getByTestId('workflow-name-input'), { target: { value: 'Renamed' } });
+      expect(screen.getByTestId('save-workflow-btn')).toHaveTextContent('Save changes');
+
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      expect(mutateAsync).not.toHaveBeenCalled();
+    });
+
+    it('does not keep retrying a save that failed until something changes', async () => {
+      await open(quoteAlert);
+      mutateAsync.mockRejectedValue(new Error('nope'));
+      fireEvent.change(screen.getByTestId('workflow-name-input'), { target: { value: 'Renamed' } });
+
+      await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1), { timeout: 4000 });
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      expect(mutateAsync).toHaveBeenCalledTimes(1);
     });
 
     it('Back asks before dropping unsaved changes', async () => {

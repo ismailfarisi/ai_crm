@@ -4,6 +4,8 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { Sparkles } from 'lucide-react';
 import { BaseNode } from './base-node';
+import { AddStepButton } from './add-step-button';
+import { CanvasActionsContext, outputKey } from '../canvas/canvas-actions';
 import { TriggerNode } from './trigger-node';
 import { ConditionNode } from './condition-node';
 import { ApprovalNode } from './approval-node';
@@ -227,7 +229,7 @@ describe('Automation Node Components', () => {
       );
 
       expect(screen.getByText('Run on Demand')).toBeInTheDocument();
-      expect(screen.getByText('Manual execution from UI or API')).toBeInTheDocument();
+      expect(screen.getByText('Runs when you press Run')).toBeInTheDocument();
     });
   });
 
@@ -244,8 +246,8 @@ describe('Automation Node Components', () => {
 
       expect(screen.getByText('Check Amount > 5000')).toBeInTheDocument();
       expect(screen.getByText('payload.amount > 5000')).toBeInTheDocument();
-      expect(screen.getByText('True')).toBeInTheDocument();
-      expect(screen.getByText('False')).toBeInTheDocument();
+      expect(screen.getByText('Yes')).toBeInTheDocument();
+      expect(screen.getByText('No')).toBeInTheDocument();
 
       // Input handle on left
       expect(container.querySelector('.react-flow__handle-left')).toBeInTheDocument();
@@ -276,7 +278,7 @@ describe('Automation Node Components', () => {
       expect(screen.getByText('24 hours')).toBeInTheDocument();
       expect(screen.getByText('Approved')).toBeInTheDocument();
       expect(screen.getByText('Rejected')).toBeInTheDocument();
-      expect(screen.getByText('Timeout')).toBeInTheDocument();
+      expect(screen.getByText('No answer')).toBeInTheDocument();
 
       // Input handle on left
       expect(container.querySelector('.react-flow__handle-left')).toBeInTheDocument();
@@ -416,75 +418,125 @@ describe('Automation Node Components', () => {
     });
   });
 
-  describe('NodePaletteDrawer', () => {
-    it('renders palette header and all default node items', () => {
+  describe('AddStepButton (the "+" on a step)', () => {
+    // `useNodeId` reads the id React Flow gives each step it draws.
+    vi.mock('@xyflow/react', async (original) => ({
+      ...(await original<typeof import('@xyflow/react')>()),
+      useNodeId: () => 'step-1',
+    }));
+
+    const renderOnCanvas = (ui: React.ReactElement, connected: string[] = []) => {
+      const onAddAfter = vi.fn();
+      render(
+        <CanvasActionsContext.Provider value={{ onAddAfter, connectedOutputs: new Set(connected) }}>
+          {ui}
+        </CanvasActionsContext.Provider>,
+      );
+      return onAddAfter;
+    };
+
+    it('asks the canvas for a step after this one', () => {
+      const onAddAfter = renderOnCanvas(<AddStepButton />);
+      fireEvent.click(screen.getByRole('button', { name: 'Add a step after this one' }));
+      expect(onAddAfter).toHaveBeenCalledWith('step-1', null);
+    });
+
+    it('continues the branch it sits on', () => {
+      const onAddAfter = renderOnCanvas(<AddStepButton handle="true" outputName="Yes" />);
+      fireEvent.click(screen.getByRole('button', { name: 'Add a step on the Yes path' }));
+      expect(onAddAfter).toHaveBeenCalledWith('step-1', 'true');
+    });
+
+    it('offers to add a step in between when the output already leads somewhere', () => {
+      renderOnCanvas(<AddStepButton />, [outputKey('step-1', null)]);
+      expect(screen.getByRole('button', { name: 'Add a step in between' })).toBeInTheDocument();
+    });
+
+    it('shows nothing outside a canvas', () => {
+      render(<AddStepButton />);
+      expect(screen.queryByRole('button')).toBeNull();
+    });
+  });
+
+  describe('NodePaletteDrawer (the step chooser)', () => {
+    it('offers only ways to start until the automation has one', () => {
       render(<NodePaletteDrawer />);
 
-      expect(screen.getByText('Node Palette')).toBeInTheDocument();
-      expect(screen.getByTestId('node-palette-search')).toBeInTheDocument();
-
-      // Check all 13 items are rendered
+      expect(screen.getByText('What should start it?')).toBeInTheDocument();
+      expect(screen.getByTestId('palette-item-crmEventTrigger')).toHaveTextContent('When something happens in Kerf');
+      expect(screen.getByTestId('palette-item-scheduleTrigger')).toBeInTheDocument();
+      // Every step is reachable: the rarely needed ones sit behind "More options".
+      fireEvent.click(screen.getByTestId('palette-more-btn'));
       NODE_PALETTE_ITEMS.forEach((item) => {
         expect(screen.getByTestId(`palette-item-${item.type}`)).toBeInTheDocument();
       });
     });
 
-    it('filters items by search input', () => {
-      render(<NodePaletteDrawer />);
+    it('leaves out the ways to start once the automation has one', () => {
+      render(<NodePaletteDrawer hasTrigger afterStepName="Customer accepted a quote" />);
 
-      const searchInput = screen.getByTestId('node-palette-search');
-      fireEvent.change(searchInput, { target: { value: 'webhook' } });
+      expect(screen.getByText('What happens next?')).toBeInTheDocument();
+      expect(screen.getByTestId('node-palette-sub')).toHaveTextContent(
+        'Runs after “Customer accepted a quote”, already connected.',
+      );
+      fireEvent.click(screen.getByTestId('palette-more-btn'));
+      NODE_PALETTE_ITEMS.forEach((item) => {
+        const shown = screen.queryByTestId(`palette-item-${item.type}`);
+        if (item.category === 'Triggers') expect(shown).toBeNull();
+        else expect(shown).toBeInTheDocument();
+      });
+    });
 
-      expect(screen.getByTestId('palette-item-webhookTrigger')).toBeInTheDocument();
-      expect(screen.queryByTestId('palette-item-approvalNode')).toBeNull();
+    it('names steps in plain words, not developer terms', () => {
+      render(<NodePaletteDrawer hasTrigger />);
+      fireEvent.click(screen.getByTestId('palette-more-btn'));
+
+      const text = screen.getByTestId('node-palette-drawer').textContent ?? '';
+      expect(text).toContain('Send an email');
+      expect(text).toContain('Wait');
+      expect(text).toContain('Only continue if…');
+      for (const word of ['Node', 'Cron', 'LLM', 'ReAct', 'HITL', 'Mutation', 'JS expression', 'HTTP', 'DAG']) {
+        expect(text).not.toContain(word);
+      }
+    });
+
+    it('keeps the steps for other apps folded away until asked for', () => {
+      render(<NodePaletteDrawer hasTrigger />);
+
       expect(screen.queryByTestId('palette-item-httpRequestNode')).toBeNull();
+      fireEvent.click(screen.getByTestId('palette-more-btn'));
+      expect(screen.getByTestId('palette-item-httpRequestNode')).toBeInTheDocument();
+    });
+
+    it('filters items by search input, including the folded ones', () => {
+      render(<NodePaletteDrawer hasTrigger />);
+
+      fireEvent.change(screen.getByTestId('node-palette-search'), { target: { value: 'another app' } });
+
+      expect(screen.getByTestId('palette-item-httpRequestNode')).toBeInTheDocument();
+      expect(screen.queryByTestId('palette-item-approvalNode')).toBeNull();
+      expect(screen.queryByTestId('palette-item-sendEmailNode')).toBeNull();
     });
 
     it('shows empty state when no items match search query', () => {
       render(<NodePaletteDrawer />);
 
-      const searchInput = screen.getByTestId('node-palette-search');
-      fireEvent.change(searchInput, { target: { value: 'nonexistent-query-xyz' } });
+      fireEvent.change(screen.getByTestId('node-palette-search'), { target: { value: 'nonexistent-query-xyz' } });
 
-      expect(screen.getByText('No nodes found')).toBeInTheDocument();
+      expect(screen.getByText('Nothing matches “nonexistent-query-xyz”')).toBeInTheDocument();
     });
 
-    it('filters items by category pill', () => {
-      render(<NodePaletteDrawer />);
-
-      const triggersBtn = screen.getByTestId('category-filter-triggers');
-      fireEvent.click(triggersBtn);
-
-      expect(screen.getByTestId('palette-item-webhookTrigger')).toBeInTheDocument();
-      expect(screen.getByTestId('palette-item-scheduleTrigger')).toBeInTheDocument();
-      expect(screen.queryByTestId('palette-item-httpRequestNode')).toBeNull();
-
-      const actionsBtn = screen.getByTestId('category-filter-actions');
-      fireEvent.click(actionsBtn);
-
-      expect(screen.getByTestId('palette-item-httpRequestNode')).toBeInTheDocument();
-      expect(screen.getByTestId('palette-item-sendEmailNode')).toBeInTheDocument();
-      expect(screen.queryByTestId('palette-item-webhookTrigger')).toBeNull();
-    });
-
-    it('invokes onAddNode callback when item card or add button is clicked', () => {
+    it('invokes onAddNode when a step is clicked', () => {
       const onAddNode = vi.fn();
-      render(<NodePaletteDrawer onAddNode={onAddNode} />);
+      render(<NodePaletteDrawer hasTrigger onAddNode={onAddNode} />);
 
-      // Click card
-      const webhookCard = screen.getByTestId('palette-item-webhookTrigger');
-      fireEvent.click(webhookCard);
-      expect(onAddNode).toHaveBeenCalledWith('webhookTrigger');
-
-      // Click quick-add button
-      const addBtn = screen.getByTestId('add-node-btn-conditionNode');
-      fireEvent.click(addBtn);
-      expect(onAddNode).toHaveBeenCalledWith('conditionNode');
+      fireEvent.click(screen.getByTestId('palette-item-delayNode'));
+      expect(onAddNode).toHaveBeenCalledWith('delayNode');
     });
 
     it('sets drag transfer data on drag start', () => {
       const onDragStart = vi.fn();
-      render(<NodePaletteDrawer onDragStart={onDragStart} />);
+      render(<NodePaletteDrawer hasTrigger onDragStart={onDragStart} />);
 
       const setDataMock = vi.fn();
       const dragEvent = {
@@ -502,14 +554,14 @@ describe('Automation Node Components', () => {
       expect(onDragStart).toHaveBeenCalledWith(expect.anything(), 'aiPromptNode');
     });
 
-    it('invokes onClose when close button is clicked', () => {
+    it('closes from its close button and on Escape', () => {
       const onClose = vi.fn();
       render(<NodePaletteDrawer onClose={onClose} />);
 
-      const closeBtn = screen.getByLabelText('Close palette');
-      fireEvent.click(closeBtn);
+      fireEvent.click(screen.getByLabelText('Close'));
+      fireEvent.keyDown(document, { key: 'Escape' });
 
-      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(onClose).toHaveBeenCalledTimes(2);
     });
   });
 });

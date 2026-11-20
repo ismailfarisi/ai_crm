@@ -375,7 +375,12 @@ export async function dynamicDagWorkflow(
             const raw =
               [config.durationMs, config.duration, config.delay].find(
                 (v) => v != null && !(typeof v === 'string' && v.trim() === ''),
-              ) ?? '1s';
+              ) ??
+              // Wait steps saved by older builds of the editor carry only
+              // `delayMinutes`: honour it rather than waiting one second.
+              (Number(config.delayMinutes) > 0
+                ? Number(config.delayMinutes) * 60_000
+                : '1s');
             // A bare number (or numeric string) is milliseconds; "5s" style strings pass through.
             const duration =
               typeof raw === 'string' && /^\s*\d+(\.\d+)?\s*$/.test(raw)

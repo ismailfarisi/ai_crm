@@ -4,21 +4,12 @@ import React, { useState } from 'react';
 import {
   X,
   Trash2,
-  Globe,
-  Mail,
   ShieldAlert,
   Split,
   Timer,
-  Database,
-  Code,
   Webhook,
-  Calendar,
   Layers,
-  HelpCircle,
   Clock,
-  Play,
-  RotateCcw,
-  CheckCircle2,
   MessageSquareText,
 } from 'lucide-react';
 import clsx from 'clsx';
@@ -33,9 +24,14 @@ import type {
 } from '@saas/shared';
 import { WebhookTriggerFields } from './webhook-trigger-fields';
 import { ScheduleTriggerFields } from './schedule-trigger-fields';
-import { ExpressionHelper } from './expression-helper';
+import { DataField } from './data-field';
+import { ConditionBuilder } from './condition-builder';
+import { DurationInput } from './duration-input';
 import { CrmStepFields } from './crm-step-fields';
 import { CRM_EVENTS, crmEventOf, findCrmEvent, normalizeCrmEventConfig } from '../crm-events';
+import { eventFieldsFor } from '../event-data';
+import { availableData, plainStepName, stepWording } from '../step-wording';
+import { delayConfig, formatDuration, parseDuration, readDelay } from '../duration';
 
 /** The trigger node that belongs to each automation trigger type. */
 const TRIGGER_NODE_TYPE: Record<AutomationTriggerType, string> = {
@@ -100,7 +96,6 @@ export function NodeInspectorDrawer({
   onRegenerateWebhook,
   onTriggerValidityChange,
 }: NodeInspectorDrawerProps) {
-  const [showHelper, setShowHelper] = useState(false);
   const [activeTab, setActiveTab] = useState<'params' | 'settings'>('params');
 
   if (!node) return null;
@@ -128,25 +123,8 @@ export function NodeInspectorDrawer({
     });
   };
 
-  const handleVariableInsert = (variableCode: string) => {
-    // If prompt or url or condition is focused, user can insert variable
-    if (node.type === 'aiPromptNode') {
-      const current = config.prompt || '';
-      handleConfigChange('prompt', `${current} ${variableCode}`.trim());
-    } else if (node.type === 'httpRequestNode') {
-      const current = config.url || '';
-      handleConfigChange('url', `${current}${variableCode}`);
-    } else if (node.type === 'conditionNode') {
-      const current = config.condition || '';
-      handleConfigChange('condition', `${current} ${variableCode}`.trim());
-    } else if (node.type === 'approvalNode') {
-      const current = config.message || '';
-      handleConfigChange('message', `${current} ${variableCode}`.trim());
-    } else if (node.type === 'sendEmailNode') {
-      const current = config.body || '';
-      handleConfigChange('body', `${current} ${variableCode}`.trim());
-    }
-  };
+  // What this step can use from the trigger and the steps before it.
+  const data = availableData(node.id, allNodes, edges);
 
   return (
     <aside
@@ -174,10 +152,10 @@ export function NodeInspectorDrawer({
           </div>
           <div className="min-w-0">
             <span className="text-[11px] font-semibold text-ink block truncate">
-              {node.type}
+              {stepWording(node.type)?.kind ?? 'Step'}
             </span>
             <h3 className="text-xs font-semibold text-ink truncate">
-              {node.data?.label || 'Node Configuration'}
+              {plainStepName(node.type, node.data?.label)}
             </h3>
           </div>
         </div>
@@ -189,7 +167,8 @@ export function NodeInspectorDrawer({
               data-testid="delete-node-btn"
               onClick={() => onDelete(node.id)}
               className="p-1.5 rounded-lg text-ink-subtle hover:text-danger hover:bg-danger-soft transition-colors cursor-pointer"
-              title="Delete Node"
+              title="Delete this step"
+              aria-label="Delete this step"
             >
               <Trash2 className="h-4 w-4" />
             </button>
@@ -199,7 +178,8 @@ export function NodeInspectorDrawer({
             data-testid="close-inspector-btn"
             onClick={onClose}
             className="p-1.5 rounded-lg text-ink-subtle hover:text-ink hover:bg-surface-muted transition-colors cursor-pointer"
-            title="Close Drawer"
+            title="Close"
+            aria-label="Close"
           >
             <X className="h-4 w-4" />
           </button>
@@ -219,7 +199,7 @@ export function NodeInspectorDrawer({
               : 'border-transparent text-ink-muted hover:text-ink',
           )}
         >
-          Parameters
+          Set up
         </button>
         <button
           type="button"
@@ -232,7 +212,7 @@ export function NodeInspectorDrawer({
               : 'border-transparent text-ink-muted hover:text-ink',
           )}
         >
-          Node Settings
+          If it fails
         </button>
       </div>
 
@@ -242,13 +222,13 @@ export function NodeInspectorDrawer({
           <>
             {/* Common Label Field */}
             <div className="space-y-1">
-              <label className="text-xs font-medium text-ink">Display Label</label>
+              <label className="text-xs font-medium text-ink">Step name</label>
               <input
                 type="text"
                 data-testid="node-label-input"
-                value={node.data?.label || ''}
+                value={plainStepName(node.type, node.data?.label)}
                 onChange={(e) => onUpdate(node.id, { label: e.target.value })}
-                placeholder="e.g. Generate AI Quotation"
+                placeholder="e.g. Tell the team"
                 className="w-full rounded-lg border border-border px-3 py-2 text-xs text-ink focus:border-brand focus:outline-none"
               />
             </div>
@@ -258,7 +238,7 @@ export function NodeInspectorDrawer({
               <div className="space-y-3 pt-2 border-t border-border/40">
                 <div className="grid grid-cols-3 gap-2">
                   <div className="col-span-1 space-y-1">
-                    <label className="text-[11px] font-medium text-ink">Method</label>
+                    <label className="text-[11px] font-medium text-ink">Type</label>
                     <select
                       data-testid="http-method-select"
                       value={config.method || 'GET'}
@@ -272,21 +252,20 @@ export function NodeInspectorDrawer({
                       <option value="DELETE">DELETE</option>
                     </select>
                   </div>
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-[11px] font-medium text-ink">URL Endpoint</label>
-                    <input
-                      type="text"
-                      data-testid="http-url-input"
+                  <div className="col-span-2">
+                    <DataField
+                      label="Web address"
+                      testId="http-url-input"
+                      groups={data}
                       value={config.url || ''}
-                      onChange={(e) => handleConfigChange('url', e.target.value)}
-                      placeholder="https://api.example.com/v1/resource"
-                      className="w-full rounded-lg border border-border px-3 py-1.5 text-xs font-mono text-ink focus:border-brand focus:outline-none"
+                      onChange={(v) => handleConfigChange('url', v)}
+                      placeholder="https://example.com/orders"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-ink">JSON Body Payload</label>
+                  <label className="text-[11px] font-medium text-ink">Data to send (JSON)</label>
                   <textarea
                     rows={3}
                     data-testid="http-body-input"
@@ -299,7 +278,7 @@ export function NodeInspectorDrawer({
                         handleConfigChange('body', e.target.value);
                       }
                     }}
-                    placeholder='{"key": "{{ $json.id }}"}'
+                    placeholder='{"quote": "{{ $trigger.payload.quoteNumber }}"}'
                     className="w-full rounded-lg border border-border p-2 text-xs font-mono text-ink focus:border-brand focus:outline-none resize-none"
                   />
                 </div>
@@ -309,175 +288,122 @@ export function NodeInspectorDrawer({
             {/* AI Prompt Node Config */}
             {node.type === 'aiPromptNode' && (
               <div className="space-y-3 pt-2 border-t border-border/40">
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-medium text-ink flex items-center gap-1">
-                      <MessageSquareText className="h-3 w-3 text-ink-muted" />
-                      LLM Prompt Template
-                    </label>
-                    <button
-                      type="button"
-                      data-testid="toggle-expression-helper-btn"
-                      onClick={() => setShowHelper(!showHelper)}
-                      className="text-[11px] text-ink font-semibold hover:underline cursor-pointer"
-                    >
-                      {showHelper ? 'Hide Variables' : 'Show Variables'}
-                    </button>
-                  </div>
-                  <textarea
-                    rows={6}
-                    data-testid="ai-prompt-input"
-                    value={config.prompt || ''}
-                    onChange={(e) => handleConfigChange('prompt', e.target.value)}
-                    placeholder="Analyze quote {{ $trigger.payload.quoteNumber }} for customer {{ $json.name }} and generate line items..."
-                    className="w-full rounded-lg border border-border p-2.5 text-xs font-mono text-ink focus:border-brand focus:outline-none resize-none leading-relaxed"
-                  />
-                </div>
+                <DataField
+                  label="What should the AI write?"
+                  icon={<MessageSquareText className="h-3 w-3 text-ink-muted" />}
+                  testId="ai-prompt-input"
+                  multiline
+                  rows={6}
+                  groups={data}
+                  value={config.prompt || ''}
+                  onChange={(v) => handleConfigChange('prompt', v)}
+                  placeholder="Write a short, friendly note telling the team this quote was accepted and what to do next."
+                  hint="Later steps can use what the AI wrote: pick it from Insert data."
+                />
               </div>
             )}
 
             {/* Approval Node Config */}
             {node.type === 'approvalNode' && (
               <div className="space-y-3 pt-2 border-t border-border/40">
-                <div className="p-3 rounded-xl bg-brand-soft/80 border border-brand/30 text-xs text-ink space-y-1">
-                  <div className="flex items-center gap-1.5 font-semibold">
-                    <ShieldAlert className="h-3.5 w-3.5 text-ink" />
-                    Human-in-the-Loop Approval Gate
-                  </div>
-                  <p className="text-[11px] text-ink/90 leading-relaxed">
-                    Workflow pauses awaiting a decision from anyone who can approve automations. Exposes 3 outbound branch handles:
-                    <span className="font-semibold text-success"> Approved</span>,
-                    <span className="font-semibold text-danger"> Rejected</span>, and
-                    <span className="font-semibold text-ink"> Timeout</span>.
-                  </p>
+                <div className="p-3 rounded-xl bg-brand-soft/80 border border-brand/30 text-[11px] text-ink/90 leading-relaxed">
+                  The automation pauses here until someone who can approve automations decides. It then follows the
+                  <span className="font-semibold text-success"> Approved</span>,
+                  <span className="font-semibold text-danger"> Rejected</span> or
+                  <span className="font-semibold text-ink"> No answer</span> path.
                 </div>
 
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-medium text-ink">Message for the approver</label>
-                    <button
-                      type="button"
-                      onClick={() => setShowHelper(!showHelper)}
-                      className="text-[11px] text-ink font-semibold hover:underline cursor-pointer"
-                    >
-                      {showHelper ? 'Hide Variables' : 'Show Variables'}
-                    </button>
-                  </div>
-                  <textarea
-                    rows={3}
-                    data-testid="approval-message-input"
-                    value={config.message || ''}
-                    onChange={(e) => handleConfigChange('message', e.target.value)}
-                    className="w-full rounded-lg border border-border p-2 text-xs text-ink focus:border-brand focus:outline-none resize-none"
-                  />
-                  <p className="text-[11px] text-ink-subtle">
-                    Shown in the Approvals inbox. You can use {'{{ }}'} expressions, e.g. {'{{ $trigger.payload.name }}'}.
-                  </p>
-                </div>
+                <DataField
+                  label="Message for the approver"
+                  testId="approval-message-input"
+                  multiline
+                  rows={3}
+                  groups={data}
+                  value={config.message || ''}
+                  onChange={(v) => handleConfigChange('message', v)}
+                  placeholder="Please approve the follow-up for this quote."
+                  hint="Shown in the Approvals inbox."
+                />
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-ink flex items-center gap-1">
+                  <span className="text-[11px] font-medium text-ink flex items-center gap-1">
                     <Clock className="h-3 w-3 text-ink-muted" />
-                    Timeout / SLA Escalation Duration
-                  </label>
-                  <input
-                    type="text"
-                    data-testid="approval-timeout-input"
-                    value={node.data?.timeoutDuration || '3 days'}
-                    onChange={(e) => onUpdate(node.id, { timeoutDuration: e.target.value })}
-                    placeholder="e.g. 24 hours, 3 days, 1 week"
-                    className="w-full rounded-lg border border-border px-3 py-2 text-xs font-mono text-ink focus:border-brand focus:outline-none"
+                    If nobody answers within
+                  </span>
+                  <DurationInput
+                    label="If nobody answers within"
+                    testId="approval-timeout-input"
+                    units={['hours', 'days', 'weeks']}
+                    value={parseDuration(node.data?.timeoutDuration) ?? { amount: 3, unit: 'days' }}
+                    onChange={(d) => onUpdate(node.id, { timeoutDuration: formatDuration(d) })}
                   />
-                  <p className="text-[11px] text-ink-subtle">
-                    If no action is taken within this duration, flow routes along the Timeout branch.
-                  </p>
+                  <p className="text-[11px] text-ink-subtle">Then the automation follows the No answer path.</p>
                 </div>
               </div>
             )}
 
             {/* Condition Node Config */}
             {node.type === 'conditionNode' && (
-              <div className="space-y-3 pt-2 border-t border-border/40">
-                <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-ink">
-                    JavaScript / Expression Condition
-                  </label>
-                  <input
-                    type="text"
-                    data-testid="condition-expression-input"
-                    value={config.condition || ''}
-                    onChange={(e) => handleConfigChange('condition', e.target.value)}
-                    placeholder="e.g. $json.amount > 10000 && $json.status === 'ACTIVE'"
-                    className="w-full rounded-lg border border-border px-3 py-2 text-xs font-mono text-ink focus:border-brand focus:outline-none"
-                  />
-                  <p className="text-[11px] text-ink-subtle">
-                    Routes to TRUE handle if truthy; otherwise routes to FALSE handle.
-                  </p>
-                </div>
-              </div>
+              <ConditionBuilder
+                key={node.id}
+                config={config}
+                groups={data}
+                onChange={(patch) => onUpdate(node.id, { config: { ...config, ...patch } })}
+              />
             )}
 
             {/* Send Email Node Config */}
             {node.type === 'sendEmailNode' && (
               <div className="space-y-3 pt-2 border-t border-border/40">
-                <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-ink">Recipient Email (To)</label>
-                  <input
-                    type="text"
-                    data-testid="email-to-input"
-                    value={config.to || ''}
-                    onChange={(e) => handleConfigChange('to', e.target.value)}
-                    placeholder="{{ $json.email }} or owner@company.com"
-                    className="w-full rounded-lg border border-border px-3 py-1.5 text-xs font-mono text-ink focus:border-brand focus:outline-none"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-ink">Subject</label>
-                  <input
-                    type="text"
-                    data-testid="email-subject-input"
-                    value={config.subject || ''}
-                    onChange={(e) => handleConfigChange('subject', e.target.value)}
-                    placeholder="Quotation {{ $trigger.payload.quoteNumber }} Ready"
-                    className="w-full rounded-lg border border-border px-3 py-1.5 text-xs text-ink focus:border-brand focus:outline-none"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-ink">Body Content</label>
-                  <textarea
-                    rows={4}
-                    data-testid="email-body-input"
-                    value={config.body || ''}
-                    onChange={(e) => handleConfigChange('body', e.target.value)}
-                    placeholder="Hello {{ $json.name }}, your quote total is ${{ $json.amount }}."
-                    className="w-full rounded-lg border border-border p-2 text-xs font-mono text-ink focus:border-brand focus:outline-none resize-none"
-                  />
-                  {aiHint && (
-                    <p data-testid="email-ai-hint" className="text-[11px] text-ink-muted">
-                      {aiHint}
-                    </p>
-                  )}
-                </div>
+                <DataField
+                  label="Send to"
+                  testId="email-to-input"
+                  groups={data}
+                  value={config.to || ''}
+                  onChange={(v) => handleConfigChange('to', v)}
+                  placeholder="team@yourworkshop.ae"
+                  hint="An email address, or pick the customer's with Insert data. Separate several with commas."
+                />
+                <DataField
+                  label="Subject"
+                  testId="email-subject-input"
+                  groups={data}
+                  value={config.subject || ''}
+                  onChange={(v) => handleConfigChange('subject', v)}
+                  placeholder="Quote accepted"
+                />
+                <DataField
+                  label="Message"
+                  testId="email-body-input"
+                  multiline
+                  rows={5}
+                  groups={data}
+                  value={config.body || ''}
+                  onChange={(v) => handleConfigChange('body', v)}
+                  placeholder="Write the message. Use Insert data to add details such as the quote number."
+                />
+                {aiHint && (
+                  <p data-testid="email-ai-hint" className="text-[11px] text-ink-muted">
+                    {aiHint}
+                  </p>
+                )}
               </div>
             )}
 
             {/* Delay Node Config */}
             {node.type === 'delayNode' && (
-              <div className="space-y-3 pt-2 border-t border-border/40">
-                <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-ink flex items-center gap-1">
-                    <Timer className="h-3 w-3 text-ink-muted" />
-                    Sleep Delay (Milliseconds or Duration)
-                  </label>
-                  <input
-                    type="text"
-                    data-testid="delay-duration-input"
-                    value={config.durationMs || '5000'}
-                    onChange={(e) => handleConfigChange('durationMs', e.target.value)}
-                    placeholder="5000 (ms)"
-                    className="w-full rounded-lg border border-border px-3 py-2 text-xs font-mono text-ink focus:border-brand focus:outline-none"
-                  />
-                </div>
+              <div className="space-y-1 pt-2 border-t border-border/40">
+                <span className="text-[11px] font-medium text-ink flex items-center gap-1">
+                  <Timer className="h-3 w-3 text-ink-muted" />
+                  Wait for
+                </span>
+                <DurationInput
+                  label="Wait for"
+                  testId="delay-duration-input"
+                  value={readDelay(config)}
+                  onChange={(d) => onUpdate(node.id, { config: { ...config, ...delayConfig(d) } })}
+                />
+                <p className="text-[11px] text-ink-subtle">The next step runs once this time has passed.</p>
               </div>
             )}
 
@@ -493,7 +419,7 @@ export function NodeInspectorDrawer({
             {/* Trigger Nodes (Webhook / Schedule / CRM Event), by the automation's trigger type */}
             {triggerEditor === 'mismatch' && (
               <p data-testid="trigger-type-mismatch" className="pt-2 border-t border-border/40 text-[11px] text-ink-muted">
-                This trigger doesn&apos;t match the automation&apos;s trigger type.
+                This isn&apos;t how this automation was set to start, so it has no settings here.
               </p>
             )}
 
@@ -523,7 +449,7 @@ export function NodeInspectorDrawer({
             {triggerEditor === 'CRM_EVENT' && (
               <div className="space-y-2 pt-2 border-t border-border/40">
                 <label htmlFor={`crm-event-${node.id}`} className="text-[11px] font-medium text-ink">
-                  CRM Event Trigger
+                  Start when
                 </label>
                 <select
                   id={`crm-event-${node.id}`}
@@ -547,6 +473,16 @@ export function NodeInspectorDrawer({
                     </option>
                   ))}
                 </select>
+                {eventFieldsFor(storedEvent).length > 0 && (
+                  <p data-testid="crm-event-fields" className="text-[11px] text-ink-muted">
+                    Later steps can use:{' '}
+                    {eventFieldsFor(storedEvent)
+                      .filter((f) => !/ ID$/.test(f.label))
+                      .map((f) => f.label)
+                      .join(', ')}
+                    .
+                  </p>
+                )}
                 {unknownEvent && (
                   <p
                     id={`crm-event-unknown-${node.id}`}
@@ -559,25 +495,15 @@ export function NodeInspectorDrawer({
               </div>
             )}
 
-            {/* Embedded Expression Helper */}
-            {showHelper && (
-              <div className="pt-3 border-t border-border/40">
-                <ExpressionHelper
-                  allNodes={allNodes}
-                  samplePayload={samplePayload}
-                  onSelectVariable={handleVariableInsert}
-                />
-              </div>
-            )}
-          </>
+                      </>
         ) : (
           /* Node Settings Tab */
           <div className="space-y-4">
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-surface-muted/60">
               <div>
-                <h5 className="text-xs font-semibold text-ink">Continue on Fail</h5>
+                <h5 className="text-xs font-semibold text-ink">Carry on if this step fails</h5>
                 <p className="text-[11px] text-ink-muted">
-                  Keep executing subsequent nodes if this node errors.
+                  The steps after it still run. Off: the automation stops here.
                 </p>
               </div>
               <input
@@ -590,7 +516,7 @@ export function NodeInspectorDrawer({
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-medium text-ink">Retry Attempts</label>
+              <label className="text-xs font-medium text-ink">Try again</label>
               <input
                 type="number"
                 min={0}
@@ -601,7 +527,7 @@ export function NodeInspectorDrawer({
                 className="w-full rounded-lg border border-border px-3 py-2 text-xs text-ink"
               />
               <p className="text-[11px] text-ink-subtle">
-                Number of automatic retries with exponential backoff on failure.
+                How many more times to try before giving up, waiting a little longer each time.
               </p>
             </div>
           </div>

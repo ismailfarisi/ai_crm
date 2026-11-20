@@ -5,6 +5,7 @@ import { Code2 } from 'lucide-react';
 import type { NodeProps, Node } from '@xyflow/react';
 import type { AutomationNodeData } from '@saas/shared';
 import { BaseNode } from './base-node';
+import { plainStepName } from '../step-wording';
 
 export interface TransformNodeData extends AutomationNodeData {
   config: {
@@ -25,8 +26,8 @@ export function TransformNode({
   return (
     <BaseNode
       icon={Code2}
-      title={nodeData.label || 'Data Transform'}
-      category="Transform"
+      title={plainStepName('transformNode', nodeData.label)}
+      category="Do something"
       status={status}
       selected={selected}
       hasInput={true}

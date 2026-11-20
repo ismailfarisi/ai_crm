@@ -258,7 +258,7 @@ describe('NodeInspectorDrawer trigger sections', () => {
         />,
       );
       expect(screen.getByTestId('trigger-type-mismatch').textContent).toBe(
-        "This trigger doesn't match the automation's trigger type.",
+        "This isn't how this automation was set to start, so it has no settings here.",
       );
       expect(screen.queryByTestId('webhook-url')).toBeNull();
       expect(screen.queryByTestId('schedule-frequency')).toBeNull();
