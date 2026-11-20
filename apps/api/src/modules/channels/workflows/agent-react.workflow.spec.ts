@@ -73,7 +73,7 @@ describe('agentReActWorkflow logic', () => {
       prompt: 'What is the capital of France?',
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       status: 'COMPLETED',
       finalResponse: 'The capital of France is Paris.',
       stepsExecuted: 1,
@@ -114,7 +114,7 @@ describe('agentReActWorkflow logic', () => {
       prompt: 'How much does it cost?',
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       status: 'COMPLETED',
       finalResponse: 'Pricing is $20/month.',
       stepsExecuted: 2,
@@ -176,7 +176,7 @@ describe('agentReActWorkflow logic', () => {
       prompt: 'Please refund payment pay-999.',
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       status: 'COMPLETED',
       finalResponse: 'Refund of $50 has been issued successfully.',
       stepsExecuted: 2,
@@ -227,7 +227,7 @@ describe('agentReActWorkflow logic', () => {
       prompt: 'Delete target account target-001.',
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       status: 'REJECTED',
       finalResponse: 'Action deleteAccount was rejected: Denied by admin',
       stepsExecuted: 1,
@@ -265,7 +265,7 @@ describe('agentReActWorkflow logic', () => {
       prompt: 'Delete target account target-001.',
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       status: 'TIMED_OUT',
       finalResponse: 'Approval for deleteAccount timed out.',
       stepsExecuted: 1,
@@ -315,7 +315,7 @@ describe('agentReActWorkflow logic', () => {
       prompt: 'Queue test',
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       status: 'COMPLETED',
       finalResponse: 'Both actions processed.',
       stepsExecuted: 3,
@@ -355,7 +355,7 @@ describe('agentReActWorkflow logic', () => {
       prompt: 'Run flaky tool.',
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       status: 'COMPLETED',
       finalResponse: 'Sorry, the service is temporarily unavailable.',
       stepsExecuted: 2,
@@ -453,7 +453,7 @@ describe('agentReActWorkflow logic', () => {
       maxTurns: 3,
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       status: 'FAILED',
       finalResponse:
         'Agent stopped after reaching the 3-turn limit without a final answer.',
@@ -514,6 +514,156 @@ describe('automation path (no event sink)', () => {
     expect(result.status).toBe('COMPLETED');
     expect(parentSignal).toHaveBeenCalledTimes(1);
     expect(mockActivities.commitToolMutationActivity).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('running as an agent, and the record of what it did', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockHandlers.clear();
+    mockActivities.planReActTurn.mockReset();
+    mockActivities.executeToolActivity.mockReset();
+    mockActivities.commitToolMutationActivity.mockReset();
+    mockActivities.listAvailableTools.mockResolvedValue([]);
+    mockConditionImpl = async (pred) => pred();
+  });
+
+  const base = { organizationId: 'o', userId: 'u', conversationId: 'c', prompt: 'Chase Q-1' };
+  const agent = { id: 'agent-1', name: 'Quote chaser' };
+  const lookup = { id: 'l1', name: 'quote.lookup', args: { quote: 'Q-1' } };
+  const send = { id: 's1', name: 'quote.send', args: { quote: 'Q-1' } };
+
+  const planLookupThenSend = () => {
+    mockActivities.planReActTurn
+      .mockResolvedValueOnce({ thought: '', model: 'model-x', agent, toolCalls: [lookup, send] })
+      .mockResolvedValueOnce({ thought: '', model: 'model-x', agent, finalAnswer: 'Sent Q-1.' });
+    mockActivities.executeToolActivity
+      .mockResolvedValueOnce({
+        toolCallId: 'l1', toolName: 'quote.lookup', isMutating: false, requiresApproval: false,
+        output: { reply: 'Q-1 is a draft for Al Noor, AED 4,200' },
+      })
+      .mockResolvedValueOnce({
+        toolCallId: 's1', toolName: 'quote.send', isMutating: true, requiresApproval: true,
+        previewPayload: { summary: 'Send Q-1 to Al Noor' },
+      });
+    mockActivities.commitToolMutationActivity.mockResolvedValue({ success: true, resultSummary: 'Sent Q-1 to Al Noor.' });
+  };
+
+  it('hands the agent to every activity that decides what the run may do', async () => {
+    planLookupThenSend();
+    mockConditionImpl = async (predicate) => {
+      mockHandlers.get(approvalSignal)!({ approved: true });
+      return predicate();
+    };
+
+    await agentReActWorkflow({ ...base, agentId: 'agent-1' });
+
+    expect(mockActivities.listAvailableTools).toHaveBeenCalledWith({
+      organizationId: 'o', userId: 'u', allowedDomains: undefined, agentId: 'agent-1',
+    });
+    expect(mockActivities.planReActTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ agentId: 'agent-1' }),
+    );
+    const ctx = { organizationId: 'o', userId: 'u', message: 'Chase Q-1', agentId: 'agent-1' };
+    expect(mockActivities.executeToolActivity).toHaveBeenCalledWith(expect.objectContaining({ id: 'l1' }), ctx);
+    expect(mockActivities.executeToolActivity).toHaveBeenCalledWith(expect.objectContaining({ id: 's1' }), ctx);
+    expect(mockActivities.commitToolMutationActivity).toHaveBeenCalledWith(expect.objectContaining({ id: 's1' }), ctx);
+  });
+
+  it('a run that names no agent sends none', async () => {
+    mockActivities.planReActTurn.mockResolvedValueOnce({ thought: '', finalAnswer: 'done' });
+
+    const result = await agentReActWorkflow(base);
+
+    expect(mockActivities.planReActTurn.mock.calls[0][0]).not.toHaveProperty('agentId');
+    expect(mockActivities.listAvailableTools.mock.calls[0][0]).not.toHaveProperty('agentId');
+    expect(result).toEqual({ status: 'COMPLETED', finalResponse: 'done', stepsExecuted: 1, actions: [] });
+  });
+
+  it('still waits for approval before a change, and records who the run acted as and each thing it did', async () => {
+    planLookupThenSend();
+    let committedBeforeDecision = false;
+    mockConditionImpl = async (predicate) => {
+      committedBeforeDecision = mockActivities.commitToolMutationActivity.mock.calls.length > 0;
+      mockHandlers.get(approvalSignal)!({ approved: true });
+      return predicate();
+    };
+
+    const result = await agentReActWorkflow({ ...base, agentId: 'agent-1' });
+
+    expect(committedBeforeDecision).toBe(false);
+    expect(result).toEqual({
+      status: 'COMPLETED',
+      finalResponse: 'Sent Q-1.',
+      stepsExecuted: 2,
+      agent,
+      model: 'model-x',
+      actions: [
+        { tool: 'quote.lookup', status: 'DONE', summary: 'Q-1 is a draft for Al Noor, AED 4,200', changedData: false },
+        { tool: 'quote.send', status: 'DONE', summary: 'Sent Q-1 to Al Noor.', changedData: true, approved: true },
+      ],
+    });
+  });
+
+  it('marks a change made without asking, when the step allows it', async () => {
+    planLookupThenSend();
+
+    const result = await agentReActWorkflow({ ...base, autoApprove: true });
+
+    expect(result.actions?.[1]).toEqual({
+      tool: 'quote.send', status: 'DONE', summary: 'Sent Q-1 to Al Noor.', changedData: true, approved: false,
+    });
+  });
+
+  it('records a rejected change as not done', async () => {
+    planLookupThenSend();
+    mockConditionImpl = async (predicate) => {
+      mockHandlers.get(approvalSignal)!({ approved: false, note: 'Wrong price' });
+      return predicate();
+    };
+
+    const result = await agentReActWorkflow(base);
+
+    expect(result.status).toBe('REJECTED');
+    expect(mockActivities.commitToolMutationActivity).not.toHaveBeenCalled();
+    expect(result.actions).toEqual([
+      expect.objectContaining({ tool: 'quote.lookup', status: 'DONE' }),
+      { tool: 'quote.send', status: 'REJECTED', summary: 'Not done, it was rejected: Send Q-1 to Al Noor', changedData: false },
+    ]);
+  });
+
+  it('records a change nobody approved in time as not done', async () => {
+    planLookupThenSend();
+    mockConditionImpl = async () => false;
+
+    const result = await agentReActWorkflow(base);
+
+    expect(result.status).toBe('TIMED_OUT');
+    expect(result.actions?.[1]).toEqual({
+      tool: 'quote.send', status: 'TIMED_OUT', summary: 'Not done, nobody approved it in time: Send Q-1 to Al Noor', changedData: false,
+    });
+  });
+
+  it('records a tool that failed and one the agent does not have', async () => {
+    mockActivities.planReActTurn
+      .mockResolvedValueOnce({
+        thought: '',
+        toolCalls: [lookup],
+        invalidToolCalls: [{ id: 'x1', name: 'invoice.void' }],
+      })
+      .mockResolvedValueOnce({ thought: '', finalAnswer: 'Could not find it.' });
+    mockActivities.executeToolActivity.mockResolvedValueOnce({
+      toolCallId: 'l1', toolName: 'quote.lookup', isMutating: false, requiresApproval: false,
+      output: { error: 'No quote matches Q-1' },
+    });
+
+    const result = await agentReActWorkflow(base);
+
+    expect(mockActivities.executeToolActivity).toHaveBeenCalledTimes(1);
+    expect(result.actions).toEqual([
+      { tool: 'invoice.void', status: 'FAILED', summary: 'The agent asked for a tool it does not have.', changedData: false },
+      { tool: 'quote.lookup', status: 'FAILED', summary: 'No quote matches Q-1', changedData: false },
+    ]);
   });
 });
 

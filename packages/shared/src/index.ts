@@ -28,6 +28,7 @@ export * from './quotes/units';
 export * from './schemas/quote-send';
 export * from './automations/types';
 export * from './automations/ai-output';
+export * from './automations/ai-agent-step';
 export * from './automations/schedule';
 export * from './finance/ledger';
 export * from './finance/types';
