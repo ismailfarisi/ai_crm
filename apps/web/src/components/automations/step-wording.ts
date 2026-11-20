@@ -71,8 +71,8 @@ export const STEP_WORDING: Record<AutomationNodeType, StepWording> = {
     kind: 'Do something',
   },
   aiAgentNode: {
-    label: 'Hand over to an AI assistant',
-    description: 'Give an AI assistant a goal; it asks for approval before it changes anything',
+    label: 'AI agent',
+    description: 'Give one of your agents a task; it asks for approval before it changes anything',
     kind: 'Do something',
   },
   httpRequestNode: {
