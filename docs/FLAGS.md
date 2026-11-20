@@ -1260,7 +1260,7 @@ user may use: the tools are those the user is permitted on the automation
 surface that the agent also lists. Custom-object tools are left out for a named
 agent, because an agent cannot be given them in Settings. Customer agents
 cannot be picked, and a step naming one fails: they are built for someone
-outside the organisation. When an agent is picked the builder drops the step's `allowedDomains`,
+outside the organisation. A step that names an agent ignores its `allowedDomains`,
 so the agent's tool list is the only narrowing.
 
 A step with no task, or naming an agent that is deleted or switched off, stops

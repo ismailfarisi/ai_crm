@@ -51,7 +51,15 @@ function Inspector({
         allNodes={[node]}
         onClose={vi.fn()}
         onUpdate={(_id, data) => {
-          setNode((current) => ({ ...current, data: { ...current.data, ...data } }));
+          // Merges config key by key, as the canvas's updateNodeData does.
+          setNode((current) => ({
+            ...current,
+            data: {
+              ...current.data,
+              ...data,
+              config: { ...current.data.config, ...(data.config ?? {}) },
+            },
+          }));
           if (data.config) onConfig?.(data.config);
         }}
       />
@@ -128,7 +136,8 @@ describe('AI agent step settings', () => {
 
     fireEvent.change(screen.getByTestId('agent-step-agent-select'), { target: { value: 'agent-1' } });
 
-    expect(onConfig).toHaveBeenLastCalledWith({ goal: 'x', agentId: 'agent-1' });
+    expect(onConfig).toHaveBeenLastCalledWith({ goal: 'x', agentId: 'agent-1', allowedDomains: null });
+    expect((screen.getByTestId('agent-step-agent-select') as HTMLSelectElement).value).toBe('agent-1');
     const summary = screen.getByTestId('agent-step-agent-summary').textContent;
     expect(summary).toContain('Follows up quotes nobody answered');
     expect(summary).toContain('Tools: Quote lookup, Quote create.');
@@ -140,7 +149,14 @@ describe('AI agent step settings', () => {
 
     fireEvent.change(screen.getByTestId('agent-step-agent-select'), { target: { value: '' } });
 
-    expect(onConfig).toHaveBeenLastCalledWith({ goal: 'x', allowedDomains: ['SALES', 'GENERAL'] });
+    expect(onConfig).toHaveBeenLastCalledWith({
+      goal: 'x',
+      agentId: null,
+      allowedDomains: ['SALES', 'GENERAL'],
+    });
+    // The step's own config is merged, not replaced: the choice must stick.
+    expect((screen.getByTestId('agent-step-agent-select') as HTMLSelectElement).value).toBe('');
+    expect(screen.queryByTestId('agent-step-agent-summary')).toBeNull();
   });
 
   it('says so when the saved agent was deleted', () => {

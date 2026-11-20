@@ -66,16 +66,14 @@ export function AiAgentStepFields({
   const waitKnown = WAIT_OPTIONS.some((option) => option.value === wait);
 
   const pickAgent = (picked: string) => {
-    const next: Record<string, unknown> = { ...config };
-    if (picked) {
-      next.agentId = picked;
-      // The agent's own tool list decides what it can use.
-      delete next.allowedDomains;
-    } else {
-      delete next.agentId;
-      next.allowedDomains = DEFAULT_DOMAINS;
-    }
-    onChange(next);
+    // The canvas merges a step's config key by key, so a key is cleared by
+    // setting it, not by leaving it out.
+    onChange(
+      picked
+        ? // The agent's own tool list decides what it can use.
+          { ...config, agentId: picked, allowedDomains: null }
+        : { ...config, agentId: null, allowedDomains: DEFAULT_DOMAINS },
+    );
   };
 
   return (

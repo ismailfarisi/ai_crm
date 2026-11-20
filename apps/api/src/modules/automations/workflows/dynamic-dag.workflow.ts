@@ -547,7 +547,11 @@ export async function dynamicDagWorkflow(
                   parentWorkflowId: workflowInfo().workflowId,
                   automationNodeId: node.id,
                   autoApprove,
-                  allowedDomains: aiConfig.allowedDomains,
+                  // A named agent's tool list is the narrowing; a domain
+                  // limit left on the step would hide tools it was given.
+                  allowedDomains: agentId
+                    ? undefined
+                    : (aiConfig.allowedDomains ?? undefined),
                   approvalTimeout: timeoutDuration,
                   maxTurns: 10,
                   // The agent's tools narrow what `userId` may use; the

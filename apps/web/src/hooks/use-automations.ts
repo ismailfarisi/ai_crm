@@ -56,6 +56,10 @@ export function useAutomationAgentOptions() {
   return useQuery({
     queryKey: queryKeys.automationAgentOptions,
     queryFn: () => api.automations.agentOptions(),
+    // Agents are switched on and off in Settings; coming back to the builder
+    // must not show the list from before.
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 }
 

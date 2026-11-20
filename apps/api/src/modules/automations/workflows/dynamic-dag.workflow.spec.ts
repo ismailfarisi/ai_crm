@@ -816,11 +816,25 @@ describe('DynamicDagWorkflow', () => {
       );
     });
 
-    it('a step with no agent runs the general assistant', async () => {
-      const { childInput } = await runStep({ goal: 'Chase it', agentId: null });
+    it('a step with no agent runs the general assistant, within the step\'s domains', async () => {
+      const { childInput } = await runStep({
+        goal: 'Chase it',
+        agentId: null,
+        allowedDomains: ['SALES', 'GENERAL'],
+      });
 
       expect(childInput).not.toHaveProperty('agentId');
+      expect(childInput.allowedDomains).toEqual(['SALES', 'GENERAL']);
     });
+
+    it.each([[['SALES', 'GENERAL']], [null]])(
+      'a named agent is not limited by the step\'s domains (%p)',
+      async (allowedDomains) => {
+        const { childInput } = await runStep({ goal: 'Chase it', agentId: 'agent-1', allowedDomains });
+
+        expect(childInput.allowedDomains).toBeUndefined();
+      },
+    );
 
     it('fills the task with data from the trigger and earlier steps', async () => {
       const { childInput } = await runStep(
