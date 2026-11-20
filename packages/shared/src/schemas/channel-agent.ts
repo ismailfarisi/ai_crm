@@ -10,7 +10,7 @@ export type ChannelAgentKind = z.infer<typeof ChannelAgentKindEnum>;
  * An agent an organisation defines for itself: what it handles, how it should
  * behave, the model it runs on, the tools it may use and where it answers.
  */
-export const createChannelAgentSchema = z.object({
+const channelAgentFields = {
   name: z.string().trim().min(1, 'Name is required').max(80),
   /** One line saying what this agent handles. The router picks an agent by this. */
   description: z.string().trim().min(1, 'Say what this agent handles').max(300),
@@ -20,14 +20,23 @@ export const createChannelAgentSchema = z.object({
   model: agentModelField,
   /** Null uses the organisation's default provider. */
   provider: agentProviderField,
-  /** Names of the chat skills this agent may use. */
-  skills: z.array(z.string().max(60)).max(50).default([]),
-  channels: z.array(ChannelProviderEnum).default([]),
-  isEnabled: z.boolean().default(true),
+  /** Names of the tools this agent may use. */
+  skills: z.array(z.string().max(60)).max(50),
+  channels: z.array(ChannelProviderEnum),
+  isEnabled: z.boolean(),
+};
+
+export const createChannelAgentSchema = z.object({
+  ...channelAgentFields,
+  skills: channelAgentFields.skills.default([]),
+  channels: channelAgentFields.channels.default([]),
+  isEnabled: channelAgentFields.isEnabled.default(true),
 });
 export type CreateChannelAgentPayload = z.infer<typeof createChannelAgentSchema>;
 
-export const updateChannelAgentSchema = createChannelAgentSchema.partial();
+// Built from the fields without their defaults: a default on an update would
+// overwrite whatever the request left out.
+export const updateChannelAgentSchema = z.object(channelAgentFields).partial();
 export type UpdateChannelAgentPayload = z.infer<typeof updateChannelAgentSchema>;
 
 export interface ChannelAgentDto {
