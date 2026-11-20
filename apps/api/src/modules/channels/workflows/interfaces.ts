@@ -1,4 +1,5 @@
 import { defineSignal } from '@temporalio/workflow';
+import type { ChannelHandoverReason } from '@saas/shared';
 import { ChannelProviderType } from '../entities/channel-config.entity';
 import { MessageAiIntent } from '../entities/channel-message.entity';
 import { ChannelTranscriptTurn } from '../agents/intent-classifier.agent';
@@ -120,4 +121,16 @@ export interface SendClarifyingQuestionParams {
   senderIdentifier: string;
   contactId: string;
   question: string;
+}
+
+export interface HandOverToHumanParams {
+  organizationId: string;
+  provider: ChannelProviderType;
+  contactId: string;
+  senderIdentifier: string;
+  reason: ChannelHandoverReason;
+  /** What the AI understood so far, shown to whoever picks the conversation up. */
+  summary?: string | null;
+  /** Tell the customer a person will reply. Only where the AI has been chatting with them. */
+  notifyCustomer: boolean;
 }

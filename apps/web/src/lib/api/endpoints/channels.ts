@@ -2,6 +2,7 @@
  * Split out of a single 477-line module so that two feature branches adding
  * endpoints no longer edit the same two objects. */
 import type {
+  ChannelThreadDto,
   ChannelLinkCodeDto,
   StaffChannelIdentityDto,
   ContactDto,
@@ -38,6 +39,11 @@ export interface ChannelMessageDto {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   metadata?: Record<string, any>;
   status: 'pending' | 'sent' | 'delivered' | 'failed' | 'received';
+  /** What the AI read into an inbound message; absent until it has looked. */
+  aiIntent?: string | null;
+  aiConfidence?: number | null;
+  aiSummary?: string | null;
+  aiSuggestedReply?: string | null;
   createdAt: string;
 }
 export interface ChannelConfigDto {
@@ -89,6 +95,13 @@ export const channelsEndpoints = {
       apiFetch<ChannelMessageDto[]>('/channels/messages', { query: params }),
     sendMessage: (input: SendChannelMessagePayload) =>
       apiFetch<ChannelMessageDto>('/channels/send', { method: 'POST', body: input }),
+    threads: () => apiFetch<ChannelThreadDto[]>('/channels/threads'),
+    takeOverThread: (id: string) =>
+      apiFetch<unknown>(`/channels/threads/${id}/take-over`, { method: 'POST' }),
+    returnThreadToAi: (id: string) =>
+      apiFetch<unknown>(`/channels/threads/${id}/return-to-ai`, { method: 'POST' }),
+    resolveThread: (id: string) =>
+      apiFetch<unknown>(`/channels/threads/${id}/resolve`, { method: 'POST' }),
     identities: {
       list: () => apiFetch<StaffChannelIdentityDto[]>('/channels/identities'),
       createLinkCode: () =>
@@ -118,5 +131,6 @@ export const channelsEndpoints = {
 };
 
 export const channelsKeys = {
+  channelThreads: ['channels', 'threads'] as const,
   channels: ['channels', 'configs'] as const,  channelIdentities: ['channels', 'identities'] as const,  channelMessages: (params: { contactId?: string; limit?: number } = {}) =>
     ['channels', 'messages', params] as const,  aiAgents: ['ai', 'agents'] as const,  intentAgentConfig: ['ai', 'intent-agent-config'] as const,};

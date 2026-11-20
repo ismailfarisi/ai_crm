@@ -5,6 +5,7 @@ export * from './schemas/channel';
 export * from './schemas/email';
 export * from './email/types';
 export * from './schemas/ai-provider';
+export * from './schemas/channel-thread';
 export * from './schemas/ai-model';
 export * from './schemas/ai-agent';
 export * from './schemas/intent-agent-config';

@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { InboxThreadList, type ProviderFilter, type ThreadGroup } from './inbox-thread-list';
 import { InboxChatPanel } from './inbox-chat-panel';
+import { pickHandover } from './handover';
 
 export function InboxWorkspace() {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
@@ -32,6 +33,13 @@ export function InboxWorkspace() {
     queryKey: queryKeys.channelMessages(),
     queryFn: () => api.channels.messages({ limit: 100 }),
     refetchInterval: 10000, // Poll every 10 seconds for new messages
+  });
+
+  // Who is answering each conversation: the AI or a person.
+  const { data: handovers } = useQuery({
+    queryKey: queryKeys.channelThreads,
+    queryFn: api.channels.threads,
+    refetchInterval: 10000,
   });
 
   // Fetch contacts for resolving names/details if message relation missing
@@ -103,12 +111,15 @@ export function InboxWorkspace() {
     }
 
     const result = Array.from(threadMap.values());
+    for (const thread of result) {
+      thread.handover = pickHandover(handovers, thread.contactId);
+    }
 
     // Sort threads by last message time (descending)
     result.sort((a, b) => new Date(b.lastMessage.createdAt).getTime() - new Date(a.lastMessage.createdAt).getTime());
 
     return result;
-  }, [messages, contactsMap]);
+  }, [messages, contactsMap, handovers]);
 
   // The thread the user opened, if it is still in the list.
   const openedThread = useMemo(

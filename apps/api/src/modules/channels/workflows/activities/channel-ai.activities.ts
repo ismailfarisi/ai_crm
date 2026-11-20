@@ -18,7 +18,11 @@ import {
   PersistClassificationParams,
   PersistDispatchResultParams,
   SendClarifyingQuestionParams,
+  HandOverToHumanParams,
 } from '../interfaces';
+import { DEFAULT_HANDOVER_MESSAGE } from '@saas/shared';
+import type { ChannelThreadService } from '../../services/channel-thread.service';
+import type { IntentAgentConfigService } from '../../services/intent-agent-config.service';
 
 /**
  * Thin Temporal adapter — all real logic lives in the classifier/handlers.
@@ -33,6 +37,8 @@ export function createChannelAiActivities(deps: {
   aiAgentService: AiAgentService;
   tenantContext: TenantContextService;
   idempotency: Pick<ChannelIdempotencyService, 'runOnce'>;
+  threads?: Pick<ChannelThreadService, 'handOver'>;
+  intentAgentConfigService?: Pick<IntentAgentConfigService, 'getEffective'>;
 }) {
   const classifier = new IntentClassifierAgent(deps.aiService);
   const actionHandlers = createActionHandlerRegistry({
@@ -171,6 +177,46 @@ export function createChannelAiActivities(deps: {
             body: params.question,
           },
         ),
+      );
+    },
+
+    /**
+     * The AI steps back from a conversation: it is marked as needing a
+     * person, staff are notified, and the customer is told when the AI had
+     * been talking to them. Does nothing if a person already holds it.
+     */
+    async handOverToHumanActivity(
+      params: HandOverToHumanParams,
+    ): Promise<{ handedOver: boolean }> {
+      const { threads, intentAgentConfigService } = deps;
+      if (!threads) return { handedOver: false };
+      return deps.tenantContext.runWithTenant(
+        params.organizationId,
+        async () => {
+          const { handedOver } = await threads.handOver({
+            organizationId: params.organizationId,
+            provider: params.provider,
+            contactId: params.contactId,
+            reason: params.reason,
+            summary: params.summary,
+          });
+          if (handedOver && params.notifyCustomer) {
+            const config = await intentAgentConfigService?.getEffective(
+              params.organizationId,
+            );
+            await deps.channelsService.sendMessage(
+              params.organizationId,
+              'system:ai-handover',
+              {
+                provider: params.provider,
+                recipient: params.senderIdentifier,
+                contactId: params.contactId,
+                body: config?.handoverMessage?.trim() || DEFAULT_HANDOVER_MESSAGE,
+              },
+            );
+          }
+          return { handedOver };
+        },
       );
     },
   };

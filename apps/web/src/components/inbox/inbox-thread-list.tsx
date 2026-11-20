@@ -7,6 +7,8 @@ import type { ChannelMessageDto } from '@/lib/api/endpoints';
 import { formatRelative, initials } from '@/lib/utils';
 import { Input } from '@/components/ui/field';
 import { Badge } from '@/components/ui/primitives';
+import type { ChannelThreadDto } from '@saas/shared';
+import { HandoverBadge } from './handover';
 
 export type ProviderFilter = 'ALL' | 'WHATSAPP' | 'TELEGRAM' | 'EMAIL';
 
@@ -25,6 +27,8 @@ export interface ThreadGroup {
   lastMessage: ChannelMessageDto;
   messages: ChannelMessageDto[];
   providers: Set<string>;
+  /** Who is answering: the AI or a person. Absent for a conversation the AI never saw. */
+  handover?: ChannelThreadDto;
 }
 
 interface InboxThreadListProps {
@@ -165,6 +169,7 @@ export function InboxThreadList({
                         {thread.name}
                       </span>
                       {thread.staffUser && <Badge className="shrink-0">Staff</Badge>}
+                      <HandoverBadge handover={thread.handover} />
                     </div>
                     <span className="shrink-0 text-xs tabular-nums text-ink-subtle">
                       {formatRelative(lastMsg.createdAt)}

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { MessageCircleQuestion } from 'lucide-react';
 import {
+  DEFAULT_HANDOVER_MESSAGE,
   PERMISSIONS,
   type IntentAgentConfigDto,
   type UpsertIntentAgentConfigPayload,
@@ -32,6 +33,7 @@ export function IntentAgentConfigView() {
   const [systemPrompt, setSystemPrompt] = useState('');
   const [model, setModel] = useState('');
   const [aiProvider, setAiProvider] = useState('');
+  const [handoverMessage, setHandoverMessage] = useState('');
   const [eligibleProviders, setEligibleProviders] = useState<string[]>([
     'TELEGRAM',
     'WHATSAPP_META',
@@ -48,6 +50,7 @@ export function IntentAgentConfigView() {
     setSystemPrompt(config.systemPrompt ?? '');
     setModel(config.model ?? '');
     setAiProvider(config.provider ?? '');
+    setHandoverMessage(config.handoverMessage ?? '');
     setEligibleProviders(config.eligibleProviders);
   }
 
@@ -67,6 +70,7 @@ export function IntentAgentConfigView() {
       // Blank means "use the default model", which is what null encodes.
       model: model.trim() || null,
       provider: (aiProvider || null) as UpsertIntentAgentConfigPayload['provider'],
+      handoverMessage: handoverMessage.trim() || null,
       eligibleProviders:
         eligibleProviders as UpsertIntentAgentConfigPayload['eligibleProviders'],
     });
@@ -157,6 +161,14 @@ export function IntentAgentConfigView() {
             }}
             placeholder="Default model"
             hint="Leave blank to use the default model from Models above."
+          />
+
+          <Textarea
+            label="Handover message"
+            hint="Sent to the customer when the AI passes the conversation to a person. Leave blank to use the standard wording."
+            placeholder={DEFAULT_HANDOVER_MESSAGE}
+            value={handoverMessage}
+            onChange={(e) => setHandoverMessage(e.target.value)}
           />
 
           <fieldset>

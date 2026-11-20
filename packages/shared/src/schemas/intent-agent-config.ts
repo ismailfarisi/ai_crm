@@ -14,6 +14,8 @@ export const upsertIntentAgentConfigSchema = z.object({
   model: agentModelField,
   /** Null uses the organisation's default provider. */
   provider: agentProviderField,
+  /** Sent to the customer when the AI hands over to a person; null uses the built-in wording. */
+  handoverMessage: z.string().trim().max(500).nullish().transform((v) => v || null),
 });
 export type UpsertIntentAgentConfigPayload = z.infer<
   typeof upsertIntentAgentConfigSchema
@@ -32,6 +34,7 @@ export interface IntentAgentConfigDto {
   model: string | null;
   /** Null means the organisation's default provider. */
   provider: string | null;
+  handoverMessage: string | null;
   createdAt?: string;
   updatedAt?: string;
 }

@@ -44,6 +44,7 @@ import {
 } from './workflows/channel-ai.workflow';
 import { newInboundMessageSignal } from './workflows/interfaces';
 import { IntentAgentConfigService } from './services/intent-agent-config.service';
+import { ChannelThreadService } from './services/channel-thread.service';
 
 export interface SendMessageDto {
   contactId?: string;
@@ -70,6 +71,8 @@ export class ChannelsService {
     private readonly intentAgentConfigService: IntentAgentConfigService,
     @Optional()
     private readonly tenantContext?: TenantContextService,
+    @Optional()
+    private readonly threads?: ChannelThreadService,
   ) {}
 
   /** The URL the given provider's inbound webhook is reachable at — must match the route in ChannelsWebhookController. */
@@ -659,6 +662,15 @@ export class ChannelsService {
             body: commandResult.reply.body,
           });
         }
+        return { success: true };
+      }
+
+      // A conversation a person holds, or is waiting to be picked up, is
+      // left to them: the AI neither classifies nor replies.
+      if (
+        this.threads &&
+        !(await this.threads.admitInbound(orgId, provider, contact.id))
+      ) {
         return { success: true };
       }
 

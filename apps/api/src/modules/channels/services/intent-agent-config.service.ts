@@ -12,6 +12,7 @@ const DEFAULTS = {
   /** Null runs the conversational agent on the organization's default model. */
   model: null as string | null,
   provider: null as string | null,
+  handoverMessage: null as string | null,
   eligibleProviders: [
     ChannelProviderType.TELEGRAM,
     ChannelProviderType.WHATSAPP_META,
@@ -26,6 +27,7 @@ export interface UpsertIntentAgentConfigInput {
   /** Null clears the override; absent leaves it alone. */
   model?: string | null;
   provider?: string | null;
+  handoverMessage?: string | null;
   /** Widened to string[] at the boundary — the zod schema (channel provider enum) already validated the values. */
   eligibleProviders?: string[];
 }
