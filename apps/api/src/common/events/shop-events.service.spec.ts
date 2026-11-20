@@ -1,4 +1,9 @@
-import { SHOP_EVENTS, type ShopEventType } from '@saas/shared';
+import {
+  AUTOMATION_LOOKUP_SAMPLES,
+  SHOP_EVENTS,
+  type ShopEventType,
+} from '@saas/shared';
+import { z } from 'zod';
 import type { DataSource, EntityManager } from 'typeorm';
 import { ShopEventsService } from './shop-events.service';
 import type { CrmEventBusService } from './crm-event-bus.service';
@@ -327,5 +332,24 @@ describe('ShopEventsService', () => {
     await expect(
       service.isDepositInvoice(manager, { billingScheduleLineId: null }),
     ).resolves.toBe(false);
+  });
+});
+
+describe('shop event samples', () => {
+  it('use record ids a step accepts, so a test run can look the record up', () => {
+    const uuid = z.string().uuid();
+    const samples: Record<string, unknown>[] = [
+      ...SHOP_EVENTS.map((event) => event.sample),
+      ...Object.values(AUTOMATION_LOOKUP_SAMPLES),
+    ];
+    for (const sample of samples) {
+      for (const [key, value] of Object.entries(sample)) {
+        if (!/Id$/.test(key) || typeof value !== 'string') continue;
+        expect({ key, valid: uuid.safeParse(value).success }).toEqual({
+          key,
+          valid: true,
+        });
+      }
+    }
   });
 });

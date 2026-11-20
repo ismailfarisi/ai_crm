@@ -115,7 +115,7 @@ export const AUTOMATION_LOOKUP_SAMPLES: Record<
     awaitingCustomer: true,
   },
   proof: {
-    proofId: '4b3a2c1d-0e9f-4a8b-7c6d-5e4f3a2b1c0d',
+    proofId: '4b3a2c1d-0e9f-4a8b-9c6d-5e4f3a2b1c0d',
     proofVersion: 2,
     quoteNumber: 'Q-2026-0142',
     title: '5,000 printed cake boxes',

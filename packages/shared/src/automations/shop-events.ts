@@ -74,7 +74,7 @@ const invoice = {
 };
 
 const workOrder = {
-  workOrderId: '9e8d7c6b-5a4f-4e3d-2c1b-0a9f8e7d6c5b',
+  workOrderId: '9e8d7c6b-5a4f-4e3d-ac1b-0a9f8e7d6c5b',
   workOrderNumber: 'WO-2026-0177',
   description: '5,000 printed cake boxes',
   qty: 5000,
@@ -86,7 +86,7 @@ const workOrder = {
 };
 
 const proof = {
-  proofId: '4b3a2c1d-0e9f-4a8b-7c6d-5e4f3a2b1c0d',
+  proofId: '4b3a2c1d-0e9f-4a8b-9c6d-5e4f3a2b1c0d',
   proofVersion: 2,
   quoteId: quote.quoteId,
   quoteNumber: quote.quoteNumber,
@@ -287,8 +287,8 @@ export const SHOP_EVENTS: readonly ShopEventDefinition[] = [
     when: 'a material falls to or below its reorder point',
     group: 'Purchasing and stock',
     sample: {
-      stockItemId: '0d1c2b3a-4f5e-4d6c-7b8a-9f0e1d2c3b4a',
-      materialId: '3a2b1c0d-9e8f-4a7b-6c5d-4e3f2a1b0c9d',
+      stockItemId: '0d1c2b3a-4f5e-4d6c-8b8a-9f0e1d2c3b4a',
+      materialId: '3a2b1c0d-9e8f-4a7b-bc5d-4e3f2a1b0c9d',
       materialName: '350gsm white board',
       sku: 'BRD-350-W',
       unit: 'SHEET',
@@ -339,7 +339,7 @@ export const SHOP_EVENTS: readonly ShopEventDefinition[] = [
     group: 'Customer messages',
     sample: {
       ...conversation,
-      threadId: 'b4a5f6e7-d8c9-4b0a-1f2e-3d4c5b6a7f8e',
+      threadId: 'b4a5f6e7-d8c9-4b0a-9f2e-3d4c5b6a7f8e',
       reason: 'HUMAN_REQUESTED',
       reasonLabel: 'The customer asked for a person',
       summary: 'Wants to change the delivery date for SO-2026-0098.',

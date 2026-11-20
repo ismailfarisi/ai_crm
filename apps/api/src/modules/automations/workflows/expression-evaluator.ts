@@ -166,7 +166,8 @@ export function interpolateObject<T = any>(
     const singleExpressionRegex = /^\s*\{\{\s*(.+?)\s*\}\}\s*$/s;
     const singleMatch = obj.match(singleExpressionRegex);
 
-    if (singleMatch) {
+    // "{{ a }} and {{ b }}" starts and ends with braces but is a template.
+    if (singleMatch && !singleMatch[1].includes('}}')) {
       const expr = singleMatch[1].trim();
       return evaluateExpression(expr, context);
     }
