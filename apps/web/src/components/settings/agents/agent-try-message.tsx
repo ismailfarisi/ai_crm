@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { FlaskConical } from 'lucide-react';
 import {
   PERMISSIONS,
@@ -9,12 +9,13 @@ import {
   type ChannelAgentTestResultDto,
   type TestChannelAgentPayload,
 } from '@saas/shared';
-import { api } from '@/lib/api/endpoints';
+import { api, queryKeys } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/client';
 import { Can } from '@/components/auth/can';
 import { Button } from '@/components/ui/button';
 import { Select, Textarea } from '@/components/ui/field';
-import { agentChannelOptions, toolLabel } from './agent-labels';
+import { useChannelAgents } from '@/hooks/use-channel-agents';
+import { CUSTOMER_LOOKUP_TOOL_NAMES, agentChannelOptions, toolLabel } from './agent-labels';
 
 const FROM = [
   { value: 'CUSTOMER', label: 'A customer' },
@@ -48,8 +49,29 @@ export function AgentTryMessage() {
   const [body, setBody] = useState('');
   const [kind, setKind] = useState<ChannelAgentKind>('CUSTOMER');
   const [provider, setProvider] = useState<TestChannelAgentPayload['provider']>('WHATSAPP_META');
+  // Who the message is from matters only once an agent can read a customer's records.
+  const [asCustomerId, setAsCustomerId] = useState('');
+  const { data: agents } = useChannelAgents();
+  const anyLookup = (agents ?? []).some(
+    (agent) =>
+      agent.kind === 'CUSTOMER' &&
+      agent.skills.some((name) => CUSTOMER_LOOKUP_TOOL_NAMES.includes(name)),
+  );
+  const pickSender = kind === 'CUSTOMER' && anyLookup;
+  const customerParams = { limit: 100, sortBy: 'companyName', sortOrder: 'ASC' } as const;
+  const { data: customers } = useQuery({
+    queryKey: queryKeys.customers(customerParams),
+    queryFn: () => api.customers.list(customerParams),
+    enabled: pickSender,
+  });
   const test = useMutation({
-    mutationFn: () => api.channelAgents.test({ body: body.trim(), provider, kind }),
+    mutationFn: () =>
+      api.channelAgents.test({
+        body: body.trim(),
+        provider,
+        kind,
+        ...(pickSender && asCustomerId ? { asCustomerId } : {}),
+      }),
   });
   const result = test.data;
 
@@ -103,6 +125,21 @@ export function AgentTryMessage() {
               options={agentChannelOptions(kind)}
               onChange={(e) => setProvider(e.target.value as TestChannelAgentPayload['provider'])}
             />
+            {pickSender && (
+              <Select
+                label="The sender is"
+                value={asCustomerId}
+                hint="Order and quote answers only go to a sender matched to a customer."
+                options={[
+                  { value: '', label: 'Not matched to a customer' },
+                  ...(customers?.items ?? []).map((customer) => ({
+                    value: customer.id,
+                    label: customer.companyName,
+                  })),
+                ]}
+                onChange={(e) => setAsCustomerId(e.target.value)}
+              />
+            )}
             <Button type="submit" loading={test.isPending} disabled={!body.trim()} className="w-full">
               See what happens
             </Button>

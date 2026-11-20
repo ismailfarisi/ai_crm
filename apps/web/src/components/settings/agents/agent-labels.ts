@@ -1,4 +1,4 @@
-import type { ChannelAgentKind } from '@saas/shared';
+import { CUSTOMER_LOOKUP_TOOLS, type ChannelAgentKind } from '@saas/shared';
 
 export const AGENT_KIND_LABELS: Record<ChannelAgentKind, string> = {
   CUSTOMER: 'Talks to customers',
@@ -22,8 +22,17 @@ export function agentChannelOptions(kind: ChannelAgentKind) {
     .map(([value, label]) => ({ value, label }));
 }
 
+/** Tools that read a customer's own records for them. */
+export const CUSTOMER_LOOKUP_TOOL_NAMES: readonly string[] = CUSTOMER_LOOKUP_TOOLS;
+
+const TOOL_LABELS: Record<string, string> = {
+  check_order_status: 'Answer "where is my order"',
+  check_quote_status: 'Answer "what is the status of my quote"',
+};
+
 /** `quote.create` → "Quote create", for tools that have no nicer name. */
 export function toolLabel(name: string): string {
+  if (TOOL_LABELS[name]) return TOOL_LABELS[name];
   const words = name.replace(/[._]/g, ' ');
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
