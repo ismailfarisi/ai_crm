@@ -566,7 +566,8 @@ export function createShopActions(deps: ShopActionDeps) {
         async () => {
           await resolveOwner(deps, ctx, 'notify staff');
 
-          const title = asText(config.title).trim();
+          // The bell's title column holds 200 characters.
+          const title = asText(config.title).trim().slice(0, 200);
           if (!title) refuse('Notify staff has no title');
           const body = asText(config.body).trim() || null;
           const rawLink = asText(config.link).trim();
