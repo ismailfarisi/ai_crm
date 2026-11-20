@@ -19,7 +19,12 @@ import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Input, Select, Textarea } from '@/components/ui/field';
 import { ModelPicker } from '@/components/settings/ai-models/model-picker';
-import { AGENT_KIND_LABELS, agentChannelOptions, toolLabel } from './agent-labels';
+import {
+  AGENT_KIND_LABELS,
+  CUSTOMER_LOOKUP_TOOL_NAMES,
+  agentChannelOptions,
+  toolLabel,
+} from './agent-labels';
 
 interface AgentFormDialogProps {
   open: boolean;
@@ -47,7 +52,7 @@ const EMPTY: FormValues = {
 
 const KIND_HELP: Record<ChannelAgentKind, string> = {
   CUSTOMER:
-    'It writes its own replies to customers, following the instructions below. It cannot look up prices, stock or orders, and passes the conversation to a person when it cannot help.',
+    'It writes its own replies to customers, following the instructions below. It cannot look up prices or stock, and it only answers about a customer’s own orders and quotes if you tick those tools. It passes the conversation to a person when it cannot help.',
   STAFF:
     'It takes commands and files from staff who have linked their own chat. Each person can only use the tools their role allows, and anything that changes a record waits for their YES.',
 };
@@ -250,6 +255,17 @@ function AgentForm({
               </label>
             ))}
           </div>
+        )}
+        {kind === 'CUSTOMER' && skills.some((name) => CUSTOMER_LOOKUP_TOOL_NAMES.includes(name)) && (
+          <p
+            role="note"
+            className="mt-2 rounded-lg border border-border bg-surface-muted/50 px-3 py-2 text-xs text-ink-muted"
+          >
+            <span className="font-medium text-ink">Who gets an answer: </span>
+            only a sender Kerf can match to one customer. That means their WhatsApp number or email
+            is on exactly one customer record, or someone linked the sender to the customer in the
+            Inbox. Everyone else is told nothing about any order or quote and is passed to a person.
+          </p>
         )}
       </fieldset>
 

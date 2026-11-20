@@ -7,6 +7,8 @@ import * as automationActivities from './modules/automations/workflows/automatio
 import { createChannelAiActivities } from './modules/channels/workflows/activities/channel-ai.activities';
 import { ChannelThreadService } from './modules/channels/services/channel-thread.service';
 import { ChannelAgentService } from './modules/channels/services/channel-agent.service';
+import { CustomerSenderService } from './modules/channels/services/customer-sender.service';
+import { CustomerLookupService } from './modules/channels/services/customer-lookup.service';
 import { IntentAgentConfigService } from './modules/channels/services/intent-agent-config.service';
 import { WorkerModule } from './worker.module';
 import { AiService } from './modules/ai/ai.service';
@@ -67,6 +69,8 @@ async function run(): Promise<void> {
       threads: appContext.get(ChannelThreadService),
       intentAgentConfigService: appContext.get(IntentAgentConfigService),
       channelAgents: appContext.get(ChannelAgentService),
+      customerSenders: appContext.get(CustomerSenderService),
+      customerLookup: appContext.get(CustomerLookupService),
     });
     const agentReactActivities = createAgentReactActivities({
       aiService: appContext.get(AiService),

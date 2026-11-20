@@ -21,6 +21,9 @@ import type {
   UpdateAiAgentPayload,
   IntentAgentConfigDto,
   UpsertIntentAgentConfigPayload,
+  CustomerSenderCheckDto,
+  CustomerSenderLinkDto,
+  LinkCustomerSenderPayload,
 } from '@saas/shared';
 import { apiFetch } from '../client';
 
@@ -117,6 +120,20 @@ export const channelsEndpoints = {
         apiFetch<ChannelLinkCodeDto>('/channels/identities/link-code', { method: 'POST' }),
       revoke: (id: string) =>
         apiFetch<{ success: true }>(`/channels/identities/${id}`, { method: 'DELETE' }),
+    },
+    /** Which customer a sender is, and the links staff make between the two. */
+    customerSenders: {
+      check: (provider: string, identifier: string) =>
+        apiFetch<CustomerSenderCheckDto>('/channels/customer-senders/check', {
+          query: { provider, identifier },
+        }),
+      link: (input: LinkCustomerSenderPayload) =>
+        apiFetch<CustomerSenderLinkDto>('/channels/customer-senders', {
+          method: 'POST',
+          body: input,
+        }),
+      unlink: (id: string) =>
+        apiFetch<{ success: true }>(`/channels/customer-senders/${id}`, { method: 'DELETE' }),
     },
   },
   channelAgents: {
