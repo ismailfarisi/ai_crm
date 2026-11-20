@@ -30,6 +30,8 @@ import { ChannelCommandService } from './services/channel-command.service';
 import { AiAgentService } from './services/ai-agent.service';
 import { IntentAgentConfigService } from './services/intent-agent-config.service';
 import { ChannelThreadService } from './services/channel-thread.service';
+import { UsersService } from '@/modules/users/users.service';
+import type { ChannelThreadDto } from '@saas/shared';
 import { ChannelProviderType } from './entities/channel-config.entity';
 
 @ApiTags('channels')
@@ -41,6 +43,7 @@ export class ChannelsController {
     private readonly aiAgentService: AiAgentService,
     private readonly intentAgentConfigService: IntentAgentConfigService,
     private readonly threads: ChannelThreadService,
+    private readonly usersService: UsersService,
   ) {}
 
   @Get('configs')
@@ -124,8 +127,28 @@ export class ChannelsController {
   @ApiOperation({
     summary: 'List conversations with who is answering each: the AI or a person',
   })
-  listThreads(@CurrentUser() user: AuthenticatedUser) {
-    return this.threads.list(user.organizationId);
+  async listThreads(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ChannelThreadDto[]> {
+    const threads = await this.threads.list(user.organizationId);
+    const members = threads.some((thread) => thread.assigneeUserId)
+      ? await this.usersService.listMembers(user.organizationId)
+      : [];
+    const names = new Map(members.map((m) => [m.id, m.fullName]));
+    return threads.map((thread) => ({
+      id: thread.id,
+      provider: thread.provider,
+      contactId: thread.contactId,
+      state: thread.state,
+      assigneeUserId: thread.assigneeUserId,
+      assigneeName: thread.assigneeUserId
+        ? (names.get(thread.assigneeUserId) ?? null)
+        : null,
+      handoverReason: thread.handoverReason,
+      handoverSummary: thread.handoverSummary,
+      handedOverAt: thread.handedOverAt?.toISOString() ?? null,
+      updatedAt: thread.updatedAt.toISOString(),
+    }));
   }
 
   @Post('threads/:id/take-over')

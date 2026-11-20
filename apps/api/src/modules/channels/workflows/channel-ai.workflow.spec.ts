@@ -81,18 +81,30 @@ describe('channel AI workflows: handover', () => {
   });
 
   describe('one-shot', () => {
-    it.each([
-      ['HUMAN_REQUEST', 'HUMAN_REQUESTED'],
-      ['COMPLAINT', 'COMPLAINT'],
-    ])('sends a %s straight to a person without running a rule', async (intent, reason) => {
-      mockActivities.classifyMessageActivity.mockResolvedValue(classified({ intent }));
+    it('sends a request for a person straight to one without running a rule', async () => {
+      mockActivities.classifyMessageActivity.mockResolvedValue(
+        classified({ intent: 'HUMAN_REQUEST' }),
+      );
       await channelAiWorkflow(oneShot);
       expect(mockActivities.dispatchAgentActivity).not.toHaveBeenCalled();
       expect(handover()).toMatchObject({
-        reason,
+        reason: 'HUMAN_REQUESTED',
         summary: 'Asks about opening hours',
         notifyCustomer: false,
       });
+    });
+
+    it('still runs the complaint rule, then hands the complaint to a person', async () => {
+      mockActivities.classifyMessageActivity.mockResolvedValue(
+        classified({ intent: 'COMPLAINT' }),
+      );
+      mockActivities.dispatchAgentActivity.mockResolvedValue({
+        autoAcked: true,
+        reason: 'DISPATCHED',
+      });
+      const result = await channelAiWorkflow(oneShot);
+      expect(result.autoAcked).toBe(true);
+      expect(handover()).toMatchObject({ reason: 'COMPLAINT' });
     });
 
     it.each([
@@ -135,7 +147,7 @@ describe('channel AI workflows: handover', () => {
 
     it('still completes when the handover cannot be recorded', async () => {
       mockActivities.classifyMessageActivity.mockResolvedValue(
-        classified({ intent: 'COMPLAINT' }),
+        classified({ intent: 'HUMAN_REQUEST' }),
       );
       mockActivities.handOverToHumanActivity.mockRejectedValue(new Error('db down'));
       await expect(channelAiWorkflow(oneShot)).resolves.toMatchObject({
@@ -155,6 +167,20 @@ describe('channel AI workflows: handover', () => {
         reason: 'HUMAN_REQUESTED',
         notifyCustomer: true,
       });
+    });
+
+    it('hands a complaint over once, telling the customer only when nothing was sent', async () => {
+      mockActivities.classifyMessageActivity.mockResolvedValue(
+        classified({ intent: 'COMPLAINT', clarifyingQuestion: 'What went wrong?' }),
+      );
+      mockActivities.dispatchAgentActivity.mockResolvedValue({
+        autoAcked: false,
+        reason: 'NO_AGENT',
+      });
+      await converse(['the boxes arrived crushed']);
+      expect(mockActivities.sendClarifyingQuestionActivity).not.toHaveBeenCalled();
+      expect(mockActivities.handOverToHumanActivity).toHaveBeenCalledTimes(1);
+      expect(handover()).toMatchObject({ reason: 'COMPLAINT', notifyCustomer: true });
     });
 
     it('hands over, telling the customer, after running out of clarifying turns', async () => {

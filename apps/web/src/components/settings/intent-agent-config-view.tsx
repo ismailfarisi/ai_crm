@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { MessageCircleQuestion } from 'lucide-react';
 import {
+  DEFAULT_HANDOVER_MESSAGE,
   PERMISSIONS,
   type IntentAgentConfigDto,
   type UpsertIntentAgentConfigPayload,
@@ -30,6 +31,7 @@ export function IntentAgentConfigView() {
   const [replyTimeoutMinutes, setReplyTimeoutMinutes] = useState(15);
   const [systemPrompt, setSystemPrompt] = useState('');
   const [model, setModel] = useState('');
+  const [handoverMessage, setHandoverMessage] = useState('');
   const [eligibleProviders, setEligibleProviders] = useState<string[]>([
     'TELEGRAM',
     'WHATSAPP_META',
@@ -45,6 +47,7 @@ export function IntentAgentConfigView() {
     setReplyTimeoutMinutes(config.replyTimeoutMinutes);
     setSystemPrompt(config.systemPrompt ?? '');
     setModel(config.model ?? '');
+    setHandoverMessage(config.handoverMessage ?? '');
     setEligibleProviders(config.eligibleProviders);
   }
 
@@ -63,6 +66,7 @@ export function IntentAgentConfigView() {
       systemPrompt: systemPrompt.trim() || null,
       // Blank means "use the provider's model", which is what null encodes.
       model: model.trim() || null,
+      handoverMessage: handoverMessage.trim() || null,
       eligibleProviders:
         eligibleProviders as UpsertIntentAgentConfigPayload['eligibleProviders'],
     });
@@ -151,6 +155,14 @@ export function IntentAgentConfigView() {
             hint="Only set this to run the conversational agent on a different model from the rest of the organisation."
             value={model}
             onChange={(e) => setModel(e.target.value)}
+          />
+
+          <Textarea
+            label="Handover message"
+            hint="Sent to the customer when the AI passes the conversation to a person. Leave blank to use the standard wording."
+            placeholder={DEFAULT_HANDOVER_MESSAGE}
+            value={handoverMessage}
+            onChange={(e) => setHandoverMessage(e.target.value)}
           />
 
           <fieldset>

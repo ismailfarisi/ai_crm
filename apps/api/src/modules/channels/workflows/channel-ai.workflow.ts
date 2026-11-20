@@ -27,11 +27,13 @@ const {
   retry: { maximumAttempts: 3 },
 });
 
-/** Intents the AI never handles itself: the conversation goes straight to a person. */
-const HANDOVER_INTENTS: Record<string, ChannelHandoverReason> = {
-  HUMAN_REQUEST: 'HUMAN_REQUESTED',
-  COMPLAINT: 'COMPLAINT',
-};
+/**
+ * Intents that always end with a person. A request for one skips the rules
+ * entirely; a complaint still runs its rule first (so an acknowledgement an
+ * organization has set up keeps going out) and is handed over afterwards.
+ */
+const HUMAN_REQUEST = 'HUMAN_REQUEST';
+const COMPLAINT = 'COMPLAINT';
 
 /**
  * Hands the conversation to a person. Never fails the workflow: a handover
@@ -118,9 +120,8 @@ export async function channelAiWorkflow(
     options: classified.options,
   });
 
-  const direct = HANDOVER_INTENTS[classified.intent!];
-  if (direct) {
-    await handOver(input, direct, classified.summary, false);
+  if (classified.intent === HUMAN_REQUEST) {
+    await handOver(input, 'HUMAN_REQUESTED', classified.summary, false);
     return { status: 'COMPLETED', autoAcked: false };
   }
 
@@ -144,7 +145,9 @@ export async function channelAiWorkflow(
       createdQuoteId: dispatchResult.createdQuoteId,
     });
 
-    if (dispatchResult.reason !== 'DISPATCHED') {
+    if (classified.intent === COMPLAINT) {
+      await handOver(input, 'COMPLAINT', classified.summary, false);
+    } else if (dispatchResult.reason !== 'DISPATCHED') {
       await handOver(
         input,
         reasonFor(dispatchResult.reason),
@@ -251,9 +254,8 @@ export async function channelConversationWorkflow(
     });
     lastSummary = classified.summary ?? lastSummary;
 
-    const direct = HANDOVER_INTENTS[classified.intent!];
-    if (direct) {
-      await handOver(input, direct, classified.summary, true);
+    if (classified.intent === HUMAN_REQUEST) {
+      await handOver(input, 'HUMAN_REQUESTED', classified.summary, true);
       return { status: 'COMPLETED', autoAcked: false };
     }
 
@@ -277,6 +279,17 @@ export async function channelConversationWorkflow(
       return { status: 'COMPLETED', autoAcked: false };
     }
 
+    if (classified.intent === COMPLAINT) {
+      // Its rule, if any, has just run. Whatever that did, a person takes a
+      // complaint; the customer is told only if no acknowledgement went out.
+      await handOver(
+        input,
+        'COMPLAINT',
+        classified.summary,
+        !dispatchResult.autoAcked,
+      );
+    }
+
     if (dispatchResult.reason === 'DISPATCHED') {
       await persistDispatchResultActivity({
         organizationId: input.organizationId,
@@ -289,6 +302,10 @@ export async function channelConversationWorkflow(
         autoAcked: dispatchResult.autoAcked,
         createdQuoteId: dispatchResult.createdQuoteId,
       };
+    }
+
+    if (classified.intent === COMPLAINT) {
+      return { status: 'COMPLETED', autoAcked: false };
     }
 
     if (!classified.clarifyingQuestion) {

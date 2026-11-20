@@ -4,12 +4,14 @@ import { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, MessageSquare, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { type ChannelProvider } from '@saas/shared';
-import { api, type ChannelMessageDto } from '@/lib/api/endpoints';
+import { api, queryKeys, type ChannelMessageDto } from '@/lib/api/endpoints';
+import { useQueryClient } from '@tanstack/react-query';
 import { formatRelative, initials } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input, Select, Textarea } from '@/components/ui/field';
 import { Badge } from '@/components/ui/primitives';
 import { ChannelBadge, channelName, type ThreadGroup } from './inbox-thread-list';
+import { HandoverBar } from './handover';
 
 interface InboxChatPanelProps {
   thread: ThreadGroup | null;
@@ -33,6 +35,7 @@ export function InboxChatPanel({ thread, onMessageSent, onBack }: InboxChatPanel
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const queryClient = useQueryClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-set recipient and preferred provider when thread changes
@@ -98,6 +101,8 @@ export function InboxChatPanel({ thread, onMessageSent, onBack }: InboxChatPanel
         subject: isEmail ? subject.trim() : undefined,
       });
 
+      // Replying takes the conversation over from the AI.
+      queryClient.invalidateQueries({ queryKey: queryKeys.channelThreads });
       toast.success('Message sent');
       setBody('');
       setSubject('');
@@ -149,6 +154,12 @@ export function InboxChatPanel({ thread, onMessageSent, onBack }: InboxChatPanel
           ))}
         </div>
       </div>
+
+      <HandoverBar
+        handover={thread.handover}
+        messages={thread.messages}
+        onUseReply={setBody}
+      />
 
       {/* Message History Feed */}
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-surface-muted/10 p-4 scrollbar-thin">
