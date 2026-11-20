@@ -32,6 +32,7 @@ import { CHANNEL_SENDER } from './skills/channel-sender.token';
 import { ChannelsController } from './channels.controller';
 import { ChannelsWebhookController } from './channels-webhook.controller';
 
+import { FinanceModule } from '../finance/finance.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -53,6 +54,7 @@ import { ChannelsWebhookController } from './channels-webhook.controller';
     OrdersModule,
     PayablesModule,
     StorageModule,
+    FinanceModule,
   ],
   controllers: [ChannelsController, ChannelsWebhookController],
   providers: [

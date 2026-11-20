@@ -2,7 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
 import { SKILL_ROUTE_MIN_CONFIDENCE, type SkillRoute } from '@saas/shared';
 import { AiService } from '../../ai/ai.service';
-import { AiNotConfiguredException } from '../../ai/interfaces/ai-provider.interface';
+import {
+  AiNotConfiguredException,
+  type AiDocumentContent,
+  type AiImageContent,
+} from '../../ai/interfaces/ai-provider.interface';
 import type { ChannelSkill } from './skill.types';
 
 /** Raised when the provider is unconfigured or over budget — callers degrade, not fail. */
@@ -102,6 +106,76 @@ export class SkillRouterService {
   }
 
   /**
+   * Which file-taking skill a file is for, judged from the file itself.
+   *
+   * Used when a file arrives with nothing typed alongside it and more than
+   * one skill could take it: a supplier's invoice and a till receipt are told
+   * apart by looking, rather than by making the sender type what they sent.
+   */
+  async routeFile(
+    file: { buffer: Buffer; mimeType: string; filename?: string },
+    candidates: ChannelSkill<never>[],
+    actor: { organizationId: string; userId: string },
+  ): Promise<SkillRoute> {
+    const block = fileBlock(file);
+    if (!block || candidates.length === 0) return { skill: null, confidence: 0 };
+
+    const catalogue = candidates
+      .map((skill) => `- ${skill.name}: ${skill.description}`)
+      .join('\n');
+    const jsonSchema = {
+      type: 'object',
+      properties: {
+        skill: {
+          type: ['string', 'null'],
+          enum: [...candidates.map((s) => s.name), null],
+          description:
+            'The capability this document is for, or null if it is not a document any of them handles.',
+        },
+        confidence: {
+          type: 'number',
+          description:
+            'How certain the match is, 0 to 1. Be honest: below 0.6 the sender is asked what the file is.',
+        },
+      },
+      required: ['skill', 'confidence'],
+      additionalProperties: false,
+    };
+
+    try {
+      const result = await this.ai.generateStructured<unknown>(
+        'channels.route_skill',
+        {
+          messages: [
+            {
+              role: 'user',
+              content: [
+                block,
+                {
+                  type: 'text',
+                  text: `A member of staff sent this file with no message. Capabilities that take a file:\n${catalogue}\n\nWhich one is this document for?`,
+                },
+              ],
+            },
+          ],
+          jsonSchema,
+          schemaName: 'skill_route',
+        },
+        actor,
+      );
+      const parsed = routeSchema.safeParse(result.data);
+      if (!parsed.success) return { skill: null, confidence: 0 };
+      const known = candidates.find((s) => s.name === parsed.data.skill);
+      return {
+        skill: known ? known.name : null,
+        confidence: parsed.data.confidence,
+      };
+    } catch (err: unknown) {
+      throw this.asDegradable(err, 'routing');
+    }
+  }
+
+  /**
    * Fill the chosen skill's slots from the message.
    *
    * `priorSlots` carries what a half-finished conversation already knows, so a
@@ -156,4 +230,31 @@ export class SkillRouterService {
     this.logger.warn(`Channel ${stage} failed, degrading: ${msg}`);
     return new AiUnavailableError();
   }
+}
+
+/** The file as a model reads it, or null for a type no provider takes. */
+function fileBlock(file: {
+  buffer: Buffer;
+  mimeType: string;
+  filename?: string;
+}): AiImageContent | AiDocumentContent | null {
+  const type = file.mimeType.split(';')[0].trim().toLowerCase();
+  const data = file.buffer.toString('base64');
+  if (type === 'application/pdf') {
+    return {
+      type: 'document',
+      mimeType: 'application/pdf',
+      data,
+      filename: file.filename,
+    };
+  }
+  if (
+    type === 'image/jpeg' ||
+    type === 'image/png' ||
+    type === 'image/gif' ||
+    type === 'image/webp'
+  ) {
+    return { type: 'image', mimeType: type, data };
+  }
+  return null;
 }

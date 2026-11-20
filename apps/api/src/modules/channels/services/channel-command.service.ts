@@ -24,6 +24,10 @@ import {
 } from '../skills/skill-router.service';
 import type { ChannelSkill, SkillContext } from '../skills/skill.types';
 import type { InboundMedia } from '../interfaces/channel-driver.interface';
+import { ModuleRef } from '@nestjs/core';
+import { BILL_CAPTURE_MAX_BYTES } from '@saas/shared';
+import type { ChannelsService } from '../channels.service';
+import { CHANNEL_SENDER } from '../skills/channel-sender.token';
 
 export interface ChannelCommandResult {
   handled: boolean;
@@ -88,6 +92,7 @@ export class ChannelCommandService {
     private readonly router: SkillRouterService,
     private readonly audit: AuditService,
     @Optional() private readonly approvalReplies?: ApprovalReplyService,
+    @Optional() private readonly moduleRef?: ModuleRef,
   ) {}
 
   // ---- Settings-facing API (linking codes + identity management) ----
@@ -582,17 +587,19 @@ export class ChannelCommandService {
     let skill = candidates[0];
     let confidence: number | undefined;
     if (candidates.length > 1) {
-      if (!ctx.message) {
-        return this.reply(
-          ctx,
-          `What should I do with this file? Send it again with a note, e.g.\n${candidates
-            .map((s) => `• ${s.examples[0]}`)
-            .join('\n')}`,
-        );
-      }
+      const resend = `What should I do with this file? Send it again with a note, e.g.\n${candidates
+        .map((s) => `• ${s.examples[0]}`)
+        .join('\n')}`;
       let route;
       try {
-        route = await this.router.route(ctx.message, candidates, ctx);
+        if (ctx.message) {
+          route = await this.router.route(ctx.message, candidates, ctx);
+        } else {
+          // Nothing typed with it: look at the file to tell what it is.
+          const file = await this.fetchAttachment(ctx);
+          if (!file) return this.reply(ctx, resend);
+          route = await this.router.routeFile(file, candidates, ctx);
+        }
       } catch (err) {
         if (!(err instanceof AiUnavailableError)) throw err;
         return this.reply(ctx, this.degradedMessage());
@@ -601,7 +608,10 @@ export class ChannelCommandService {
         ? this.registry.byName(route.skill)
         : undefined;
       if (!routed || route.confidence < this.router.minConfidence) {
-        return this.reply(ctx, "I'm not sure what to do with this file.");
+        return this.reply(
+          ctx,
+          ctx.message ? "I'm not sure what to do with this file." : resend,
+        );
       }
       skill = routed;
       confidence = route.confidence;
@@ -625,6 +635,35 @@ export class ChannelCommandService {
       }
     }
     return this.advance(skill, slots, ctx, null, model, confidence);
+  }
+
+  /** The attached file's bytes, or null when they cannot be had; never throws. */
+  private async fetchAttachment(
+    ctx: SkillContext,
+  ): Promise<{ buffer: Buffer; mimeType: string; filename?: string } | null> {
+    if (!ctx.attachment || !this.moduleRef) return null;
+    try {
+      // ChannelsService depends on this service, so it is looked up on use.
+      const channels = this.moduleRef.get<ChannelsService>(CHANNEL_SENDER, {
+        strict: false,
+      });
+      const file = await channels.downloadMedia(
+        ctx.organizationId,
+        ctx.provider,
+        ctx.attachment.id,
+        BILL_CAPTURE_MAX_BYTES,
+      );
+      return {
+        buffer: file.buffer,
+        mimeType: ctx.attachment.mimeType,
+        filename: ctx.attachment.filename,
+      };
+    } catch (err) {
+      this.logger.warn(
+        `Could not fetch a file to route it: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
   }
 
   /** Resolve, then either ask, refuse, or propose. The single place that writes conversation state. */

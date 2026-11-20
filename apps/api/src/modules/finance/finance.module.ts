@@ -102,6 +102,12 @@ import { ExpenseReceiptsService } from './expense-receipts.service';
     BooksService,
     ReconciliationService,
   ],
-  exports: [FinanceService, ExpensesService, LedgerService, CurrencyService],
+  exports: [
+    FinanceService,
+    ExpensesService,
+    ExpenseReceiptsService,
+    LedgerService,
+    CurrencyService,
+  ],
 })
 export class FinanceModule {}

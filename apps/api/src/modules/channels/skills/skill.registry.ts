@@ -29,6 +29,9 @@ import { BillFromDocumentSkill } from './bill-from-document.skill';
 import { BillCaptureService } from '../../payables/bill-capture.service';
 import { PayablesService } from '../../payables/payables.service';
 import { AttachmentsService } from '../../storage/attachments.service';
+import { ExpenseFromDocumentSkill } from './expense-from-document.skill';
+import { ExpensesService } from '../../finance/expenses.service';
+import { ExpenseReceiptsService } from '../../finance/expense-receipts.service';
 
 /**
  * The one file to touch when adding a staff chat capability.
@@ -56,6 +59,8 @@ export class SkillRegistry {
     billCapture: BillCaptureService,
     payables: PayablesService,
     attachments: AttachmentsService,
+    expenses: ExpensesService,
+    expenseReceipts: ExpenseReceiptsService,
   ) {
     // ChannelsService depends (via ChannelCommandService) on this registry, so
     // it is looked up when a send executes, never at construction.
@@ -88,6 +93,12 @@ export class SkillRegistry {
         billCapture,
         payables,
         attachments,
+        actors,
+        channels,
+      ) as unknown as ChannelSkill<never>,
+      new ExpenseFromDocumentSkill(
+        expenses,
+        expenseReceipts,
         actors,
         channels,
       ) as unknown as ChannelSkill<never>,
