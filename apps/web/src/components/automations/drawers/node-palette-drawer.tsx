@@ -20,6 +20,8 @@ import {
   type LucideIcon,
   MessageSquareText,
   Route,
+  Bell,
+  MessageCircle,
 } from 'lucide-react';
 import clsx from 'clsx';
 import type { AutomationNodeType } from '@saas/shared';
@@ -143,11 +145,32 @@ export const NODE_PALETTE_ITEMS: NodePaletteItem[] = [
     iconColor: 'text-danger',
   },
   {
+    type: 'sendMessageNode',
+    label: 'Send Message',
+    category: 'Actions',
+    icon: MessageCircle,
+    description: 'Send a WhatsApp, Telegram or Slack message to a customer or a colleague',
+    badge: 'Chat',
+    iconBg: 'bg-success-soft',
+    iconColor: 'text-success',
+  },
+  {
+    type: 'notifyStaffNode',
+    label: 'Notify Staff',
+    category: 'Actions',
+    icon: Bell,
+    description: 'Put an alert in the bell for a colleague or a whole team',
+    badge: 'In-app',
+    iconBg: 'bg-warning-soft',
+    iconColor: 'text-warning',
+  },
+  {
     type: 'crmMutateNode',
-    label: 'CRM Mutation',
+    label: 'Kerf Record',
     category: 'Actions',
     icon: Database,
-    description: 'Create or update CRM contacts, deals, quotes, and tasks',
+    description:
+      "Create or update a contact, approve or reject a quote, look up a quote, proof or invoice, or get today's shop summary",
     badge: 'CRM',
     iconBg: 'bg-brand-soft',
     iconColor: 'text-ink',
