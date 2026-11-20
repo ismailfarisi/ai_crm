@@ -508,7 +508,7 @@ export class ShopEventsService {
       .getRepository(ChannelThread)
       .findOne({ where: { id: threadId, organizationId: tenantId } });
     if (!thread) return null;
-    const reason = thread.handoverReason as ChannelHandoverReason | null;
+    const reason = thread.handoverReason;
     return {
       ...(await this.conversationFields(
         manager,
