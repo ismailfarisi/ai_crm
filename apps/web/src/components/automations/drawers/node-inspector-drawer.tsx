@@ -35,6 +35,7 @@ import { WebhookTriggerFields } from './webhook-trigger-fields';
 import { ScheduleTriggerFields } from './schedule-trigger-fields';
 import { ExpressionHelper } from './expression-helper';
 import { CrmStepFields } from './crm-step-fields';
+import { MessageStepFields, NotifyStepFields } from './shop-step-fields';
 import { CRM_EVENTS, CRM_EVENT_GROUPS, crmEventOf, findCrmEvent, normalizeCrmEventConfig } from '../crm-events';
 
 /** The trigger node that belongs to each automation trigger type. */
@@ -488,6 +489,14 @@ export function NodeInspectorDrawer({
                 config={config}
                 onChange={(next) => onUpdate(node.id, { config: next })}
               />
+            )}
+
+            {/* Send Message / Notify Staff Config */}
+            {node.type === 'sendMessageNode' && (
+              <MessageStepFields config={config} onChange={(next) => onUpdate(node.id, { config: next })} />
+            )}
+            {node.type === 'notifyStaffNode' && (
+              <NotifyStepFields config={config} onChange={(next) => onUpdate(node.id, { config: next })} />
             )}
 
             {/* Trigger Nodes (Webhook / Schedule / CRM Event), by the automation's trigger type */}
