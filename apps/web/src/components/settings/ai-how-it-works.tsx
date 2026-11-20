@@ -6,8 +6,12 @@ const CUSTOMER_STEPS = [
     body: 'On WhatsApp, Telegram, Slack or email.',
   },
   {
-    title: 'The AI reads it',
-    body: 'It works out what they want and how sure it is.',
+    title: 'An agent answers',
+    body: 'If you set up agents, the one whose job fits replies in its own words. It can pass the conversation to another agent or to a person.',
+  },
+  {
+    title: 'Otherwise the AI reads it',
+    body: 'With no agent for the message, it works out what they want and how sure it is.',
   },
   {
     title: 'A rule replies',
@@ -48,7 +52,7 @@ export function AiHowItWorks() {
           <MessageSquare className="size-4 text-ink-subtle" aria-hidden />
           Messages from customers
         </p>
-        <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
           {CUSTOMER_STEPS.map((step, i) => (
             <li
               key={step.title}
@@ -77,7 +81,8 @@ export function AiHowItWorks() {
           Staff who link their own chat under Settings › Channels can give commands (approve a
           quote, raise a purchase order) and send files: a receipt becomes an expense claim and a
           supplier&apos;s invoice becomes a draft bill. They are shown what will happen and it
-          only happens after they reply YES.
+          only happens after they reply YES. A staff agent gives those commands its own
+          instructions, model and tools.
         </p>
       </div>
     </section>

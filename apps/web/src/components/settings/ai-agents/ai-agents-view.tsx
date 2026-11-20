@@ -50,7 +50,7 @@ export function AiAgentsView() {
   if (isPending) {
     return (
       <>
-        <PageHeader title="4. Automatic replies" />
+        <PageHeader title="5. Automatic replies" />
         <Skeleton className="h-64 w-full" />
       </>
     );
@@ -59,7 +59,7 @@ export function AiAgentsView() {
   return (
     <>
       <PageHeader
-        title="4. Automatic replies"
+        title="5. Automatic replies"
         description="What happens by itself once the AI knows what a customer wants. Add one rule for each kind of request; anything without a rule goes to a person."
         actions={
           <Can permission={PERMISSIONS.AI_MANAGE}>

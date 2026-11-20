@@ -48,7 +48,7 @@ export function AiBudgetView() {
   if (isPending) {
     return (
       <div className="space-y-6">
-        <PageHeader title="5. Spending limit" description="See what the AI has cost this month and set a monthly limit." />
+        <PageHeader title="6. Spending limit" description="See what the AI has cost this month and set a monthly limit." />
         <Skeleton className="h-40 w-full rounded-2xl" />
       </div>
     );
@@ -65,7 +65,7 @@ export function AiBudgetView() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="5. Spending limit"
+        title="6. Spending limit"
         description="See what the AI has cost this month and set a monthly limit. When the limit is reached the AI stops until next month or until you raise it."
       />
 

@@ -32,6 +32,8 @@ const thread = (over: Partial<ChannelThreadDto> = {}): ChannelThreadDto => ({
   state: 'NEEDS_HUMAN',
   assigneeUserId: null,
   assigneeName: null,
+  agentId: null,
+  agentName: null,
   handoverReason: 'HUMAN_REQUESTED',
   handoverSummary: 'Wants to talk about a late delivery',
   handedOverAt: '2026-11-20T10:00:00.000Z',
@@ -111,5 +113,10 @@ describe('HandoverBar', () => {
     expect(screen.getByRole('button', { name: 'Take over' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Return to AI' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Use this reply' })).not.toBeInTheDocument();
+  });
+
+  it('names the agent that holds the conversation', () => {
+    renderBar(thread({ state: 'AI', handoverReason: null, agentId: 'a1', agentName: 'Sales' }));
+    expect(screen.getByText(/The Sales agent is answering/)).toBeInTheDocument();
   });
 });
