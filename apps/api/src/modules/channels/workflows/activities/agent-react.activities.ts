@@ -17,6 +17,13 @@ export interface ToolAuditProvenance {
  */
 export const APPROVED_ACTION_CHANGED = 'ApprovedActionChanged';
 
+/**
+ * ApplicationFailure type thrown when the agent a run was told to use cannot
+ * be used (deleted, switched off, or not a staff agent). Its message is
+ * written for the person reading the run history.
+ */
+export const AGENT_UNAVAILABLE = 'AgentUnavailable';
+
 /** Who is driving the agent. Skills may limit themselves to some surfaces. */
 export type AgentSurface = 'assistant' | 'automation';
 
@@ -27,6 +34,11 @@ export interface AgentActivityCtx {
   audit?: ToolAuditProvenance;
   /** Absent means 'automation'. */
   surface?: AgentSurface;
+  /**
+   * An agent from Settings → AI the run acts as. Its tools narrow what the
+   * user may use; they never add to it.
+   */
+  agentId?: string;
   /**
    * The preview the user approved (assistant turns only). The commit
    * recomputes it and refuses if the action no longer matches.
@@ -103,6 +115,8 @@ export interface ReActTurnInput {
   prompt: string;
   conversationHistory: AgentHistoryEntry[];
   availableTools: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>;
+  /** An agent from Settings → AI whose instructions and model plan the turn. */
+  agentId?: string;
 }
 
 export interface ReActTurnOutput {
@@ -112,6 +126,8 @@ export interface ReActTurnOutput {
   invalidToolCalls?: Array<{ id: string; name: string }>;
   finalAnswer?: string;
   model?: string;
+  /** The agent that planned the turn, when the run named one. */
+  agent?: { id: string; name: string };
   /** The planner's turn as the provider returned it, to record in history. */
   raw?: RawAssistantTurn;
 }
@@ -123,6 +139,8 @@ export interface AgentReactActivities {
     allowedDomains?: string[];
     /** Absent means 'automation'. */
     surface?: AgentSurface;
+    /** Narrows the tools to the ones this agent was given. */
+    agentId?: string;
   }): Promise<Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>>;
   planReActTurn(input: ReActTurnInput): Promise<ReActTurnOutput>;
   executeToolActivity(

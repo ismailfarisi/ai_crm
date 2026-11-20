@@ -44,7 +44,8 @@ export const DEFAULT_NODE_CONFIGS: Record<AutomationNodeType, Record<string, any
     goal: '',
     allowedDomains: ['SALES', 'GENERAL'],
     autoApprove: false,
-    timeoutDuration: '30m',
+    // How long a change the agent wants to make waits for a person.
+    timeoutDuration: '3 days',
   },
   sendEmailNode: { to: '', subject: '', body: '' },
   crmMutateNode: { action: 'CREATE_CONTACT', payload: {} },

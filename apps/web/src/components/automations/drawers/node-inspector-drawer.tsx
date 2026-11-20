@@ -11,6 +11,7 @@ import {
   Layers,
   Clock,
   MessageSquareText,
+  Bot,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { usesAiOutput } from '@saas/shared';
@@ -28,6 +29,7 @@ import { DataField } from './data-field';
 import { ConditionBuilder } from './condition-builder';
 import { DurationInput } from './duration-input';
 import { CrmStepFields } from './crm-step-fields';
+import { AiAgentStepFields } from '../agent-step/ai-agent-step-fields';
 import { CRM_EVENTS, crmEventOf, findCrmEvent, normalizeCrmEventConfig } from '../crm-events';
 import { eventFieldsFor } from '../event-data';
 import { availableData, plainStepName, stepWording } from '../step-wording';
@@ -97,6 +99,7 @@ export function NodeInspectorDrawer({
   onTriggerValidityChange,
 }: NodeInspectorDrawerProps) {
   const [activeTab, setActiveTab] = useState<'params' | 'settings'>('params');
+  const [showHelper, setShowHelper] = useState(false);
 
   if (!node) return null;
 
@@ -146,6 +149,8 @@ export function NodeInspectorDrawer({
               <ShieldAlert className="h-4 w-4" />
             ) : node.type === 'aiPromptNode' ? (
               <MessageSquareText className="h-4 w-4" />
+            ) : node.type === 'aiAgentNode' ? (
+              <Bot className="h-4 w-4" />
             ) : (
               <Layers className="h-4 w-4" />
             )}
@@ -301,6 +306,16 @@ export function NodeInspectorDrawer({
                   hint="Later steps can use what the AI wrote: pick it from Insert data."
                 />
               </div>
+            )}
+
+            {/* AI Agent Node Config */}
+            {node.type === 'aiAgentNode' && (
+              <AiAgentStepFields
+                config={config}
+                onChange={(next) => onUpdate(node.id, { config: next })}
+                showVariables={showHelper}
+                onToggleVariables={() => setShowHelper(!showHelper)}
+              />
             )}
 
             {/* Approval Node Config */}

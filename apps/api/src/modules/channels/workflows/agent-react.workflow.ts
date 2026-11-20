@@ -6,6 +6,7 @@ import {
   getExternalWorkflowHandle,
   isCancellation,
 } from '@temporalio/workflow';
+import type { AiAgentActionRecord, AiAgentStepAgent } from '@saas/shared';
 import { APPROVED_ACTION_CHANGED } from './activities/agent-react.activities';
 import type {
   AgentHistoryEntry,
@@ -80,6 +81,11 @@ export interface AgentReActWorkflowInput {
   eventSink?: { conversationId: string; turnId: string };
   /** Provenance recorded on committed mutations. Defaults to SYSTEM. */
   audit?: ToolAuditProvenance;
+  /**
+   * An agent from Settings → AI to run as: its instructions and model plan
+   * each turn, and its tools narrow what `userId` may use.
+   */
+  agentId?: string;
 }
 
 export interface AgentReActWorkflowOutput {
@@ -95,6 +101,17 @@ export interface AgentReActWorkflowOutput {
     tool: ToolCallSpec;
     preview: Record<string, unknown>;
   };
+  /** Every tool the agent used, in order, for the run history. */
+  actions?: AiAgentActionRecord[];
+  /** The agent the run acted as, when it named one. */
+  agent?: AiAgentStepAgent;
+  model?: string;
+}
+
+/** A tool's own words about what happened, short enough for a run record. */
+function actionSummary(value: unknown): string {
+  const text = typeof value === 'string' ? value : '';
+  return text.length > 400 ? `${text.slice(0, 399)}…` : text;
 }
 
 function approvalTimeoutToMilliseconds(timeout?: string): number {
@@ -205,13 +222,25 @@ async function runAgentLoop(
   // automation. The field is omitted (not undefined) on the automation path
   // so its activity inputs keep their original shape.
   const surface = input.eventSink ? { surface: 'assistant' as const } : {};
+  // Likewise omitted when the run names no agent.
+  const agentRef = input.agentId ? { agentId: input.agentId } : {};
   const toolCtx = {
     organizationId: input.organizationId,
     userId: input.userId,
     message: input.prompt,
     ...(input.audit ? { audit: input.audit } : {}),
     ...surface,
+    ...agentRef,
   };
+  // Bookkeeping for the caller: plain state, no Temporal commands.
+  const actions: AiAgentActionRecord[] = [];
+  let actedAs: AiAgentStepAgent | undefined;
+  let model: string | undefined;
+  const trail = () => ({
+    actions,
+    ...(actedAs ? { agent: actedAs } : {}),
+    ...(model ? { model } : {}),
+  });
 
   const approvalQueue: ApprovalSignalPayload[] = [];
   // The gated tool call currently waiting for a decision, if any.
@@ -238,6 +267,7 @@ async function runAgentLoop(
       userId: input.userId,
       allowedDomains: input.allowedDomains,
       ...surface,
+      ...agentRef,
     });
 
     const turn = await plannerActivities.planReActTurn({
@@ -246,7 +276,10 @@ async function runAgentLoop(
       prompt: goal,
       conversationHistory: history,
       availableTools,
+      ...agentRef,
     });
+    if (turn.agent) actedAs = turn.agent;
+    if (turn.model) model = turn.model;
     if (turn.thought) {
       await emit({
         eventKey: `t${turns}:thought`,
@@ -281,6 +314,12 @@ async function runAgentLoop(
           content: JSON.stringify({ error: `Tool '${call.name}' is not available` }),
           isError: true,
         });
+        actions.push({
+          tool: call.name,
+          status: 'FAILED',
+          summary: 'The agent asked for a tool it does not have.',
+          changedData: false,
+        });
       }
     }
 
@@ -303,6 +342,7 @@ async function runAgentLoop(
             tool = { ...tool, args: execution.resolvedArgs, pinned: true };
           }
           const approvedPreview = execution.previewPayload ?? {};
+          let askedFirst = false;
           if (!input.autoApprove || ALWAYS_ASK_TOOLS.has(tool.name)) {
             // Only a decision made while this call is awaited counts: drop any
             // stray decision that arrived earlier, and bind the wait to its id.
@@ -336,22 +376,41 @@ async function runAgentLoop(
             );
             awaitingToolId = undefined;
             const currentApproval = approvalQueue.shift();
+            const asked =
+              typeof pendingAction.preview.summary === 'string'
+                ? pendingAction.preview.summary
+                : tool.name;
             if (!approved) {
+              actions.push({
+                tool: tool.name,
+                status: 'TIMED_OUT',
+                summary: actionSummary(`Not done, nobody approved it in time: ${asked}`),
+                changedData: false,
+              });
               return {
                 status: 'TIMED_OUT',
                 finalResponse: `Approval for ${tool.name} timed out.`,
                 stepsExecuted: turns,
+                ...trail(),
               };
             }
             if (!currentApproval?.approved) {
+              actions.push({
+                tool: tool.name,
+                status: 'REJECTED',
+                summary: actionSummary(`Not done, it was rejected: ${asked}`),
+                changedData: false,
+              });
               return {
                 status: 'REJECTED',
                 finalResponse: currentApproval?.note
                   ? `Action ${tool.name} was rejected: ${currentApproval.note}`
                   : `Action ${tool.name} was rejected or approval timed out.`,
                 stepsExecuted: turns,
+                ...trail(),
               };
             }
+            askedFirst = true;
             await emit({
               eventKey: `t${turns}:approved:${tool.id}`,
               role: 'step',
@@ -384,6 +443,13 @@ async function runAgentLoop(
             toolName: tool.name,
             content: JSON.stringify(commit),
           });
+          actions.push({
+            tool: tool.name,
+            status: commit.success ? 'DONE' : 'FAILED',
+            summary: actionSummary(commit.resultSummary),
+            changedData: commit.success,
+            approved: askedFirst,
+          });
         } else {
           const output = execution.output ?? { error: execution.errorMessage };
           const reply =
@@ -406,6 +472,14 @@ async function runAgentLoop(
             content: JSON.stringify(output),
             ...(typeof output.error === 'string' ? { isError: true } : {}),
           });
+          const failed = typeof output.error === 'string';
+          actions.push({
+            tool: tool.name,
+            status: failed ? 'FAILED' : 'DONE',
+            summary: actionSummary(reply),
+            changedData: !failed && execution.isMutating,
+            ...(!failed && execution.isMutating ? { approved: false } : {}),
+          });
         }
       }
     }
@@ -417,6 +491,7 @@ async function runAgentLoop(
       finalResponse ||
       `Agent stopped after reaching the ${maxTurns}-turn limit without a final answer.`,
     stepsExecuted: turns,
+    ...trail(),
   };
 }
 

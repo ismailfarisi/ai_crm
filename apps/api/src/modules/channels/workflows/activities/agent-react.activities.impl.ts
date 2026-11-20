@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { NotFoundException } from '@nestjs/common';
 import { ApplicationFailure, Context } from '@temporalio/activity';
 import { PERMISSIONS, type Permission } from '@saas/shared';
 import { AiService } from '@/modules/ai/ai.service';
@@ -19,8 +20,12 @@ import { ChannelProviderType } from '../../entities/channel-config.entity';
 import { SkillRegistry } from '../../skills/skill.registry';
 import { ToolExecutionPolicyService } from '../../skills/tool-execution-policy.service';
 import { ChannelIdempotencyService } from '../../services/channel-idempotency.service';
+import type { ChannelAgentService } from '../../services/channel-agent.service';
+import type { ChannelAgent } from '../../entities/channel-agent.entity';
+import type { AiProviderType } from '@/modules/ai/entities/ai-config.entity';
 import type { ChannelSkill, SkillContext } from '../../skills/skill.types';
 import {
+  AGENT_UNAVAILABLE,
   APPROVED_ACTION_CHANGED,
   type AgentActivityCtx,
   type AgentHistoryEntry,
@@ -45,6 +50,22 @@ const AGENT_SYSTEM_PROMPT = [
   'If a tool returns an error or a question, explain it to the user or try another way.',
   'When you have what you need, or no tool fits, reply to the user in plain text without calling a tool.',
 ].join('\n');
+
+/**
+ * The base rules come first and unchanged: an agent's own instructions add
+ * to how it works, they cannot lift the approval or tool limits.
+ */
+export function agentSystemPrompt(
+  agent: Pick<ChannelAgent, 'name' | 'instructions'> | null,
+): string {
+  if (!agent) return AGENT_SYSTEM_PROMPT;
+  const instructions = agent.instructions?.trim();
+  return [
+    AGENT_SYSTEM_PROMPT,
+    `You are working as the "${agent.name}" agent on a task set by an automation. Nobody is in the conversation to answer a question: if something you need is missing, say what is missing in your final reply.`,
+    ...(instructions ? [`Guidance from the organisation:\n${instructions}`] : []),
+  ].join('\n\n');
+}
 
 const REFUSAL_ANSWER = "I can't help with that request.";
 const NO_ANSWER = "I couldn't come up with an answer to that.";
@@ -127,11 +148,55 @@ export function createAgentReactActivities(deps: {
   customRecordsService: CustomRecordsService;
   tenantContext: TenantContextService;
   idempotency: Pick<ChannelIdempotencyService, 'runOnce'>;
+  /** Needed only for runs that name an agent; without it such a run fails. */
+  channelAgents?: Pick<ChannelAgentService, 'findOne'>;
 }): Omit<AgentReactActivities, 'emitAssistantEventActivity'> {
   const policy = new ToolExecutionPolicyService();
 
+  const agentUnavailable = (message: string) =>
+    ApplicationFailure.nonRetryable(message, AGENT_UNAVAILABLE);
+
+  /**
+   * The agent a run acts as, looked up inside the run's own organization on
+   * every call: an agent deleted, switched off or edited mid-run takes effect
+   * at once. Fails the run rather than falling back to the general assistant,
+   * which could have more tools than the agent was given.
+   */
+  const loadAgent = async (
+    organizationId: string,
+    agentId: string,
+  ): Promise<ChannelAgent> => {
+    const agent = deps.channelAgents
+      ? await deps.channelAgents
+          .findOne(organizationId, agentId)
+          .catch((err: unknown) => {
+            if (err instanceof NotFoundException) return null;
+            throw err;
+          })
+      : null;
+    if (!agent) {
+      throw agentUnavailable(
+        'The agent this step runs as no longer exists. Open the step and pick another agent.',
+      );
+    }
+    if (agent.kind !== 'STAFF') {
+      throw agentUnavailable(
+        `"${agent.name}" is an agent that answers customers, so it cannot run an automation step. Pick a staff agent.`,
+      );
+    }
+    if (!agent.isEnabled) {
+      throw agentUnavailable(
+        `The agent "${agent.name}" is switched off in Settings → AI. Switch it on or pick another agent.`,
+      );
+    }
+    return agent;
+  };
+
   const resolveSkills = async (
-    ctx: Pick<AgentActivityCtx, 'organizationId' | 'userId' | 'surface'>,
+    ctx: Pick<
+      AgentActivityCtx,
+      'organizationId' | 'userId' | 'surface' | 'agentId'
+    >,
     allowedDomains?: string[],
   ): Promise<{ skills: ChannelSkill<never>[]; permissions: Permission[] }> => {
     if (!ctx.userId) {
@@ -142,10 +207,17 @@ export function createAgentReactActivities(deps: {
       ctx.organizationId,
     );
     // No surface means an automation: assistant-only skills stay out.
-    const skills = deps.skillRegistry.permittedFor(
+    let skills = deps.skillRegistry.permittedFor(
       access.permissions,
       ctx.surface ?? 'automation',
     );
+    if (ctx.agentId) {
+      // Only ever a subset of what the user may use: the agent's list
+      // removes tools, it cannot add one the user is not permitted.
+      const agent = await loadAgent(ctx.organizationId, ctx.agentId);
+      const granted = new Set(agent.skills);
+      skills = skills.filter((skill) => granted.has(skill.name));
+    }
     return {
       skills:
         allowedDomains?.length
@@ -194,11 +266,16 @@ export function createAgentReactActivities(deps: {
 
   const resolveCustomObjectTool = async (
     toolName: string,
-    ctx: Pick<AgentActivityCtx, 'organizationId' | 'userId'>,
+    ctx: Pick<AgentActivityCtx, 'organizationId' | 'userId' | 'agentId'>,
   ): Promise<{ object: CustomObjectDefinition; permissions: Permission[] } | null> => {
     const isQuery = toolName.startsWith('query_custom_');
     const isCreate = toolName.startsWith('create_custom_');
     if (!isQuery && !isCreate) return null;
+    // An agent's tool list cannot name a custom-object tool, so an agent
+    // never has one.
+    if (ctx.agentId) {
+      throw new Error(`Tool '${toolName}' is unavailable or not authorized`);
+    }
 
     const { permissions } = await resolveSkills(ctx);
     const requiredPermission = isQuery
@@ -235,6 +312,7 @@ export function createAgentReactActivities(deps: {
           inputSchema: skill.jsonSchema,
         }));
         if (
+          !input.agentId &&
           (!input.allowedDomains?.length ||
             input.allowedDomains.includes('CUSTOM_OBJECTS')) &&
           (permissions.includes(PERMISSIONS.CUSTOM_RECORD_READ) ||
@@ -264,15 +342,25 @@ export function createAgentReactActivities(deps: {
 
     async planReActTurn(input) {
       return deps.tenantContext.runWithTenant(input.organizationId, async () => {
+        const agent = input.agentId
+          ? await loadAgent(input.organizationId, input.agentId)
+          : null;
+        const agentRef = agent ? { agent: { id: agent.id, name: agent.name } } : {};
         const result = await deps.aiService
           .generateWithTools(
             'automations.ai_agent',
             {
-              system: AGENT_SYSTEM_PROMPT,
+              system: agentSystemPrompt(agent),
               tools: input.availableTools,
               messages: toAiMessages(input.conversationHistory),
               // Every round resends the same tools, instructions and history.
               cache: true,
+              // Left out when the agent names none, so the organization's
+              // defaults apply.
+              ...(agent?.model ? { model: agent.model } : {}),
+              ...(agent?.provider
+                ? { provider: agent.provider as AiProviderType }
+                : {}),
             },
             {
               organizationId: input.organizationId,
@@ -283,7 +371,12 @@ export function createAgentReactActivities(deps: {
             throw toPlannerFailure(err);
           });
         if (result.stopReason === 'refusal') {
-          return { thought: '', model: result.model, finalAnswer: REFUSAL_ANSWER };
+          return {
+            thought: '',
+            model: result.model,
+            finalAnswer: REFUSAL_ANSWER,
+            ...agentRef,
+          };
         }
 
         const knownNames = new Set(input.availableTools.map((tool) => tool.name));
@@ -313,11 +406,13 @@ export function createAgentReactActivities(deps: {
             thought: '',
             model: result.model,
             finalAnswer: result.text || NO_ANSWER,
+            ...agentRef,
           };
         }
         return {
           thought: result.text,
           model: result.model,
+          ...agentRef,
           ...(toolCalls.length ? { toolCalls } : {}),
           ...(invalidToolCalls.length ? { invalidToolCalls } : {}),
           // A rewritten id no longer matches the provider's own record of

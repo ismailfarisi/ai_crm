@@ -8,6 +8,7 @@ import {
   useUpdateAutomationWorkflow,
   useTestRunAutomation,
   useAutomationSettings,
+  useAutomationAgentOptions,
   useRegenerateAutomationWebhook,
 } from '@/hooks/use-automations';
 import { useAutomationCanvas, toAutomationEdges } from '@/hooks/use-automation-canvas';
@@ -21,6 +22,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { crmEventOf, normalizeTriggerNodes, runsWhenPhrase } from '@/components/automations/crm-events';
 import { normalizeDelayNodes } from '@/components/automations/duration';
 import { isTriggerType, plainStepName } from '@/components/automations/step-wording';
+import { AgentOptionsContext, agentStepsProblem } from '@/components/automations/agent-step/agent-options';
 import { useSession } from '@/lib/session-context';
 import { AUTOMATION_PERMISSIONS, automationScheduleSchema, describeSchedule } from '@saas/shared';
 import type { AutomationNodeType, AutomationNode, AutomationWorkflowDto } from '@saas/shared';
@@ -89,6 +91,7 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
   const { can } = useSession();
   const canEditTrigger = can(AUTOMATION_PERMISSIONS.AUTOMATION_UPDATE);
   const { data: settings } = useAutomationSettings();
+  const { data: agentOptions } = useAutomationAgentOptions();
 
   const [workflowName, setWorkflowName] = useState<string>(workflow.name);
   const [savedName, setSavedName] = useState<string>(workflow.name);
@@ -207,11 +210,14 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
   const triggerNode = nodes.find((n) => n.type === 'crmEventTrigger');
   const triggerEvent = crmEventOf((triggerNode?.data as { config?: Record<string, unknown> } | undefined)?.config);
   const missingEvent = workflow.triggerType === 'CRM_EVENT' && !triggerEvent;
+  // An AI agent step that can't run: no task, or its agent is gone or off.
+  const agentStepProblem = agentStepsProblem(nodes as unknown as AutomationNode[], agentOptions);
 
   const handleStatusChange = async () => {
     if (activating && missingEvent) {
       throw new Error('Choose what starts this automation first: click the first step and pick an event.');
     }
+    if (activating && agentStepProblem) throw new Error(agentStepProblem);
     const nextStatus = activating ? 'ACTIVE' : 'PAUSED';
     const saved = await updateWorkflowMutation.mutateAsync({
       id: workflow.id,
@@ -276,6 +282,7 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
   };
 
   return (
+    <AgentOptionsContext.Provider value={agentOptions}>
     <div data-testid="automation-studio-page" className="h-[calc(100vh-6.5rem)] lg:h-[calc(100vh-7.5rem)] min-h-[28rem] flex flex-col overflow-hidden bg-surface-muted">
       {/* Studio Header */}
       <CanvasHeader
@@ -284,7 +291,7 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
         onNameChange={setWorkflowName}
         status={workflowStatus}
         onStatusToggle={() => setStatusConfirmOpen(true)}
-        statusBlockedReason={triggerInvalid ? 'Fix the schedule before turning this on' : null}
+        statusBlockedReason={triggerInvalid ? 'Fix the schedule before turning this on' : agentStepProblem}
         onBackClick={(event) => {
           if (!hasUnsavedChanges) return;
           event.preventDefault();
@@ -293,7 +300,14 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
         isDirty={hasUnsavedChanges}
         isSaving={isSaving}
         autosave={autosave}
-        saveBlockedReason={triggerInvalid ? 'Fix the schedule before saving' : null}
+        saveBlockedReason={
+          triggerInvalid
+            ? 'Fix the schedule before saving'
+            : // A draft may be saved unfinished; one that is on may not.
+              workflowStatus === 'ACTIVE'
+              ? agentStepProblem
+              : null
+        }
         onSave={() => handleSave()}
         // One side panel at a time, so the canvas keeps its room.
         onOpenTestRun={() => {
@@ -423,5 +437,6 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
         tone="danger"
       />
     </div>
+    </AgentOptionsContext.Provider>
   );
 }

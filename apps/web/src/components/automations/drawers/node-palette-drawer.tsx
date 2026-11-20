@@ -18,7 +18,7 @@ import {
   Plus,
   type LucideIcon,
   MessageSquareText,
-  Route,
+  Bot,
 } from 'lucide-react';
 import clsx from 'clsx';
 import type { AutomationNodeType } from '@saas/shared';
@@ -166,10 +166,10 @@ export const NODE_PALETTE_ITEMS: NodePaletteItem[] = [
   },
   {
     type: 'aiAgentNode',
-    label: 'Autonomous AI Agent',
+    label: 'AI agent',
     category: 'AI',
-    icon: Route,
-    description: 'Autonomous multi-step ReAct agent with tool execution and HITL approvals',
+    icon: Bot,
+    description: 'Give one of your agents a task. It looks things up and asks before it changes a record',
     badge: 'Agent',
     iconBg: 'bg-brand-soft',
     iconColor: 'text-ink',

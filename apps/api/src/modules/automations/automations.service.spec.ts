@@ -17,6 +17,7 @@ import { AutomationExecution } from './entities/automation-execution.entity';
 import { TemporalService } from '../temporal/temporal.service';
 import { AutomationSchedulesService } from './schedules/automation-schedules.service';
 import { AutomationApprovalsService } from './approvals/automation-approvals.service';
+import { ChannelAgent } from '../channels/entities/channel-agent.entity';
 
 describe('AutomationsService', () => {
   let service: AutomationsService;
@@ -26,6 +27,7 @@ describe('AutomationsService', () => {
   let mockTemporalClient: any;
   let mockWorkflowHandle: any;
   let approvals: { decideByNode: jest.Mock; findPendingForExecution: jest.Mock };
+  const agentRepo = { find: jest.fn() };
 
   const mockTenantId = 'tenant-uuid-1';
   const mockWorkflow: AutomationWorkflow = {
@@ -149,6 +151,7 @@ describe('AutomationsService', () => {
           },
         },
         { provide: AutomationApprovalsService, useValue: approvals },
+        { provide: getRepositoryToken(ChannelAgent), useValue: agentRepo },
       ],
     }).compile();
 
@@ -339,6 +342,138 @@ describe('AutomationsService', () => {
         edges: [],
       } as any);
       expect(result.triggerConfig.event).toBe('invoice.overdue');
+    });
+
+    describe('AI agent steps', () => {
+      const agentStep = (config: Record<string, unknown>, label = 'Chase quote') => ({
+        id: 'agent',
+        type: 'aiAgentNode' as const,
+        position: { x: 0, y: 0 },
+        data: { label, config },
+      });
+      const staffAgent = { id: 'agent-1', name: 'Quote chaser', kind: 'STAFF', isEnabled: true };
+      const draftWith = (nodes: unknown[], status = 'DRAFT') => {
+        workflowRepo.findOne.mockResolvedValue({ ...mockWorkflow, status, nodes });
+      };
+
+      beforeEach(() => {
+        agentRepo.find.mockReset();
+        agentRepo.find.mockResolvedValue([staffAgent]);
+        workflowRepo.save.mockClear();
+      });
+
+      it.each([[''], ['   '], [undefined]])(
+        'refuses to switch on an automation whose agent step has the task %p',
+        async (goal) => {
+          draftWith([agentStep({ goal, agentId: 'agent-1' })]);
+
+          await expect(
+            service.updateWorkflow(mockTenantId, 'wf-uuid-1', { status: 'ACTIVE' }, 'user-1'),
+          ).rejects.toThrow(
+            'The AI agent step "Chase quote" has no task. Say what the agent should do before switching this automation on.',
+          );
+          expect(workflowRepo.save).not.toHaveBeenCalled();
+        },
+      );
+
+      it('refuses when the task is removed from an automation that is already on', async () => {
+        draftWith([agentStep({ goal: 'Chase it' })], 'ACTIVE');
+
+        await expect(
+          service.updateWorkflow(
+            mockTenantId,
+            'wf-uuid-1',
+            { nodes: [agentStep({ goal: '' })] },
+            'user-1',
+          ),
+        ).rejects.toThrow(BadRequestException);
+        expect(workflowRepo.save).not.toHaveBeenCalled();
+      });
+
+      it('saves a draft with an unfinished agent step', async () => {
+        draftWith([]);
+
+        await service.updateWorkflow(
+          mockTenantId,
+          'wf-uuid-1',
+          { nodes: [agentStep({ goal: '' })] },
+          'user-1',
+        );
+
+        expect(workflowRepo.save).toHaveBeenCalled();
+        expect(agentRepo.find).not.toHaveBeenCalled();
+      });
+
+      it('switches on with a task and a staff agent of this organisation', async () => {
+        draftWith([agentStep({ goal: 'Chase {{ $trigger.quote.number }}', agentId: 'agent-1' })]);
+
+        await service.updateWorkflow(mockTenantId, 'wf-uuid-1', { status: 'ACTIVE' }, 'user-1');
+
+        expect(workflowRepo.save).toHaveBeenCalled();
+        const where = agentRepo.find.mock.calls[0][0].where;
+        expect(where.organizationId).toBe(mockTenantId);
+      });
+
+      it('switches on with a task and no agent, without looking any agent up', async () => {
+        draftWith([agentStep({ goal: 'Chase it', agentId: null })]);
+
+        await service.updateWorkflow(mockTenantId, 'wf-uuid-1', { status: 'ACTIVE' }, 'user-1');
+
+        expect(workflowRepo.save).toHaveBeenCalled();
+        expect(agentRepo.find).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['deleted or from another organisation', [], 'uses an agent that no longer exists'],
+        [
+          'a customer-facing agent',
+          [{ ...staffAgent, kind: 'CUSTOMER' }],
+          'uses an agent that no longer exists',
+        ],
+        [
+          'switched off',
+          [{ ...staffAgent, isEnabled: false }],
+          'uses the agent "Quote chaser", which is switched off in Settings → AI.',
+        ],
+      ])('refuses to switch on when the agent is %s', async (_case, found, message) => {
+        agentRepo.find.mockResolvedValue(found);
+        draftWith([agentStep({ goal: 'Chase it', agentId: 'agent-1' })]);
+
+        await expect(
+          service.updateWorkflow(mockTenantId, 'wf-uuid-1', { status: 'ACTIVE' }, 'user-1'),
+        ).rejects.toThrow(message);
+        expect(workflowRepo.save).not.toHaveBeenCalled();
+      });
+
+      it('lists staff agents of the organisation for the step, without their instructions', async () => {
+        agentRepo.find.mockResolvedValue([
+          {
+            id: 'agent-1',
+            name: 'Quote chaser',
+            description: 'Follows up quotes',
+            instructions: 'secret house rules',
+            kind: 'STAFF',
+            isEnabled: true,
+            skills: ['quote.lookup'],
+          },
+        ]);
+
+        const options = await service.listAgentOptions(mockTenantId);
+
+        expect(agentRepo.find).toHaveBeenCalledWith({
+          where: { organizationId: mockTenantId, kind: 'STAFF' },
+          order: { createdAt: 'ASC' },
+        });
+        expect(options).toEqual([
+          {
+            id: 'agent-1',
+            name: 'Quote chaser',
+            description: 'Follows up quotes',
+            isEnabled: true,
+            tools: ['quote.lookup'],
+          },
+        ]);
+      });
     });
 
     it('rejects activating a CRM_EVENT workflow without an event', async () => {

@@ -1251,6 +1251,31 @@ automation's owner, the user who switched it on. Webhook runs never
 auto-approve agent tools, whatever the step's setting: anyone holding the
 address can start one, so a person approves each tool call.
 
+### An AI agent step can run as an agent from Settings › AI — by design
+
+The step may name a staff agent (`config.agentId`). The run then plans with
+that agent's instructions, after the fixed system prompt, and with its provider
+and model when it has them. The agent's tool list only narrows what the run's
+user may use: the tools are those the user is permitted on the automation
+surface that the agent also lists. Custom-object tools are left out for a named
+agent, because an agent cannot be given them in Settings. Customer agents
+cannot be picked, and a step naming one fails: they are built for someone
+outside the organisation. A step that names an agent ignores its `allowedDomains`,
+so the agent's tool list is the only narrowing.
+
+A step with no task, or naming an agent that is deleted or switched off, stops
+the automation being switched on (`AutomationsService.updateWorkflow`), and the
+run checks again: an agent deleted after activation fails the step with
+`AgentUnavailable`, without retries. A draft can still be saved unfinished.
+
+The step's output gains `actions`: one row per tool the agent used, with its
+outcome and whether it changed a record. Runs recorded before this have no
+`actions` and the run history shows them as before. The list holds what the
+agent did, not its reasoning between tools.
+
+Not verified against a live provider: the agent's instructions, model and tool
+narrowing are covered by unit tests of the activities and the workflow.
+
 ### Runs stopped from outside the workflow stay Running — open
 
 A run that is terminated, that times out, or that is stuck on a workflow-task
