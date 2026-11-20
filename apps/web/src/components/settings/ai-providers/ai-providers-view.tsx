@@ -21,8 +21,8 @@ export function AiProvidersView() {
     return (
       <div className="space-y-6">
         <PageHeader
-          title="AI Providers"
-          description="Connect OpenAI, Anthropic, or any open model via OpenRouter to power receipt scanning, chat commands, and future AI features."
+          title="1. Connect an AI provider"
+          description="Add an API key from OpenAI, Anthropic or OpenRouter. The provider marked Default is used unless you pick another one below."
         />
         <div className="grid gap-6 md:grid-cols-3">
           {DEFAULT_PROVIDERS.map((provider) => (
@@ -52,8 +52,8 @@ export function AiProvidersView() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="AI Providers"
-        description="Connect OpenAI, Anthropic, or any open model via OpenRouter to power receipt scanning, chat commands, and future AI features."
+        title="1. Connect an AI provider"
+        description="Add an API key from OpenAI, Anthropic or OpenRouter. The provider marked Default is used unless you pick another one below."
       />
 
       <div className="grid gap-6 md:grid-cols-3">

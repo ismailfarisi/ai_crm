@@ -253,7 +253,7 @@ export const SECONDARY_SECTIONS: NavSection[] = [
       },
       {
         href: '/settings/ai',
-        label: 'AI Cost Guard',
+        label: 'AI',
         icon: Gauge,
         rule: { permission: PERMISSIONS.AI_MANAGE },
       },

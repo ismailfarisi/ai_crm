@@ -3,6 +3,8 @@
  * endpoints no longer edit the same two objects. */
 import type {
   ChannelThreadDto,
+  ChannelAiTestResultDto,
+  TestChannelAiPayload,
   ChannelLinkCodeDto,
   StaffChannelIdentityDto,
   ContactDto,
@@ -125,6 +127,11 @@ export const channelsEndpoints = {
     update: (input: UpsertIntentAgentConfigPayload) =>
       apiFetch<IntentAgentConfigDto>('/channels/intent-agent', {
         method: 'PATCH',
+        body: input,
+      }),
+    test: (input: TestChannelAiPayload) =>
+      apiFetch<ChannelAiTestResultDto>('/channels/intent-agent/test', {
+        method: 'POST',
         body: input,
       }),
   },

@@ -34,8 +34,8 @@ const INTENT_OPTIONS = [
 ];
 
 const ACTION_TYPE_OPTIONS = [
-  { value: 'AUTO_ACK', label: 'Send a canned acknowledgement' },
-  { value: 'CREATE_DRAFT_QUOTE', label: 'Draft a quote (awaits approval)' },
+  { value: 'AUTO_ACK', label: 'Send a set reply' },
+  { value: 'CREATE_DRAFT_QUOTE', label: 'Create a draft quote for staff to approve' },
 ];
 
 const PROVIDER_OPTIONS = [
@@ -118,6 +118,7 @@ export function AiAgentFormDialog({ open, onClose, agent }: AiAgentFormDialogPro
   }, [open, agent, reset]);
 
   const eligibleProviders = watch('eligibleProviders') ?? [];
+  const sendsOnlyReply = watch('actionType') === 'AUTO_ACK';
 
   const toggleProvider = (val: string) => {
     const current = watch('eligibleProviders') ?? [];
@@ -166,8 +167,8 @@ export function AiAgentFormDialog({ open, onClose, agent }: AiAgentFormDialogPro
       open={open}
       onClose={onClose}
       size="lg"
-      title={isEditing ? 'Edit AI agent' : 'New AI agent'}
-      description="Which intent triggers what action — no deploy needed to add or tune one."
+      title={isEditing ? 'Edit rule' : 'New rule'}
+      description="When a customer message is about one thing, do one thing. Only one rule per kind of request."
       footer={
         <>
           <Button variant="secondary" onClick={onClose} type="button">
@@ -179,7 +180,7 @@ export function AiAgentFormDialog({ open, onClose, agent }: AiAgentFormDialogPro
             loading={isSubmitting || update.isPending || create.isPending}
             onClick={onSubmit}
           >
-            {isEditing ? 'Save changes' : 'Create agent'}
+            {isEditing ? 'Save changes' : 'Create rule'}
           </Button>
         </>
       }
@@ -193,21 +194,21 @@ export function AiAgentFormDialog({ open, onClose, agent }: AiAgentFormDialogPro
         <Input
           label="Name"
           required
-          placeholder="Order status auto-ack"
+          placeholder="Order status reply"
           error={errors.name?.message}
           {...register('name')}
         />
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Select
-            label="Intent"
+            label="When the customer&apos;s message is"
             required
             options={INTENT_OPTIONS}
             error={errors.intent?.message}
             {...register('intent')}
           />
           <Select
-            label="Action"
+            label="Do this"
             required
             options={ACTION_TYPE_OPTIONS}
             error={errors.actionType?.message}
@@ -216,8 +217,12 @@ export function AiAgentFormDialog({ open, onClose, agent }: AiAgentFormDialogPro
         </div>
 
         <Textarea
-          label="Acknowledgement template"
-          hint="Sent to the customer as-is — never the AI's freeform draft reply."
+          label={sendsOnlyReply ? 'Reply to send' : 'Reply to send (optional)'}
+          hint={
+            sendsOnlyReply
+              ? 'Sent to the customer exactly as written. The AI does not write its own reply.'
+              : 'Sent to the customer after the draft quote is created, exactly as written. Leave blank to send nothing.'
+          }
           placeholder="Thanks for reaching out. We are looking into this and will follow up shortly."
           error={undefined}
           {...register('config.template' as 'config')}
@@ -225,12 +230,12 @@ export function AiAgentFormDialog({ open, onClose, agent }: AiAgentFormDialogPro
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Input
-            label="Confidence threshold"
+            label="How sure the AI must be (0 to 1)"
             type="number"
             min={0}
             max={1}
             step={0.05}
-            hint="Only dispatches when the classifier is at least this confident (0-1)."
+            hint="0.75 means the rule only runs when the AI is at least 75% sure what the customer wants. Below that, it asks a question or hands over to a person."
             error={errors.confidenceThreshold?.message}
             {...register('confidenceThreshold', { valueAsNumber: true })}
           />
@@ -246,7 +251,7 @@ export function AiAgentFormDialog({ open, onClose, agent }: AiAgentFormDialogPro
         </div>
 
         <fieldset>
-          <legend className="mb-2 text-sm font-medium text-ink">Eligible channels</legend>
+          <legend className="mb-2 text-sm font-medium text-ink">Channels this rule covers</legend>
           <div className="grid grid-cols-2 gap-2">
             {PROVIDER_OPTIONS.map((provider) => (
               <label

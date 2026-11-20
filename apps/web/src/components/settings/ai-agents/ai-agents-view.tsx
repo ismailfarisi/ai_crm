@@ -30,8 +30,16 @@ const INTENT_LABELS: Record<string, string> = {
 };
 
 const ACTION_LABELS: Record<string, string> = {
-  AUTO_ACK: 'Auto-ack',
-  CREATE_DRAFT_QUOTE: 'Draft quote',
+  AUTO_ACK: 'send a set reply',
+  CREATE_DRAFT_QUOTE: 'create a draft quote',
+};
+
+const CHANNEL_LABELS: Record<string, string> = {
+  EMAIL_SMTP: 'Email (SMTP)',
+  EMAIL_RESEND: 'Email (Resend)',
+  WHATSAPP_META: 'WhatsApp',
+  TELEGRAM: 'Telegram',
+  SLACK: 'Slack',
 };
 
 export function AiAgentsView() {
@@ -42,7 +50,7 @@ export function AiAgentsView() {
   if (isPending) {
     return (
       <>
-        <PageHeader title="AI agents" />
+        <PageHeader title="4. Automatic replies" />
         <Skeleton className="h-64 w-full" />
       </>
     );
@@ -51,13 +59,13 @@ export function AiAgentsView() {
   return (
     <>
       <PageHeader
-        title="AI agents"
-        description="Which classified intent triggers what action on inbound messages — editable without a deploy."
+        title="4. Automatic replies"
+        description="What happens by itself once the AI knows what a customer wants. Add one rule for each kind of request; anything without a rule goes to a person."
         actions={
           <Can permission={PERMISSIONS.AI_MANAGE}>
             <Button onClick={() => setEditing(null)}>
               <Plus className="size-4" />
-              New agent
+              New rule
             </Button>
           </Can>
         }
@@ -67,20 +75,20 @@ export function AiAgentsView() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Bot className="size-4 text-ink-subtle" />
-            Dispatch rules
+            Rules
           </CardTitle>
         </CardHeader>
 
         {!agents || agents.length === 0 ? (
           <EmptyState
             icon={<Bot className="size-8" />}
-            title="No agents yet"
-            description="Create one so a classified intent (e.g. order status) can trigger an automatic acknowledgement or a draft quote."
+            title="No rules yet"
+            description="Add one so that, for example, a question about an order gets an automatic reply, or a request for a quote creates a draft quote."
             action={
               <Can permission={PERMISSIONS.AI_MANAGE}>
                 <Button onClick={() => setEditing(null)}>
                   <Plus className="size-4" />
-                  New agent
+                  New rule
                 </Button>
               </Can>
             }
@@ -100,9 +108,12 @@ export function AiAgentsView() {
                     </Badge>
                   </div>
                   <p className="mt-1 text-sm text-ink-muted">
-                    {INTENT_LABELS[agent.intent] ?? agent.intent} &rarr;{' '}
-                    {ACTION_LABELS[agent.actionType] ?? agent.actionType} &middot; confidence &ge;{' '}
-                    {agent.confidenceThreshold} &middot; {agent.eligibleProviders.join(', ')}
+                    When it is: {INTENT_LABELS[agent.intent] ?? agent.intent}. Then:{' '}
+                    {ACTION_LABELS[agent.actionType] ?? agent.actionType}. Only when the AI is at
+                    least {Math.round(agent.confidenceThreshold * 100)}% sure. On:{' '}
+                    {agent.eligibleProviders.map((p) => CHANNEL_LABELS[p] ?? p).join(', ') ||
+                      'no channels'}
+                    .
                   </p>
                 </div>
 

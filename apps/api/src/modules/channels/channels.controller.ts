@@ -31,7 +31,12 @@ import { AiAgentService } from './services/ai-agent.service';
 import { IntentAgentConfigService } from './services/intent-agent-config.service';
 import { ChannelThreadService } from './services/channel-thread.service';
 import { UsersService } from '@/modules/users/users.service';
-import type { ChannelThreadDto } from '@saas/shared';
+import {
+  testChannelAiSchema,
+  type ChannelThreadDto,
+  type TestChannelAiPayload,
+} from '@saas/shared';
+import { ChannelAiPreviewService } from './services/channel-ai-preview.service';
 import { ChannelProviderType } from './entities/channel-config.entity';
 
 @ApiTags('channels')
@@ -44,6 +49,7 @@ export class ChannelsController {
     private readonly intentAgentConfigService: IntentAgentConfigService,
     private readonly threads: ChannelThreadService,
     private readonly usersService: UsersService,
+    private readonly aiPreview: ChannelAiPreviewService,
   ) {}
 
   @Get('configs')
@@ -285,6 +291,19 @@ export class ChannelsController {
   })
   getIntentAgentConfig(@CurrentUser() user: AuthenticatedUser) {
     return this.intentAgentConfigService.getEffective(user.organizationId);
+  }
+
+  @Post('intent-agent/test')
+  @RequirePermissions(PERMISSIONS.AI_MANAGE)
+  @ApiOperation({
+    summary:
+      'Work out what the AI would do with a customer message, without sending or saving anything',
+  })
+  testIntentAgent(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(zodBody(testChannelAiSchema)) body: TestChannelAiPayload,
+  ) {
+    return this.aiPreview.preview(user.organizationId, body);
   }
 
   @Patch('intent-agent')

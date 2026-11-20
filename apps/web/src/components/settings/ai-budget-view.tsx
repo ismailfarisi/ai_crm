@@ -48,7 +48,7 @@ export function AiBudgetView() {
   if (isPending) {
     return (
       <div className="space-y-6">
-        <PageHeader title="AI Cost Guard" description="Monitor and cap AI spend for this organization." />
+        <PageHeader title="5. Spending limit" description="See what the AI has cost this month and set a monthly limit." />
         <Skeleton className="h-40 w-full rounded-2xl" />
       </div>
     );
@@ -65,8 +65,8 @@ export function AiBudgetView() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="AI Cost Guard"
-        description="Monitor AI spend and set a monthly cap to prevent runaway usage."
+        title="5. Spending limit"
+        description="See what the AI has cost this month and set a monthly limit. When the limit is reached the AI stops until next month or until you raise it."
       />
 
       {status?.budget ? (

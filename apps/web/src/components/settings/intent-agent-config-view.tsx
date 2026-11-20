@@ -80,8 +80,8 @@ export function IntentAgentConfigView() {
     return (
       <div className="space-y-6">
         <PageHeader
-          title="Intent agent"
-          description="Chats to clarify what a customer wants before handing off to a specialist agent."
+          title="3. Customer messages"
+          description="How the AI reads customer messages, and when it hands a conversation to a person."
         />
         <Skeleton className="h-64 w-full rounded-2xl" />
       </div>
@@ -91,8 +91,8 @@ export function IntentAgentConfigView() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Intent agent"
-        description="When the classifier isn't confident, this agent asks a clarifying question and waits for a reply — up to a turn limit — before handing off to the matching AI agent below."
+        title="3. Customer messages"
+        description="The AI reads every customer message and works out what they want. When it is not sure, it can ask the customer a question and wait for the answer. If it still cannot help, the conversation goes to a person in the Inbox."
       />
 
       <Can permission={PERMISSIONS.AI_MANAGE}>
@@ -109,14 +109,14 @@ export function IntentAgentConfigView() {
               onChange={(e) => setIsEnabled(e.target.checked)}
             />
             <label htmlFor="intent-agent-enabled" className="text-sm font-medium text-ink cursor-pointer">
-              Enabled — otherwise every message gets a single classification pass with no back-and-forth
+              Let the AI ask customers questions. When this is off, the AI reads each message once and never replies with a question.
             </label>
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="max-turns" className="block text-xs font-semibold text-ink">
-                Max clarifying turns
+                Questions before handing over to a person
               </label>
               <Input
                 id="max-turns"
@@ -131,7 +131,7 @@ export function IntentAgentConfigView() {
 
             <div>
               <label htmlFor="reply-timeout" className="block text-xs font-semibold text-ink">
-                Reply timeout (minutes)
+                Minutes to wait for the customer&apos;s answer
               </label>
               <Input
                 id="reply-timeout"
@@ -146,9 +146,9 @@ export function IntentAgentConfigView() {
           </div>
 
           <Textarea
-            label="System prompt override"
-            hint="Leave blank to use the default classification prompt."
-            placeholder="You are classifying what a customer wants..."
+            label="Instructions for the AI (optional)"
+            hint="Leave blank to use the built-in instructions. Use this to describe your business or how to tell requests apart."
+            placeholder="We make printed packaging. Treat any message with box sizes or quantities as a request for a quote."
             value={systemPrompt}
             onChange={(e) => setSystemPrompt(e.target.value)}
           />
@@ -172,7 +172,7 @@ export function IntentAgentConfigView() {
           />
 
           <fieldset>
-            <legend className="mb-2 text-xs font-semibold text-ink">Eligible channels</legend>
+            <legend className="mb-2 text-xs font-semibold text-ink">Channels where the AI may ask questions</legend>
             <div className="grid grid-cols-2 gap-2">
               {PROVIDER_OPTIONS.map((provider) => (
                 <label

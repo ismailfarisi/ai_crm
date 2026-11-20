@@ -35,6 +35,7 @@ import { ChannelThread } from './entities/channel-thread.entity';
 import { ChannelThreadService } from './services/channel-thread.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { FinanceModule } from '../finance/finance.module';
+import { ChannelAiPreviewService } from './services/channel-ai-preview.service';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { FinanceModule } from '../finance/finance.module';
   controllers: [ChannelsController, ChannelsWebhookController],
   providers: [
     ChannelsService,
+    ChannelAiPreviewService,
     ChannelThreadService,
     { provide: CHANNEL_SENDER, useExisting: ChannelsService },
     ChannelCryptoService,

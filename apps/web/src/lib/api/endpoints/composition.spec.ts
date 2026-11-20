@@ -87,7 +87,7 @@ const QUERY_KEYS = [
   'financeOverview', 'financeAccounts', 'financeBudgets', 'financeSubscriptions',
   'financeOccurrences', 'financeCashForecast', 'prepaidSchedules',
   'financeJournalEntries', 'expenses', 'expense', 'aiBudget', 'aiUsage',
-  'aiAgents', 'intentAgentConfig',
+  'aiAgents', 'intentAgentConfig', 'aiSettings', 'aiModels', 'channelThreads',
   'suppliers', 'supplier', 'supplierMaterials',
   'purchaseOrders', 'purchaseOrder', 'purchaseOrderGuardrails', 'purchasePolicy',
   'stock', 'stockLocations', 'reorderSuggestions', 'stockReconcile', 'goodsReceipts',

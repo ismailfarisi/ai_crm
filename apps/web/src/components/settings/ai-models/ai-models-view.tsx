@@ -67,7 +67,7 @@ export function AiModelsView() {
 
   const header = (
     <PageHeader
-      title="Models"
+      title="2. Choose models"
       description="Pick the model the AI runs on. Everything uses the default unless you choose a different one for it."
     />
   );
