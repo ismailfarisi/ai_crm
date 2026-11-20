@@ -25,7 +25,9 @@ const text = (value: string) => ({
   model: 'm',
   stopReason: null,
 });
-const calls = (...toolCalls: { name: string; input: Record<string, unknown> }[]) => ({
+const calls = (
+  ...toolCalls: { name: string; input: Record<string, unknown> }[]
+) => ({
   ...text(''),
   toolCalls: toolCalls.map((call, i) => ({ id: `t${i}`, ...call })),
 });
@@ -36,15 +38,19 @@ function setup(agents: ChannelAgent[], threadAgentId: string | null = null) {
     generateWithTools: jest.fn(),
   };
   const threads = {
-    getOrCreate: jest.fn().mockResolvedValue({ id: 'thread', agentId: threadAgentId }),
+    getOrCreate: jest
+      .fn()
+      .mockResolvedValue({ id: 'thread', agentId: threadAgentId }),
     setAgent: jest.fn(),
   };
-  const quotesService = { createQuote: jest.fn().mockResolvedValue({ id: 'q1' }) };
+  const quotesService = {
+    createQuote: jest.fn().mockResolvedValue({ id: 'q1' }),
+  };
   const runner = new ChannelAgentRunner({
     aiService: aiService as never,
     agents: { findEnabled: jest.fn().mockResolvedValue(agents) },
-    threads: threads as never,
-    quotesService: quotesService as never,
+    threads: threads,
+    quotesService: quotesService,
   });
   const input = {
     organizationId: 'org',
@@ -65,9 +71,15 @@ describe('ChannelAgentRunner', () => {
   });
 
   it('gives a single agent the message without a routing call, on its own model', async () => {
-    const sales = agent({ name: 'Sales', model: 'big-model', provider: 'OPENAI' });
+    const sales = agent({
+      name: 'Sales',
+      model: 'big-model',
+      provider: 'OPENAI',
+    });
     const { runner, input, aiService, threads } = setup([sales]);
-    aiService.generateWithTools.mockResolvedValue(text('What size are the boxes?'));
+    aiService.generateWithTools.mockResolvedValue(
+      text('What size are the boxes?'),
+    );
 
     const result = await runner.runCustomerTurn(input);
 
@@ -119,7 +131,11 @@ describe('ChannelAgentRunner', () => {
       .mockResolvedValueOnce(
         calls({
           name: 'transfer_to_agent',
-          input: { agent: 'Support', reason: 'A delivery problem', summary: 'Box arrived damaged' },
+          input: {
+            agent: 'Support',
+            reason: 'A delivery problem',
+            summary: 'Box arrived damaged',
+          },
         }),
       )
       .mockResolvedValueOnce(text('We will sort that out.'));
@@ -162,7 +178,9 @@ describe('ChannelAgentRunner', () => {
         calls({
           name: 'transfer_to_agent',
           input: {
-            agent: options.system.includes('"Sales" agent') ? 'Support' : 'Sales',
+            agent: options.system.includes('"Sales" agent')
+              ? 'Support'
+              : 'Sales',
             reason: 'not mine',
             summary: 's',
           },
@@ -204,7 +222,9 @@ describe('ChannelAgentRunner', () => {
   });
 
   it('refuses a tool the agent was not given', async () => {
-    const { runner, input, aiService, quotesService } = setup([agent({ name: 'Sales' })]);
+    const { runner, input, aiService, quotesService } = setup([
+      agent({ name: 'Sales' }),
+    ]);
     aiService.generateWithTools
       .mockResolvedValueOnce(
         calls({ name: 'draft_quote', input: { title: 't', request: 'r' } }),
@@ -223,13 +243,18 @@ describe('ChannelAgentRunner', () => {
     const { runner, input, aiService, quotesService, threads } = setup([sales]);
     aiService.generateWithTools
       .mockResolvedValueOnce(
-        calls({ name: 'draft_quote', input: { title: 't', request: '500 boxes' } }),
+        calls({
+          name: 'draft_quote',
+          input: { title: 't', request: '500 boxes' },
+        }),
       )
       .mockResolvedValueOnce(text('The team will send your quote shortly.'));
 
     const result = await runner.runCustomerTurn({ ...input, dryRun: true });
 
-    expect(result.actions).toEqual(['Draft a quote for staff to review: 500 boxes']);
+    expect(result.actions).toEqual([
+      'Draft a quote for staff to review: 500 boxes',
+    ]);
     expect(quotesService.createQuote).not.toHaveBeenCalled();
     expect(threads.getOrCreate).not.toHaveBeenCalled();
     expect(threads.setAgent).not.toHaveBeenCalled();

@@ -12,7 +12,11 @@ function setup(existing: Record<string, unknown> | null = null) {
   const registry = {
     all: () => [
       { name: 'quote.create', description: 'Create a quote' },
-      { name: 'work_order.query', description: 'Look up a job', isMutating: false },
+      {
+        name: 'work_order.query',
+        description: 'Look up a job',
+        isMutating: false,
+      },
       { name: 'assistant.only', description: 'x', surfaces: ['assistant'] },
     ],
   };
@@ -37,7 +41,11 @@ describe('ChannelAgentService', () => {
     const { service } = setup();
     expect(service.toolOptions('STAFF')).toEqual([
       { name: 'quote.create', description: 'Create a quote', isMutating: true },
-      { name: 'work_order.query', description: 'Look up a job', isMutating: false },
+      {
+        name: 'work_order.query',
+        description: 'Look up a job',
+        isMutating: false,
+      },
     ]);
     expect(service.toolOptions('CUSTOMER').map((tool) => tool.name)).toEqual([
       'draft_quote',
@@ -62,10 +70,18 @@ describe('ChannelAgentService', () => {
   });
 
   it('changes only what an update names, and clears the model on null', async () => {
-    const stored = { id: 'a1', organizationId: 'org', ...payload, model: 'big' };
+    const stored = {
+      id: 'a1',
+      organizationId: 'org',
+      ...payload,
+      model: 'big',
+    };
     const { service, repo } = setup(stored);
 
-    await service.update('org', 'a1', { description: 'Buying board', model: null });
+    await service.update('org', 'a1', {
+      description: 'Buying board',
+      model: null,
+    });
 
     expect(repo.save).toHaveBeenCalledWith(
       expect.objectContaining({

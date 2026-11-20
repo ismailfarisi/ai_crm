@@ -142,9 +142,7 @@ export class ChannelAgentRunner {
     const parsed = routeSchema.safeParse(result.data);
     if (!parsed.success) return null;
     if (parsed.data.confidence < AGENT_ROUTE_MIN_CONFIDENCE) return null;
-    return (
-      candidates.find((agent) => agent.name === parsed.data.agent) ?? null
-    );
+    return candidates.find((agent) => agent.name === parsed.data.agent) ?? null;
   }
 
   async runCustomerTurn(
@@ -233,7 +231,10 @@ export class ChannelAgentRunner {
         { organizationId: input.organizationId },
       );
       if (result.stopReason === 'refusal') {
-        return handOver('UNRESOLVED', 'The AI declined to answer this message.');
+        return handOver(
+          'UNRESOLVED',
+          'The AI declined to answer this message.',
+        );
       }
 
       if (result.toolCalls.length === 0) {
@@ -252,10 +253,7 @@ export class ChannelAgentRunner {
         const reason = AGENT_HANDOVER_REASONS.find(
           (r) => r === handover.input.reason,
         );
-        return handOver(
-          reason ?? 'UNRESOLVED',
-          asText(handover.input.summary),
-        );
+        return handOver(reason ?? 'UNRESOLVED', asText(handover.input.summary));
       }
 
       const transfer = result.toolCalls.find((c) => c.name === TRANSFER_TOOL);
@@ -281,7 +279,10 @@ export class ChannelAgentRunner {
       for (const call of result.toolCalls) {
         let content = 'That tool is not available.';
         let isError = true;
-        if (call.name === DRAFT_QUOTE_TOOL && agent.skills.includes(call.name)) {
+        if (
+          call.name === DRAFT_QUOTE_TOOL &&
+          agent.skills.includes(call.name)
+        ) {
           isError = false;
           const what = asText(call.input.request) ?? latest.body;
           if (input.dryRun) {
@@ -321,7 +322,9 @@ export class ChannelAgentRunner {
       messages.push({
         role: 'assistant',
         content: [
-          ...(result.text ? [{ type: 'text' as const, text: result.text }] : []),
+          ...(result.text
+            ? [{ type: 'text' as const, text: result.text }]
+            : []),
           ...result.toolCalls.map((call) => ({
             type: 'tool_use' as const,
             id: call.id,
@@ -402,7 +405,10 @@ function toolsFor(
       inputSchema: {
         type: 'object',
         properties: {
-          title: { type: 'string', description: 'A short title for the quote.' },
+          title: {
+            type: 'string',
+            description: 'A short title for the quote.',
+          },
           request: {
             type: 'string',
             description:

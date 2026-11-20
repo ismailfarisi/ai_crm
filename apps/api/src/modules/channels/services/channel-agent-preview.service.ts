@@ -42,7 +42,11 @@ export class ChannelAgentPreviewService {
   }
 
   async preview(
-    actor: { organizationId: string; userId: string; permissions: Permission[] },
+    actor: {
+      organizationId: string;
+      userId: string;
+      permissions: Permission[];
+    },
     input: TestChannelAgentPayload,
   ): Promise<ChannelAgentTestResultDto> {
     try {
@@ -85,7 +89,11 @@ export class ChannelAgentPreviewService {
 
   /** As the person testing: a tool they lack permission for is not offered to them either. */
   private async previewStaff(
-    actor: { organizationId: string; userId: string; permissions: Permission[] },
+    actor: {
+      organizationId: string;
+      userId: string;
+      permissions: Permission[];
+    },
     input: TestChannelAgentPayload,
   ): Promise<ChannelAgentTestResultDto> {
     const permitted = this.registry.permittedFor(actor.permissions, 'channel');
