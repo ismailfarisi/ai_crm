@@ -276,7 +276,7 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
   };
 
   return (
-    <div data-testid="automation-studio-page" className="h-[calc(100vh-3.5rem)] flex flex-col overflow-hidden bg-surface-muted">
+    <div data-testid="automation-studio-page" className="h-[calc(100vh-6.5rem)] lg:h-[calc(100vh-7.5rem)] min-h-[28rem] flex flex-col overflow-hidden bg-surface-muted">
       {/* Studio Header */}
       <CanvasHeader
         workflow={workflow}

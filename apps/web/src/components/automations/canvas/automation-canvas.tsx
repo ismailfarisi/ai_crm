@@ -129,7 +129,7 @@ export function AutomationCanvas({
         }}
       >
         <Background variant={BackgroundVariant.Dots} color="var(--color-border-strong)" gap={18} size={1.5} />
-        <Controls className="!bg-surface !border-border !shadow-sm !rounded-xl overflow-hidden" />
+        <Controls className="!bg-surface !border-border !shadow-sm !rounded-xl overflow-hidden [&_button]:!bg-surface [&_button]:!text-ink [&_button]:!border-border [&_button:hover]:!bg-surface-muted" />
         <MiniMap
           className="!bg-surface !border-border !rounded-xl !shadow-sm overflow-hidden"
           nodeColor={(n) => (n.selected ? 'var(--color-brand)' : 'var(--color-border-strong)')}
