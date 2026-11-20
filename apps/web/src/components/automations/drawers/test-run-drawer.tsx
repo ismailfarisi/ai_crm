@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import type { AutomationWorkflowDto, AutomationExecutionDto } from '@saas/shared';
+import { crmEventOf, sampleTriggerFor } from '../crm-events';
 
 export interface TestRunDrawerProps {
   workflow: AutomationWorkflowDto | null;
@@ -39,7 +40,8 @@ export function TestRunDrawer({
 }: TestRunDrawerProps) {
   const [testPayloadStr, setTestPayloadStr] = useState(
     JSON.stringify(
-      {
+      // The chosen event's own sample, shaped like a real run's trigger.
+      sampleTriggerFor(crmEventOf(workflow?.triggerConfig as Record<string, unknown> | undefined)) ?? {
         customerName: 'Acme Systems Corp',
         customerEmail: 'contact@acmesystems.com',
         amount: 24500,

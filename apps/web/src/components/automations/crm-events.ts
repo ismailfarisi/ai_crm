@@ -38,14 +38,40 @@ const sampleQuote = {
   status: 'APPROVED',
 };
 
-const sampleInvoice = {
-  invoiceId: 'c3d1e5f7-2a4b-4c6d-9e8f-1a2b3c4d5e6f',
+const sampleInvoiceId = 'c3d1e5f7-2a4b-4c6d-9e8f-1a2b3c4d5e6f';
+
+/** What the API sends with `invoice.issued` (OrdersService). */
+const sampleIssuedInvoice = {
+  invoiceId: sampleInvoiceId,
   invoiceNumber: 'INV-2026-0211',
-  ...sampleCustomer,
+  quoteId: sampleQuote.id,
+  salesOrderId: '2f6a8c1d-7e3b-4a59-8d2c-9b1e0f3a4c5d',
+  stage: 'Deposit (50%)',
+  amount: 9187.5,
+  dueDate: '2026-11-27T00:00:00.000Z',
+  customerId: sampleCustomer.customerId,
+  customerEmail: sampleCustomer.customerEmail,
+};
+
+/** What the API sends with `invoice.overdue` (InvoiceOverdueService). */
+const sampleOverdueInvoice = {
+  invoiceId: sampleInvoiceId,
+  invoiceNumber: 'INV-2026-0211',
+  customerId: sampleCustomer.customerId,
+  customerEmail: sampleCustomer.customerEmail,
   amount: 9187.5,
   paidAmount: 0,
-  status: 'ISSUED',
   dueDate: '2026-11-27T00:00:00.000Z',
+};
+
+/** What the API sends with `quote.accepted` (QuoteAcceptanceService). */
+const sampleAcceptedQuote = {
+  quoteId: sampleQuote.id,
+  quoteNumber: sampleQuote.quoteNumber,
+  customerId: sampleCustomer.customerId,
+  customerEmail: sampleCustomer.customerEmail,
+  acceptedByName: 'Fatima Al Noor',
+  totalAmount: sampleQuote.totalAmount,
 };
 
 /** The events that predate the shop list; their payloads are the record itself. */
@@ -54,9 +80,9 @@ const RECORD_EVENTS: CrmEvent[] = [
   { value: 'contact.updated', label: 'Contact updated', when: 'a contact is updated', group: 'Contacts', sample: sampleContact },
   { value: 'quote.created', label: 'Quote created', when: 'a quote is created', group: 'Quotes', sample: { ...sampleQuote, status: 'DRAFT' } },
   { value: 'quote.updated', label: 'Quote updated', when: 'a quote is updated', group: 'Quotes', sample: sampleQuote },
-  { value: 'quote.accepted', label: 'Customer accepted a quote', when: 'a customer accepts a quote', group: 'Quotes', sample: sampleQuote },
-  { value: 'invoice.issued', label: 'Invoice issued', when: 'an invoice is issued', group: 'Invoices and payments', sample: sampleInvoice },
-  { value: 'invoice.overdue', label: 'Invoice overdue', when: 'an invoice goes overdue', group: 'Invoices and payments', sample: sampleInvoice },
+  { value: 'quote.accepted', label: 'Customer accepted a quote', when: 'a customer accepts a quote', group: 'Quotes', sample: sampleAcceptedQuote },
+  { value: 'invoice.issued', label: 'Invoice issued', when: 'an invoice is issued', group: 'Invoices and payments', sample: sampleIssuedInvoice },
+  { value: 'invoice.overdue', label: 'Invoice overdue', when: 'an invoice goes overdue', group: 'Invoices and payments', sample: sampleOverdueInvoice },
 ];
 
 /**
