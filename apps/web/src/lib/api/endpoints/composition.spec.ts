@@ -67,7 +67,7 @@ const SLICES = [
 
 const API_SECTIONS = [
   'auth', 'contacts', 'customers', 'imports', 'roles', 'users', 'invitations', 'teams',
-  'quotes', 'catalog', 'invoices', 'channels', 'aiAgents', 'intentAgentConfig',
+  'quotes', 'catalog', 'invoices', 'channels', 'channelAgents', 'aiAgents', 'intentAgentConfig',
   'automations', 'finance', 'expenses', 'ai', 'suppliers',
   'purchaseOrders', 'purchasePolicy', 'inventory', 'goodsReceipts', 'bills',
   'salesOrders', 'quoteAcceptance', 'workOrders', 'board', 'creditNotes', 'deliveryNotes', 'tax',
@@ -88,6 +88,7 @@ const QUERY_KEYS = [
   'financeOccurrences', 'financeCashForecast', 'prepaidSchedules',
   'financeJournalEntries', 'expenses', 'expense', 'aiBudget', 'aiUsage',
   'aiAgents', 'intentAgentConfig', 'aiSettings', 'aiModels', 'channelThreads',
+  'channelAgents', 'channelAgentTools',
   'suppliers', 'supplier', 'supplierMaterials',
   'purchaseOrders', 'purchaseOrder', 'purchaseOrderGuardrails', 'purchasePolicy',
   'stock', 'stockLocations', 'reorderSuggestions', 'stockReconcile', 'goodsReceipts',

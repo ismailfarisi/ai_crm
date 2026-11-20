@@ -2,6 +2,13 @@
  * Split out of a single 477-line module so that two feature branches adding
  * endpoints no longer edit the same two objects. */
 import type {
+  ChannelAgentDto,
+  ChannelAgentKind,
+  ChannelAgentSkillOptionDto,
+  ChannelAgentTestResultDto,
+  CreateChannelAgentPayload,
+  TestChannelAgentPayload,
+  UpdateChannelAgentPayload,
   ChannelThreadDto,
   ChannelAiTestResultDto,
   TestChannelAiPayload,
@@ -112,6 +119,22 @@ export const channelsEndpoints = {
         apiFetch<{ success: true }>(`/channels/identities/${id}`, { method: 'DELETE' }),
     },
   },
+  channelAgents: {
+    list: () => apiFetch<ChannelAgentDto[]>('/channels/agents'),
+    tools: (kind: ChannelAgentKind) =>
+      apiFetch<ChannelAgentSkillOptionDto[]>(`/channels/agents/tools?kind=${kind}`),
+    create: (input: CreateChannelAgentPayload) =>
+      apiFetch<ChannelAgentDto>('/channels/agents', { method: 'POST', body: input }),
+    update: (id: string, input: UpdateChannelAgentPayload) =>
+      apiFetch<ChannelAgentDto>(`/channels/agents/${id}`, { method: 'PATCH', body: input }),
+    remove: (id: string) =>
+      apiFetch<{ success: true }>(`/channels/agents/${id}`, { method: 'DELETE' }),
+    test: (input: TestChannelAgentPayload) =>
+      apiFetch<ChannelAgentTestResultDto>('/channels/agents/test', {
+        method: 'POST',
+        body: input,
+      }),
+  },
   aiAgents: {
     list: () => apiFetch<AiAgentDto[]>('/channels/ai-agents'),
     get: (id: string) => apiFetch<AiAgentDto>(`/channels/ai-agents/${id}`),
@@ -139,5 +162,7 @@ export const channelsEndpoints = {
 
 export const channelsKeys = {
   channelThreads: ['channels', 'threads'] as const,
+  channelAgents: ['channels', 'agents'] as const,
+  channelAgentTools: (kind: string) => ['channels', 'agents', 'tools', kind] as const,
   channels: ['channels', 'configs'] as const,  channelIdentities: ['channels', 'identities'] as const,  channelMessages: (params: { contactId?: string; limit?: number } = {}) =>
     ['channels', 'messages', params] as const,  aiAgents: ['ai', 'agents'] as const,  intentAgentConfig: ['ai', 'intent-agent-config'] as const,};
