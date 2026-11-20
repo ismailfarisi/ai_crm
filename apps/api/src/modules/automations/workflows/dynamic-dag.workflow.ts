@@ -23,8 +23,23 @@ import {
 } from '../../channels/workflows/agent-react.workflow';
 import type * as activities from './automation.activities';
 import type { createAutomationActions } from './automation-actions';
+import type { createShopActions } from './shop-actions';
 import type { createRunRecordActivities } from './run-record.activities';
 import { durationToMs } from './duration';
+import type {
+  ChannelMessageActivityConfig,
+  RecordLookupActivityConfig,
+  StaffNotificationActivityConfig,
+} from './interfaces';
+
+/**
+ * The Kerf record step's read-only actions (`AUTOMATION_RECORD_ACTIONS` in
+ * `@saas/shared`). Spelled out here because the workflow sandbox bundles only
+ * import-free shared files.
+ */
+function isRecordLookup(config: Record<string, unknown>): boolean {
+  return config.action === 'get' || config.entity === 'summary';
+}
 import {
   evaluateExpression,
   ExpressionContext,
@@ -52,11 +67,15 @@ const {
   executeEmailActivity,
   executeCodeTransformActivity,
   executeCrmMutationActivity,
+  executeChannelMessageActivity,
+  executeStaffNotificationActivity,
+  executeRecordLookupActivity,
   recordNodeResultActivity,
   recordRunFinishedActivity,
 } = proxyActivities<
   typeof activities &
     ReturnType<typeof createAutomationActions> &
+    ReturnType<typeof createShopActions> &
     ReturnType<typeof createRunRecordActivities>
 >({
   startToCloseTimeout: '5 minutes',
@@ -363,11 +382,31 @@ export async function dynamicDagWorkflow(
             });
             break;
 
-          case 'crmMutateNode':
-            nodeOutput = await executeCrmMutationActivity(
-              config as unknown as CrmMutationActivityConfig,
+          case 'sendMessageNode':
+            nodeOutput = await executeChannelMessageActivity(
+              config as unknown as ChannelMessageActivityConfig,
               actionContext,
             );
+            break;
+
+          case 'notifyStaffNode':
+            nodeOutput = await executeStaffNotificationActivity(
+              config as unknown as StaffNotificationActivityConfig,
+              actionContext,
+            );
+            break;
+
+          case 'crmMutateNode':
+            // Lookups read; everything else changes a record.
+            nodeOutput = isRecordLookup(config)
+              ? await executeRecordLookupActivity(
+                  config as unknown as RecordLookupActivityConfig,
+                  actionContext,
+                )
+              : await executeCrmMutationActivity(
+                  config as unknown as CrmMutationActivityConfig,
+                  actionContext,
+                );
             break;
 
           case 'delayNode': {
@@ -381,6 +420,11 @@ export async function dynamicDagWorkflow(
               typeof raw === 'string' && /^\s*\d+(\.\d+)?\s*$/.test(raw)
                 ? Number(raw)
                 : raw;
+            // A test run shows what would happen now, not in three days.
+            if (input.testRun) {
+              nodeOutput = { delayed: false, skippedInTestRun: true, duration };
+              break;
+            }
             await sleep(duration);
             nodeOutput = { delayed: true, duration };
             break;

@@ -43,7 +43,7 @@ const recordIdSchema = z.string().uuid();
  * Interpolation can turn a field into a number, an object or null; every text
  * field is read as text before it is validated.
  */
-function asText(value: unknown): string {
+export function asText(value: unknown): string {
   return typeof value === 'string' ? value : value == null ? '' : String(value);
 }
 
@@ -69,7 +69,7 @@ export interface AutomationActionDeps {
 }
 
 /** The one wording for "the owner can't do this any more", naming what is missing. */
-function ownerCannot(
+export function ownerCannot(
   who: string,
   actionLabel: string,
   missingPermission?: string,

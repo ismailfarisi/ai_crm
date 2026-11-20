@@ -432,6 +432,7 @@ export class AutomationsService {
             // From the automation, never the payload: webhook runs never
             // auto-approve agent tools.
             triggerType: wf.triggerType,
+            ...(options.testRun ? { testRun: true } : {}),
           },
         ],
       });
