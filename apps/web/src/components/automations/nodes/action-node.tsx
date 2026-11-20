@@ -1,10 +1,57 @@
 'use client';
 
 import React from 'react';
-import { Globe, Mail, Database, MessageSquareText } from 'lucide-react';
+import { Globe, Mail, Database, MessageSquareText, Bot } from 'lucide-react';
 import type { NodeProps, Node } from '@xyflow/react';
 import type { AutomationNodeData, AutomationNodeType } from '@saas/shared';
+import { aiAgentStepTask } from '@saas/shared';
 import { BaseNode } from './base-node';
+import { agentChoice, useAgentOptions } from '../agent-step/agent-options';
+
+/** Who the AI agent step runs as, and whether it is ready to run. */
+function AgentStepPreview({ config }: { config: Record<string, unknown> }) {
+  const choice = agentChoice(config.agentId, useAgentOptions());
+  const task = aiAgentStepTask({ data: { label: '', config } });
+  const agentName =
+    choice.state === 'ok' || choice.state === 'off'
+      ? choice.agent.name
+      : choice.state === 'missing'
+        ? 'Deleted agent'
+        : choice.state === 'loading'
+          ? 'Agent'
+          : 'General assistant';
+  const problem =
+    choice.state === 'missing'
+      ? 'Pick another agent'
+      : choice.state === 'off'
+        ? 'Agent is switched off'
+        : !task
+          ? 'Needs a task'
+          : null;
+
+  return (
+    <div className="space-y-1 text-[11px]">
+      <div className="flex items-center justify-between gap-2 text-ink-muted">
+        <span className="font-semibold text-ink truncate" data-testid="agent-node-agent">
+          {agentName}
+        </span>
+        {problem && (
+          <span
+            data-testid="agent-node-problem"
+            className="shrink-0 rounded bg-danger-soft px-1.5 py-0.5 font-semibold text-danger"
+          >
+            {problem}
+          </span>
+        )}
+      </div>
+      {task && (
+        <p className="text-ink-muted line-clamp-2 font-sans" data-testid="agent-node-task">
+          {task}
+        </p>
+      )}
+    </div>
+  );
+}
 
 export interface ActionNodeData extends AutomationNodeData {
   config: {
@@ -72,6 +119,15 @@ export function ActionNode({
           </p>
         </div>
       );
+      break;
+
+    case 'aiAgentNode':
+      Icon = Bot;
+      category = 'AI agent';
+      defaultTitle = 'AI agent';
+      iconBg = 'bg-brand-soft';
+      iconColor = 'text-ink';
+      previewContent = <AgentStepPreview config={config} />;
       break;
 
     case 'sendEmailNode':

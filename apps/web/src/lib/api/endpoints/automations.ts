@@ -2,6 +2,7 @@
  * Split out of a single 477-line module so that two feature branches adding
  * endpoints no longer edit the same two objects. */
 import type {
+  AutomationAgentOptionDto,
   AutomationWorkflowDto,
   AutomationExecutionDto,
   CreateAutomationWorkflowPayload,
@@ -21,6 +22,7 @@ export const automationsEndpoints = {
   automations: {
     list: () => apiFetch<AutomationWorkflowDto[]>('/automations'),
     settings: () => apiFetch<AutomationSettingsDto>('/automations/settings'),
+    agentOptions: () => apiFetch<AutomationAgentOptionDto[]>('/automations/agent-options'),
     get: (id: string) => apiFetch<AutomationWorkflowDto>(`/automations/${id}`),
     create: (payload: CreateAutomationWorkflowPayload) =>
       apiFetch<AutomationWorkflowDto>('/automations', { method: 'POST', body: payload }),
@@ -56,6 +58,7 @@ export const automationsEndpoints = {
 export const automationsKeys = {
   automations: ['automations'] as const,
   automationSettings: ['automations', 'settings'] as const,
+  automationAgentOptions: ['automations', 'agent-options'] as const,
   automation: (id: string) => ['automations', id] as const,
   automationExecutions: (id: string) => ['automations', id, 'executions'] as const,
   automationExecution: (execId: string) => ['automations', 'executions', execId] as const,

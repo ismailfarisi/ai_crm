@@ -51,6 +51,14 @@ export function useAutomationSettings() {
   });
 }
 
+/** The staff agents an AI agent step can run as. */
+export function useAutomationAgentOptions() {
+  return useQuery({
+    queryKey: queryKeys.automationAgentOptions,
+    queryFn: () => api.automations.agentOptions(),
+  });
+}
+
 export function useInvalidateAutomations() {
   const queryClient = useQueryClient();
   return {

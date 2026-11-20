@@ -8,6 +8,7 @@ import {
   useUpdateAutomationWorkflow,
   useTestRunAutomation,
   useAutomationSettings,
+  useAutomationAgentOptions,
   useRegenerateAutomationWebhook,
 } from '@/hooks/use-automations';
 import { useAutomationCanvas, toAutomationEdges } from '@/hooks/use-automation-canvas';
@@ -19,6 +20,7 @@ import { TestRunDrawer } from '@/components/automations/drawers/test-run-drawer'
 import { RunsDrawer } from '@/components/automations/runs/runs-drawer';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { crmEventOf, normalizeTriggerNodes, runsWhenPhrase } from '@/components/automations/crm-events';
+import { AgentOptionsContext, agentStepsProblem } from '@/components/automations/agent-step/agent-options';
 import { useSession } from '@/lib/session-context';
 import { AUTOMATION_PERMISSIONS } from '@saas/shared';
 import type { AutomationNodeType, AutomationNode, AutomationWorkflowDto } from '@saas/shared';
@@ -87,6 +89,7 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
   const { can } = useSession();
   const canEditTrigger = can(AUTOMATION_PERMISSIONS.AUTOMATION_UPDATE);
   const { data: settings } = useAutomationSettings();
+  const { data: agentOptions } = useAutomationAgentOptions();
 
   const [workflowName, setWorkflowName] = useState<string>(workflow.name);
   const [savedName, setSavedName] = useState<string>(workflow.name);
@@ -177,11 +180,14 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
   const triggerNode = nodes.find((n) => n.type === 'crmEventTrigger');
   const triggerEvent = crmEventOf((triggerNode?.data as { config?: Record<string, unknown> } | undefined)?.config);
   const missingEvent = workflow.triggerType === 'CRM_EVENT' && !triggerEvent;
+  // An AI agent step that can't run: no task, or its agent is gone or off.
+  const agentStepProblem = agentStepsProblem(nodes as unknown as AutomationNode[], agentOptions);
 
   const handleStatusChange = async () => {
     if (activating && missingEvent) {
       throw new Error('Choose the CRM event that starts this automation first: open the trigger and pick one.');
     }
+    if (activating && agentStepProblem) throw new Error(agentStepProblem);
     const nextStatus = activating ? 'ACTIVE' : 'PAUSED';
     const saved = await updateWorkflowMutation.mutateAsync({
       id: workflow.id,
@@ -217,6 +223,7 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
   };
 
   return (
+    <AgentOptionsContext.Provider value={agentOptions}>
     <div data-testid="automation-studio-page" className="h-[calc(100vh-3.5rem)] flex flex-col overflow-hidden bg-surface-muted">
       {/* Studio Header */}
       <CanvasHeader
@@ -225,7 +232,7 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
         onNameChange={setWorkflowName}
         status={workflowStatus}
         onStatusToggle={() => setStatusConfirmOpen(true)}
-        statusBlockedReason={triggerInvalid ? 'Fix the schedule before activating' : null}
+        statusBlockedReason={triggerInvalid ? 'Fix the schedule before activating' : agentStepProblem}
         onBackClick={(event) => {
           if (!hasUnsavedChanges) return;
           event.preventDefault();
@@ -233,7 +240,14 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
         }}
         isDirty={hasUnsavedChanges}
         isSaving={updateWorkflowMutation.isPending}
-        saveBlockedReason={triggerInvalid ? 'Fix the schedule before saving' : null}
+        saveBlockedReason={
+          triggerInvalid
+            ? 'Fix the schedule before saving'
+            : // A draft may be saved unfinished; one that is on may not.
+              workflowStatus === 'ACTIVE'
+              ? agentStepProblem
+              : null
+        }
         onSave={handleSave}
         onOpenTestRun={() => {
           setIsRunsOpen(false);
@@ -325,5 +339,6 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
         tone="danger"
       />
     </div>
+    </AgentOptionsContext.Provider>
   );
 }
