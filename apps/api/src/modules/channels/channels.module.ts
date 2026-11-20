@@ -31,10 +31,11 @@ import { ChannelsService } from './channels.service';
 import { CHANNEL_SENDER } from './skills/channel-sender.token';
 import { ChannelsController } from './channels.controller';
 import { ChannelsWebhookController } from './channels-webhook.controller';
-
 import { ChannelThread } from './entities/channel-thread.entity';
 import { ChannelThreadService } from './services/channel-thread.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { FinanceModule } from '../finance/finance.module';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -58,6 +59,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     PayablesModule,
     StorageModule,
     NotificationsModule,
+    FinanceModule,
   ],
   controllers: [ChannelsController, ChannelsWebhookController],
   providers: [

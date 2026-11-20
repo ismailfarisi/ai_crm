@@ -123,6 +123,35 @@ describe('SlackDriver', () => {
       });
     });
 
+    it('reads a file upload, which Slack sends with the file_share subtype', async () => {
+      const eventBody = {
+        type: 'event_callback',
+        event: {
+          type: 'message',
+          subtype: 'file_share',
+          channel: 'D0999',
+          user: 'U0456',
+          text: 'fuel receipt',
+          ts: '1700000000.000100',
+          files: [{ id: 'F0RCPT', mimetype: 'image/jpeg', name: 'receipt.jpg' }],
+        },
+      };
+      const { rawBody, headers } = signedRequest(eventBody);
+      const parsed = await driver.parseWebhookPayload(
+        credentials,
+        headers,
+        eventBody,
+        rawBody,
+      );
+      expect(parsed?.senderIdentifier).toBe('U0456');
+      expect(parsed?.media).toEqual({
+        id: 'F0RCPT',
+        mimeType: 'image/jpeg',
+        filename: 'receipt.jpg',
+        caption: 'fuel receipt',
+      });
+    });
+
     it('names the file when a file-only message has no text', async () => {
       const eventBody = {
         type: 'event_callback',

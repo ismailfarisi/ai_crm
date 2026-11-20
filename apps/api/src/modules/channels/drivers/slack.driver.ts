@@ -156,8 +156,10 @@ export class SlackDriver implements ChannelDriver {
       return Promise.resolve(null);
     }
     // Subtyped events (edits, deletes, joins) and anything from a bot —
-    // including our own echoes — are not customer messages.
-    if (event.subtype || event.bot_id || !event.user) {
+    // including our own echoes — are not customer messages. A message sent
+    // with a file is the exception: Slack marks it `file_share`.
+    const subtyped = event.subtype && event.subtype !== 'file_share';
+    if (subtyped || event.bot_id || !event.user) {
       return Promise.resolve(null);
     }
     const text = (event.text ?? '').trim();

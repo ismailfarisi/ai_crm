@@ -27,13 +27,15 @@ describe('SkillRegistry', () => {
       {} as any, // billCapture
       {} as any, // payables
       {} as any, // attachments
+      {} as any, // expenses
+      {} as any, // expenseReceipts
     );
   });
 
   describe('all', () => {
-    it('contains all 11 skills', () => {
+    it('contains all 12 skills', () => {
       const skills = registry.all();
-      expect(skills).toHaveLength(11);
+      expect(skills).toHaveLength(12);
       expect(skills.map((s) => s.name)).toEqual([
         CHANNEL_SKILLS.QUOTE_APPROVE,
         CHANNEL_SKILLS.QUOTE_CREATE,
@@ -46,7 +48,19 @@ describe('SkillRegistry', () => {
         CHANNEL_SKILLS.CHANNEL_THREAD_READ,
         CHANNEL_SKILLS.CHANNEL_MESSAGE_SEND,
         CHANNEL_SKILLS.BILL_FROM_DOCUMENT,
+        CHANNEL_SKILLS.EXPENSE_FROM_DOCUMENT,
       ]);
+    });
+
+    it('offers the receipt skill to anyone who may submit expenses, on chat only', () => {
+      const names = (surface: 'assistant' | 'channel') =>
+        registry
+          .permittedFor([PERMISSIONS.EXPENSE_SUBMIT], surface)
+          .map((s) => s.name);
+      expect(names('channel')).toContain(CHANNEL_SKILLS.EXPENSE_FROM_DOCUMENT);
+      expect(names('assistant')).not.toContain(
+        CHANNEL_SKILLS.EXPENSE_FROM_DOCUMENT,
+      );
     });
   });
 

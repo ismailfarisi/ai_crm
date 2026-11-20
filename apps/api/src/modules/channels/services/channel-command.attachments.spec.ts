@@ -40,8 +40,24 @@ function textSkill() {
   };
 }
 
+function receiptSkill() {
+  return {
+    ...fileSkill(),
+    name: CHANNEL_SKILLS.EXPENSE_FROM_DOCUMENT,
+    examples: ['send a photo of a receipt'],
+    requiredPermissions: [PERMISSIONS.EXPENSE_SUBMIT],
+    resolve: jest.fn(async () => ({ kind: 'resolved', value: { ok: true } })),
+    preview: jest.fn(async () => 'Submit this expense claim? Reply YES'),
+  };
+}
+
 function setup(
-  opts: { skills?: any[]; permissions?: string[]; conversations?: any[] } = {},
+  opts: {
+    skills?: any[];
+    permissions?: string[];
+    conversations?: any[];
+    downloadMedia?: jest.Mock;
+  } = {},
 ) {
   const skills = opts.skills ?? [fileSkill(), textSkill()];
   const permissions = opts.permissions ?? [
@@ -87,7 +103,15 @@ function setup(
       ),
     byName: (name: string) => skills.find((s) => s.name === name),
   };
+  const downloadMedia =
+    opts.downloadMedia ??
+    jest.fn(async () => ({
+      buffer: Buffer.from('file'),
+      mimeType: 'image/jpeg',
+    }));
+  const moduleRef = { get: jest.fn(() => ({ downloadMedia })) };
   const router = {
+    routeFile: jest.fn(),
     route: jest.fn(),
     extract: jest.fn(async () => ({
       slots: { purchaseOrderReference: 'PO 31' },
@@ -104,8 +128,10 @@ function setup(
     registry as never,
     router as never,
     audit as never,
+    undefined,
+    moduleRef as never,
   );
-  return { service, skills, router, linkCodes, conversations };
+  return { service, skills, router, linkCodes, conversations, downloadMedia };
 }
 
 describe('ChannelCommandService — files', () => {
@@ -127,6 +153,99 @@ describe('ChannelCommandService — files', () => {
     );
     expect(skills[1].resolve).not.toHaveBeenCalled();
     expect(result.reply?.body).toBe('Enter it? Reply YES');
+  });
+
+  describe('with two skills that take files', () => {
+    const both = () => ({
+      skills: [fileSkill(), receiptSkill()],
+      permissions: [PERMISSIONS.BILL_CREATE, PERMISSIONS.EXPENSE_SUBMIT],
+    });
+
+    it('looks at a captionless file to tell a receipt from a supplier invoice', async () => {
+      const { service, skills, router, downloadMedia } = setup(both());
+      router.routeFile.mockResolvedValue({
+        skill: CHANNEL_SKILLS.EXPENSE_FROM_DOCUMENT,
+        confidence: 0.9,
+      });
+      const result = await service.handleInboundMessage(
+        orgId,
+        provider,
+        sender,
+        '',
+        photo,
+      );
+      expect(downloadMedia).toHaveBeenCalledWith(
+        orgId,
+        provider,
+        'media-1',
+        expect.any(Number),
+      );
+      expect(router.routeFile).toHaveBeenCalledWith(
+        expect.objectContaining({ mimeType: 'image/jpeg' }),
+        skills,
+        expect.anything(),
+      );
+      expect(router.route).not.toHaveBeenCalled();
+      expect(skills[1].resolve).toHaveBeenCalled();
+      expect(skills[0].resolve).not.toHaveBeenCalled();
+      expect(result.reply?.body).toBe('Submit this expense claim? Reply YES');
+    });
+
+    it('asks what the file is when looking at it does not settle it', async () => {
+      const { service, skills, router } = setup(both());
+      router.routeFile.mockResolvedValue({ skill: null, confidence: 0.2 });
+      const result = await service.handleInboundMessage(
+        orgId,
+        provider,
+        sender,
+        '',
+        photo,
+      );
+      expect(skills[0].resolve).not.toHaveBeenCalled();
+      expect(skills[1].resolve).not.toHaveBeenCalled();
+      expect(result.reply?.body).toMatch(/What should I do with this file/);
+      expect(result.reply?.body).toMatch(/send a photo of a receipt/);
+    });
+
+    it('asks what the file is when the file cannot be fetched', async () => {
+      const { service, router } = setup({
+        ...both(),
+        downloadMedia: jest.fn(async () => {
+          throw new Error('gone');
+        }),
+      });
+      const result = await service.handleInboundMessage(
+        orgId,
+        provider,
+        sender,
+        '',
+        photo,
+      );
+      expect(router.routeFile).not.toHaveBeenCalled();
+      expect(result.reply?.body).toMatch(/What should I do with this file/);
+    });
+
+    it('routes on the caption when there is one, without fetching the file', async () => {
+      const { service, skills, router, downloadMedia } = setup(both());
+      router.route.mockResolvedValue({
+        skill: CHANNEL_SKILLS.EXPENSE_FROM_DOCUMENT,
+        confidence: 0.9,
+      });
+      await service.handleInboundMessage(
+        orgId,
+        provider,
+        sender,
+        'fuel for the van',
+        photo,
+      );
+      expect(router.route).toHaveBeenCalledWith(
+        'fuel for the van',
+        skills,
+        expect.anything(),
+      );
+      expect(downloadMedia).not.toHaveBeenCalled();
+      expect(skills[1].resolve).toHaveBeenCalled();
+    });
   });
 
   it('reads the caption for slots', async () => {

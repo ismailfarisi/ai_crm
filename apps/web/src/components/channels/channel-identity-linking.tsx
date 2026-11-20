@@ -11,6 +11,7 @@ import { ApiError } from '@/lib/api/client';
 
 const PROVIDER_LABELS: Record<string, string> = {
   WHATSAPP_META: 'WhatsApp',
+  SLACK: 'Slack',
   TELEGRAM: 'Telegram',
   EMAIL_SMTP: 'Email (SMTP)',
   EMAIL_RESEND: 'Email (Resend)',
@@ -71,8 +72,14 @@ export function ChannelIdentityLinking() {
       </CardHeader>
       <CardBody className="space-y-4">
         <p className="text-sm text-ink-muted">
-          Link your Telegram, WhatsApp, or email to approve quotes (and generate their invoices)
-          just by messaging your organization&apos;s connected channel.
+          Link your WhatsApp, Slack, Telegram, or email to work by messaging your
+          organization&apos;s connected channel: approve quotes, raise purchase orders, log time
+          on a job, and more.
+        </p>
+        <p className="text-sm text-ink-muted">
+          On WhatsApp and Slack you can also send a file. A photo or PDF of a receipt becomes an
+          expense claim, and a supplier&apos;s invoice becomes a draft bill. You are shown what
+          was read and nothing is saved until you reply YES.
         </p>
 
         {generatedCode && countdown !== 'Expired' ? (
