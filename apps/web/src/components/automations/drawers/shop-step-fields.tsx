@@ -10,9 +10,12 @@ const inputClass =
 const labelClass = 'text-[11px] font-medium text-ink';
 const hintClass = 'text-[11px] text-ink-muted leading-snug';
 
+/** Every field of these two steps is text. */
+type StepConfig = Record<string, string | undefined>;
+
 export interface ShopStepFieldsProps {
-  config: Record<string, any>;
-  onChange: (config: Record<string, any>) => void;
+  config: StepConfig;
+  onChange: (config: StepConfig) => void;
 }
 
 /** "Send Message": a chat message on a connected channel. */
