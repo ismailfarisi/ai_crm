@@ -57,6 +57,7 @@ function setup(
     permissions?: string[];
     conversations?: any[];
     downloadMedia?: jest.Mock;
+    agents?: any[];
   } = {},
 ) {
   const skills = opts.skills ?? [fileSkill(), textSkill()];
@@ -130,6 +131,8 @@ function setup(
     audit as never,
     undefined,
     moduleRef as never,
+    { findEnabled: jest.fn(async () => opts.agents ?? []) } as never,
+    {} as never,
   );
   return { service, skills, router, linkCodes, conversations, downloadMedia };
 }
@@ -355,6 +358,54 @@ describe('ChannelCommandService — files', () => {
         purchaseOrderReference: 'PO 31',
       }),
       expect.anything(),
+    );
+  });
+});
+
+describe('ChannelCommandService — staff agents', () => {
+  const finance = {
+    id: 'agent-1',
+    name: 'Finance',
+    description: 'Receipts and supplier invoices',
+    instructions: 'Fuel goes under Vehicle costs.',
+    model: 'finance-model',
+    provider: null,
+    skills: [CHANNEL_SKILLS.EXPENSE_FROM_DOCUMENT],
+  };
+  const both = (agents: any[]) => ({
+    skills: [fileSkill(), receiptSkill()],
+    permissions: [PERMISSIONS.BILL_CREATE, PERMISSIONS.EXPENSE_SUBMIT],
+    agents,
+  });
+
+  it("offers only the agent's tools, and reads the command with the agent", async () => {
+    const { service, skills, router } = setup(both([finance]));
+    router.route.mockResolvedValue({
+      skill: CHANNEL_SKILLS.EXPENSE_FROM_DOCUMENT,
+      confidence: 0.9,
+    });
+    await service.handleInboundMessage(orgId, provider, sender, 'fuel for the van', photo);
+
+    expect(router.route).toHaveBeenCalledWith(
+      'fuel for the van',
+      [skills[1]],
+      expect.anything(),
+      finance,
+    );
+  });
+
+  it('offers everything the person may do when no agent has a tool for it', async () => {
+    const { service, skills, router } = setup(
+      both([{ ...finance, skills: [CHANNEL_SKILLS.QUOTE_CREATE] }]),
+    );
+    router.route.mockResolvedValue({ skill: null, confidence: 0.9 });
+    await service.handleInboundMessage(orgId, provider, sender, 'fuel for the van', photo);
+
+    expect(router.route).toHaveBeenCalledWith(
+      'fuel for the van',
+      skills,
+      expect.anything(),
+      null,
     );
   });
 });
