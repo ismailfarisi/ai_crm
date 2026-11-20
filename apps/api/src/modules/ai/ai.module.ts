@@ -4,6 +4,7 @@ import { AiService } from './ai.service';
 import { AiController } from './ai.controller';
 import { AiUsageLog } from './entities/ai-usage-log.entity';
 import { AiBudget } from './entities/ai-budget.entity';
+import { AiSettings } from './entities/ai-settings.entity';
 import { AiConfig } from './entities/ai-config.entity';
 import { AiConfigService } from './services/ai-config.service';
 import { ChannelCryptoService } from '../channels/services/channel-crypto.service';
@@ -14,7 +15,7 @@ import {
 } from './services/redis-budget-guard.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([AiUsageLog, AiBudget, AiConfig])],
+  imports: [TypeOrmModule.forFeature([AiUsageLog, AiBudget, AiConfig, AiSettings])],
   controllers: [AiController],
   providers: [
     AiService,

@@ -694,6 +694,7 @@ export class ChannelsService {
                 replyTimeoutMinutes: intentConfig.replyTimeoutMinutes,
                 systemPrompt: intentConfig.systemPrompt,
                 model: intentConfig.model,
+                aiProvider: intentConfig.provider,
               },
             ],
             signal: newInboundMessageSignal,
@@ -720,6 +721,8 @@ export class ChannelsService {
                 provider,
                 senderIdentifier: parsed.senderIdentifier,
                 body: parsed.body,
+                model: intentConfig.model,
+                aiProvider: intentConfig.provider,
               },
             ],
           });

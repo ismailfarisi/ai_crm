@@ -32,7 +32,7 @@ export const createAiAgentSchema = z.object({
   confidenceThreshold: z.number().min(0).max(1).default(0.75),
   eligibleProviders: z.array(ChannelProviderEnum).default(['EMAIL_SMTP', 'EMAIL_RESEND']),
   isEnabled: z.boolean().default(true),
-  /** Null uses the provider's configured model; see `agentModelField`. */
+  /** Null uses the organisation's default model; see `agentModelField`. */
   model: agentModelField,
 });
 export type CreateAiAgentPayload = z.infer<typeof createAiAgentSchema>;
@@ -50,7 +50,7 @@ export interface AiAgentDto {
   confidenceThreshold: number;
   eligibleProviders: string[];
   isEnabled: boolean;
-  /** Null means the organisation's provider default. */
+  /** Null means the organisation's default model. */
   model: string | null;
   createdAt: string;
   updatedAt: string;

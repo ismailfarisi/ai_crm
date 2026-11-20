@@ -10,6 +10,9 @@ export interface ChannelAiWorkflowInput {
   provider: ChannelProviderType;
   senderIdentifier: string;
   body: string;
+  /** The intent agent's model and AI provider; absent or null runs on the organization's defaults. */
+  model?: string | null;
+  aiProvider?: string | null;
 }
 
 export interface ChannelAiWorkflowResult {
@@ -23,8 +26,10 @@ export interface ClassifyMessageParams {
   transcript: ChannelTranscriptTurn[];
   /** Overrides IntentClassifierAgent's built-in system prompt when set — sourced from IntentAgentConfig. */
   systemPromptOverride?: string;
-  /** Overrides the provider's configured model when set — sourced from IntentAgentConfig. */
+  /** Overrides the organization's default model when set — sourced from IntentAgentConfig. */
   modelOverride?: string;
+  /** The AI provider that model is served by, when not the organization's default. */
+  providerOverride?: string;
 }
 
 export interface ClassifyMessageResult {
@@ -95,8 +100,10 @@ export interface ChannelConversationWorkflowInput {
   maxTurns: number;
   replyTimeoutMinutes: number;
   systemPrompt: string | null;
-  /** Null runs on the provider's configured model. */
+  /** Null runs on the organization's default model. */
   model: string | null;
+  /** Null or absent runs on the organization's default AI provider. */
+  aiProvider?: string | null;
 }
 
 export interface NewInboundMessagePayload {

@@ -36,6 +36,8 @@ export async function channelAiWorkflow(
     classified = await classifyMessageActivity({
       organizationId: input.organizationId,
       transcript: [{ role: 'customer', body: input.body }],
+      modelOverride: input.model ?? undefined,
+      providerOverride: input.aiProvider ?? undefined,
     });
   } catch {
     // Exhausted retries (e.g. the org's AI provider is unreachable or too
@@ -147,6 +149,7 @@ export async function channelConversationWorkflow(
         transcript,
         systemPromptOverride: input.systemPrompt ?? undefined,
         modelOverride: input.model ?? undefined,
+        providerOverride: input.aiProvider ?? undefined,
       });
     } catch {
       // Exhausted retries — mark it FAILED instead of leaving the message

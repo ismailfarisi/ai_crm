@@ -8,7 +8,9 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { PERMISSIONS } from '@saas/shared';
+import { PERMISSIONS, updateAiSettingsSchema } from '@saas/shared';
+import type { UpdateAiSettingsPayload } from '@saas/shared';
+import { zodBody } from '@/common/pipes/zod-validation.pipe';
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
@@ -76,6 +78,38 @@ export class AiController {
     @Param('provider') provider: AiProviderType,
   ) {
     return this.aiConfigService.setDefault(user.organizationId, provider);
+  }
+
+  @Get('configs/:provider/models')
+  @RequirePermissions(PERMISSIONS.AI_MANAGE)
+  @ApiOperation({ summary: "List the models a provider's key can use" })
+  listModels(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('provider') provider: AiProviderType,
+  ) {
+    return this.aiConfigService.listModels(user.organizationId, provider);
+  }
+
+  @Get('settings')
+  @RequirePermissions(PERMISSIONS.AI_MANAGE)
+  @ApiOperation({
+    summary: "Get the organization's default model and per-feature models",
+  })
+  getSettings(@CurrentUser() user: AuthenticatedUser) {
+    return this.aiConfigService.getSettingsDto(user.organizationId);
+  }
+
+  @Patch('settings')
+  @RequirePermissions(PERMISSIONS.AI_MANAGE)
+  @ApiOperation({
+    summary: "Set the organization's default model and per-feature models",
+  })
+  async updateSettings(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(zodBody(updateAiSettingsSchema)) body: UpdateAiSettingsPayload,
+  ) {
+    await this.aiConfigService.saveSettings(user.organizationId, body);
+    return this.aiConfigService.getSettingsDto(user.organizationId);
   }
 
   @Get('budget')

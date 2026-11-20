@@ -90,12 +90,19 @@ function makeService(configs: any[] = []) {
     }),
   };
 
+  const settingsRepo = {
+    findOne: jest.fn().mockResolvedValue(null),
+    create: jest.fn((row) => row),
+    save: jest.fn(async (row) => row),
+  };
+
   const service = new AiConfigService(
     configRepo as any,
+    settingsRepo as any,
     cryptoService,
     dataSource as any,
   );
-  return { service, configRepo, cryptoService, configs };
+  return { service, configRepo, settingsRepo, cryptoService, configs };
 }
 
 function encryptedRow(
@@ -336,6 +343,79 @@ describe('AiConfigService', () => {
     });
   });
 
+  describe('resolveForCall', () => {
+    function withSettings(settings: Record<string, unknown> | null) {
+      const { cryptoService } = makeService();
+      const rows = [
+        encryptedRow(cryptoService, {
+          provider: AiProviderType.OPENAI,
+          isDefault: true,
+          model: 'legacy-model',
+        }),
+        encryptedRow(cryptoService, { provider: AiProviderType.ANTHROPIC }),
+      ];
+      const made = makeService(rows);
+      made.settingsRepo.findOne.mockResolvedValue(settings);
+      return made.service;
+    }
+
+    it("falls back to the model the provider was saved with when no default is chosen", async () => {
+      const config = await withSettings(null).resolveForCall(
+        orgId,
+        'expense.scan_receipt',
+        {},
+      );
+      expect(config).toMatchObject({ provider: 'openai', model: 'legacy-model' });
+    });
+
+    it("uses the organization's default model over the provider's saved one", async () => {
+      const config = await withSettings({
+        defaultModel: 'org-default',
+        featureModels: {},
+      }).resolveForCall(orgId, 'expense.scan_receipt', {});
+      expect(config.model).toBe('org-default');
+    });
+
+    it("uses a feature's own provider and model for every call in its group", async () => {
+      const service = withSettings({
+        defaultModel: 'org-default',
+        featureModels: {
+          chat_commands: { provider: 'ANTHROPIC', model: 'chat-model' },
+        },
+      });
+      for (const feature of ['channels.route_skill', 'channels.extract_slots']) {
+        expect(await service.resolveForCall(orgId, feature, {})).toMatchObject({
+          provider: 'anthropic',
+          model: 'chat-model',
+        });
+      }
+      expect(
+        (await service.resolveForCall(orgId, 'bill.capture', {})).model,
+      ).toBe('org-default');
+    });
+
+    it("lets an agent's explicit model win over the feature's choice", async () => {
+      const config = await withSettings({
+        defaultModel: 'org-default',
+        featureModels: {
+          chat_commands: { provider: 'ANTHROPIC', model: 'chat-model' },
+        },
+      }).resolveForCall(orgId, 'channels.route_skill', {
+        model: 'agent-model',
+      });
+      expect(config).toMatchObject({ provider: 'openai', model: 'agent-model' });
+    });
+
+    it('refuses to run when no model is chosen anywhere', async () => {
+      const { cryptoService } = makeService();
+      const row = cryptoRowWithoutModel(cryptoService);
+      const { service } = makeService([row]);
+      await expect(
+        service.resolveForCall(orgId, 'bill.capture', {}),
+      ).rejects.toBeInstanceOf(AiNotConfiguredException);
+    });
+  });
+
   describe('testConnection', () => {
     const originalFetch = global.fetch;
     afterEach(() => {
@@ -398,3 +478,10 @@ describe('AiConfigService', () => {
     });
   });
 });
+
+function cryptoRowWithoutModel(cryptoService: any) {
+  return {
+    ...encryptedRow(cryptoService, { provider: AiProviderType.OPENAI }),
+    encryptedCredentials: cryptoService.encrypt({ apiKey: 'sk-test-key-12345' }),
+  };
+}

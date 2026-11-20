@@ -137,9 +137,10 @@ export class AiService {
     call: (provider: AiProvider) => Promise<R>,
   ): Promise<R> {
     const started = Date.now();
-    const providerConfig = await this.aiConfigService.resolveProviderConfig(
+    const providerConfig = await this.aiConfigService.resolveForCall(
       actor.organizationId,
-      options.provider,
+      feature,
+      { provider: options.provider, model: options.model },
     );
     const provider = getAiProvider(providerConfig);
     let reservation:

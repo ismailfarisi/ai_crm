@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { AiService } from '../../ai/ai.service';
+import type { AiProviderType } from '../../ai/entities/ai-config.entity';
 import { AiNotConfiguredException } from '../../ai/interfaces/ai-provider.interface';
 import {
   channelIntentJsonSchema,
@@ -42,6 +43,7 @@ export class IntentClassifierAgent {
     transcript: ChannelTranscriptTurn[],
     systemPromptOverride?: string,
     modelOverride?: string,
+    providerOverride?: string,
   ): Promise<ClassifyResult> {
     try {
       const result = await this.aiService.generateStructured<unknown>(
@@ -54,9 +56,10 @@ export class IntentClassifierAgent {
           })),
           jsonSchema: channelIntentJsonSchema,
           schemaName: 'channel_intent',
-          // Left undefined when the agent names no model, so the provider's
-          // own default applies — `options.model || this.defaultModel`.
+          // Left undefined when the agent names no model or provider, so the
+          // organization's defaults apply.
           model: modelOverride,
+          provider: providerOverride as AiProviderType | undefined,
         },
         { organizationId },
       );

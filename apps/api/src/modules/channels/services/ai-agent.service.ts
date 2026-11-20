@@ -26,7 +26,7 @@ export class AiAgentService {
       eligibleProviders: (payload.eligibleProviders ??
         []) as AiAgent['eligibleProviders'],
       isEnabled: payload.isEnabled ?? true,
-      // Null is the normal state: run on whatever the provider is set to.
+      // Null is the normal state: run on the organization's default model.
       model: payload.model ?? null,
     });
     return this.agentRepo.save(agent);
@@ -68,7 +68,7 @@ export class AiAgentService {
         payload.eligibleProviders as AiAgent['eligibleProviders'];
     if (payload.isEnabled !== undefined) agent.isEnabled = payload.isEnabled;
     // An explicit null clears the override and returns the agent to the
-    // provider default, so `undefined` (absent) and `null` (cleared) differ.
+    // organization default, so `undefined` (absent) and `null` (cleared) differ.
     if (payload.model !== undefined) agent.model = payload.model;
     return this.agentRepo.save(agent);
   }

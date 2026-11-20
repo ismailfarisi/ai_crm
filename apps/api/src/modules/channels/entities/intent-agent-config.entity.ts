@@ -47,6 +47,10 @@ export class IntentAgentConfig {
   @Column({ type: 'varchar', length: 120, nullable: true })
   model: string | null;
 
+  /** The provider `model` is served by, or null for the organization's default provider. */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  provider: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 

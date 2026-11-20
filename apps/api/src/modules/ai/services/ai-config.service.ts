@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { aiModelFeatureKey } from '@saas/shared';
 import { DataSource, Not, Repository } from 'typeorm';
 import Anthropic from '@anthropic-ai/sdk';
 import { ChannelCryptoService } from '../../channels/services/channel-crypto.service';
@@ -13,11 +14,13 @@ import {
   AiProviderType,
 } from '../entities/ai-config.entity';
 import type { AiProviderConfig } from '../ai-provider.factory';
+import { AiFeatureModel, AiSettings } from '../entities/ai-settings.entity';
 import { AiNotConfiguredException } from '../interfaces/ai-provider.interface';
 
 interface AiCredentials {
   apiKey: string;
-  model: string;
+  /** Legacy: the model used to be stored on the provider. Read as a fallback only. */
+  model?: string;
 }
 
 export interface AiConfigDto {
@@ -38,6 +41,8 @@ export class AiConfigService {
   constructor(
     @InjectRepository(AiConfig)
     private readonly configRepo: Repository<AiConfig>,
+    @InjectRepository(AiSettings)
+    private readonly settingsRepo: Repository<AiSettings>,
     private readonly cryptoService: ChannelCryptoService,
     private readonly dataSource: DataSource,
   ) {}
@@ -136,6 +141,9 @@ export class AiConfigService {
           const existing = this.cryptoService.decrypt<Record<string, any>>(
             config.encryptedCredentials,
           );
+          // Re-saving a key must not drop the model this provider was set up
+          // with, which is still the fallback until a default model is chosen.
+          finalCreds.model ??= existing.model;
           for (const [key, value] of Object.entries(finalCreds)) {
             if (
               typeof value === 'string' &&
@@ -226,6 +234,147 @@ export class AiConfigService {
     });
   }
 
+  async getSettings(
+    orgId: string,
+  ): Promise<Pick<AiSettings, 'defaultModel' | 'featureModels'>> {
+    const row = await this.settingsRepo.findOne({
+      where: { organizationId: orgId },
+    });
+    return {
+      defaultModel: row?.defaultModel ?? null,
+      featureModels: row?.featureModels ?? {},
+    };
+  }
+
+  async saveSettings(
+    orgId: string,
+    patch: {
+      defaultModel?: string | null;
+      featureModels?: Record<string, AiFeatureModel>;
+    },
+  ): Promise<Pick<AiSettings, 'defaultModel' | 'featureModels'>> {
+    const row =
+      (await this.settingsRepo.findOne({ where: { organizationId: orgId } })) ??
+      this.settingsRepo.create({
+        organizationId: orgId,
+        defaultModel: null,
+        featureModels: {},
+      });
+    if (patch.defaultModel !== undefined) {
+      row.defaultModel = patch.defaultModel?.trim() || null;
+    }
+    if (patch.featureModels !== undefined) {
+      row.featureModels = Object.fromEntries(
+        Object.entries(patch.featureModels)
+          .filter(([, choice]) => choice?.model?.trim())
+          .map(([feature, choice]) => [
+            feature,
+            {
+              provider: choice.provider || null,
+              model: choice.model.trim(),
+            },
+          ]),
+      );
+    }
+    const saved = await this.settingsRepo.save(row);
+    return {
+      defaultModel: saved.defaultModel,
+      featureModels: saved.featureModels,
+    };
+  }
+
+  /**
+   * What the settings page shows: the saved choices, plus the model calls
+   * actually fall back to when no default has been picked yet.
+   */
+  async getSettingsDto(orgId: string): Promise<{
+    defaultModel: string | null;
+    effectiveDefaultModel: string | null;
+    featureModels: Record<string, AiFeatureModel>;
+  }> {
+    const settings = await this.getSettings(orgId);
+    let legacyModel: string | null = null;
+    if (!settings.defaultModel) {
+      try {
+        legacyModel = (await this.resolveProviderConfig(orgId)).model || null;
+      } catch {
+        legacyModel = null;
+      }
+    }
+    return {
+      ...settings,
+      effectiveDefaultModel: settings.defaultModel ?? legacyModel,
+    };
+  }
+
+  /** Models the provider's key can use, for the pickers. Empty when the provider cannot be reached. */
+  async listModels(
+    orgId: string,
+    provider: AiProviderType,
+  ): Promise<{ id: string; name: string }[]> {
+    const { apiKey } = await this.resolveProviderConfig(orgId, provider);
+    try {
+      let models: { id: string; name: string }[];
+      if (provider === AiProviderType.ANTHROPIC) {
+        const client = new Anthropic({ apiKey });
+        const page = await client.models.list({ limit: 100 });
+        models = page.data.map((m) => ({
+          id: m.id,
+          name: m.display_name || m.id,
+        }));
+      } else {
+        const url =
+          provider === AiProviderType.OPENROUTER
+            ? 'https://openrouter.ai/api/v1/models'
+            : 'https://api.openai.com/v1/models';
+        const response = await fetch(url, {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+        if (!response.ok) return [];
+        const body = (await response.json()) as {
+          data?: { id: string; name?: string }[];
+        };
+        models = (body.data ?? []).map((m) => ({
+          id: m.id,
+          name: m.name || m.id,
+        }));
+      }
+      return models.sort((a, b) => a.id.localeCompare(b.id));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * The provider and model one call runs on. An explicit choice (an agent's
+   * own) wins, then the feature's, then the organization's default model,
+   * then the model a provider was saved with before models moved here.
+   */
+  async resolveForCall(
+    orgId: string,
+    feature: string,
+    explicit: { provider?: AiProviderType; model?: string },
+  ): Promise<AiProviderConfig> {
+    const settings = await this.getSettings(orgId);
+    const group = aiModelFeatureKey(feature);
+    const forFeature =
+      explicit.model || !group ? undefined : settings.featureModels[group];
+    const provider =
+      explicit.provider ??
+      (forFeature?.provider
+        ? (forFeature.provider.toUpperCase() as AiProviderType)
+        : undefined);
+    const config = await this.resolveProviderConfig(orgId, provider);
+    const model =
+      explicit.model || forFeature?.model || settings.defaultModel || config.model;
+    if (!model) {
+      throw new AiNotConfiguredException(
+        'No AI model is chosen. Pick a default model under Settings → AI.',
+      );
+    }
+    return { ...config, model };
+  }
+
   /** Runtime resolution used by AiService — never returns masked credentials. */
   async resolveProviderConfig(
     orgId: string,
@@ -271,7 +420,7 @@ export class AiConfigService {
     return {
       provider: config.provider.toLowerCase(),
       apiKey: creds.apiKey,
-      model: creds.model,
+      model: creds.model ?? '',
     };
   }
 

@@ -52,6 +52,7 @@ export function createChannelAiActivities(deps: {
             params.transcript,
             params.systemPromptOverride,
             params.modelOverride,
+            params.providerOverride,
           ),
       );
       if (result.skipped) {

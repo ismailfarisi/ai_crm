@@ -39,6 +39,11 @@ function makeService(
         apiKey: 'test-key',
         model: 'claude-sonnet-5',
       }),
+      resolveForCall: jest.fn().mockResolvedValue({
+        provider: 'anthropic',
+        apiKey: 'test-key',
+        model: 'claude-sonnet-5',
+      }),
     } as any);
 
   const usageLogRepo =
@@ -141,7 +146,7 @@ describe('AiService', () => {
     it('throws AiNotConfiguredException when the org has no enabled provider, without logging usage', async () => {
       const { service, savedLogs } = makeService({
         aiConfigService: {
-          resolveProviderConfig: jest
+          resolveForCall: jest
             .fn()
             .mockRejectedValue(new AiNotConfiguredException()),
         },
@@ -184,9 +189,10 @@ describe('AiService', () => {
         { organizationId: orgId, userId },
       );
 
-      expect(aiConfigService.resolveProviderConfig).toHaveBeenCalledWith(
+      expect(aiConfigService.resolveForCall).toHaveBeenCalledWith(
         orgId,
-        'OPENAI',
+        expect.any(String),
+        expect.objectContaining({ provider: 'OPENAI' }),
       );
     });
 
@@ -505,7 +511,7 @@ describe('AiService', () => {
     it("reserves at the configured model's rate when the call names no model", async () => {
       stubProvider();
       const { service, budgetRepo, redisBudgetGuard, aiConfigService } = makeService();
-      aiConfigService.resolveProviderConfig.mockResolvedValue({
+      aiConfigService.resolveForCall.mockResolvedValue({
         provider: 'anthropic',
         apiKey: 'k',
         model: 'claude-haiku-5-5',
