@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  Optional,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -23,6 +28,7 @@ import {
   QuoteAcceptanceService,
 } from './quote-acceptance.service';
 import { QuoteProofsService } from './quote-proofs.service';
+import { ShopEventsService } from '@/common/events';
 
 interface StaffAlert {
   type: NotificationType;
@@ -57,6 +63,8 @@ export class QuoteResponsesService {
     private readonly mail: MailService,
     private readonly audit: AuditService,
     private readonly config: ConfigService<AppConfig, true>,
+    @Optional()
+    private readonly shopEvents?: ShopEventsService,
   ) {}
 
   decline(
@@ -182,6 +190,11 @@ export class QuoteResponsesService {
         note: response.note,
         noteLabel: declined ? 'Reason' : 'Requested changes',
       });
+      await this.shopEvents?.emit(
+        declined ? 'quote.declined' : 'quote.changes_requested',
+        quote.tenantId,
+        quote.id,
+      );
       return this.acceptance.toPublic(quote);
     });
   }
@@ -265,6 +278,11 @@ export class QuoteResponsesService {
         note: answer.comment,
         noteLabel: 'Comment',
       });
+      await this.shopEvents?.emit(
+        approved ? 'proof.approved' : 'proof.changes_requested',
+        quote.tenantId,
+        latest.id,
+      );
       return this.acceptance.toPublic(quote);
     });
   }

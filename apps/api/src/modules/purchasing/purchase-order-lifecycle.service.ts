@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, IsNull, Repository } from 'typeorm';
@@ -23,6 +24,7 @@ import { lockPurchaseOrder } from './purchase-order-lock';
 import { InventoryService } from '../inventory/inventory.service';
 import { PurchasePolicyEntity } from './entities/purchase-policy.entity';
 import { SupplierMaterial } from './entities/supplier-material.entity';
+import { ShopEventsService } from '@/common/events';
 
 export interface Actor {
   userId: string;
@@ -56,6 +58,8 @@ export class PurchaseOrderLifecycleService {
     @InjectRepository(PurchaseOrderLine)
     private readonly orderLines: Repository<PurchaseOrderLine>,
     private readonly inventory: InventoryService,
+    @Optional()
+    private readonly shopEvents?: ShopEventsService,
   ) {}
 
   /** Absence of a row means "not configured", which means not enforced. */
@@ -386,7 +390,31 @@ export class PurchaseOrderLifecycleService {
   ): Promise<T> {
     return this.orders.manager.transaction(async (manager) => {
       const order = await lockPurchaseOrder(manager, tenantId, orderId);
-      return work(order, manager);
+      const from = order.status;
+      const result = await work(order, manager);
+      // A purchase put back from "sent" is approved again, not newly approved.
+      if (order.status === 'AWAITING_APPROVAL' && from !== order.status) {
+        await this.shopEvents?.emit(
+          'purchase_order.awaiting_approval',
+          tenantId,
+          orderId,
+          { manager },
+        );
+      } else if (
+        order.status === 'APPROVED' &&
+        from !== 'SENT' &&
+        from !== 'APPROVED'
+      ) {
+        await this.shopEvents?.emit(
+          'purchase_order.approved',
+          tenantId,
+          orderId,
+          {
+            manager,
+          },
+        );
+      }
+      return result;
     });
   }
 

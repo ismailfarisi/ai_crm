@@ -20,6 +20,8 @@ export const NODE_TYPES: Record<AutomationNodeType, any> = {
   aiPromptNode: ActionNode,
   aiAgentNode: ActionNode,
   sendEmailNode: ActionNode,
+  sendMessageNode: ActionNode,
+  notifyStaffNode: ActionNode,
   crmMutateNode: ActionNode,
   approvalNode: ApprovalNode,
 };

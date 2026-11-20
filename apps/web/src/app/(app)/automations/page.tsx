@@ -5,7 +5,12 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowRight,
+  Boxes,
   CheckCircle2,
+  Hammer,
+  MessageCircle,
+  Palette,
+  Sunrise,
   Plus,
   Search,
   ShieldCheck,
@@ -25,8 +30,10 @@ import {
 } from '@/hooks/use-automations';
 import {
   AUTOMATION_TEMPLATES,
+  AUTOMATION_TEMPLATE_CATEGORIES,
   buildTemplateGraph,
   overdueRecipientNote,
+  type AutomationTemplateCategory,
   type AutomationTemplateId,
 } from '@/components/automations/templates';
 import { Button } from '@/components/ui/button';
@@ -41,10 +48,18 @@ import {
 } from '@/components/ui/primitives';
 import { useSession } from '@/lib/session-context';
 
-const TEMPLATE_ICONS: Record<AutomationTemplateId, React.ReactNode> = {
-  'quote-accepted-notify': <CheckCircle2 className="size-4" />,
-  'invoice-overdue-reminder': <BellRing className="size-4" />,
+const CATEGORY_ICONS: Record<AutomationTemplateCategory, React.ReactNode> = {
+  Quotes: <CheckCircle2 className="size-4" />,
+  Artwork: <Palette className="size-4" />,
+  Production: <Hammer className="size-4" />,
+  'Stock and purchasing': <Boxes className="size-4" />,
+  Money: <BellRing className="size-4" />,
+  Customers: <MessageCircle className="size-4" />,
+  'Every day': <Sunrise className="size-4" />,
 };
+
+/** How many recipes show before "Show all". */
+const RECIPES_SHOWN = 6;
 
 const TRIGGER_FILTERS = ['ALL', 'WEBHOOK', 'SCHEDULE', 'CRM_EVENT', 'MANUAL'] as const;
 
@@ -78,6 +93,14 @@ export default function AutomationsListPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('ALL');
   const [pendingDelete, setPendingDelete] = useState<AutomationWorkflowDto | null>(null);
+  const [recipeCategory, setRecipeCategory] = useState<AutomationTemplateCategory | 'ALL'>('ALL');
+  const [showAllRecipes, setShowAllRecipes] = useState(false);
+
+  const categoryRecipes = AUTOMATION_TEMPLATES.filter(
+    (template) => recipeCategory === 'ALL' || template.category === recipeCategory,
+  );
+  const shownRecipes =
+    recipeCategory === 'ALL' && !showAllRecipes ? categoryRecipes.slice(0, RECIPES_SHOWN) : categoryRecipes;
 
   const query = searchQuery.trim().toLowerCase();
   const filteredWorkflows = workflows.filter((wf) => {
@@ -126,11 +149,33 @@ export default function AutomationsListPage() {
       />
 
       <section className="space-y-3">
-        <h2 className="text-xs font-semibold text-ink-subtle">
-          Start from a template
-        </h2>
-        <div className="grid gap-4 md:grid-cols-2">
-          {AUTOMATION_TEMPLATES.map((template) => (
+        <div className="space-y-1">
+          <h2 className="text-sm font-semibold text-ink">Ready-made recipes</h2>
+          <p className="text-sm text-ink-muted">
+            Pick one and it is set up for you. Nothing runs until you switch it on.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Recipe category">
+          {(['ALL', ...AUTOMATION_TEMPLATE_CATEGORIES] as const).map((category) => (
+            <button
+              key={category}
+              type="button"
+              data-testid={`recipe-category-${category}`}
+              aria-pressed={recipeCategory === category}
+              onClick={() => setRecipeCategory(category)}
+              className={clsx(
+                'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                recipeCategory === category
+                  ? 'border-brand bg-brand-soft text-ink'
+                  : 'border-border text-ink-muted hover:border-brand/40',
+              )}
+            >
+              {category === 'ALL' ? `All (${AUTOMATION_TEMPLATES.length})` : category}
+            </button>
+          ))}
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" data-testid="recipe-gallery">
+          {shownRecipes.map((template) => (
             <Card
               key={template.id}
               role="button"
@@ -148,21 +193,31 @@ export default function AutomationsListPage() {
               <CardBody className="space-y-2 px-5 py-4">
                 <div className="flex items-center justify-between">
                   <span className="grid size-7 place-items-center rounded-lg bg-brand-soft text-ink">
-                    {TEMPLATE_ICONS[template.id]}
+                    {CATEGORY_ICONS[template.category]}
                   </span>
-                  <Badge tone="neutral">{template.label}</Badge>
+                  <Badge tone="neutral">{template.category}</Badge>
                 </div>
                 <h3 className="text-sm font-semibold text-ink">{template.name}</h3>
                 <p className="text-sm text-ink-muted">{template.blurb}</p>
-                {template.id === 'invoice-overdue-reminder' && (
-                  <p className="text-xs font-medium text-ink-subtle">
-                    {overdueRecipientNote(aiEmailToCustomers)}
-                  </p>
-                )}
+                <p className="text-xs font-medium text-ink-subtle">
+                  {template.id === 'invoice-overdue-reminder'
+                    ? overdueRecipientNote(aiEmailToCustomers)
+                    : template.reaches}
+                </p>
               </CardBody>
             </Card>
           ))}
         </div>
+        {recipeCategory === 'ALL' && categoryRecipes.length > RECIPES_SHOWN && (
+          <button
+            type="button"
+            data-testid="recipes-show-all"
+            onClick={() => setShowAllRecipes((open) => !open)}
+            className="text-sm font-medium text-ink underline-offset-2 hover:underline"
+          >
+            {showAllRecipes ? 'Show fewer' : `Show all ${categoryRecipes.length} recipes`}
+          </button>
+        )}
       </section>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

@@ -4,6 +4,7 @@ import { render, screen, fireEvent, within } from '@testing-library/react';
 import { NodeInspectorDrawer } from './node-inspector-drawer';
 import { TestRunDrawer } from './test-run-drawer';
 import { ExpressionHelper } from './expression-helper';
+import { CRM_EVENTS, CRM_EVENT_GROUPS } from '../crm-events';
 import type { AutomationNode, AutomationWorkflowDto, AutomationExecutionDto } from '@saas/shared';
 
 describe('Automation Drawers', () => {
@@ -212,12 +213,24 @@ describe('Automation Drawers', () => {
       const { rerender } = render(
         <NodeInspectorDrawer node={mk('crmMutateNode', { entity: 'contact' })} onUpdate={onUpdate} onClose={vi.fn()} />,
       );
-      expect(optionTexts(screen.getByTestId('crm-entity-select'))).toEqual(['Choose…', 'Contact', 'Quote']);
+      expect(optionTexts(screen.getByTestId('crm-entity-select'))).toEqual([
+        'Choose…',
+        'Contact',
+        'Quote',
+        'Artwork proof',
+        'Invoice',
+        "Today's shop summary",
+      ]);
       expect(optionTexts(screen.getByTestId('crm-action-select'))).toEqual(['Choose…', 'Create', 'Update']);
       rerender(
         <NodeInspectorDrawer node={mk('crmMutateNode', { entity: 'quote' })} onUpdate={onUpdate} onClose={vi.fn()} />,
       );
-      expect(optionTexts(screen.getByTestId('crm-action-select'))).toEqual(['Choose…', 'Approve', 'Reject']);
+      expect(optionTexts(screen.getByTestId('crm-action-select'))).toEqual([
+        'Choose…',
+        'Approve',
+        'Reject',
+        'Look up (changes nothing)',
+      ]);
     });
 
     it('changing the entity resets the action and drops stale fields', () => {
@@ -364,20 +377,12 @@ describe('Automation Drawers', () => {
       render(<NodeInspectorDrawer node={mk('crmEventTrigger', {})} onUpdate={vi.fn()} onClose={vi.fn()} />);
       const select = screen.getByTestId('crm-event-select') as HTMLSelectElement;
       expect(select.value).toBe('');
-      expect(optionTexts(select)).toEqual([
-        'Choose an event',
-        'Contact created',
-        'Contact updated',
-        'Quote created',
-        'Quote updated',
-        'Customer accepted a quote',
-        'Invoice issued',
-        'Invoice overdue',
-      ]);
-      expect(Array.from(select.options).map((o) => o.value)).toEqual([
-        '', 'contact.created', 'contact.updated', 'quote.created', 'quote.updated',
-        'quote.accepted', 'invoice.issued', 'invoice.overdue',
-      ]);
+      // Every offered event, under its heading, in the order a job moves through the shop.
+      const offered = CRM_EVENT_GROUPS.flatMap((group) => CRM_EVENTS.filter((ev) => ev.group === group));
+      expect(offered).toHaveLength(CRM_EVENTS.length);
+      expect(optionTexts(select)).toEqual(['Choose an event', ...offered.map((ev) => ev.label)]);
+      expect(Array.from(select.options).map((o) => o.value)).toEqual(['', ...offered.map((ev) => ev.value)]);
+      expect(Array.from(select.querySelectorAll('optgroup')).map((g) => g.label)).toEqual([...CRM_EVENT_GROUPS]);
     });
 
     it('email step after an AI step shows the customer-delivery hint', () => {

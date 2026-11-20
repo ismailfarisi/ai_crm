@@ -1,9 +1,14 @@
 'use client';
 
 import React from 'react';
-import { Globe, Mail, Database, MessageSquareText } from 'lucide-react';
+import { Bell, Globe, Mail, Database, MessageCircle, MessageSquareText } from 'lucide-react';
 import type { NodeProps, Node } from '@xyflow/react';
-import type { AutomationNodeData, AutomationNodeType } from '@saas/shared';
+import {
+  AUTOMATION_MESSAGE_CHANNELS,
+  AUTOMATION_NOTIFY_GROUPS,
+  type AutomationNodeData,
+  type AutomationNodeType,
+} from '@saas/shared';
 import { BaseNode } from './base-node';
 
 export interface ActionNodeData extends AutomationNodeData {
@@ -90,6 +95,46 @@ export function ActionNode({
               Sub: {config.subject}
             </div>
           )}
+        </div>
+      );
+      break;
+
+    case 'sendMessageNode':
+      Icon = MessageCircle;
+      category = 'Message';
+      defaultTitle = 'Send Message';
+      iconBg = 'bg-success-soft';
+      iconColor = 'text-success';
+      previewContent = (
+        <div className="space-y-0.5 text-[11px] truncate">
+          <div className="text-ink font-medium truncate">
+            {AUTOMATION_MESSAGE_CHANNELS.find((c) => c.value === config.channel)?.label ?? 'Chat'} to{' '}
+            <span className="text-ink-muted">
+              {config.to || (config.audience === 'customer' ? 'a customer' : 'a colleague')}
+            </span>
+          </div>
+          {config.body && <div className="text-ink-muted truncate text-[11px]">{config.body}</div>}
+        </div>
+      );
+      break;
+
+    case 'notifyStaffNode':
+      Icon = Bell;
+      category = 'In-app';
+      defaultTitle = 'Notify Staff';
+      iconBg = 'bg-warning-soft';
+      iconColor = 'text-warning';
+      previewContent = (
+        <div className="space-y-0.5 text-[11px] truncate">
+          <div className="text-ink font-medium truncate">
+            To:{' '}
+            <span className="text-ink-muted">
+              {config.audience === 'person'
+                ? config.to || 'a colleague'
+                : (AUTOMATION_NOTIFY_GROUPS.find((g) => g.value === config.group)?.label ?? 'a group')}
+            </span>
+          </div>
+          {config.title && <div className="text-ink-muted truncate text-[11px]">{config.title}</div>}
         </div>
       );
       break;

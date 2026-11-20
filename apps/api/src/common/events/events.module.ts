@@ -1,6 +1,7 @@
 import { DynamicModule, Global, Module } from '@nestjs/common';
 import { CrmEventBusService } from './crm-event-bus.service';
 import { EventOutboxService, OUTBOX_DISPATCH } from './event-outbox.service';
+import { ShopEventsService } from './shop-events.service';
 
 /**
  * Imported bare, the bus writes events to the outbox but never drains it —
@@ -11,8 +12,8 @@ import { EventOutboxService, OUTBOX_DISPATCH } from './event-outbox.service';
  */
 @Global()
 @Module({
-  providers: [EventOutboxService, CrmEventBusService],
-  exports: [EventOutboxService, CrmEventBusService],
+  providers: [EventOutboxService, CrmEventBusService, ShopEventsService],
+  exports: [EventOutboxService, CrmEventBusService, ShopEventsService],
 })
 export class EventsModule {
   static forRoot(options: { dispatch: boolean }): DynamicModule {
@@ -23,8 +24,9 @@ export class EventsModule {
         { provide: OUTBOX_DISPATCH, useValue: options.dispatch },
         EventOutboxService,
         CrmEventBusService,
+        ShopEventsService,
       ],
-      exports: [EventOutboxService, CrmEventBusService],
+      exports: [EventOutboxService, CrmEventBusService, ShopEventsService],
     };
   }
 }

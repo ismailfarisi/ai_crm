@@ -46,6 +46,7 @@ import {
 import { DocumentTemplatesService } from '../document-templates/document-templates.service';
 import { DocumentLocalizationService } from '../document-templates/document-localization.service';
 import { DocumentPdfRendererService } from '../document-templates/document-pdf-renderer.service';
+import { ShopEventsService } from '@/common/events';
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -71,6 +72,8 @@ export class InvoicesService {
     @Optional() private readonly moduleRef?: ModuleRef,
     @Optional()
     private readonly documentLocalization?: DocumentLocalizationService,
+    @Optional()
+    private readonly shopEvents?: ShopEventsService,
   ) {}
 
   /**
@@ -107,6 +110,14 @@ export class InvoicesService {
           tenantId,
           quote.id,
         );
+    if (result.isNew) {
+      await this.shopEvents?.emit(
+        'sales_order.created',
+        tenantId,
+        result.order.id,
+        manager ? { manager } : {},
+      );
+    }
     return {
       order: result.order,
       invoice: result.invoices[0] ?? null,
@@ -251,7 +262,26 @@ export class InvoicesService {
         invoice.paidAt = payment.paidAt;
       }
 
-      return manager.getRepository(Invoice).save(invoice);
+      const result = await manager.getRepository(Invoice).save(invoice);
+      // An online payment arrives from the provider's webhook: no person,
+      // and inside the webhook's own transaction.
+      const paidOnline = Boolean(outer) && actorId === null;
+      await this.shopEvents?.emit('payment.received', tenantId, invoice.id, {
+        manager,
+        actorUserId: actorId,
+        extra: { paymentAmount: amount, paidOnline },
+      });
+      if (
+        result.status === InvoiceStatus.PAID &&
+        (await this.shopEvents?.isDepositInvoice(manager, result))
+      ) {
+        await this.shopEvents?.emit('deposit.paid', tenantId, invoice.id, {
+          manager,
+          actorUserId: actorId,
+          extra: { paidOnline },
+        });
+      }
+      return result;
     });
 
     await this.emitInvoiceEvent(
@@ -606,12 +636,16 @@ export class InvoicesService {
         data: {
           invoiceId: invoice.id,
           invoiceNumber: invoice.invoiceNumber,
+          stageLabel: invoice.stageLabel ?? null,
           customerId: invoice.customerId,
+          customerName: invoice.customerName,
           customerEmail: invoice.customerEmail,
           amount: invoice.amount,
           paidAmount: invoice.paidAmount,
+          currency: invoice.currency,
           status: invoice.status,
           dueDate: invoice.dueDate,
+          orderId: invoice.salesOrderId ?? null,
         },
       });
     } catch (err: unknown) {

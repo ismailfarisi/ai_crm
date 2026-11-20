@@ -8,6 +8,9 @@ import { Plus, X } from 'lucide-react';
 const ENTITIES = [
   { value: 'contact', label: 'Contact' },
   { value: 'quote', label: 'Quote' },
+  { value: 'proof', label: 'Artwork proof' },
+  { value: 'invoice', label: 'Invoice' },
+  { value: 'summary', label: "Today's shop summary" },
 ] as const;
 
 const ACTIONS: Record<string, { value: string; label: string }[]> = {
@@ -18,7 +21,11 @@ const ACTIONS: Record<string, { value: string; label: string }[]> = {
   quote: [
     { value: 'approve', label: 'Approve' },
     { value: 'reject', label: 'Reject' },
+    { value: 'get', label: 'Look up (changes nothing)' },
   ],
+  proof: [{ value: 'get', label: 'Look up (changes nothing)' }],
+  invoice: [{ value: 'get', label: 'Look up (changes nothing)' }],
+  summary: [{ value: 'daily', label: 'Get the numbers (changes nothing)' }],
 };
 
 export const CONTACT_FIELD_KEYS = [
@@ -84,7 +91,7 @@ export function CrmStepFields({ config, onChange }: CrmStepFieldsProps) {
   const usedKeys = new Set(rows.map(([k]) => k));
   const unusedKeys = CONTACT_FIELD_KEYS.filter((k) => !usedKeys.has(k));
 
-  const needsRecordId = action === 'update' || entity === 'quote';
+  const needsRecordId = action === 'update' || action === 'get' || entity === 'quote';
   const usesFields = entity === 'contact' && (action === 'create' || action === 'update');
 
   const setFieldRows = (next: FieldRow[]) => {
@@ -102,7 +109,7 @@ export function CrmStepFields({ config, onChange }: CrmStepFieldsProps) {
   const handleAction = (value: string) => {
     const next: Record<string, any> = { ...config, action: value };
     if (value !== 'reject') delete next.reason;
-    if (!(value === 'update' || entity === 'quote')) delete next.recordId;
+    if (!(value === 'update' || value === 'get' || entity === 'quote')) delete next.recordId;
     onChange(next);
   };
 

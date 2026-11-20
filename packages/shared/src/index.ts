@@ -29,6 +29,8 @@ export * from './schemas/quote-send';
 export * from './automations/types';
 export * from './automations/ai-output';
 export * from './automations/schedule';
+export * from './automations/shop-events';
+export * from './automations/shop-steps';
 export * from './finance/ledger';
 export * from './finance/types';
 export * from './finance/expense-categories';

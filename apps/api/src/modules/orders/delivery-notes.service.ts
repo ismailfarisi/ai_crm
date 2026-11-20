@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Not, Repository } from 'typeorm';
@@ -35,6 +36,7 @@ import {
   SalesOrderLine,
 } from './entities/sales-order.entity';
 import { breakdownForItems, issueInvoice } from './order-provisioning';
+import { ShopEventsService } from '@/common/events';
 
 const cents = (n: number) => Math.round((n + Number.EPSILON) * 100);
 const round2 = (n: number) => cents(n) / 100;
@@ -63,6 +65,8 @@ export class DeliveryNotesService {
     private readonly inventory: InventoryService,
     private readonly ledger: LedgerService,
     private readonly dataSource: DataSource,
+    @Optional()
+    private readonly shopEvents?: ShopEventsService,
   ) {}
 
   async listForOrder(
@@ -306,6 +310,12 @@ export class DeliveryNotesService {
       ) {
         order.status = 'FULFILLED';
         await manager.getRepository(SalesOrder).save(order);
+        await this.shopEvents?.emit(
+          'sales_order.fulfilled',
+          tenantId,
+          order.id,
+          { manager, actorUserId: actorId },
+        );
       }
     });
     return this.get(tenantId, id);

@@ -24,6 +24,9 @@ import { CustomObjectsService } from './modules/custom-objects/services/custom-o
 import { AssistantEventsService } from './modules/assistant/assistant-events.service';
 import { createAssistantActivities } from './modules/assistant/assistant.activities';
 import { createAutomationActions } from './modules/automations/workflows/automation-actions';
+import { createShopActions } from './modules/automations/workflows/shop-actions';
+import { NotificationsService } from './modules/notifications/notifications.service';
+import { DataSource } from 'typeorm';
 import { MailService } from './modules/mail/mail.service';
 import { ContactsService } from './modules/contacts/contacts.service';
 import { UsersService } from './modules/users/users.service';
@@ -90,6 +93,17 @@ async function run(): Promise<void> {
       tenantContext: appContext.get(TenantContextService),
       idempotency: appContext.get(ChannelIdempotencyService),
     });
+    // Chat messages, the bell and read-only lookups for automation steps.
+    const shopActions = createShopActions({
+      dataSource: appContext.get(DataSource),
+      channels: appContext.get(ChannelsService),
+      notifications: appContext.get(NotificationsService),
+      users: appContext.get(UsersService),
+      rbac: appContext.get(RbacService),
+      audit: appContext.get(AuditService),
+      tenantContext: appContext.get(TenantContextService),
+      idempotency: appContext.get(ChannelIdempotencyService),
+    });
     // Schedule ticks start real runs through AutomationsService (reachable
     // here through QuotesModule -> AutomationsModule).
     const scheduledTickActivities = createScheduledTickActivities({
@@ -139,7 +153,7 @@ async function run(): Promise<void> {
         ),
         activities: buildAutomationsQueueActivities({
           automationActivities,
-          automationActions,
+          automationActions: { ...automationActions, ...shopActions },
           agentReactActivities,
           scheduledTickActivities,
           runRecordActivities,

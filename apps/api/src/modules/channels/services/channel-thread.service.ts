@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -10,6 +10,7 @@ import {
 import { AuditService } from '../../audit/audit.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { ChannelThread } from '../entities/channel-thread.entity';
+import { ShopEventsService } from '@/common/events';
 
 /**
  * Whether the AI or a person is answering each customer conversation, and
@@ -22,6 +23,8 @@ export class ChannelThreadService {
     private readonly repo: Repository<ChannelThread>,
     private readonly notifications: NotificationsService,
     private readonly audit: AuditService,
+    @Optional()
+    private readonly shopEvents?: ShopEventsService,
   ) {}
 
   list(organizationId: string): Promise<ChannelThread[]> {
@@ -121,6 +124,11 @@ export class ChannelThreadService {
       summary: CHANNEL_HANDOVER_REASON_LABELS[input.reason],
       after: { state: moved.state, handoverReason: moved.handoverReason },
     });
+    await this.shopEvents?.emit(
+      'conversation.handover',
+      input.organizationId,
+      moved.id,
+    );
     return { handedOver: true, thread: moved };
   }
 

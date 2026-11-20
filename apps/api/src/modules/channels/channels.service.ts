@@ -45,6 +45,7 @@ import {
 import { newInboundMessageSignal } from './workflows/interfaces';
 import { IntentAgentConfigService } from './services/intent-agent-config.service';
 import { ChannelThreadService } from './services/channel-thread.service';
+import { ShopEventsService } from '@/common/events';
 
 export interface SendMessageDto {
   contactId?: string;
@@ -73,6 +74,8 @@ export class ChannelsService {
     private readonly tenantContext?: TenantContextService,
     @Optional()
     private readonly threads?: ChannelThreadService,
+    @Optional()
+    private readonly shopEvents?: ShopEventsService,
   ) {}
 
   /** The URL the given provider's inbound webhook is reachable at — must match the route in ChannelsWebhookController. */
@@ -695,6 +698,9 @@ export class ChannelsService {
         }
         return { success: true };
       }
+
+      // A customer wrote, whoever answers it: a person or the AI.
+      await this.shopEvents?.emit('message.received', orgId, saved.id);
 
       // A conversation a person holds, or is waiting to be picked up, is
       // left to them: the AI neither classifies nor replies.
