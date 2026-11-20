@@ -158,13 +158,7 @@ export class DeliveryNotesService {
       const note = await noteRepo.save(
         noteRepo.create({
           tenantId,
-          deliveryNoteNumber: await formatTenantSequenceNumber(
-            manager,
-            tenantId,
-            'delivery_note_number',
-            'DN',
-            number,
-          ),
+          deliveryNoteNumber: await formatTenantSequenceNumber(manager, tenantId, 'delivery_note_number', 'DN', number),
           status: 'DRAFT',
           salesOrderId: order.id,
           customerName: order.customerName,

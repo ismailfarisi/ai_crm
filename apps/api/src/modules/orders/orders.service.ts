@@ -215,7 +215,8 @@ export class OrdersService {
         // A per-delivery order has no stage invoice; it is billed once the
         // delivery that completed it has been invoiced.
         const unbilled = stages.filter(
-          (s) => !s.invoiceId && !(s.trigger === 'ON_DELIVERY' && s.invoicedAt),
+          (s) =>
+            !s.invoiceId && !(s.trigger === 'ON_DELIVERY' && s.invoicedAt),
         );
         if (unbilled.length) {
           throw new BadRequestException(

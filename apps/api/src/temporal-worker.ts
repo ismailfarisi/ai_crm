@@ -148,8 +148,9 @@ async function run(): Promise<void> {
         taskQueue: 'automations-queue',
         // Workflow code only (dynamicDagWorkflow, scheduledTickWorkflow): it
         // is bundled into Temporal's sandbox.
-        workflowsPath:
-          require.resolve('./modules/automations/workflows/automations-queue.workflows'),
+        workflowsPath: require.resolve(
+          './modules/automations/workflows/automations-queue.workflows',
+        ),
         activities: buildAutomationsQueueActivities({
           automationActivities,
           automationActions: { ...automationActions, ...shopActions },
@@ -168,8 +169,7 @@ async function run(): Promise<void> {
       Worker.create({
         connection,
         taskQueue: 'assistant-queue',
-        workflowsPath:
-          require.resolve('./modules/channels/workflows/agent-react.workflow'),
+        workflowsPath: require.resolve('./modules/channels/workflows/agent-react.workflow'),
         activities: { ...agentReactActivities, ...assistantActivities },
       }),
     ]);

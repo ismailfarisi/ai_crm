@@ -105,13 +105,7 @@ export class ExpensesService {
       tenantId,
       'claim_number',
     );
-    return formatTenantSequenceNumber(
-      this.expenseRepository.manager,
-      tenantId,
-      'claim_number',
-      'EXP',
-      value,
-    );
+    return formatTenantSequenceNumber(this.expenseRepository.manager, tenantId, 'claim_number', 'EXP', value);
   }
 
   async findAll(tenantId: string): Promise<ExpenseClaim[]> {

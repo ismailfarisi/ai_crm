@@ -365,13 +365,7 @@ export class ProductionService {
     const wo = await repo.save(
       repo.create({
         tenantId: p.tenantId,
-        woNumber: await formatTenantSequenceNumber(
-          manager,
-          p.tenantId,
-          'work_order_number',
-          'WO',
-          number,
-        ),
+        woNumber: await formatTenantSequenceNumber(manager, p.tenantId, 'work_order_number', 'WO', number),
         status: 'PLANNED',
         salesOrderId: p.order.id,
         salesOrderLineId: p.line.id,
@@ -742,7 +736,7 @@ export class ProductionService {
         actorUserId: actorId,
       });
       // The order is ready once none of its jobs is still being made.
-      if (wo.salesOrderId) {
+      if (this.shopEvents && wo.salesOrderId) {
         const unfinished = await manager.getRepository(WorkOrder).count({
           where: {
             tenantId,
@@ -751,7 +745,7 @@ export class ProductionService {
           },
         });
         if (unfinished === 0) {
-          await this.shopEvents?.emit(
+          await this.shopEvents.emit(
             'sales_order.ready',
             tenantId,
             wo.salesOrderId,
@@ -821,14 +815,16 @@ export class ProductionService {
           { workOrderId: wo.id, status: 'RUNNING' },
           { status: 'PAUSED', runningSince: null },
         );
-      await manager.getRepository(WorkOrder).update(
-        { id: wo.id, tenantId },
-        {
-          status: 'CANCELLED',
-          cancelledAt: new Date(),
-          cancelReason: reason,
-        },
-      );
+      await manager
+        .getRepository(WorkOrder)
+        .update(
+          { id: wo.id, tenantId },
+          {
+            status: 'CANCELLED',
+            cancelledAt: new Date(),
+            cancelReason: reason,
+          },
+        );
       await this.shopEvents?.emit('work_order.cancelled', tenantId, wo.id, {
         manager,
       });
