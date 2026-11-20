@@ -12,6 +12,7 @@ export const channelIntentSchema = z.object({
     'ORDER_STATUS',
     'PRICING_QUESTION',
     'COMPLAINT',
+    'HUMAN_REQUEST',
     'SUPPORT_REQUEST',
     'SCHEDULING',
     'SPAM',
@@ -45,13 +46,14 @@ export const channelIntentJsonSchema = {
         'ORDER_STATUS',
         'PRICING_QUESTION',
         'COMPLAINT',
+        'HUMAN_REQUEST',
         'SUPPORT_REQUEST',
         'SCHEDULING',
         'SPAM',
         'OTHER',
       ],
       description:
-        'What the sender wants. QUOTATION_REQUEST is specifically asking for a price quote/proposal, distinct from a general PRICING_QUESTION.',
+        'What the sender wants. QUOTATION_REQUEST is specifically asking for a price quote/proposal, distinct from a general PRICING_QUESTION. HUMAN_REQUEST is asking to speak to a person, whatever the topic.',
     },
     confidence: {
       type: 'number',

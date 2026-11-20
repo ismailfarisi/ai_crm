@@ -12,6 +12,8 @@ export const upsertIntentAgentConfigSchema = z.object({
     .default(['TELEGRAM', 'WHATSAPP_META']),
   /** Null uses the provider's configured model; see `agentModelField`. */
   model: agentModelField,
+  /** Sent to the customer when the AI hands over to a person; null uses the built-in wording. */
+  handoverMessage: z.string().trim().max(500).nullish().transform((v) => v || null),
 });
 export type UpsertIntentAgentConfigPayload = z.infer<
   typeof upsertIntentAgentConfigSchema
@@ -28,6 +30,7 @@ export interface IntentAgentConfigDto {
   eligibleProviders: string[];
   /** Null means the organisation's provider default. */
   model: string | null;
+  handoverMessage: string | null;
   createdAt?: string;
   updatedAt?: string;
 }

@@ -29,6 +29,7 @@ import { ChannelsService } from './channels.service';
 import { ChannelCommandService } from './services/channel-command.service';
 import { AiAgentService } from './services/ai-agent.service';
 import { IntentAgentConfigService } from './services/intent-agent-config.service';
+import { ChannelThreadService } from './services/channel-thread.service';
 import { ChannelProviderType } from './entities/channel-config.entity';
 
 @ApiTags('channels')
@@ -39,6 +40,7 @@ export class ChannelsController {
     private readonly channelCommandService: ChannelCommandService,
     private readonly aiAgentService: AiAgentService,
     private readonly intentAgentConfigService: IntentAgentConfigService,
+    private readonly threads: ChannelThreadService,
   ) {}
 
   @Get('configs')
@@ -95,14 +97,65 @@ export class ChannelsController {
   @Post('send')
   @RequirePermissions(PERMISSIONS.CHANNEL_SEND)
   @ApiOperation({ summary: 'Send an outbound channel message' })
-  sendMessage(
+  async sendMessage(
     @CurrentUser() user: AuthenticatedUser,
     @Body(zodBody(sendChannelMessageSchema)) body: SendChannelMessagePayload,
   ) {
-    return this.channelsService.sendMessage(user.organizationId, user.id, {
-      ...body,
-      provider: body.provider as ChannelProviderType,
-    });
+    const sent = await this.channelsService.sendMessage(
+      user.organizationId,
+      user.id,
+      { ...body, provider: body.provider as ChannelProviderType },
+    );
+    // Replying from the inbox takes the conversation: the AI stays quiet
+    // until it is returned.
+    if (body.contactId) {
+      await this.threads.takeOverByContact(
+        user.organizationId,
+        body.provider,
+        body.contactId,
+        user.id,
+      );
+    }
+    return sent;
+  }
+
+  @Get('threads')
+  @RequirePermissions(PERMISSIONS.CHANNEL_READ)
+  @ApiOperation({
+    summary: 'List conversations with who is answering each: the AI or a person',
+  })
+  listThreads(@CurrentUser() user: AuthenticatedUser) {
+    return this.threads.list(user.organizationId);
+  }
+
+  @Post('threads/:id/take-over')
+  @RequirePermissions(PERMISSIONS.CHANNEL_SEND)
+  @ApiOperation({ summary: 'Take a conversation over from the AI' })
+  takeOverThread(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.threads.takeOver(user.organizationId, id, user.id);
+  }
+
+  @Post('threads/:id/return-to-ai')
+  @RequirePermissions(PERMISSIONS.CHANNEL_SEND)
+  @ApiOperation({ summary: 'Give a conversation back to the AI' })
+  returnThreadToAi(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.threads.returnToAi(user.organizationId, id);
+  }
+
+  @Post('threads/:id/resolve')
+  @RequirePermissions(PERMISSIONS.CHANNEL_SEND)
+  @ApiOperation({ summary: 'Mark a conversation resolved' })
+  resolveThread(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.threads.resolve(user.organizationId, id);
   }
 
   @Post('identities/link-code')

@@ -47,6 +47,10 @@ export class IntentAgentConfig {
   @Column({ type: 'varchar', length: 120, nullable: true })
   model: string | null;
 
+  /** Sent to the customer when the AI hands the conversation to a person; null uses the built-in wording. */
+  @Column({ type: 'text', nullable: true })
+  handoverMessage: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 

@@ -33,6 +33,7 @@ function makeService(
     temporalService?: any;
     intentAgentConfigService?: any;
     tenantContext?: any;
+    threads?: any;
   } = {},
 ) {
   const configs: ChannelConfig[] = [];
@@ -172,6 +173,7 @@ function makeService(
     overrides.temporalService as any,
     overrides.intentAgentConfigService as any,
     overrides.tenantContext as any,
+    overrides.threads,
   );
   return {
     service,
@@ -973,6 +975,56 @@ describe('ChannelsService', () => {
         expect(a.start.mock.calls[0][1].workflowIdReusePolicy).toBe(
           'REJECT_DUPLICATE',
         );
+      });
+    });
+
+    describe('handover', () => {
+      const inbound = (admit: boolean) => {
+        const start = jest.fn().mockResolvedValue({ workflowId: 'wf' });
+        const threads = { admitInbound: jest.fn().mockResolvedValue(admit) };
+        const made = makeService({
+          temporalService: {
+            getClient: async () => ({
+              workflow: { start, signalWithStart: jest.fn() },
+            }),
+          },
+          intentAgentConfigService: {
+            getEffective: jest
+              .fn()
+              .mockResolvedValue({ isEnabled: false, eligibleProviders: [] }),
+          },
+          threads,
+        });
+        return { ...made, start, threads };
+      };
+      const receive = async (service: ChannelsService) => {
+        await service.saveConfig(orgId, ChannelProviderType.TELEGRAM, true, {
+          botToken: 'token',
+        });
+        await service.processInboundWebhook(
+          orgId,
+          ChannelProviderType.TELEGRAM,
+          {},
+          { message: { text: 'hello', chat: { id: '998877' }, message_id: 1 } },
+        );
+      };
+
+      it('keeps the AI off a conversation a person holds, but still stores the message', async () => {
+        const { service, start, messages } = inbound(false);
+        await receive(service);
+        expect(start).not.toHaveBeenCalled();
+        expect(messages).toHaveLength(1);
+      });
+
+      it('lets the AI work a conversation it still holds', async () => {
+        const { service, start, threads } = inbound(true);
+        await receive(service);
+        expect(threads.admitInbound).toHaveBeenCalledWith(
+          orgId,
+          ChannelProviderType.TELEGRAM,
+          expect.any(String),
+        );
+        expect(start).toHaveBeenCalledTimes(1);
       });
     });
   });

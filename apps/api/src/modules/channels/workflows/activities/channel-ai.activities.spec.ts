@@ -104,4 +104,66 @@ describe('dispatchAgentActivity idempotency', () => {
 
     expect(quotesService.createQuote).toHaveBeenCalledTimes(2);
   });
+
+  describe('handOverToHumanActivity', () => {
+    const params = {
+      organizationId: 'org-1',
+      provider: ChannelProviderType.WHATSAPP_META,
+      contactId: 'contact-1',
+      senderIdentifier: '971500000000',
+      reason: 'HUMAN_REQUESTED' as const,
+      summary: 'Wants to talk to sales',
+    };
+    const make = (handedOver: boolean, handoverMessage: string | null = null) => {
+      const sendMessage = jest.fn().mockResolvedValue({});
+      const handOver = jest.fn().mockResolvedValue({ handedOver });
+      const activities = createChannelAiActivities({
+        aiService: {} as any,
+        channelsService: { sendMessage } as any,
+        quotesService: {} as any,
+        aiAgentService: {} as any,
+        tenantContext: { runWithTenant: (_t: string, fn: any) => fn() } as any,
+        idempotency: { runOnce: jest.fn() } as any,
+        threads: { handOver },
+        intentAgentConfigService: {
+          getEffective: jest.fn().mockResolvedValue({ handoverMessage }),
+        } as any,
+      });
+      return { activities, sendMessage, handOver };
+    };
+
+    it('records the handover and tells the customer a person will reply', async () => {
+      const { activities, sendMessage, handOver } = make(true);
+      await activities.handOverToHumanActivity({ ...params, notifyCustomer: true });
+      expect(handOver).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: 'HUMAN_REQUESTED', contactId: 'contact-1' }),
+      );
+      expect(sendMessage).toHaveBeenCalledWith(
+        'org-1',
+        'system:ai-handover',
+        expect.objectContaining({
+          recipient: '971500000000',
+          body: expect.stringContaining('member of our team'),
+        }),
+      );
+    });
+
+    it("uses the organization's own handover wording when set", async () => {
+      const { activities, sendMessage } = make(true, 'Our team will call you.');
+      await activities.handOverToHumanActivity({ ...params, notifyCustomer: true });
+      expect(sendMessage.mock.calls[0][2].body).toBe('Our team will call you.');
+    });
+
+    it('says nothing when a person already holds the conversation', async () => {
+      const { activities, sendMessage } = make(false);
+      await activities.handOverToHumanActivity({ ...params, notifyCustomer: true });
+      expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('stays silent towards the customer when asked to', async () => {
+      const { activities, sendMessage } = make(true);
+      await activities.handOverToHumanActivity({ ...params, notifyCustomer: false });
+      expect(sendMessage).not.toHaveBeenCalled();
+    });
+  });
 });

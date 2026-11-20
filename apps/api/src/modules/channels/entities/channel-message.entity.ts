@@ -30,6 +30,7 @@ export enum MessageAiIntent {
   ORDER_STATUS = 'ORDER_STATUS',
   PRICING_QUESTION = 'PRICING_QUESTION',
   COMPLAINT = 'COMPLAINT',
+  HUMAN_REQUEST = 'HUMAN_REQUEST',
   SUPPORT_REQUEST = 'SUPPORT_REQUEST',
   SCHEDULING = 'SCHEDULING',
   SPAM = 'SPAM',
@@ -116,7 +117,12 @@ export class ChannelMessage {
   @Index()
   createdAt: Date;
 
-  @Column({ type: 'enum', enum: MessageAiIntent, nullable: true })
+  @Column({
+    type: 'enum',
+    enum: MessageAiIntent,
+    enumName: 'channel_messages_ai_intent_enum',
+    nullable: true,
+  })
   aiIntent: MessageAiIntent | null;
 
   @Column({ type: 'real', nullable: true })

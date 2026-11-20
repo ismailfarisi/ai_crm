@@ -5,6 +5,8 @@ import * as expenseActivities from './modules/finance/workflows/activities/expen
 import * as quoteActivities from './modules/quotes/workflows/quote.activities';
 import * as automationActivities from './modules/automations/workflows/automation.activities';
 import { createChannelAiActivities } from './modules/channels/workflows/activities/channel-ai.activities';
+import { ChannelThreadService } from './modules/channels/services/channel-thread.service';
+import { IntentAgentConfigService } from './modules/channels/services/intent-agent-config.service';
 import { WorkerModule } from './worker.module';
 import { AiService } from './modules/ai/ai.service';
 import { ChannelsService } from './modules/channels/channels.service';
@@ -61,6 +63,8 @@ async function run(): Promise<void> {
       aiAgentService: appContext.get(AiAgentService),
       tenantContext: appContext.get(TenantContextService),
       idempotency: appContext.get(ChannelIdempotencyService),
+      threads: appContext.get(ChannelThreadService),
+      intentAgentConfigService: appContext.get(IntentAgentConfigService),
     });
     const agentReactActivities = createAgentReactActivities({
       aiService: appContext.get(AiService),

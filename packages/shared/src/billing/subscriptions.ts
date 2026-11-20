@@ -104,7 +104,8 @@ export type NotificationType =
   | 'PAYMENT_FAILED'
   | 'PAYMENT_RECEIVED'
   | 'TRIAL_ENDING'
-  | 'RECURRING_EXPENSE_FAILED';
+  | 'RECURRING_EXPENSE_FAILED'
+  | 'CONVERSATION_HANDOVER';
 
 export interface NotificationDto {
   id: string;

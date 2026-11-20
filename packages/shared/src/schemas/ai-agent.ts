@@ -13,6 +13,7 @@ export const MessageAiIntentEnum = z.enum([
   'ORDER_STATUS',
   'PRICING_QUESTION',
   'COMPLAINT',
+  'HUMAN_REQUEST',
   'SUPPORT_REQUEST',
   'SCHEDULING',
   'SPAM',

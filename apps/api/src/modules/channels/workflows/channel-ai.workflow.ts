@@ -1,4 +1,10 @@
-import { condition, proxyActivities, setHandler } from '@temporalio/workflow';
+import {
+  condition,
+  patched,
+  proxyActivities,
+  setHandler,
+} from '@temporalio/workflow';
+import type { ChannelHandoverReason } from '@saas/shared';
 import type * as activities from './activities/channel-ai.activities';
 import {
   ChannelAiWorkflowInput,
@@ -15,10 +21,52 @@ const {
   dispatchAgentActivity,
   persistDispatchResultActivity,
   sendClarifyingQuestionActivity,
+  handOverToHumanActivity,
 } = proxyActivities<ReturnType<typeof activities.createChannelAiActivities>>({
   startToCloseTimeout: '30 seconds',
   retry: { maximumAttempts: 3 },
 });
+
+/** Intents the AI never handles itself: the conversation goes straight to a person. */
+const HANDOVER_INTENTS: Record<string, ChannelHandoverReason> = {
+  HUMAN_REQUEST: 'HUMAN_REQUESTED',
+  COMPLAINT: 'COMPLAINT',
+};
+
+/**
+ * Hands the conversation to a person. Never fails the workflow: a handover
+ * that cannot be recorded leaves things as they were before handover existed.
+ * `patched` keeps executions started before this change replaying cleanly.
+ */
+async function handOver(
+  input: Pick<
+    ChannelConversationWorkflowInput,
+    'organizationId' | 'provider' | 'contactId' | 'senderIdentifier'
+  >,
+  reason: ChannelHandoverReason,
+  summary: string | null | undefined,
+  notifyCustomer: boolean,
+): Promise<void> {
+  if (!patched('handover-v1')) return;
+  try {
+    await handOverToHumanActivity({
+      organizationId: input.organizationId,
+      provider: input.provider,
+      contactId: input.contactId,
+      senderIdentifier: input.senderIdentifier,
+      reason,
+      summary: summary ?? null,
+      notifyCustomer,
+    });
+  } catch {
+    // Left for a human to find in the inbox, as before.
+  }
+}
+
+/** Why dispatch did not act, as a handover reason. */
+function reasonFor(dispatchReason: string): ChannelHandoverReason {
+  return dispatchReason === 'LOW_CONFIDENCE' ? 'LOW_CONFIDENCE' : 'NO_AGENT';
+}
 
 /**
  * One-shot job (classify -> maybe dispatch to an agent) — no signals/queries,
@@ -46,6 +94,7 @@ export async function channelAiWorkflow(
       messageId: input.messageId,
       status: 'FAILED',
     });
+    await handOver(input, 'ERROR', null, false);
     return { status: 'FAILED', autoAcked: false };
   }
 
@@ -69,6 +118,12 @@ export async function channelAiWorkflow(
     options: classified.options,
   });
 
+  const direct = HANDOVER_INTENTS[classified.intent!];
+  if (direct) {
+    await handOver(input, direct, classified.summary, false);
+    return { status: 'COMPLETED', autoAcked: false };
+  }
+
   try {
     const dispatchResult = await dispatchAgentActivity({
       organizationId: input.organizationId,
@@ -89,14 +144,24 @@ export async function channelAiWorkflow(
       createdQuoteId: dispatchResult.createdQuoteId,
     });
 
+    if (dispatchResult.reason !== 'DISPATCHED') {
+      await handOver(
+        input,
+        reasonFor(dispatchResult.reason),
+        classified.summary,
+        false,
+      );
+    }
+
     return {
       status: 'COMPLETED',
       autoAcked: dispatchResult.autoAcked,
       createdQuoteId: dispatchResult.createdQuoteId,
     };
   } catch {
-    // Classification already succeeded and is persisted — leave it for a
+    // Classification already succeeded and is persisted — hand it to a
     // human rather than failing the whole workflow over the action step.
+    await handOver(input, 'ERROR', classified.summary, false);
     return { status: 'COMPLETED', autoAcked: false };
   }
 }
@@ -124,6 +189,9 @@ export async function channelConversationWorkflow(
   });
 
   const transcript: ChannelTranscriptTurn[] = [];
+  let lastSummary: string | null = null;
+  // False when the customer went quiet: no point telling them anything.
+  let customerStillThere = true;
 
   for (let turn = 0; turn < input.maxTurns; turn++) {
     const gotMessage = await condition(
@@ -135,6 +203,7 @@ export async function channelConversationWorkflow(
     if (!gotMessage) {
       // Customer went quiet — stop waiting rather than leaving this
       // workflow open indefinitely; whatever was last persisted stands.
+      customerStillThere = false;
       break;
     }
     const message = queue.shift()!;
@@ -157,6 +226,7 @@ export async function channelConversationWorkflow(
         messageId: message.messageId,
         status: 'FAILED',
       });
+      await handOver(input, 'ERROR', null, true);
       return { status: 'FAILED', autoAcked: false };
     }
 
@@ -179,6 +249,13 @@ export async function channelConversationWorkflow(
       suggestedReply: classified.suggestedReply,
       options: classified.options,
     });
+    lastSummary = classified.summary ?? lastSummary;
+
+    const direct = HANDOVER_INTENTS[classified.intent!];
+    if (direct) {
+      await handOver(input, direct, classified.summary, true);
+      return { status: 'COMPLETED', autoAcked: false };
+    }
 
     let dispatchResult: Awaited<ReturnType<typeof dispatchAgentActivity>>;
     try {
@@ -196,6 +273,7 @@ export async function channelConversationWorkflow(
     } catch {
       // Classification already succeeded and is persisted — leave it for a
       // human rather than failing the whole conversation over the action step.
+      await handOver(input, 'ERROR', classified.summary, true);
       return { status: 'COMPLETED', autoAcked: false };
     }
 
@@ -223,6 +301,12 @@ export async function channelConversationWorkflow(
       // no agent) is exactly the case that should keep chatting — the real
       // intent may only emerge, and map to a configured agent, after a turn
       // or two of clarification.
+      await handOver(
+        input,
+        reasonFor(dispatchResult.reason),
+        classified.summary,
+        true,
+      );
       return { status: 'COMPLETED', autoAcked: false };
     }
 
@@ -238,6 +322,7 @@ export async function channelConversationWorkflow(
         question: classified.clarifyingQuestion,
       });
     } catch {
+      await handOver(input, 'ERROR', classified.summary, false);
       return { status: 'COMPLETED', autoAcked: false };
     }
 
@@ -249,5 +334,7 @@ export async function channelConversationWorkflow(
     transcript.push({ role: 'agent', body: classified.clarifyingQuestion });
   }
 
+  // Out of turns, or no reply to the last question: a person takes it from here.
+  await handOver(input, 'UNRESOLVED', lastSummary, customerStillThere);
   return { status: 'COMPLETED', autoAcked: false };
 }
