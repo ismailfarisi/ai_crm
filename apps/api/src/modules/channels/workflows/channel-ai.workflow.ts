@@ -95,7 +95,12 @@ async function tryAgents(
   >,
   messageId: string,
   notifyCustomerOnHandover: boolean,
-): Promise<{ handled: boolean; handedOver: boolean; createdQuoteId?: string }> {
+): Promise<{
+  handled: boolean;
+  handedOver: boolean;
+  summary?: string;
+  createdQuoteId?: string;
+}> {
   const notHandled = { handled: false, handedOver: false };
   if (!patched('agents-v1')) return notHandled;
   let turn: Awaited<ReturnType<typeof runCustomerAgentTurnActivity>>;
@@ -137,7 +142,7 @@ async function tryAgents(
         suggestedReply: turn.reply,
       });
       await handOver(input, 'ERROR', summary, false);
-      return { handled: true, handedOver: true };
+      return { handled: true, handedOver: true, summary };
     }
   }
 
@@ -165,10 +170,16 @@ async function tryAgents(
     return {
       handled: true,
       handedOver: true,
+      summary,
       createdQuoteId: turn.createdQuoteId,
     };
   }
-  return { handled: true, handedOver: false, createdQuoteId: turn.createdQuoteId };
+  return {
+    handled: true,
+    handedOver: false,
+    summary,
+    createdQuoteId: turn.createdQuoteId,
+  };
 }
 
 /** Why dispatch did not act, as a handover reason. */
@@ -329,12 +340,24 @@ export async function channelConversationWorkflow(
     const message = queue.shift()!;
     transcript.push({ role: 'customer', body: message.body });
 
+    // Messages already waiting were stored before the agent read the
+    // conversation, so its one answer covers them too.
+    const alsoWaiting = queue.length;
     const byAgent = await tryAgents(input, message.messageId, true);
     if (byAgent.handled) {
-      // An agent reads the conversation from the inbox, not from this
-      // workflow, so there is nothing to keep it open for: the customer's
-      // next message starts a fresh run. Messages that arrived meanwhile are
-      // answered first, without counting against the clarifying turns.
+      for (const covered of queue.splice(0, alsoWaiting)) {
+        transcript.push({ role: 'customer', body: covered.body });
+        await persistClassificationActivity({
+          organizationId: input.organizationId,
+          messageId: covered.messageId,
+          status: 'COMPLETED',
+          summary: byAgent.summary,
+        });
+      }
+      // An agent reads the conversation as stored, not from this workflow,
+      // so there is nothing to keep it open for: the customer's next message
+      // starts a fresh run. Anything that arrived while the agent was
+      // answering is dealt with first, without spending a clarifying turn.
       if (byAgent.handedOver || queue.length === 0) {
         return {
           status: 'COMPLETED',

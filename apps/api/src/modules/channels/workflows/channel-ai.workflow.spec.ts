@@ -274,12 +274,15 @@ describe('channel AI workflows: handover', () => {
       expect(mockActivities.classifyMessageActivity).not.toHaveBeenCalled();
     });
 
-    it('answers each waiting message, without spending clarifying turns', async () => {
+    it('answers messages sent in a burst once, and marks every one of them read', async () => {
       mockActivities.runCustomerAgentTurnActivity.mockResolvedValue(replied);
 
       await converse(['hi', 'I need boxes', '500 of them']);
 
-      expect(mockActivities.sendAgentReplyActivity).toHaveBeenCalledTimes(3);
+      expect(mockActivities.sendAgentReplyActivity).toHaveBeenCalledTimes(1);
+      expect(
+        mockActivities.persistClassificationActivity.mock.calls.map(([p]) => p.messageId),
+      ).toEqual(['m-1', 'm-2', 'm-3']);
       expect(mockActivities.handOverToHumanActivity).not.toHaveBeenCalled();
     });
 

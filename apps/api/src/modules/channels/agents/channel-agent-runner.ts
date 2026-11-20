@@ -420,10 +420,19 @@ function toolsFor(
 /** The transcript as model messages. A conversation must open with the customer. */
 function toMessages(transcript: ChannelTranscriptTurn[]): AiMessage[] {
   const first = transcript.findIndex((turn) => turn.role === 'customer');
-  return transcript.slice(Math.max(first, 0)).map((turn) => ({
-    role: turn.role === 'customer' ? ('user' as const) : ('assistant' as const),
-    content: turn.body,
-  }));
+  const messages: AiMessage[] = [];
+  for (const turn of transcript.slice(Math.max(first, 0))) {
+    const role = turn.role === 'customer' ? 'user' : 'assistant';
+    const last = messages[messages.length - 1];
+    // Two messages in a row from one side become one turn: some providers
+    // reject a conversation that does not alternate.
+    if (last?.role === role && typeof last.content === 'string') {
+      last.content = `${last.content}\n${turn.body}`;
+    } else {
+      messages.push({ role, content: turn.body });
+    }
+  }
+  return messages;
 }
 
 /** Adds a note to the customer's latest message, which is always last. */
