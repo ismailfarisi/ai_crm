@@ -242,6 +242,8 @@ describe('ChannelCommandService — files', () => {
         'fuel for the van',
         skills,
         expect.anything(),
+        // No staff agent is set up, so none narrows the choice.
+        null,
       );
       expect(downloadMedia).not.toHaveBeenCalled();
       expect(skills[1].resolve).toHaveBeenCalled();
