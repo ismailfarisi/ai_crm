@@ -8,6 +8,7 @@ import {
   type AiImageContent,
 } from '../../ai/interfaces/ai-provider.interface';
 import type { ChannelSkill } from './skill.types';
+import type { AiProviderType } from '../../ai/entities/ai-config.entity';
 
 /** Raised when the provider is unconfigured or over budget — callers degrade, not fail. */
 export class AiUnavailableError extends Error {}
@@ -16,6 +17,31 @@ const routeSchema = z.object({
   skill: z.string().nullable(),
   confidence: z.number().min(0).max(1),
 });
+
+/**
+ * The staff agent a command was given to. Its model reads the command, and
+ * its instructions are context for that reading; neither widens what the
+ * person is allowed to do.
+ */
+export interface SkillAgent {
+  name: string;
+  instructions: string;
+  model: string | null;
+  provider: string | null;
+}
+
+function agentOptions(agent?: SkillAgent | null): {
+  system?: string;
+  model?: string;
+  provider?: AiProviderType;
+} {
+  if (!agent) return {};
+  return {
+    system: `You are the "${agent.name}" agent, reading a command from a member of staff. Guidance from the organisation:\n${agent.instructions}`,
+    ...(agent.model ? { model: agent.model } : {}),
+    ...(agent.provider ? { provider: agent.provider as AiProviderType } : {}),
+  };
+}
 
 export interface ExtractionResult {
   slots: Record<string, unknown>;
@@ -41,6 +67,7 @@ export class SkillRouterService {
     message: string,
     candidates: ChannelSkill<never>[],
     actor: { organizationId: string; userId: string },
+    agent?: SkillAgent | null,
   ): Promise<SkillRoute> {
     if (candidates.length === 0) return { skill: null, confidence: 1 };
 
@@ -84,6 +111,7 @@ export class SkillRouterService {
           ],
           jsonSchema,
           schemaName: 'skill_route',
+          ...agentOptions(agent),
         },
         actor,
       );
@@ -187,6 +215,7 @@ export class SkillRouterService {
     skill: ChannelSkill<never>,
     priorSlots: Record<string, unknown>,
     actor: { organizationId: string; userId: string },
+    agent?: SkillAgent | null,
   ): Promise<ExtractionResult> {
     const known = Object.keys(priorSlots).length
       ? `\n\nAlready established (do not contradict, only add):\n${JSON.stringify(priorSlots)}`
@@ -204,6 +233,7 @@ export class SkillRouterService {
           ],
           jsonSchema: skill.jsonSchema,
           schemaName: skill.name.replace(/\./g, '_'),
+          ...agentOptions(agent),
         },
         actor,
       );

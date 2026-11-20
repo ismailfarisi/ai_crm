@@ -19,7 +19,12 @@ import {
   PersistDispatchResultParams,
   SendClarifyingQuestionParams,
   HandOverToHumanParams,
+  RunCustomerAgentTurnParams,
+  RunCustomerAgentTurnResult,
+  SendAgentReplyParams,
 } from '../interfaces';
+import { ChannelAgentRunner } from '../../agents/channel-agent-runner';
+import type { ChannelAgentService } from '../../services/channel-agent.service';
 import { DEFAULT_HANDOVER_MESSAGE } from '@saas/shared';
 import type { ChannelThreadService } from '../../services/channel-thread.service';
 import type { IntentAgentConfigService } from '../../services/intent-agent-config.service';
@@ -37,7 +42,8 @@ export function createChannelAiActivities(deps: {
   aiAgentService: AiAgentService;
   tenantContext: TenantContextService;
   idempotency: Pick<ChannelIdempotencyService, 'runOnce'>;
-  threads?: Pick<ChannelThreadService, 'handOver'>;
+  threads?: Pick<ChannelThreadService, 'handOver' | 'getOrCreate' | 'setAgent'>;
+  channelAgents?: Pick<ChannelAgentService, 'findEnabled'>;
   intentAgentConfigService?: Pick<IntentAgentConfigService, 'getEffective'>;
 }) {
   const classifier = new IntentClassifierAgent(deps.aiService);
@@ -46,7 +52,89 @@ export function createChannelAiActivities(deps: {
     quotesService: deps.quotesService,
   });
 
+  const agentRunner = deps.channelAgents
+    ? new ChannelAgentRunner({
+        aiService: deps.aiService,
+        agents: deps.channelAgents,
+        threads: deps.threads,
+        quotesService: deps.quotesService,
+      })
+    : null;
+
   return {
+    /**
+     * Gives the message to the organization's own agents, if one of them
+     * answers on this channel and takes it. `NO_AGENT` means none did, and
+     * the caller carries on with classification and the reply rules.
+     */
+    async runCustomerAgentTurnActivity(
+      params: RunCustomerAgentTurnParams,
+    ): Promise<RunCustomerAgentTurnResult> {
+      const none: RunCustomerAgentTurnResult = {
+        outcome: 'NO_AGENT',
+        agentName: null,
+        reply: null,
+        handoverReason: null,
+        handoverSummary: null,
+      };
+      if (!agentRunner) return none;
+      return deps.tenantContext.runWithTenant(
+        params.organizationId,
+        async () => {
+          const transcript = await deps.channelsService.getTranscript(
+            params.organizationId,
+            params.provider,
+            params.contactId,
+          );
+          const result = await agentRunner.runCustomerTurn({
+            organizationId: params.organizationId,
+            provider: params.provider,
+            contactId: params.contactId,
+            senderIdentifier: params.senderIdentifier,
+            transcript,
+            runOnce: <T>(step: string, fn: () => Promise<T>) =>
+              deps.idempotency.runOnce<T>(
+                params.organizationId,
+                `channel-ai:agent:${params.messageId}:${step}`,
+                fn,
+              ),
+          });
+          return {
+            outcome: result.outcome,
+            agentName: result.agent?.name ?? null,
+            reply: result.reply,
+            handoverReason: result.handoverReason,
+            handoverSummary: result.handoverSummary,
+            ...(result.createdQuoteId
+              ? { createdQuoteId: result.createdQuoteId }
+              : {}),
+          };
+        },
+      );
+    },
+
+    async sendAgentReplyActivity(params: SendAgentReplyParams): Promise<void> {
+      await deps.tenantContext.runWithTenant(params.organizationId, () =>
+        deps.idempotency.runOnce(
+          params.organizationId,
+          `channel-ai:agent:${params.messageId}:send-reply`,
+          async () => {
+            await deps.channelsService.sendMessage(
+              params.organizationId,
+              'system:ai-agent',
+              {
+                provider: params.provider,
+                recipient: params.senderIdentifier,
+                contactId: params.contactId,
+                body: params.reply,
+              },
+            );
+            return true;
+          },
+        ),
+      );
+    },
+
     async classifyMessageActivity(
       params: ClassifyMessageParams,
     ): Promise<ClassifyMessageResult> {

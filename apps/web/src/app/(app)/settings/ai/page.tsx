@@ -6,6 +6,7 @@ import { AiHowItWorks } from '@/components/settings/ai-how-it-works';
 import { AiTryMessage } from '@/components/settings/ai-try-message';
 import { AiProvidersView } from '@/components/settings/ai-providers/ai-providers-view';
 import { AiModelsView } from '@/components/settings/ai-models/ai-models-view';
+import { AgentsView } from '@/components/settings/agents/agents-view';
 import { AiAgentsView } from '@/components/settings/ai-agents/ai-agents-view';
 import { IntentAgentConfigView } from '@/components/settings/intent-agent-config-view';
 
@@ -18,6 +19,7 @@ export default function AiBudgetPage() {
         <AiHowItWorks />
         <AiProvidersView />
         <AiModelsView />
+        <AgentsView />
         <IntentAgentConfigView />
         <AiAgentsView />
         <AiTryMessage />

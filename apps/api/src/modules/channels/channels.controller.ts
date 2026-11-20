@@ -37,6 +37,20 @@ import {
   type TestChannelAiPayload,
 } from '@saas/shared';
 import { ChannelAiPreviewService } from './services/channel-ai-preview.service';
+import {
+  ChannelAgentKindEnum,
+  createChannelAgentSchema,
+  testChannelAgentSchema,
+  updateChannelAgentSchema,
+  type ChannelAgentDto,
+  type ChannelAgentSkillOptionDto,
+  type ChannelAgentTestResultDto,
+  type CreateChannelAgentPayload,
+  type TestChannelAgentPayload,
+  type UpdateChannelAgentPayload,
+} from '@saas/shared';
+import { ChannelAgentService } from './services/channel-agent.service';
+import { ChannelAgentPreviewService } from './services/channel-agent-preview.service';
 import { ChannelProviderType } from './entities/channel-config.entity';
 
 @ApiTags('channels')
@@ -50,6 +64,8 @@ export class ChannelsController {
     private readonly threads: ChannelThreadService,
     private readonly usersService: UsersService,
     private readonly aiPreview: ChannelAiPreviewService,
+    private readonly agents: ChannelAgentService,
+    private readonly agentPreview: ChannelAgentPreviewService,
   ) {}
 
   @Get('configs')
@@ -141,6 +157,10 @@ export class ChannelsController {
       ? await this.usersService.listMembers(user.organizationId)
       : [];
     const names = new Map(members.map((m) => [m.id, m.fullName]));
+    const agents = threads.some((thread) => thread.agentId)
+      ? await this.agents.findAll(user.organizationId)
+      : [];
+    const agentNames = new Map(agents.map((a) => [a.id, a.name]));
     return threads.map((thread) => ({
       id: thread.id,
       provider: thread.provider,
@@ -149,6 +169,10 @@ export class ChannelsController {
       assigneeUserId: thread.assigneeUserId,
       assigneeName: thread.assigneeUserId
         ? (names.get(thread.assigneeUserId) ?? null)
+        : null,
+      agentId: thread.agentId,
+      agentName: thread.agentId
+        ? (agentNames.get(thread.agentId) ?? null)
         : null,
       handoverReason: thread.handoverReason,
       handoverSummary: thread.handoverSummary,
@@ -235,6 +259,80 @@ export class ChannelsController {
     );
     return { success: true };
   }
+  @Get('agents')
+  @RequirePermissions(PERMISSIONS.AI_MANAGE)
+  @ApiOperation({ summary: "List the organization's agents" })
+  async listAgents(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ChannelAgentDto[]> {
+    const agents = await this.agents.findAll(user.organizationId);
+    return agents.map((agent) => this.agents.toDto(agent));
+  }
+
+  @Get('agents/tools')
+  @RequirePermissions(PERMISSIONS.AI_MANAGE)
+  @ApiOperation({ summary: 'The tools an agent of a kind can be given' })
+  listAgentTools(@Query('kind') kind: string): ChannelAgentSkillOptionDto[] {
+    const parsed = ChannelAgentKindEnum.safeParse(kind);
+    return this.agents.toolOptions(parsed.success ? parsed.data : 'STAFF');
+  }
+
+  @Post('agents/test')
+  @RequirePermissions(PERMISSIONS.AI_MANAGE)
+  @ApiOperation({
+    summary:
+      'Work out which agent would take a message and what it would do, without sending or saving anything',
+  })
+  testAgents(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(zodBody(testChannelAgentSchema)) body: TestChannelAgentPayload,
+  ): Promise<ChannelAgentTestResultDto> {
+    return this.agentPreview.preview(
+      {
+        organizationId: user.organizationId,
+        userId: user.id,
+        permissions: user.permissions,
+      },
+      body,
+    );
+  }
+
+  @Post('agents')
+  @RequirePermissions(PERMISSIONS.AI_MANAGE)
+  @ApiOperation({ summary: 'Create an agent' })
+  async createAgent(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(zodBody(createChannelAgentSchema)) body: CreateChannelAgentPayload,
+  ): Promise<ChannelAgentDto> {
+    return this.agents.toDto(
+      await this.agents.create(user.organizationId, body),
+    );
+  }
+
+  @Patch('agents/:id')
+  @RequirePermissions(PERMISSIONS.AI_MANAGE)
+  @ApiOperation({ summary: 'Update an agent' })
+  async updateAgent(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(zodBody(updateChannelAgentSchema)) body: UpdateChannelAgentPayload,
+  ): Promise<ChannelAgentDto> {
+    return this.agents.toDto(
+      await this.agents.update(user.organizationId, id, body),
+    );
+  }
+
+  @Delete('agents/:id')
+  @RequirePermissions(PERMISSIONS.AI_MANAGE)
+  @ApiOperation({ summary: 'Delete an agent' })
+  async deleteAgent(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ): Promise<{ success: true }> {
+    await this.agents.remove(user.organizationId, id);
+    return { success: true };
+  }
+
   @Get('ai-agents')
   @RequirePermissions(PERMISSIONS.AI_MANAGE)
   @ApiOperation({

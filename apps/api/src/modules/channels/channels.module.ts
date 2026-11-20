@@ -32,10 +32,13 @@ import { CHANNEL_SENDER } from './skills/channel-sender.token';
 import { ChannelsController } from './channels.controller';
 import { ChannelsWebhookController } from './channels-webhook.controller';
 import { ChannelThread } from './entities/channel-thread.entity';
+import { ChannelAgent } from './entities/channel-agent.entity';
 import { ChannelThreadService } from './services/channel-thread.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { FinanceModule } from '../finance/finance.module';
 import { ChannelAiPreviewService } from './services/channel-ai-preview.service';
+import { ChannelAgentService } from './services/channel-agent.service';
+import { ChannelAgentPreviewService } from './services/channel-agent-preview.service';
 
 @Module({
   imports: [
@@ -49,6 +52,7 @@ import { ChannelAiPreviewService } from './services/channel-ai-preview.service';
       AiAgent,
       IntentAgentConfig,
       ChannelThread,
+      ChannelAgent,
     ]),
     ContactsModule,
     UsersModule,
@@ -67,6 +71,8 @@ import { ChannelAiPreviewService } from './services/channel-ai-preview.service';
     ChannelsService,
     ChannelAiPreviewService,
     ChannelThreadService,
+    ChannelAgentService,
+    ChannelAgentPreviewService,
     { provide: CHANNEL_SENDER, useExisting: ChannelsService },
     ChannelCryptoService,
     ChannelCommandService,
@@ -82,6 +88,7 @@ import { ChannelAiPreviewService } from './services/channel-ai-preview.service';
   exports: [
     ChannelsService,
     ChannelThreadService,
+    ChannelAgentService,
     ChannelCryptoService,
     AiAgentService,
     ProductionCheckInService,

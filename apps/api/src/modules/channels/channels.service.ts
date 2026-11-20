@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import { Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
 import { createHash, randomBytes } from 'crypto';
 import type { AppConfig } from '@/config/configuration';
 import { TenantContextService } from '@/common/context/tenant-context.service';
@@ -408,6 +408,37 @@ export class ChannelsService {
       await this.messageRepo.save(failedMessage);
       throw err;
     }
+  }
+
+  /**
+   * A customer conversation as an agent reads it: the most recent messages on
+   * one channel, oldest first. Anything sent from this side, by the AI or by
+   * staff, reads as the business speaking.
+   */
+  async getTranscript(
+    orgId: string,
+    provider: ChannelProviderType,
+    contactId: string,
+    limit = 20,
+  ): Promise<{ role: 'customer' | 'agent'; body: string }[]> {
+    const messages = await this.messageRepo.find({
+      where: {
+        organizationId: orgId,
+        provider,
+        contactId,
+        status: Not(MessageStatus.FAILED),
+      },
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+    return messages
+      .reverse()
+      .filter((message) => message.body?.trim())
+      .map((message) => ({
+        role:
+          message.direction === MessageDirection.INBOUND ? 'customer' : 'agent',
+        body: message.body,
+      }));
   }
 
   async getMessages(

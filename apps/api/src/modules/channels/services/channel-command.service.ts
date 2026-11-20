@@ -28,6 +28,10 @@ import { ModuleRef } from '@nestjs/core';
 import { BILL_CAPTURE_MAX_BYTES } from '@saas/shared';
 import type { ChannelsService } from '../channels.service';
 import { CHANNEL_SENDER } from '../skills/channel-sender.token';
+import { AiService } from '../../ai/ai.service';
+import { ChannelAgentRunner } from '../agents/channel-agent-runner';
+import type { ChannelAgent } from '../entities/channel-agent.entity';
+import { ChannelAgentService } from './channel-agent.service';
 
 export interface ChannelCommandResult {
   handled: boolean;
@@ -93,6 +97,8 @@ export class ChannelCommandService {
     private readonly audit: AuditService,
     @Optional() private readonly approvalReplies?: ApprovalReplyService,
     @Optional() private readonly moduleRef?: ModuleRef,
+    @Optional() private readonly agents?: ChannelAgentService,
+    @Optional() private readonly ai?: AiService,
   ) {}
 
   // ---- Settings-facing API (linking codes + identity management) ----
@@ -527,8 +533,16 @@ export class ChannelCommandService {
     }
 
     let route;
+    let agent: ChannelAgent | null = null;
     try {
-      route = await this.router.route(ctx.message, candidates, ctx);
+      const scoped = await this.scopeToAgent(ctx, candidates);
+      agent = scoped.agent;
+      route = await this.router.route(
+        ctx.message,
+        scoped.candidates,
+        ctx,
+        agent,
+      );
     } catch (err) {
       if (!(err instanceof AiUnavailableError)) throw err;
       return this.reply(ctx, this.degradedMessage());
@@ -550,7 +564,13 @@ export class ChannelCommandService {
 
     let extracted;
     try {
-      extracted = await this.router.extract(ctx.message, skill, {}, ctx);
+      extracted = await this.router.extract(
+        ctx.message,
+        skill,
+        {},
+        ctx,
+        agent,
+      );
     } catch (err) {
       if (!(err instanceof AiUnavailableError)) throw err;
       return this.reply(ctx, this.degradedMessage());
@@ -593,7 +613,13 @@ export class ChannelCommandService {
       let route;
       try {
         if (ctx.message) {
-          route = await this.router.route(ctx.message, candidates, ctx);
+          const scoped = await this.scopeToAgent(ctx, candidates);
+          route = await this.router.route(
+            ctx.message,
+            scoped.candidates,
+            ctx,
+            scoped.agent,
+          );
         } else {
           // Nothing typed with it: look at the file to tell what it is.
           const file = await this.fetchAttachment(ctx);
@@ -635,6 +661,49 @@ export class ChannelCommandService {
       }
     }
     return this.advance(skill, slots, ctx, null, model, confidence);
+  }
+
+  /**
+   * Narrows a command to the staff agent it belongs to.
+   *
+   * When the organization has staff agents on this channel, the one whose
+   * description fits takes the command and only its tools are offered — still
+   * limited to what this person may do. With no agents, or none that fits,
+   * every permitted skill is offered, as before agents existed.
+   */
+  private async scopeToAgent(
+    ctx: SkillContext,
+    candidates: ChannelSkill<never>[],
+  ): Promise<{ candidates: ChannelSkill<never>[]; agent: ChannelAgent | null }> {
+    const all = { candidates, agent: null };
+    if (!this.agents || !this.ai) return all;
+    const agents = (
+      await this.agents.findEnabled(ctx.organizationId, 'STAFF', ctx.provider)
+    ).filter((agent) =>
+      candidates.some((skill) => agent.skills.includes(skill.name)),
+    );
+    if (agents.length === 0) return all;
+
+    let agent: ChannelAgent | null;
+    try {
+      agent = await new ChannelAgentRunner({
+        aiService: this.ai,
+        agents: this.agents,
+      }).route(ctx.organizationId, ctx.message, agents);
+    } catch (err) {
+      this.logger.warn(
+        `Agent routing failed, degrading: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      throw new AiUnavailableError();
+    }
+    if (!agent) return all;
+    const mine = agent;
+    return {
+      candidates: candidates.filter((skill) =>
+        mine.skills.includes(skill.name),
+      ),
+      agent,
+    };
   }
 
   /** The attached file's bytes, or null when they cannot be had; never throws. */

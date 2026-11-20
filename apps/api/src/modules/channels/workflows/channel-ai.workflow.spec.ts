@@ -5,6 +5,8 @@ const mockActivities = {
   persistDispatchResultActivity: jest.fn(),
   sendClarifyingQuestionActivity: jest.fn(),
   handOverToHumanActivity: jest.fn(),
+  runCustomerAgentTurnActivity: jest.fn(),
+  sendAgentReplyActivity: jest.fn(),
 };
 const mockHandlers = new Map<any, (payload: any) => void>();
 
@@ -63,6 +65,13 @@ const classified = (over: Record<string, unknown> = {}) => ({
   summary: 'Asks about opening hours',
   ...over,
 });
+const noAgent = {
+  outcome: 'NO_AGENT',
+  agentName: null,
+  reply: null,
+  handoverReason: null,
+  handoverSummary: null,
+};
 const handover = () => mockActivities.handOverToHumanActivity.mock.calls[0]?.[0];
 
 /** Runs the conversation workflow with these customer messages already delivered. */
@@ -78,6 +87,7 @@ describe('channel AI workflows: handover', () => {
     Object.values(mockActivities).forEach((fn) => fn.mockReset());
     mockHandlers.clear();
     mockActivities.handOverToHumanActivity.mockResolvedValue({ handedOver: true });
+    mockActivities.runCustomerAgentTurnActivity.mockResolvedValue(noAgent);
   });
 
   describe('one-shot', () => {
@@ -213,6 +223,76 @@ describe('channel AI workflows: handover', () => {
         reason: 'UNRESOLVED',
         notifyCustomer: false,
       });
+    });
+  });
+
+  describe('agents', () => {
+    const replied = { ...noAgent, outcome: 'REPLIED', agentName: 'Sales', reply: 'What size?' };
+
+    it('lets an agent answer, and skips classification and the rules', async () => {
+      mockActivities.runCustomerAgentTurnActivity.mockResolvedValue(replied);
+
+      const result = await channelAiWorkflow(oneShot);
+
+      expect(mockActivities.sendAgentReplyActivity).toHaveBeenCalledWith(
+        expect.objectContaining({ messageId: 'm-1', reply: 'What size?' }),
+      );
+      expect(mockActivities.classifyMessageActivity).not.toHaveBeenCalled();
+      expect(mockActivities.dispatchAgentActivity).not.toHaveBeenCalled();
+      expect(mockActivities.persistClassificationActivity).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'COMPLETED', summary: 'Answered by Sales' }),
+      );
+      expect(result).toMatchObject({ status: 'COMPLETED', autoAcked: true });
+    });
+
+    it('carries on as before when no agent takes the message, or the agents fail', async () => {
+      mockActivities.classifyMessageActivity.mockResolvedValue({ skipped: true });
+      await channelAiWorkflow(oneShot);
+      mockActivities.runCustomerAgentTurnActivity.mockRejectedValue(new Error('provider down'));
+      await channelAiWorkflow(oneShot);
+
+      expect(mockActivities.classifyMessageActivity).toHaveBeenCalledTimes(2);
+      expect(mockActivities.sendAgentReplyActivity).not.toHaveBeenCalled();
+    });
+
+    it("hands over with the agent's reason and summary, telling a chat customer", async () => {
+      mockActivities.runCustomerAgentTurnActivity.mockResolvedValue({
+        ...noAgent,
+        outcome: 'HANDOVER',
+        agentName: 'Sales',
+        handoverReason: 'COMPLAINT',
+        handoverSummary: 'Unhappy about a late order',
+      });
+
+      await converse(['this is the third time it is late']);
+
+      expect(handover()).toMatchObject({
+        reason: 'COMPLAINT',
+        summary: 'Unhappy about a late order',
+        notifyCustomer: true,
+      });
+      expect(mockActivities.classifyMessageActivity).not.toHaveBeenCalled();
+    });
+
+    it('answers messages sent in a burst once, and marks every one of them read', async () => {
+      mockActivities.runCustomerAgentTurnActivity.mockResolvedValue(replied);
+
+      await converse(['hi', 'I need boxes', '500 of them']);
+
+      expect(mockActivities.sendAgentReplyActivity).toHaveBeenCalledTimes(1);
+      expect(
+        mockActivities.persistClassificationActivity.mock.calls.map(([p]) => p.messageId),
+      ).toEqual(['m-1', 'm-2', 'm-3']);
+      expect(mockActivities.handOverToHumanActivity).not.toHaveBeenCalled();
+    });
+
+    it('gives the conversation to a person when the reply cannot be delivered', async () => {
+      mockActivities.runCustomerAgentTurnActivity.mockResolvedValue(replied);
+      mockActivities.sendAgentReplyActivity.mockRejectedValue(new Error('channel down'));
+
+      await channelAiWorkflow(oneShot);
+
+      expect(handover()).toMatchObject({ reason: 'ERROR', notifyCustomer: false });
     });
   });
 });

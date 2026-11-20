@@ -27,7 +27,7 @@ export function useCreateAiAgent() {
       await invalidate();
       toast.success(`${agent.name} created`);
     },
-    onError: (error) => toast.error(describe(error, 'Could not create the agent')),
+    onError: (error) => toast.error(describe(error, 'Could not create the rule')),
   });
 }
 
@@ -41,7 +41,7 @@ export function useUpdateAiAgent() {
       await invalidate();
       toast.success(`${agent.name} updated`);
     },
-    onError: (error) => toast.error(describe(error, 'Could not save the agent')),
+    onError: (error) => toast.error(describe(error, 'Could not save the rule')),
   });
 }
 
@@ -52,9 +52,9 @@ export function useDeleteAiAgent() {
     mutationFn: (id: string) => api.aiAgents.remove(id),
     onSuccess: async () => {
       await invalidate();
-      toast.success('Agent deleted');
+      toast.success('Rule deleted');
     },
-    onError: (error) => toast.error(describe(error, 'Could not delete the agent')),
+    onError: (error) => toast.error(describe(error, 'Could not delete the rule')),
   });
 }
 

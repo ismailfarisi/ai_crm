@@ -45,6 +45,9 @@ export interface ChannelThreadDto {
   assigneeUserId: string | null;
   /** Display name of the assignee, when there is one. */
   assigneeName: string | null;
+  /** The agent that last held this conversation, when one did. */
+  agentId: string | null;
+  agentName: string | null;
   handoverReason: ChannelHandoverReason | null;
   /** What the AI understood before it stopped, for whoever picks this up. */
   handoverSummary: string | null;

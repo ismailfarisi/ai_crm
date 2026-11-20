@@ -38,6 +38,10 @@ export class ChannelThread {
   @Column({ type: 'uuid', nullable: true })
   assigneeUserId: string | null;
 
+  /** The agent that last held this conversation, if one did. */
+  @Column({ type: 'uuid', nullable: true })
+  agentId: string | null;
+
   @Column({ type: 'varchar', length: 40, nullable: true })
   handoverReason: ChannelHandoverReason | null;
 

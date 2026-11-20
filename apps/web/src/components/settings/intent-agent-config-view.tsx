@@ -80,7 +80,7 @@ export function IntentAgentConfigView() {
     return (
       <div className="space-y-6">
         <PageHeader
-          title="3. Customer messages"
+          title="4. Customer messages"
           description="How the AI reads customer messages, and when it hands a conversation to a person."
         />
         <Skeleton className="h-64 w-full rounded-2xl" />
@@ -91,7 +91,7 @@ export function IntentAgentConfigView() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="3. Customer messages"
+        title="4. Customer messages"
         description="The AI reads every customer message and works out what they want. When it is not sure, it can ask the customer a question and wait for the answer. If it still cannot help, the conversation goes to a person in the Inbox."
       />
 

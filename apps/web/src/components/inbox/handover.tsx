@@ -66,7 +66,7 @@ export function HandoverBadge({ handover }: { handover?: ChannelThreadDto }) {
     default:
       return (
         <Badge tone="brand" className="shrink-0">
-          AI
+          {handover.agentName ?? 'AI'}
         </Badge>
       );
   }
@@ -75,13 +75,17 @@ export function HandoverBadge({ handover }: { handover?: ChannelThreadDto }) {
 function describeState(handover: ChannelThreadDto): string {
   switch (handover.state) {
     case 'NEEDS_HUMAN':
-      return 'The AI has stopped and is waiting for a person to pick this up.';
+      return handover.agentName
+        ? `The ${handover.agentName} agent has stopped and is waiting for a person to pick this up.`
+        : 'The AI has stopped and is waiting for a person to pick this up.';
     case 'HUMAN':
       return `${handover.assigneeName ?? 'A member of staff'} is answering. The AI stays quiet.`;
     case 'RESOLVED':
       return 'Resolved. The next message from this customer goes to the AI.';
     default:
-      return 'The AI is answering this conversation.';
+      return handover.agentName
+        ? `The ${handover.agentName} agent is answering this conversation.`
+        : 'The AI is answering this conversation.';
   }
 }
 

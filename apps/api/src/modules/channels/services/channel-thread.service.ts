@@ -62,10 +62,21 @@ export class ChannelThreadService {
   ): Promise<boolean> {
     const thread = await this.getOrCreate(organizationId, provider, contactId);
     if (thread.state === 'RESOLVED') {
-      await this.move(thread, 'AI', { assigneeUserId: null });
+      // A reopened conversation is routed afresh rather than going back to
+      // whichever agent closed the last one.
+      await this.move(thread, 'AI', { assigneeUserId: null, agentId: null });
       return true;
     }
     return thread.state === 'AI';
+  }
+
+  /** Records which agent holds a conversation, so its next message goes straight to it. */
+  async setAgent(
+    organizationId: string,
+    id: string,
+    agentId: string | null,
+  ): Promise<void> {
+    await this.repo.update({ organizationId, id }, { agentId });
   }
 
   /** The AI steps back. A no-op unless the AI currently holds the conversation. */
