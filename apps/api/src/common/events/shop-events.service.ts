@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import {
   CHANNEL_HANDOVER_REASON_LABELS,
-  type ChannelHandoverReason,
   type ShopEventType,
 } from '@saas/shared';
 import { CrmEventBusService } from './crm-event-bus.service';
