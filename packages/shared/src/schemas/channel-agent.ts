@@ -70,6 +70,18 @@ export const CUSTOMER_AGENT_TOOLS = [
       'Draft a quote from what the customer asked for. Staff review it before anything goes to the customer.',
     isMutating: true,
   },
+  {
+    name: 'check_order_status',
+    description:
+      "Tell a customer where their own orders stand: status, what has been delivered, the date production is due and the balance to pay. Only for a sender matched to one customer; anyone else is told nothing.",
+    isMutating: false,
+  },
+  {
+    name: 'check_quote_status',
+    description:
+      "Tell a customer where their own quotes stand: being prepared, sent, accepted or expired, with the total once it is approved. Only for a sender matched to one customer; anyone else is told nothing.",
+    isMutating: false,
+  },
 ] as const satisfies ReadonlyArray<ChannelAgentSkillOptionDto>;
 
 /** Try a message against the agents without sending or saving anything. */
@@ -77,6 +89,11 @@ export const testChannelAgentSchema = z.object({
   body: z.string().trim().min(1, 'Type a message to try').max(2000),
   provider: ChannelProviderEnum,
   kind: ChannelAgentKindEnum,
+  /**
+   * Try the message as if it came from this customer, so the order and quote
+   * tools answer with their records. Left out, the sender is a stranger.
+   */
+  asCustomerId: z.string().uuid().nullish(),
 });
 export type TestChannelAgentPayload = z.infer<typeof testChannelAgentSchema>;
 

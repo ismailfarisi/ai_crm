@@ -25,6 +25,8 @@ import {
 } from '../interfaces';
 import { ChannelAgentRunner } from '../../agents/channel-agent-runner';
 import type { ChannelAgentService } from '../../services/channel-agent.service';
+import type { CustomerSenderService } from '../../services/customer-sender.service';
+import type { CustomerLookupService } from '../../services/customer-lookup.service';
 import { DEFAULT_HANDOVER_MESSAGE } from '@saas/shared';
 import type { ChannelThreadService } from '../../services/channel-thread.service';
 import type { IntentAgentConfigService } from '../../services/intent-agent-config.service';
@@ -44,6 +46,8 @@ export function createChannelAiActivities(deps: {
   idempotency: Pick<ChannelIdempotencyService, 'runOnce'>;
   threads?: Pick<ChannelThreadService, 'handOver' | 'getOrCreate' | 'setAgent'>;
   channelAgents?: Pick<ChannelAgentService, 'findEnabled'>;
+  customerSenders?: Pick<CustomerSenderService, 'resolve'>;
+  customerLookup?: Pick<CustomerLookupService, 'orders' | 'quotes'>;
   intentAgentConfigService?: Pick<IntentAgentConfigService, 'getEffective'>;
 }) {
   const classifier = new IntentClassifierAgent(deps.aiService);
@@ -58,6 +62,8 @@ export function createChannelAiActivities(deps: {
         agents: deps.channelAgents,
         threads: deps.threads,
         quotesService: deps.quotesService,
+        senders: deps.customerSenders,
+        lookup: deps.customerLookup,
       })
     : null;
 

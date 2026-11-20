@@ -735,26 +735,69 @@ customer agent's reply goes to the customer as written by the model, with
 nobody approving it first. That was the product owner's choice when agents
 were added.
 
-What bounds it: a customer agent has no read access to the organisation's
-data. It cannot look up prices, stock, orders or quotes, and its fixed
-guardrails (`channel-agent-runner.ts`) tell it never to state one that is not
-in its instructions or the conversation. Its only tools are passing the
-conversation to another agent, handing it to a person, and `draft_quote`,
-which raises an AI-mode draft that staff approve as before. An organisation
-with no agents behaves exactly as it did.
-
-Not done: order and quote status lookup for customers. It needs a verified
-link between the sender and a customer record before it can be offered
-without leaking one customer's data to another.
+What bounds it: a customer agent cannot look up prices or stock, and its
+fixed guardrails (`channel-agent-runner.ts`) tell it never to state one that
+is not in its instructions or the conversation. Its tools are passing the
+conversation to another agent, handing it to a person, `draft_quote`, which
+raises an AI-mode draft that staff approve as before, and the two lookups
+below. An organisation with no agents behaves exactly as it did.
 
 Staff agents narrow which chat skills a command is routed among; they never
 widen what the person's permissions allow, and the YES confirmation is
 unchanged. A follow-up answer and a file sent without a caption are read with
 the "Chat commands" model rather than the agent's own.
 
-Not verified against a live provider, Temporal or a live channel: the agent
-runner, routing and workflow branch are covered by unit tests with a mocked
-AI service only.
+Not verified against a live provider or a live channel: the agent runner,
+routing and workflow branch are covered by unit tests with a mocked AI
+service. The lookups were also run locally through the webhook, Temporal and
+the worker against a real database, with a scripted stand-in for the model
+and for Meta's send API.
+
+### Customer agents answer order and quote questions for a verified sender only — by design
+
+`check_order_status` and `check_quote_status` are opt-in per agent. They take
+no customer from the model: `CustomerSenderService.resolve` works out the
+customer from the channel's own sender, and `CustomerLookupService` filters
+every query by that customer id. A number the sender types is matched inside
+their own rows afterwards, so "not yours" and "does not exist" are the same
+answer.
+
+A sender is a customer in two ways, both resting on something staff entered:
+
+- staff linked that exact sender in the Inbox (`customer_channel_senders`,
+  needs `customer:update`), or
+- the WhatsApp number, or the email address, is the phone or email on exactly
+  one customer record. A number on two records names neither. A number typed
+  without a country code is read in the customer's country, else the
+  organisation's, and not at all when neither is set (`sender-identity.ts`).
+
+Telegram and Slack senders have no number or address, so they need a link. A
+Telegram group, a `Name <address>` pair and an address list are never a
+customer, because a reply there reaches more than one party. Anyone else gets
+one fixed refusal and the agent hands over.
+
+What it shows: status, lines with quantity delivered, the latest work-order
+due date, dispatched deliveries, amount paid and balance due; for quotes,
+status, and the total only once approved. Never notes, costs or unit prices.
+
+Known limits:
+
+- **Inbound webhooks for WhatsApp, Telegram and email are not signature
+  checked** (only Slack is). Anyone who knows an organisation's id can post a
+  message "from" any number. That does not leak: the reply is sent to the
+  number or address itself, never to the caller. It can make the business
+  send an unasked-for status message to a real customer and spend AI calls.
+  Closing it means verifying `X-Hub-Signature-256` with the Meta app secret,
+  which is not stored today.
+- **Changing the phone or email on a customer record changes who is
+  verified**, so `customer:update` is the permission that matters.
+- **Reading is logged, not audited.** The worker logs agent, customer and
+  tool; no `audit_logs` row is written for a lookup.
+- **No self-service verification.** A customer writing from an unknown number
+  waits for staff to link it. A one-time code to the address on file is the
+  obvious next step.
+- The model is told to state only what the tool returned; nothing checks its
+  wording against the tool result.
 
 ### Stop does not stop a send that is already running — open
 

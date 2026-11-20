@@ -12,6 +12,7 @@ import { Input, Select, Textarea } from '@/components/ui/field';
 import { Badge } from '@/components/ui/primitives';
 import { ChannelBadge, channelName, type ThreadGroup } from './inbox-thread-list';
 import { HandoverBar } from './handover';
+import { CustomerSenderBar } from './customer-sender';
 
 interface InboxChatPanelProps {
   thread: ThreadGroup | null;
@@ -87,6 +88,10 @@ export function InboxChatPanel({ thread, onMessageSent, onBack }: InboxChatPanel
 
   const isEmail = provider === 'EMAIL_SMTP' || provider === 'EMAIL_RESEND';
 
+  // Who the agents take this sender for: the channel and sender of the
+  // latest message that came in.
+  const lastInbound = [...sortedMessages].reverse().find((m) => m.direction === 'INBOUND');
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!body.trim() || !recipient.trim()) return;
@@ -160,6 +165,10 @@ export function InboxChatPanel({ thread, onMessageSent, onBack }: InboxChatPanel
         messages={thread.messages}
         onUseReply={setBody}
       />
+
+      {lastInbound && !thread.staffUser && (
+        <CustomerSenderBar provider={lastInbound.provider} identifier={lastInbound.sender} />
+      )}
 
       {/* Message History Feed */}
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-surface-muted/10 p-4 scrollbar-thin">
