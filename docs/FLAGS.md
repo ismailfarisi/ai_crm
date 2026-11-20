@@ -727,6 +727,35 @@ request, `toolId` in the signal), and the send is pinned at preview time
 the preview and refuses with "This action changed since you approved it — ask
 again." if it differs.
 
+### Customer agents send their own replies without approval — by design
+
+The rule above is about the assistant's `channel_message.send` tool and still
+holds. Agents set up under Settings › AI › Agents are a separate path: a
+customer agent's reply goes to the customer as written by the model, with
+nobody approving it first. That was the product owner's choice when agents
+were added.
+
+What bounds it: a customer agent has no read access to the organisation's
+data. It cannot look up prices, stock, orders or quotes, and its fixed
+guardrails (`channel-agent-runner.ts`) tell it never to state one that is not
+in its instructions or the conversation. Its only tools are passing the
+conversation to another agent, handing it to a person, and `draft_quote`,
+which raises an AI-mode draft that staff approve as before. An organisation
+with no agents behaves exactly as it did.
+
+Not done: order and quote status lookup for customers. It needs a verified
+link between the sender and a customer record before it can be offered
+without leaking one customer's data to another.
+
+Staff agents narrow which chat skills a command is routed among; they never
+widen what the person's permissions allow, and the YES confirmation is
+unchanged. A follow-up answer and a file sent without a caption are read with
+the "Chat commands" model rather than the agent's own.
+
+Not verified against a live provider, Temporal or a live channel: the agent
+runner, routing and workflow branch are covered by unit tests with a mocked
+AI service only.
+
 ### Stop does not stop a send that is already running — open
 
 Stop marks the turn `CANCELLED` and cancels the workflow, but the commit
