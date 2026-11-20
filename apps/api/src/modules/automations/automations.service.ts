@@ -3,13 +3,15 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'crypto';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import type { ZodError } from 'zod';
 import { WorkflowExecutionAlreadyStartedError } from '@temporalio/client';
 import type {
+  AutomationAgentOptionDto,
   AutomationExecutionDto,
   AutomationExecutionPageDto,
   AutomationExecutionStatus,
@@ -20,12 +22,14 @@ import type {
   UpdateAutomationWorkflowPayload,
 } from '@saas/shared';
 import {
+  agentStepsActivationProblem,
   AUTOMATION_EXECUTION_STATUSES,
   automationScheduleSchema,
   PERMISSIONS,
 } from '@saas/shared';
 import { AutomationWorkflow } from './entities/automation-workflow.entity';
 import { AutomationExecution } from './entities/automation-execution.entity';
+import { ChannelAgent } from '../channels/entities/channel-agent.entity';
 import { TemporalService } from '../temporal/temporal.service';
 import { AutomationSchedulesService } from './schedules/automation-schedules.service';
 import { AutomationApprovalsService } from './approvals/automation-approvals.service';
@@ -223,7 +227,74 @@ export class AutomationsService {
     private readonly temporalService: TemporalService,
     private readonly schedules: AutomationSchedulesService,
     private readonly approvals: AutomationApprovalsService,
+    // Read-only: the agents a step can run as. Optional so a caller that
+    // builds this service without it still works: the run itself refuses an
+    // agent it cannot find, this only says so earlier.
+    @Optional()
+    @InjectRepository(ChannelAgent)
+    private readonly agentRepo?: Repository<ChannelAgent>,
   ) {}
+
+  /** The staff agents an AI agent step can run as, oldest first. */
+  async listAgentOptions(tenantId: string): Promise<AutomationAgentOptionDto[]> {
+    if (!this.agentRepo) return [];
+    const agents = await this.agentRepo.find({
+      where: { organizationId: tenantId, kind: 'STAFF' },
+      order: { createdAt: 'ASC' },
+    });
+    return agents.map((agent) => ({
+      id: agent.id,
+      name: agent.name,
+      description: agent.description,
+      isEnabled: agent.isEnabled,
+      tools: agent.skills,
+    }));
+  }
+
+  /**
+   * An automation is not switched on with an agent step that cannot run: one
+   * with no task, or one naming an agent that is gone, switched off, or not a
+   * staff agent. The run checks again; this tells the person at the moment
+   * they can still fix it.
+   */
+  private async assertAgentStepsCanRun(
+    tenantId: string,
+    nodes: AutomationNode[] | undefined,
+  ): Promise<void> {
+    const noTask = agentStepsActivationProblem(nodes);
+    if (noTask) throw new BadRequestException(noTask);
+
+    const steps = (nodes ?? []).filter(
+      (node) =>
+        node.type === 'aiAgentNode' &&
+        typeof node.data?.config?.agentId === 'string' &&
+        node.data.config.agentId,
+    );
+    if (!steps.length || !this.agentRepo) return;
+    const agents = await this.agentRepo.find({
+      where: {
+        organizationId: tenantId,
+        id: In(steps.map((node) => node.data.config.agentId as string)),
+      },
+    });
+    const byId = new Map(agents.map((agent) => [agent.id, agent]));
+    for (const node of steps) {
+      const agent = byId.get(node.data.config.agentId as string);
+      const step = node.data?.label?.trim()
+        ? `The AI agent step "${node.data.label.trim()}"`
+        : 'An AI agent step';
+      if (!agent || agent.kind !== 'STAFF') {
+        throw new BadRequestException(
+          `${step} uses an agent that no longer exists. Open the step and pick another agent.`,
+        );
+      }
+      if (!agent.isEnabled) {
+        throw new BadRequestException(
+          `${step} uses the agent "${agent.name}", which is switched off in Settings → AI.`,
+        );
+      }
+    }
+  }
 
   async createWorkflow(
     tenantId: string,
@@ -307,6 +378,7 @@ export class AutomationsService {
           'Choose the CRM event that starts this automation',
         );
       }
+      await this.assertAgentStepsCanRun(tenantId, wf.nodes);
       const graphChanged =
         payload.nodes !== undefined ||
         payload.edges !== undefined ||

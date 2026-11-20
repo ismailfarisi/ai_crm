@@ -89,6 +89,19 @@ function approvalExpiresAt(
   return ms === null ? null : new Date(requestedAtMs + ms).toISOString();
 }
 
+/**
+ * The agent's approval wait in a form its workflow accepts ("30 minutes",
+ * not "30m"). A short form is spelled out; anything unreadable waits 3 days.
+ */
+function agentApprovalTimeout(timeoutDuration: string | undefined): string {
+  const value = (timeoutDuration ?? '').trim();
+  if (/^\d+(?:\.\d+)?\s*(milliseconds?|seconds?|minutes?|hours?|days?)$/i.test(value)) {
+    return value;
+  }
+  const ms = durationToMs(value);
+  return ms !== null && ms > 0 ? `${ms} milliseconds` : '3 days';
+}
+
 export async function dynamicDagWorkflow(
   input: DynamicWorkflowInput,
 ): Promise<WorkflowExecutionState> {
@@ -498,10 +511,23 @@ export async function dynamicDagWorkflow(
             const autoApprove =
               input.triggerType !== 'WEBHOOK' &&
               Boolean(aiConfig.autoApprove ?? node.data?.autoApprove ?? false);
-            const timeoutDuration =
-              node.data?.timeoutDuration ||
-              aiConfig.timeoutDuration ||
-              '3 days';
+            const timeoutDuration = agentApprovalTimeout(
+              node.data?.timeoutDuration || aiConfig.timeoutDuration,
+            );
+            // Checked only when the task is empty, so runs that have one
+            // record no marker. A run already in flight replays as before.
+            if (
+              !String(interpolatedGoal ?? '').trim() &&
+              patched('agent-step-task-required')
+            ) {
+              throw new Error(
+                'This AI agent step has no task. Open the step and say what the agent should do.',
+              );
+            }
+            const agentId =
+              typeof aiConfig.agentId === 'string' && aiConfig.agentId
+                ? aiConfig.agentId
+                : undefined;
 
             const childWorkflowId = `ai-agent-${input.executionId}-${node.id}`;
             const childConversationId = `auto-${input.executionId}-${node.id}`;
@@ -521,9 +547,16 @@ export async function dynamicDagWorkflow(
                   parentWorkflowId: workflowInfo().workflowId,
                   automationNodeId: node.id,
                   autoApprove,
-                  allowedDomains: aiConfig.allowedDomains,
+                  // A named agent's tool list is the narrowing; a domain
+                  // limit left on the step would hide tools it was given.
+                  allowedDomains: agentId
+                    ? undefined
+                    : (aiConfig.allowedDomains ?? undefined),
                   approvalTimeout: timeoutDuration,
                   maxTurns: 10,
+                  // The agent's tools narrow what `userId` may use; the
+                  // activities look the agent up inside this tenant.
+                  ...(agentId ? { agentId } : {}),
                 },
               ],
             });
@@ -591,6 +624,13 @@ export async function dynamicDagWorkflow(
                 output: childResult,
               };
             }
+            // What the agent did, where the run history reads it.
+            nodeOutput = {
+              ...nodeOutput,
+              ...(childResult.agent ? { agent: childResult.agent } : {}),
+              ...(childResult.model ? { model: childResult.model } : {}),
+              actions: childResult.actions ?? [],
+            };
             break;
           }
 

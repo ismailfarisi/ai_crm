@@ -8,6 +8,7 @@ import { executionStatusLabel, triggerSourceLabel } from '@saas/shared';
 import type { AutomationExecutionStatus } from '@saas/shared';
 import { useAutomationExecution } from '@/hooks/use-automations';
 import { ApprovalDecision } from './approval-decision';
+import { AgentStepResult } from '../agent-step/agent-step-result';
 
 export function StatusChip({ status }: { status: AutomationExecutionStatus }) {
   return (
@@ -170,6 +171,7 @@ export function RunDetail({ executionId, onBack }: RunDetailProps) {
                 {step.type ?? '—'} · {step.status}
               </p>
               {step.error && <p className="text-[11px] text-danger break-words">{step.error}</p>}
+              {!execution.dataHidden && step.type === 'aiAgentNode' && <AgentStepResult output={step.output} />}
               {!execution.dataHidden && (step.input !== undefined || step.output !== undefined) && (
                 <details className="mt-1">
                   <summary className="text-[11px] text-ink-muted cursor-pointer">Input / Output</summary>

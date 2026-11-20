@@ -16,6 +16,7 @@ import { AutomationSchedulesService } from './schedules/automation-schedules.ser
 import { AutomationApprovalsController } from './approvals/automation-approvals.controller';
 import { AutomationApprovalsService } from './approvals/automation-approvals.service';
 import { User } from '../users/entities/user.entity';
+import { ChannelAgent } from '../channels/entities/channel-agent.entity';
 
 @Module({
   imports: [
@@ -25,6 +26,8 @@ import { User } from '../users/entities/user.entity';
       AutomationApproval,
       // Read-only, for the names of whoever decided an approval.
       User,
+      // Read-only, for the agents an AI agent step can run as.
+      ChannelAgent,
     ]),
     TemporalModule,
     AiModule,

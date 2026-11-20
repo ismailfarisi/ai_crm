@@ -78,6 +78,7 @@ async function run(): Promise<void> {
       customRecordsService: appContext.get(CustomRecordsService),
       tenantContext: appContext.get(TenantContextService),
       idempotency: appContext.get(ChannelIdempotencyService),
+      channelAgents: appContext.get(ChannelAgentService),
     });
     const automationActions = createAutomationActions({
       mail: appContext.get(MailService),

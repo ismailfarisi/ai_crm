@@ -295,7 +295,10 @@ export type AiAgentDomain =
   | 'GENERAL';
 
 export interface AiAgentNodeConfig {
+  /** The task, in the user's words. May hold {{ }} expressions. */
   goal: string;
+  /** An agent from Settings → AI to run as. Absent runs the general assistant. */
+  agentId?: string | null;
   allowedDomains?: AiAgentDomain[];
   autoApprove?: boolean;
   timeoutDuration?: string;

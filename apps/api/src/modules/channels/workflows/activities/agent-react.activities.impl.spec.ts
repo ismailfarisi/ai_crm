@@ -8,9 +8,14 @@ jest.mock('@temporalio/activity', () => ({
   Context: { current: () => ({ info: mockActivityInfo }) },
 }));
 
+import { NotFoundException } from '@nestjs/common';
 import { ApplicationFailure } from '@temporalio/activity';
 import { AiProviderError } from '@/modules/ai/interfaces/ai-provider.interface';
-import { createAgentReactActivities, toAiMessages } from './agent-react.activities.impl';
+import {
+  agentSystemPrompt,
+  createAgentReactActivities,
+  toAiMessages,
+} from './agent-react.activities.impl';
 
 /** Same contract as ChannelIdempotencyService.runOnce, in memory. */
 function makeIdempotency() {
@@ -462,5 +467,297 @@ describe('channel_message.send: what executes equals what was approved', () => {
       ),
     ).rejects.toMatchObject({ type: 'ApprovedActionChanged', nonRetryable: true });
     expect(h.channels.sendMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('running as an agent from Settings → AI', () => {
+  const makeSkill = (name: string, requiredPermissions: string[], isMutating = true) => ({
+    name,
+    description: name,
+    isMutating,
+    promptVersion: 'test/1',
+    jsonSchema: {},
+    requiredPermissions,
+    resolve: jest.fn().mockResolvedValue({ kind: 'resolved', value: {} }),
+    preview: jest.fn().mockResolvedValue(`Preview ${name}`),
+    execute: jest.fn().mockResolvedValue({ reply: `${name} done`, resultType: 'X', resultId: 'x-1' }),
+  });
+  const staffAgent = {
+    id: 'agent-1',
+    organizationId: 'org-1',
+    name: 'Quote chaser',
+    instructions: 'Be brief. Never offer a discount.',
+    kind: 'STAFF',
+    provider: 'anthropic',
+    model: 'claude-sonnet-4-5',
+    skills: ['quote.lookup', 'quote.send', 'invoice.void'],
+    isEnabled: true,
+  };
+
+  /** A user who may look up and send quotes and read contacts, but not void invoices. */
+  function harness(agent: Record<string, unknown> | null = staffAgent, withAgents = true) {
+    const skills = [
+      makeSkill('quote.lookup', ['quote:read'], false),
+      makeSkill('quote.send', ['quote:update']),
+      makeSkill('contact.lookup', ['contact:read'], false),
+      makeSkill('invoice.void', ['invoice:void']),
+    ];
+    const userPermissions = ['quote:read', 'quote:update', 'contact:read', 'custom_record:read'];
+    const channelAgents = {
+      findOne: jest.fn(async () => {
+        if (!agent) throw new NotFoundException('Agent not found');
+        return agent;
+      }),
+    };
+    const aiService = { generateWithTools: jest.fn() };
+    const customObjectsService = { list: jest.fn().mockResolvedValue([{ slug: 'moulds' }]) };
+    const customObjectToolFactory = {
+      createDynamicTools: jest.fn(() => [
+        { name: 'query_custom_moulds', description: 'Moulds', jsonSchema: {} },
+      ]),
+    };
+    const activities = createAgentReactActivities({
+      aiService: aiService as any,
+      rbacService: {
+        resolveAccess: jest.fn().mockResolvedValue({ permissions: userPermissions }),
+      } as any,
+      // Same rule as SkillRegistry.permittedFor: every required permission held.
+      skillRegistry: {
+        permittedFor: (permissions: string[]) =>
+          skills.filter((s) => s.requiredPermissions.every((p) => permissions.includes(p))),
+      } as any,
+      auditService: { record: jest.fn() } as any,
+      customObjectToolFactory: customObjectToolFactory as any,
+      customObjectsService: customObjectsService as any,
+      customRecordsService: { list: jest.fn(), create: jest.fn() } as any,
+      tenantContext: { runWithTenant: (_t: string, fn: any) => fn() } as any,
+      idempotency: makeIdempotency() as any,
+      ...(withAgents ? { channelAgents: channelAgents as any } : {}),
+    });
+    const skill = (name: string) => skills.find((s) => s.name === name)!;
+    return { activities, channelAgents, aiService, skill };
+  }
+
+  const who = { organizationId: 'org-1', userId: 'user-1' };
+  const agentCtx = { ...who, message: 'Chase Q-1', agentId: 'agent-1' };
+  const names = (tools: Array<{ name: string }>) => tools.map((t) => t.name);
+
+  describe('tools', () => {
+    it('offers only tools that both the agent was given and the user is permitted', async () => {
+      const { activities, channelAgents } = harness();
+
+      const tools = await activities.listAvailableTools({ ...who, agentId: 'agent-1' });
+
+      // contact.lookup: the user may, the agent was not given it.
+      // invoice.void: the agent was given it, the user may not.
+      expect(names(tools)).toEqual(['quote.lookup', 'quote.send']);
+      expect(channelAgents.findOne).toHaveBeenCalledWith('org-1', 'agent-1');
+    });
+
+    it('without an agent, offers everything the user is permitted, as before', async () => {
+      const { activities, channelAgents } = harness();
+
+      const tools = await activities.listAvailableTools(who);
+
+      expect(names(tools)).toEqual([
+        'quote.lookup',
+        'quote.send',
+        'contact.lookup',
+        'query_custom_moulds',
+      ]);
+      expect(channelAgents.findOne).not.toHaveBeenCalled();
+    });
+
+    it('an agent gets no custom-object tools, listed or called', async () => {
+      const { activities } = harness();
+
+      const tools = await activities.listAvailableTools({ ...who, agentId: 'agent-1' });
+      expect(names(tools)).not.toContain('query_custom_moulds');
+      await expect(
+        activities.executeToolActivity({ id: 'c1', name: 'query_custom_moulds', args: {} }, agentCtx),
+      ).rejects.toThrow("Tool 'query_custom_moulds' is unavailable or not authorized");
+    });
+
+    it('refuses a tool the agent has but the user is not permitted, even if the model asks for it', async () => {
+      const { activities, skill } = harness();
+      const call = { id: 'v1', name: 'invoice.void', args: {} };
+
+      await expect(activities.executeToolActivity(call, agentCtx)).rejects.toThrow(
+        "Tool 'invoice.void' is unavailable or not authorized",
+      );
+      await expect(activities.commitToolMutationActivity(call, agentCtx)).rejects.toThrow(
+        "Tool 'invoice.void' is unavailable or not authorized",
+      );
+      expect(skill('invoice.void').execute).not.toHaveBeenCalled();
+    });
+
+    it('refuses a tool the user is permitted but the agent was not given', async () => {
+      const { activities, skill } = harness();
+
+      await expect(
+        activities.executeToolActivity({ id: 'k1', name: 'contact.lookup', args: {} }, agentCtx),
+      ).rejects.toThrow("Tool 'contact.lookup' is unavailable or not authorized");
+      expect(skill('contact.lookup').execute).not.toHaveBeenCalled();
+    });
+
+    it('a change still comes back as an approval request, not done', async () => {
+      const { activities, skill } = harness();
+
+      const result = await activities.executeToolActivity(
+        { id: 's1', name: 'quote.send', args: {} },
+        agentCtx,
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          isMutating: true,
+          requiresApproval: true,
+          previewPayload: { summary: 'Preview quote.send' },
+        }),
+      );
+      expect(skill('quote.send').execute).not.toHaveBeenCalled();
+    });
+
+    it('the step\'s older "areas" limit still narrows the agent\'s tools further', async () => {
+      const { activities } = harness({ ...staffAgent, skills: ['quote.lookup', 'purchase_order.x'] });
+
+      const tools = await activities.listAvailableTools({
+        ...who,
+        agentId: 'agent-1',
+        allowedDomains: ['FINANCE'],
+      });
+
+      expect(tools).toEqual([]);
+    });
+  });
+
+  describe('an agent that cannot be used stops the run instead of falling back', () => {
+    const expectUnavailable = async (promise: Promise<unknown>, message: string) => {
+      const failure = await promise.then(
+        () => null,
+        (err: unknown) => err,
+      );
+      expect(failure).toBeInstanceOf(ApplicationFailure);
+      expect((failure as ApplicationFailure).type).toBe('AgentUnavailable');
+      expect((failure as ApplicationFailure).nonRetryable).toBe(true);
+      expect((failure as ApplicationFailure).message).toBe(message);
+    };
+
+    it('deleted, or belonging to another organisation', async () => {
+      const { activities, channelAgents } = harness(null);
+
+      await expectUnavailable(
+        activities.listAvailableTools({ organizationId: 'org-2', userId: 'user-1', agentId: 'agent-1' }),
+        'The agent this step runs as no longer exists. Open the step and pick another agent.',
+      );
+      // Looked up inside the run's own organisation, never by id alone.
+      expect(channelAgents.findOne).toHaveBeenCalledWith('org-2', 'agent-1');
+    });
+
+    it('switched off', async () => {
+      const { activities, aiService } = harness({ ...staffAgent, isEnabled: false });
+
+      await expectUnavailable(
+        activities.planReActTurn({
+          ...who,
+          prompt: 'p',
+          conversationHistory: [{ role: 'user', content: 'p' }],
+          availableTools: [],
+          agentId: 'agent-1',
+        }),
+        'The agent "Quote chaser" is switched off in Settings → AI. Switch it on or pick another agent.',
+      );
+      expect(aiService.generateWithTools).not.toHaveBeenCalled();
+    });
+
+    it('a customer-facing agent', async () => {
+      const { activities } = harness({ ...staffAgent, name: 'Front desk', kind: 'CUSTOMER' });
+
+      await expectUnavailable(
+        activities.executeToolActivity({ id: 'l1', name: 'quote.lookup', args: {} }, agentCtx),
+        '"Front desk" is an agent that answers customers, so it cannot run an automation step. Pick a staff agent.',
+      );
+    });
+
+    it('a worker that cannot look agents up', async () => {
+      const { activities } = harness(staffAgent, false);
+
+      await expectUnavailable(
+        activities.listAvailableTools({ ...who, agentId: 'agent-1' }),
+        'The agent this step runs as no longer exists. Open the step and pick another agent.',
+      );
+    });
+
+    it('a lookup that fails for another reason is retried, not reported as a missing agent', async () => {
+      const { activities, channelAgents } = harness();
+      channelAgents.findOne.mockRejectedValueOnce(new Error('connection reset'));
+
+      await expect(
+        activities.listAvailableTools({ ...who, agentId: 'agent-1' }),
+      ).rejects.toThrow('connection reset');
+    });
+  });
+
+  describe('planning', () => {
+    const answer = { text: 'Done.', toolCalls: [], raw: {}, usage: {}, model: 'claude-sonnet-4-5', stopReason: 'end_turn' };
+    const plan = (activities: any, agentId?: string) =>
+      activities.planReActTurn({
+        ...who,
+        prompt: 'p',
+        conversationHistory: [{ role: 'user', content: 'p' }],
+        availableTools: [],
+        ...(agentId ? { agentId } : {}),
+      });
+
+    it("uses the agent's instructions, provider and model, after the fixed rules", async () => {
+      const { activities, aiService } = harness();
+      aiService.generateWithTools.mockResolvedValueOnce(answer);
+
+      const turn = await plan(activities, 'agent-1');
+
+      const [feature, options, actor] = aiService.generateWithTools.mock.calls[0];
+      expect(feature).toBe('automations.ai_agent');
+      expect(options.model).toBe('claude-sonnet-4-5');
+      expect(options.provider).toBe('anthropic');
+      expect(options.system).toBe(agentSystemPrompt(staffAgent as any));
+      // The approval rule is stated before anything the agent's author wrote.
+      const rules = options.system.indexOf('never say an action succeeded until a tool result confirms it');
+      const guidance = options.system.indexOf('Be brief. Never offer a discount.');
+      expect(rules).toBeGreaterThan(-1);
+      expect(guidance).toBeGreaterThan(rules);
+      expect(options.system).toContain('You are working as the "Quote chaser" agent');
+      expect(actor).toEqual({ organizationId: 'org-1', userId: 'user-1' });
+      expect(turn).toEqual({
+        thought: '',
+        model: 'claude-sonnet-4-5',
+        finalAnswer: 'Done.',
+        agent: { id: 'agent-1', name: 'Quote chaser' },
+      });
+    });
+
+    it("leaves provider and model to the organisation's defaults when the agent names none", async () => {
+      const { activities, aiService } = harness({ ...staffAgent, provider: null, model: null });
+      aiService.generateWithTools.mockResolvedValueOnce(answer);
+
+      await plan(activities, 'agent-1');
+
+      const options = aiService.generateWithTools.mock.calls[0][1];
+      expect(options).not.toHaveProperty('model');
+      expect(options).not.toHaveProperty('provider');
+    });
+
+    it('without an agent, sends the fixed prompt and no overrides', async () => {
+      const { activities, aiService, channelAgents } = harness();
+      aiService.generateWithTools.mockResolvedValueOnce(answer);
+
+      const turn = await plan(activities);
+
+      const options = aiService.generateWithTools.mock.calls[0][1];
+      expect(options.system).toBe(agentSystemPrompt(null));
+      expect(options).not.toHaveProperty('model');
+      expect(options).not.toHaveProperty('provider');
+      expect(turn).not.toHaveProperty('agent');
+      expect(channelAgents.findOne).not.toHaveBeenCalled();
+    });
   });
 });

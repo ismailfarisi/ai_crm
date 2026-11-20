@@ -32,7 +32,7 @@ export const DEFAULT_NODE_LABELS: Record<AutomationNodeType, string> = {
   delayNode: 'Delay Execution',
   httpRequestNode: 'HTTP Request',
   aiPromptNode: 'AI Prompt / LLM',
-  aiAgentNode: 'Autonomous AI Agent',
+  aiAgentNode: 'AI agent',
   sendEmailNode: 'Send Email',
   crmMutateNode: 'CRM Mutation',
   approvalNode: 'Human Approval',
@@ -53,7 +53,8 @@ export const DEFAULT_NODE_CONFIGS: Record<AutomationNodeType, Record<string, any
     goal: '',
     allowedDomains: ['SALES', 'GENERAL'],
     autoApprove: false,
-    timeoutDuration: '30m',
+    // How long a change the agent wants to make waits for a person.
+    timeoutDuration: '3 days',
   },
   sendEmailNode: { to: '', subject: '', body: '' },
   crmMutateNode: { action: 'CREATE_CONTACT', payload: {} },

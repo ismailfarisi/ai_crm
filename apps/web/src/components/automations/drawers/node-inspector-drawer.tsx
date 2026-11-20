@@ -20,6 +20,7 @@ import {
   RotateCcw,
   CheckCircle2,
   MessageSquareText,
+  Bot,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { usesAiOutput } from '@saas/shared';
@@ -35,6 +36,7 @@ import { WebhookTriggerFields } from './webhook-trigger-fields';
 import { ScheduleTriggerFields } from './schedule-trigger-fields';
 import { ExpressionHelper } from './expression-helper';
 import { CrmStepFields } from './crm-step-fields';
+import { AiAgentStepFields } from '../agent-step/ai-agent-step-fields';
 import { CRM_EVENTS, crmEventOf, findCrmEvent, normalizeCrmEventConfig } from '../crm-events';
 
 /** The trigger node that belongs to each automation trigger type. */
@@ -133,6 +135,9 @@ export function NodeInspectorDrawer({
     if (node.type === 'aiPromptNode') {
       const current = config.prompt || '';
       handleConfigChange('prompt', `${current} ${variableCode}`.trim());
+    } else if (node.type === 'aiAgentNode') {
+      const current = config.goal || '';
+      handleConfigChange('goal', `${current} ${variableCode}`.trim());
     } else if (node.type === 'httpRequestNode') {
       const current = config.url || '';
       handleConfigChange('url', `${current}${variableCode}`);
@@ -168,6 +173,8 @@ export function NodeInspectorDrawer({
               <ShieldAlert className="h-4 w-4" />
             ) : node.type === 'aiPromptNode' ? (
               <MessageSquareText className="h-4 w-4" />
+            ) : node.type === 'aiAgentNode' ? (
+              <Bot className="h-4 w-4" />
             ) : (
               <Layers className="h-4 w-4" />
             )}
@@ -334,6 +341,16 @@ export function NodeInspectorDrawer({
                   />
                 </div>
               </div>
+            )}
+
+            {/* AI Agent Node Config */}
+            {node.type === 'aiAgentNode' && (
+              <AiAgentStepFields
+                config={config}
+                onChange={(next) => onUpdate(node.id, { config: next })}
+                showVariables={showHelper}
+                onToggleVariables={() => setShowHelper(!showHelper)}
+              />
             )}
 
             {/* Approval Node Config */}

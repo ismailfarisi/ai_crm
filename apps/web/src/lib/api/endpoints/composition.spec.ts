@@ -83,7 +83,7 @@ const QUERY_KEYS = [
   'catalogItemsAll', 'catalogMaterials', 'catalogWorkCenters', 'catalogTooling',
   'catalogTemplates', 'catalogTemplate', 'catalogStarterTemplates', 'costingPolicy', 'quoteGuardrails',
   'channels', 'aiConfigs', 'channelIdentities', 'channelMessages',
-  'automations', 'automationSettings', 'automation', 'automationExecutions', 'automationExecution', 'automationApprovals', 'automationApprovalCount',
+  'automations', 'automationSettings', 'automationAgentOptions', 'automation', 'automationExecutions', 'automationExecution', 'automationApprovals', 'automationApprovalCount',
   'financeOverview', 'financeAccounts', 'financeBudgets', 'financeSubscriptions',
   'financeOccurrences', 'financeCashForecast', 'prepaidSchedules',
   'financeJournalEntries', 'expenses', 'expense', 'aiBudget', 'aiUsage',

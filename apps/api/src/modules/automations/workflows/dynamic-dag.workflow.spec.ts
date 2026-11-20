@@ -762,6 +762,165 @@ describe('DynamicDagWorkflow', () => {
     );
   });
 
+  describe('aiAgentNode agent and task', () => {
+    const runStep = async (
+      config: Record<string, unknown>,
+      opts: {
+        triggerPayload?: Record<string, unknown>;
+        childResult?: Record<string, unknown>;
+        data?: Record<string, unknown>;
+      } = {},
+    ) => {
+      mockExecuteChild.mockReset();
+      mockExecuteChild.mockResolvedValue(
+        opts.childResult ?? { status: 'COMPLETED', finalResponse: 'done', stepsExecuted: 1 },
+      );
+      const result = await dynamicDagWorkflow({
+        executionId: 'exec-agent',
+        workflowId: 'wf-agent',
+        tenantId: 'tenant-1',
+        ownerUserId: 'owner',
+        triggerType: 'CRM_EVENT',
+        triggerPayload: opts.triggerPayload ?? {},
+        nodes: [
+          {
+            id: 'trigger',
+            type: 'crmEventTrigger',
+            position: { x: 0, y: 0 },
+            data: { label: 'T', config: {} },
+          },
+          {
+            id: 'agent',
+            type: 'aiAgentNode',
+            position: { x: 100, y: 0 },
+            data: { label: 'Chase quote', config, ...opts.data },
+          },
+        ],
+        edges: [{ id: 'e1', source: 'trigger', target: 'agent' }],
+      } as DynamicWorkflowInput);
+      const childInput = mockExecuteChild.mock.calls[0]?.[1].args[0];
+      return { result, childInput };
+    };
+
+    it('runs as the chosen agent, inside the run\'s organisation and as the run\'s user', async () => {
+      const { childInput } = await runStep({ goal: 'Chase it', agentId: 'agent-1' });
+
+      expect(childInput).toEqual(
+        expect.objectContaining({
+          agentId: 'agent-1',
+          organizationId: 'tenant-1',
+          userId: 'owner',
+          prompt: 'Chase it',
+          autoApprove: false,
+        }),
+      );
+    });
+
+    it('a step with no agent runs the general assistant, within the step\'s domains', async () => {
+      const { childInput } = await runStep({
+        goal: 'Chase it',
+        agentId: null,
+        allowedDomains: ['SALES', 'GENERAL'],
+      });
+
+      expect(childInput).not.toHaveProperty('agentId');
+      expect(childInput.allowedDomains).toEqual(['SALES', 'GENERAL']);
+    });
+
+    it.each([[['SALES', 'GENERAL']], [null]])(
+      'a named agent is not limited by the step\'s domains (%p)',
+      async (allowedDomains) => {
+        const { childInput } = await runStep({ goal: 'Chase it', agentId: 'agent-1', allowedDomains });
+
+        expect(childInput.allowedDomains).toBeUndefined();
+      },
+    );
+
+    it('fills the task with data from the trigger and earlier steps', async () => {
+      const { childInput } = await runStep(
+        { goal: 'Follow up quote {{ $trigger.quote.number }} for {{ $json.quote.customer }}' },
+        { triggerPayload: { quote: { number: 'Q-104', customer: 'Al Noor Packaging' } } },
+      );
+
+      expect(childInput.prompt).toBe('Follow up quote Q-104 for Al Noor Packaging');
+    });
+
+    it.each([[''], ['   '], [undefined]])(
+      'fails the step and starts no agent when the task is %p',
+      async (goal) => {
+        const { result } = await runStep({ goal, agentId: 'agent-1' });
+
+        expect(mockExecuteChild).not.toHaveBeenCalled();
+        expect(result.status).toBe('FAILED');
+        expect(result.nodeResults.agent.status).toBe('FAILED');
+        expect(result.nodeResults.agent.error).toBe(
+          'This AI agent step has no task. Open the step and say what the agent should do.',
+        );
+      },
+    );
+
+    it.each([
+      ['30m', '1800000 milliseconds'],
+      ['24h', '86400000 milliseconds'],
+      ['2 hours', '2 hours'],
+      ['3 days', '3 days'],
+      ['soon', '3 days'],
+      [undefined, '3 days'],
+    ])('passes the approval wait %p to the agent as %p', async (timeoutDuration, expected) => {
+      const { childInput } = await runStep({ goal: 'Chase it', timeoutDuration });
+
+      expect(childInput.approvalTimeout).toBe(expected);
+    });
+
+    it('records who the step ran as and what it did', async () => {
+      const actions = [
+        { tool: 'quote.lookup', status: 'DONE', summary: 'Q-104 is a draft', changedData: false },
+        { tool: 'quote.send', status: 'DONE', summary: 'Sent Q-104', changedData: true, approved: true },
+      ];
+      const { result } = await runStep(
+        { goal: 'Chase it', agentId: 'agent-1' },
+        {
+          childResult: {
+            status: 'COMPLETED',
+            finalResponse: 'Sent Q-104.',
+            stepsExecuted: 2,
+            agent: { id: 'agent-1', name: 'Quote chaser' },
+            model: 'model-x',
+            actions,
+          },
+        },
+      );
+
+      expect(result.nodeResults.agent.output).toEqual(
+        expect.objectContaining({
+          success: true,
+          solution: 'Sent Q-104.',
+          agent: { id: 'agent-1', name: 'Quote chaser' },
+          model: 'model-x',
+          actions,
+        }),
+      );
+      const recorded = mockActivities.recordNodeResultActivity.mock.calls
+        .map((call) => call[0])
+        .filter((row) => row.nodeId === 'agent' && row.status === 'SUCCESS');
+      expect(recorded[recorded.length - 1].output.actions).toEqual(actions);
+    });
+
+    it('records what was done before a rejected change', async () => {
+      const actions = [
+        { tool: 'quote.send', status: 'REJECTED', summary: 'Not done, it was rejected: Send Q-104', changedData: false },
+      ];
+      const { result } = await runStep(
+        { goal: 'Chase it' },
+        { childResult: { status: 'REJECTED', finalResponse: 'Action quote.send was rejected', stepsExecuted: 1, actions } },
+      );
+
+      expect(result.nodeResults.agent.output).toEqual(
+        expect.objectContaining({ status: 'REJECTED', actions }),
+      );
+    });
+  });
+
   it('should execute agentReActWorkflow child workflow for aiAgentNode and pass result to downstream nodes via $json', async () => {
     mockActivities.executeEmailActivity.mockResolvedValue({
       success: true,
@@ -851,6 +1010,7 @@ describe('DynamicDagWorkflow', () => {
         finalResponse: 'Refund of $100 has been processed successfully.',
         stepsExecuted: 4,
       },
+      actions: [],
     });
     expect(mockActivities.executeEmailActivity).toHaveBeenCalledWith({
       to: 'client@acme.com',

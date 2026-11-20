@@ -51,6 +51,18 @@ export function useAutomationSettings() {
   });
 }
 
+/** The staff agents an AI agent step can run as. */
+export function useAutomationAgentOptions() {
+  return useQuery({
+    queryKey: queryKeys.automationAgentOptions,
+    queryFn: () => api.automations.agentOptions(),
+    // Agents are switched on and off in Settings; coming back to the builder
+    // must not show the list from before.
+    staleTime: 0,
+    refetchOnMount: 'always',
+  });
+}
+
 export function useInvalidateAutomations() {
   const queryClient = useQueryClient();
   return {

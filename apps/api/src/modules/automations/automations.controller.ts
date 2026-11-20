@@ -14,6 +14,7 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   PERMISSIONS,
+  type AutomationAgentOptionDto,
   type AutomationExecutionDto,
   type AutomationExecutionPageDto,
 } from '@saas/shared';
@@ -52,6 +53,18 @@ export class AutomationsController {
   ): Promise<{ aiEmailToCustomers: boolean }> {
     const status = await this.aiService.getBudgetStatus(user.organizationId);
     return { aiEmailToCustomers: status.automationAiEmailToCustomers };
+  }
+
+  // Static route: must stay above @Get(':id') so it is not captured as an id.
+  // Open to anyone who can see automations: building a step needs an agent's
+  // name and tools, not the right to edit agents (ai:manage).
+  @Get('agent-options')
+  @RequirePermissions(PERMISSIONS.AUTOMATION_READ)
+  @ApiOperation({ summary: 'Agents an AI agent step can run as' })
+  listAgentOptions(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<AutomationAgentOptionDto[]> {
+    return this.automationsService.listAgentOptions(user.organizationId);
   }
 
   @Get()
