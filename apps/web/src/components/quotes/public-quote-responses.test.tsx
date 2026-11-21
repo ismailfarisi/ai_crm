@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { PublicQuoteDto, PublicQuoteProofDto } from '@saas/shared';
 import { PublicQuoteProofs, PublicQuoteRespond } from './public-quote-responses';
+import { publicQuoteCopy } from './public-quote-copy';
 
 const proof = (overrides: Partial<PublicQuoteProofDto> = {}): PublicQuoteProofDto => ({
   id: 'p2',
@@ -126,5 +127,69 @@ describe('PublicQuoteProofs', () => {
     render(<PublicQuoteProofs quote={q} token="tok" call={vi.fn()} name="" onNameChange={() => {}} onChange={() => {}} />);
     expect(screen.queryByRole('button', { name: 'Approve proof' })).toBeNull();
     expect(screen.getByText(/Approved by Jo/)).toBeDefined();
+  });
+});
+
+describe('Arabic and bilingual quote links', () => {
+  it('shows the response tabs and fields in Arabic', () => {
+    const q = quote({ language: 'ar' } as Partial<PublicQuoteDto>);
+    render(
+      <PublicQuoteRespond
+        quote={q}
+        token="tok"
+        call={vi.fn()}
+        name="جو"
+        onNameChange={() => {}}
+        onChange={() => {}}
+        copy={publicQuoteCopy('ar')}
+      />,
+    );
+    expect(screen.getByRole('radiogroup', { name: 'ردك' })).toBeDefined();
+    fireEvent.click(screen.getByRole('radio', { name: 'طلب تعديلات' }));
+    expect(screen.getByLabelText('ما التعديلات التي تريدها؟')).toBeDefined();
+    expect(screen.getByRole('button', { name: 'إرسال الطلب' })).toBeDefined();
+    fireEvent.click(screen.getByRole('radio', { name: 'رفض' }));
+    expect(screen.getByRole('button', { name: 'رفض عرض السعر' })).toBeDefined();
+    expect(screen.queryByText(/Request changes|Decline/)).toBeNull();
+  });
+
+  it('shows the proof panel in both languages on a bilingual quote', () => {
+    const q = quote({
+      proofs: [proof(), proof({ id: 'p1', version: 1, status: 'CHANGES_REQUESTED', superseded: true })],
+    });
+    render(
+      <PublicQuoteProofs
+        quote={q}
+        token="tok"
+        call={vi.fn()}
+        name="Jo Bloggs"
+        onNameChange={() => {}}
+        onChange={() => {}}
+        copy={publicQuoteCopy('bilingual')}
+      />,
+    );
+    expect(screen.getByRole('heading', { name: 'Artwork proof v2 / نموذج التصميم، الإصدار 2' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Approve proof / اعتماد النموذج' })).toBeDefined();
+    expect(screen.getByText('Earlier versions (1) / الإصدارات السابقة (1)')).toBeDefined();
+  });
+
+  it('says who approved the proof in Arabic', () => {
+    const q = quote({
+      proofs: [proof({ status: 'APPROVED', respondedByName: 'جو', respondedAt: '2026-11-01T10:00:00.000Z' })],
+    });
+    render(
+      <PublicQuoteProofs
+        quote={q}
+        token="tok"
+        call={vi.fn()}
+        name=""
+        onNameChange={() => {}}
+        onChange={() => {}}
+        copy={publicQuoteCopy('ar')}
+        formatDate={() => '1/11/2026'}
+      />,
+    );
+    expect(screen.getByText('اعتمده جو بتاريخ 1/11/2026.')).toBeDefined();
+    expect(screen.getByText('معتمد')).toBeDefined();
   });
 });

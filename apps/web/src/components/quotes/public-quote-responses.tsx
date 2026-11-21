@@ -4,12 +4,11 @@ import { useState } from 'react';
 import { CheckCircle2, CircleAlert, FileText, Loader2, MessageSquare, XCircle } from 'lucide-react';
 import {
   latestProof,
-  QUOTE_PROOF_STATUS_LABELS,
   type PublicQuoteDto,
   type PublicQuoteProofDto,
   type QuoteProofStatus,
 } from '@saas/shared';
-import { publicQuoteCopy, type PublicQuoteCopy } from './public-quote-copy';
+import { publicQuoteCopy, type PublicQuoteCopy, type PublicQuoteCopyKey } from './public-quote-copy';
 
 export type PublicCall = (path: string, init?: RequestInit) => Promise<PublicQuoteDto>;
 
@@ -26,15 +25,36 @@ const STATUS_TONE: Record<QuoteProofStatus, string> = {
   CHANGES_REQUESTED: 'bg-danger-soft text-danger',
 };
 
-function StatusBadge({ status }: { status: QuoteProofStatus }) {
+const STATUS_COPY: Record<QuoteProofStatus, PublicQuoteCopyKey> = {
+  PENDING: 'proofPending',
+  APPROVED: 'proofApproved',
+  CHANGES_REQUESTED: 'proofChangesRequested',
+};
+
+const defaultFormatDate = (iso: string) => new Date(iso).toLocaleDateString();
+
+function StatusBadge({ status, copy }: { status: QuoteProofStatus; copy: PublicQuoteCopy }) {
   return (
     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_TONE[status]}`}>
-      {QUOTE_PROOF_STATUS_LABELS[status]}
+      {copy.label(STATUS_COPY[status])}
     </span>
   );
 }
 
-function useSubmit(onDone: (quote: PublicQuoteDto) => void) {
+/** A sentence in each language to show, stacked; bilingual quotes read English then Arabic. */
+function Lines({ lines }: { lines: string[] }) {
+  return (
+    <>
+      {lines.map((line) => (
+        <span key={line} className="block" dir="auto">
+          {line}
+        </span>
+      ))}
+    </>
+  );
+}
+
+function useSubmit(onDone: (quote: PublicQuoteDto) => void, fallbackError: string) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const run = async (fn: () => Promise<PublicQuoteDto>) => {
@@ -43,7 +63,7 @@ function useSubmit(onDone: (quote: PublicQuoteDto) => void) {
     try {
       onDone(await fn());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+      setError(err instanceof Error ? err.message : fallbackError);
     } finally {
       setSubmitting(false);
     }
@@ -76,9 +96,9 @@ function NameField({
   );
 }
 
-function ProofPreview({ proof }: { proof: PublicQuoteProofDto }) {
+function ProofPreview({ proof, copy }: { proof: PublicQuoteProofDto; copy: PublicQuoteCopy }) {
   if (!proof.url) {
-    return <p className="text-sm text-ink-subtle">This file is no longer available.</p>;
+    return <p className="text-sm text-ink-subtle">{copy.label('proofUnavailable')}</p>;
   }
   if (proof.contentType.startsWith('image/')) {
     return (
@@ -87,7 +107,7 @@ function ProofPreview({ proof }: { proof: PublicQuoteProofDto }) {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={proof.url}
-          alt={`Proof v${proof.version}`}
+          alt={copy.label('proofName', { version: String(proof.version) })}
           className="max-h-[480px] w-full rounded-lg border border-line bg-surface-muted object-contain"
         />
       </a>
@@ -96,7 +116,7 @@ function ProofPreview({ proof }: { proof: PublicQuoteProofDto }) {
   return (
     <a href={proof.url} target="_blank" rel="noreferrer" className={secondaryButton}>
       <FileText className="size-4" />
-      Open {proof.filename}
+      {copy.label('openFile', { filename: proof.filename })}
     </a>
   );
 }
@@ -109,6 +129,8 @@ export function PublicQuoteProofs({
   name,
   onNameChange,
   onChange,
+  copy = publicQuoteCopy('en'),
+  formatDate = defaultFormatDate,
 }: {
   quote: PublicQuoteDto;
   token: string;
@@ -116,6 +138,9 @@ export function PublicQuoteProofs({
   name: string;
   onNameChange: (v: string) => void;
   onChange: (quote: PublicQuoteDto) => void;
+  /** Wording in the customer's document language. */
+  copy?: PublicQuoteCopy;
+  formatDate?: (iso: string) => string;
 }) {
   const [mode, setMode] = useState<'idle' | 'changes'>('idle');
   const [comment, setComment] = useState('');
@@ -123,7 +148,7 @@ export function PublicQuoteProofs({
     setMode('idle');
     setComment('');
     onChange(next);
-  });
+  }, copy.label('genericError'));
   const latest = latestProof(quote.proofs);
   const older = quote.proofs.filter((p) => p.id !== latest?.id);
   if (!latest) return null;
@@ -134,18 +159,35 @@ export function PublicQuoteProofs({
     <section className="border-t border-line px-6 py-5" aria-labelledby="proof-heading">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <h2 id="proof-heading" className="text-sm font-medium text-ink">
-          Artwork proof v{latest.version}
+          {copy.label('proofHeading', { version: String(latest.version) })}
         </h2>
-        <StatusBadge status={latest.status} />
+        <StatusBadge status={latest.status} copy={copy} />
       </div>
       {latest.staffNote && <p className="mb-3 whitespace-pre-line text-sm text-ink-muted">{latest.staffNote}</p>}
-      <ProofPreview proof={latest} />
+      <ProofPreview proof={latest} copy={copy} />
 
       {latest.status !== 'PENDING' && latest.respondedByName && (
         <p className="mt-3 text-sm text-ink-muted">
-          {latest.status === 'APPROVED' ? 'Approved' : 'Changes requested'} by {latest.respondedByName}
-          {latest.respondedAt ? ` on ${new Date(latest.respondedAt).toLocaleDateString()}` : ''}.
-          {latest.responseComment ? ` “${latest.responseComment}”` : ''}
+          <Lines
+            lines={copy.lines(
+              latest.status === 'APPROVED'
+                ? latest.respondedAt
+                  ? 'proofApprovedByOn'
+                  : 'proofApprovedBy'
+                : latest.respondedAt
+                  ? 'proofChangesByOn'
+                  : 'proofChangesBy',
+              {
+                name: latest.respondedByName,
+                date: latest.respondedAt ? formatDate(latest.respondedAt) : '',
+              },
+            )}
+          />
+          {latest.responseComment && (
+            <span className="block" dir="auto">
+              “{latest.responseComment}”
+            </span>
+          )}
         </p>
       )}
 
@@ -164,10 +206,10 @@ export function PublicQuoteProofs({
             );
           }}
         >
-          <NameField value={name} onChange={onNameChange} />
+          <NameField value={name} onChange={onNameChange} label={copy.label('yourName')} />
           {mode === 'changes' && (
             <label className="block text-sm">
-              <span className="mb-1 block text-ink">What needs to change?</span>
+              <span className="mb-1 block text-ink">{copy.label('proofChangeQuestion')}</span>
               <textarea
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
@@ -192,20 +234,20 @@ export function PublicQuoteProofs({
                   className={primaryButton}
                 >
                   {submitting && <Loader2 className="size-4 animate-spin" />}
-                  Send changes
+                  {copy.label('sendChanges')}
                 </button>
                 <button type="button" onClick={() => setMode('idle')} className={secondaryButton}>
-                  Cancel
+                  {copy.label('cancel')}
                 </button>
               </>
             ) : (
               <>
                 <button type="submit" disabled={submitting || name.trim().length < 2} className={primaryButton}>
                   {submitting && <Loader2 className="size-4 animate-spin" />}
-                  Approve proof
+                  {copy.label('approveProof')}
                 </button>
                 <button type="button" onClick={() => setMode('changes')} className={secondaryButton}>
-                  Request changes
+                  {copy.label('requestChanges')}
                 </button>
               </>
             )}
@@ -215,19 +257,21 @@ export function PublicQuoteProofs({
 
       {older.length > 0 && (
         <details className="mt-4 text-sm">
-          <summary className="cursor-pointer text-ink-muted">Earlier versions ({older.length})</summary>
+          <summary className="cursor-pointer text-ink-muted">
+            {copy.label('earlierVersions', { count: String(older.length) })}
+          </summary>
           <ul className="mt-2 space-y-2">
             {older.map((proof) => (
               <li key={proof.id} className="flex flex-wrap items-center gap-2 text-ink-muted">
                 {proof.url ? (
                   <a href={proof.url} target="_blank" rel="noreferrer" className="text-ink underline">
-                    Proof v{proof.version}
+                    {copy.label('proofName', { version: String(proof.version) })}
                   </a>
                 ) : (
-                  <span>Proof v{proof.version}</span>
+                  <span>{copy.label('proofName', { version: String(proof.version) })}</span>
                 )}
-                <StatusBadge status={proof.status} />
-                {proof.responseComment && <span>“{proof.responseComment}”</span>}
+                <StatusBadge status={proof.status} copy={copy} />
+                {proof.responseComment && <span dir="auto">“{proof.responseComment}”</span>}
               </li>
             ))}
           </ul>
@@ -249,7 +293,7 @@ export function PublicQuoteRespond({
   onChange,
   copy = publicQuoteCopy('en'),
   customerName = quote.customerName,
-  formatDate = (iso: string) => new Date(iso).toLocaleDateString(),
+  formatDate = defaultFormatDate,
 }: {
   quote: PublicQuoteDto;
   token: string;
@@ -257,7 +301,7 @@ export function PublicQuoteRespond({
   name: string;
   onNameChange: (v: string) => void;
   onChange: (quote: PublicQuoteDto) => void;
-  /** The accept wording in the customer's document language. */
+  /** Wording in the customer's document language. */
   copy?: PublicQuoteCopy;
   customerName?: string;
   formatDate?: (iso: string) => string;
@@ -269,36 +313,40 @@ export function PublicQuoteRespond({
     setNote('');
     setChoice('accept');
     onChange(next);
-  });
-  const seller = quote.organizationName || 'the team';
+  }, copy.label('genericError'));
+  const seller = quote.organizationName || copy.label('team');
   const response = quote.customerResponse;
 
   if (quote.acceptedAt) {
     return (
       <div className="flex items-start gap-2 text-sm text-success">
         <CheckCircle2 className="size-5 shrink-0" />
-        <div>
-          {copy
-            .lines('accepted', {
+        <p>
+          <Lines
+            lines={copy.lines('accepted', {
               name: quote.acceptedByName ?? '',
               date: formatDate(quote.acceptedAt),
-              org: quote.organizationName || (quote.language === 'ar' ? 'الفريق' : 'the team'),
-            })
-            .map((line) => (
-              <p key={line}>{line}</p>
-            ))}
-        </div>
+              org: seller,
+            })}
+          />
+        </p>
       </div>
     );
   }
 
   if (response?.kind === 'DECLINED') {
     return (
-      <p className="flex items-center gap-2 text-sm text-ink-muted">
+      <div className="flex items-start gap-2 text-sm text-ink-muted">
         <XCircle className="size-5 shrink-0" />
-        You declined this quote{response.at ? ` on ${new Date(response.at).toLocaleDateString()}` : ''}. Contact {seller}{' '}
-        if you change your mind.
-      </p>
+        <p>
+          <Lines
+            lines={copy.lines(response.at ? 'declinedOn' : 'declined', {
+              org: seller,
+              date: response.at ? formatDate(response.at) : '',
+            })}
+          />
+        </p>
+      </div>
     );
   }
 
@@ -324,9 +372,9 @@ export function PublicQuoteRespond({
     (choice === 'accept' ? agreed && !blocked : choice === 'changes' ? note.trim().length > 0 : true);
 
   const tabs: { key: Choice; label: string }[] = [
-    { key: 'accept', label: 'Accept' },
-    { key: 'changes', label: 'Request changes' },
-    { key: 'decline', label: 'Decline' },
+    { key: 'accept', label: copy.label('tabAccept') },
+    { key: 'changes', label: copy.label('requestChanges') },
+    { key: 'decline', label: copy.label('tabDecline') },
   ];
 
   return (
@@ -334,12 +382,18 @@ export function PublicQuoteRespond({
       {response?.kind === 'CHANGES_REQUESTED' && (
         <p className="flex items-start gap-2 rounded-lg bg-surface-muted p-3 text-sm text-ink-muted">
           <MessageSquare className="mt-0.5 size-4 shrink-0" />
-          You asked for changes{response.at ? ` on ${new Date(response.at).toLocaleDateString()}` : ''}. {seller} will
-          send an updated quote. You can still accept this one.
+          <span>
+            <Lines
+              lines={copy.lines(response.at ? 'changesAskedOn' : 'changesAsked', {
+                org: seller,
+                date: response.at ? formatDate(response.at) : '',
+              })}
+            />
+          </span>
         </p>
       )}
 
-      <div role="radiogroup" aria-label="Your response" className="flex flex-wrap gap-2">
+      <div role="radiogroup" aria-label={copy.label('yourResponse')} className="flex flex-wrap gap-2">
         {tabs.map((tab) => (
           <button
             key={tab.key}
@@ -366,9 +420,9 @@ export function PublicQuoteRespond({
         {choice === 'accept' && blocked && (
           <p role="status" className="flex items-start gap-2 rounded-lg bg-warning-soft p-3 text-sm text-warning">
             <CircleAlert className="mt-0.5 size-4 shrink-0" />
-            {quote.proofs.length
-              ? 'Please approve the artwork proof above first. You can accept the quote once the latest proof is approved.'
-              : `${seller} will send an artwork proof for you to approve. You can accept the quote once it is approved.`}
+            <span>
+              <Lines lines={copy.lines(quote.proofs.length ? 'approveProofFirst' : 'proofComing', { org: seller })} />
+            </span>
           </p>
         )}
         <NameField value={name} onChange={onNameChange} label={copy.label('yourName')} />
@@ -382,18 +436,14 @@ export function PublicQuoteRespond({
               className="mt-0.5"
             />
             <span>
-              {copy.lines('agree', { customer: customerName }).map((line) => (
-                <span key={line} className="block">
-                  {line}
-                </span>
-              ))}
+              <Lines lines={copy.lines('agree', { customer: customerName })} />
             </span>
           </label>
         )}
         {choice !== 'accept' && (
           <label className="block text-sm">
             <span className="mb-1 block text-ink">
-              {choice === 'changes' ? 'What would you like changed?' : 'Reason (optional)'}
+              {copy.label(choice === 'changes' ? 'changesQuestion' : 'reasonOptional')}
             </span>
             <textarea
               value={note}
@@ -412,7 +462,7 @@ export function PublicQuoteRespond({
         )}
         <button type="submit" disabled={!ready || submitting} className={choice === 'accept' ? primaryButton : secondaryButton}>
           {submitting && <Loader2 className="size-4 animate-spin" />}
-          {choice === 'accept' ? copy.label('accept') : choice === 'changes' ? 'Send request' : 'Decline quote'}
+          {copy.label(choice === 'accept' ? 'accept' : choice === 'changes' ? 'sendRequest' : 'declineQuote')}
         </button>
       </form>
     </div>
