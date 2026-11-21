@@ -1,0 +1,60 @@
+name: Migration round-trip
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/database/migrations/**"
+      - "apps/api/src/database/migration-data-source.ts"
+      - "apps/api/src/database/data-source.ts"
+      - "scripts/check-migration-roundtrip.mjs"
+      - "package.json"
+      - ".github/workflows/migrations.yml"
+
+concurrency:
+  group: migrations-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JWT_ACCESS_SECRET: ci_access_secret_at_least_32_characters_long
+  JWT_REFRESH_SECRET: ci_refresh_secret_at_least_32_characters_long
+  DB_HOST: localhost
+  DB_PORT: 5432
+  DB_USERNAME: crm_test_app
+  DB_PASSWORD: crm_test_app_password
+  DB_ADMIN_USERNAME: crm
+  DB_ADMIN_PASSWORD: crm_ci_password
+  DB_APP_USERNAME: crm_test_app
+  DB_APP_PASSWORD: crm_test_app_password
+  DB_NAME: crm
+
+jobs:
+  migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: crm
+          POSTGRES_PASSWORD: crm_ci_password
+          POSTGRES_DB: crm
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U crm -d crm"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter shared build
+      - run: pnpm --filter api build
+      - name: Provision application role
+        env:
+          POSTGRES_USER: crm
+          POSTGRES_DB: crm
+        run: PGPASSWORD="$DB_ADMIN_PASSWORD" psql -h localhost -U "$DB_ADMIN_USERNAME" -d "$DB_NAME" -v ON_ERROR_STOP=1 -f scripts/create-db-app-role.sql
+      - name: Migrate up, down to zero, and up again
+        run: node scripts/check-migration-roundtrip.mjs
