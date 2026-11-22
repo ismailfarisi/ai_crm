@@ -33,6 +33,14 @@ const agentNode = (config: Record<string, unknown>, label = 'Chase quote'): Auto
   data: { label, config },
 });
 
+/** What starts the automation: the data the task can use. */
+const trigger: AutomationNode = {
+  id: 'trigger',
+  type: 'crmEventTrigger',
+  position: { x: 0, y: 0 },
+  data: { label: 'Quote accepted', config: { event: 'quote.accepted' } },
+};
+
 /** The inspector over a node whose edits are kept, as the studio page keeps them. */
 function Inspector({
   initial,
@@ -48,7 +56,8 @@ function Inspector({
     <AgentOptionsContext.Provider value={options}>
       <NodeInspectorDrawer
         node={node}
-        allNodes={[node]}
+        allNodes={[trigger, node]}
+        edges={[{ id: 'e1', source: 'trigger', target: 'agent' }]}
         onClose={vi.fn()}
         onUpdate={(_id, data) => {
           // Merges config key by key, as the canvas's updateNodeData does.
@@ -109,12 +118,13 @@ describe('AI agent step settings', () => {
     const onConfig = vi.fn();
     render(<Inspector initial={{ goal: 'Follow up quote' }} onConfig={onConfig} />);
 
-    expect(screen.queryByTestId('expression-helper')).toBeNull();
-    fireEvent.click(screen.getByTestId('agent-step-insert-data-btn'));
-    fireEvent.click(screen.getByTestId('tab-json'));
-    fireEvent.click(screen.getByTestId('variable-item-$json.name'));
+    expect(screen.queryByTestId('agent-step-task-input-data-list')).toBeNull();
+    fireEvent.click(screen.getByTestId('agent-step-task-input-insert-data'));
+    fireEvent.click(screen.getByTestId('agent-step-task-input-data-$trigger.payload.quoteNumber'));
 
-    expect(onConfig).toHaveBeenLastCalledWith({ goal: 'Follow up quote {{ $json.name }}' });
+    expect(onConfig).toHaveBeenLastCalledWith({
+      goal: 'Follow up quote {{ $trigger.payload.quoteNumber }}',
+    });
   });
 
   it('lists only agents that are switched on, after the general assistant', () => {
@@ -184,8 +194,6 @@ describe('AI agent step settings', () => {
         <AiAgentStepFields
           config={{ goal: 'x', agentId: 'agent-1' }}
           onChange={vi.fn()}
-          showVariables={false}
-          onToggleVariables={vi.fn()}
         />
       </AgentOptionsContext.Provider>,
     );

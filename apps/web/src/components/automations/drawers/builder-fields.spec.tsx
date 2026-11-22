@@ -6,7 +6,8 @@ import type { AutomationEdge, AutomationNode, AutomationWorkflowDto } from '@saa
 import { NodeInspectorDrawer } from './node-inspector-drawer';
 import { TestRunDrawer } from './test-run-drawer';
 import { DataField } from './data-field';
-import { availableData } from '../step-wording';
+import { availableData, findDataItem } from '../step-wording';
+import { conditionExpression, describeCondition } from '../condition-rules';
 
 const trigger: AutomationNode = {
   id: 't',
@@ -194,11 +195,23 @@ describe('DataField', () => {
     render(<DataField label="Body" value="Hello  team" onChange={onChange} groups={groups} testId="f" multiline />);
 
     const box = screen.getByTestId('f') as HTMLTextAreaElement;
+    fireEvent.focus(box);
     box.setSelectionRange(6, 6);
     fireEvent.click(screen.getByTestId('f-insert-data'));
     fireEvent.click(screen.getByText('Accepted by'));
 
     expect(onChange).toHaveBeenCalledWith('Hello {{ $trigger.payload.acceptedByName }} team');
+  });
+
+  it('adds to the end of a field nobody has clicked into', () => {
+    const onChange = vi.fn();
+    const groups = availableData('mail', allNodes, edges);
+    render(<DataField label="Body" value="Hello team" onChange={onChange} groups={groups} testId="f" multiline />);
+
+    fireEvent.click(screen.getByTestId('f-insert-data'));
+    fireEvent.click(screen.getByText('Accepted by'));
+
+    expect(onChange).toHaveBeenCalledWith('Hello team {{ $trigger.payload.acceptedByName }}');
   });
 });
 
@@ -271,5 +284,49 @@ describe('trying an automation out', () => {
 
     expect(await screen.findByTestId('step-trace-mail')).toHaveTextContent('Send an email');
     expect(screen.getByTestId('execution-result-section')).toHaveTextContent('Finished');
+  });
+});
+
+describe('what a look-up step hands on', () => {
+  const lookup: AutomationNode = {
+    id: 'lookup',
+    type: 'crmMutateNode',
+    position: { x: 340, y: 0 },
+    data: { label: 'Look up the quote', config: { entity: 'quote', action: 'get', recordId: 'q1' } },
+  };
+  const after: AutomationNode = { ...check, id: 'after' };
+  const nodes = [trigger, lookup, after];
+  const flow: AutomationEdge[] = [
+    { id: 'e1', source: 't', target: 'lookup' },
+    { id: 'e2', source: 'lookup', target: 'after' },
+  ];
+
+  it('offers the fields of the record it found, by plain name', () => {
+    const group = availableData('after', nodes, flow).find((g) => g.id === 'lookup');
+    const waiting = group?.items.find((i) => i.label === 'Still waiting on the customer');
+    expect(waiting?.expression).toBe('$node["lookup"].json.awaitingCustomer');
+    expect(waiting?.options).toEqual(['true', 'false']);
+  });
+
+  it('builds a yes/no rule the engine compares as true or false, not as text', () => {
+    expect(
+      conditionExpression({
+        match: 'all',
+        rules: [{ field: '$node["lookup"].json.awaitingCustomer', type: 'choice', op: 'eq', value: 'true' }],
+      }),
+    ).toBe('$node["lookup"].json.awaitingCustomer == true');
+    expect(
+      describeCondition({
+        match: 'all',
+        rules: [
+          { field: 'x', label: 'Still waiting on the customer', type: 'choice', op: 'eq', value: 'true' },
+        ],
+      }),
+    ).toBe('Still waiting on the customer is Yes');
+  });
+
+  it('reads “the step before” wording in a recipe by its plain name', () => {
+    const groups = availableData('after', nodes, flow);
+    expect(findDataItem(groups, '$json.status')?.label).toBe('Status');
   });
 });

@@ -78,6 +78,8 @@ const NUMERIC = /^-?\d+(\.\d+)?$/;
 /** A number stays a number; anything else becomes quoted text. */
 function literal(rule: ConditionRule): string {
   const value = rule.value.trim();
+  // A yes/no field holds true or false, not the words.
+  if (rule.type === 'choice' && (value === 'true' || value === 'false')) return value;
   if (rule.type !== 'text' && rule.type !== 'choice' && rule.type !== 'date' && NUMERIC.test(value)) {
     return value;
   }
@@ -99,6 +101,11 @@ export function conditionExpression(state: ConditionBuilderState): string {
     .join(state.match === 'any' ? ' || ' : ' && ');
 }
 
+/** How a choice reads: a yes/no field is stored as true/false. */
+export function choiceLabel(value: string): string {
+  return value === 'true' ? 'Yes' : value === 'false' ? 'No' : value;
+}
+
 /** "Quote total is more than 10000 and Status is APPROVED". */
 export function describeCondition(state: ConditionBuilderState): string {
   return state.rules
@@ -106,7 +113,7 @@ export function describeCondition(state: ConditionBuilderState): string {
     .map((rule) => {
       const name = rule.label || rule.field;
       const words = operatorLabel(rule.op, rule.type);
-      return needsValue(rule.op) ? `${name} ${words} ${rule.value.trim()}` : `${name} ${words}`;
+      return needsValue(rule.op) ? `${name} ${words} ${choiceLabel(rule.value.trim())}` : `${name} ${words}`;
     })
     .join(state.match === 'any' ? ' or ' : ' and ');
 }

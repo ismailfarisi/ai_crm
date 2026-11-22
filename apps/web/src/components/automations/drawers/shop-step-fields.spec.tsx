@@ -7,6 +7,7 @@ import { NodeInspectorDrawer } from './node-inspector-drawer';
 import { MessageStepFields, NotifyStepFields } from './shop-step-fields';
 import { CrmStepFields } from './crm-step-fields';
 import { NODE_PALETTE_ITEMS } from './node-palette-drawer';
+import { stepWording } from '../step-wording';
 import { DEFAULT_NODE_CONFIGS, DEFAULT_NODE_LABELS } from '@/hooks/use-automation-canvas';
 
 const optionTexts = (el: HTMLElement) => Array.from((el as HTMLSelectElement).options).map((o) => o.text);
@@ -104,10 +105,14 @@ describe('Kerf Record step', () => {
 describe('palette', () => {
   it('lists the new steps and describes the Kerf Record step by what it does', () => {
     const byType = Object.fromEntries(NODE_PALETTE_ITEMS.map((item) => [item.type, item]));
-    expect(byType.sendMessageNode.label).toBe(DEFAULT_NODE_LABELS.sendMessageNode);
-    expect(byType.notifyStaffNode.label).toBe(DEFAULT_NODE_LABELS.notifyStaffNode);
-    expect(byType.crmMutateNode.description).not.toMatch(/deal|task/i);
-    expect(byType.crmMutateNode.description).toMatch(/contact/);
-    expect(byType.crmMutateNode.description).toMatch(/look up/);
+    expect(byType.sendMessageNode).toBeDefined();
+    expect(byType.notifyStaffNode).toBeDefined();
+    // The step chooser shows the plain wording, which is also a new step's name.
+    expect(DEFAULT_NODE_LABELS.sendMessageNode).toBe('Send a message');
+    expect(DEFAULT_NODE_LABELS.notifyStaffNode).toBe('Alert the team in Kerf');
+    const record = stepWording('crmMutateNode')!.description;
+    expect(record).not.toMatch(/deal|task/i);
+    expect(record).toMatch(/contact/);
+    expect(record).toMatch(/look up/i);
   });
 });

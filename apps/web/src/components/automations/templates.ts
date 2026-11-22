@@ -270,7 +270,20 @@ export function buildTemplateGraph(
         recordId: P(idField),
       }),
       node('check-1', 'conditionNode', 3, 'Still waiting on the customer?', {
-        condition: '$json.awaitingCustomer == true',
+        // Kept as a rule so it opens in the rule builder, not as typed code.
+        condition: '$node["lookup-1"].json.awaitingCustomer == true',
+        conditionBuilder: {
+          match: 'all',
+          rules: [
+            {
+              field: '$node["lookup-1"].json.awaitingCustomer',
+              label: 'Still waiting on the customer',
+              type: 'choice',
+              op: 'eq',
+              value: 'true',
+            },
+          ],
+        },
       }),
       // A condition card is taller than the others; leave room below it.
       node('email-1', 'sendEmailNode', 4.6, email.label, {

@@ -100,7 +100,6 @@ export function NodeInspectorDrawer({
   onTriggerValidityChange,
 }: NodeInspectorDrawerProps) {
   const [activeTab, setActiveTab] = useState<'params' | 'settings'>('params');
-  const [showHelper, setShowHelper] = useState(false);
 
   if (!node) return null;
 
@@ -314,8 +313,7 @@ export function NodeInspectorDrawer({
               <AiAgentStepFields
                 config={config}
                 onChange={(next) => onUpdate(node.id, { config: next })}
-                showVariables={showHelper}
-                onToggleVariables={() => setShowHelper(!showHelper)}
+                groups={data}
               />
             )}
 
@@ -435,10 +433,10 @@ export function NodeInspectorDrawer({
 
             {/* Send Message / Notify Staff Config */}
             {node.type === 'sendMessageNode' && (
-              <MessageStepFields config={config} onChange={(next) => onUpdate(node.id, { config: next })} />
+              <MessageStepFields config={config} onChange={(next) => onUpdate(node.id, { config: next })} groups={data} />
             )}
             {node.type === 'notifyStaffNode' && (
-              <NotifyStepFields config={config} onChange={(next) => onUpdate(node.id, { config: next })} />
+              <NotifyStepFields config={config} onChange={(next) => onUpdate(node.id, { config: next })} groups={data} />
             )}
 
             {/* Trigger Nodes (Webhook / Schedule / CRM Event), by the automation's trigger type */}

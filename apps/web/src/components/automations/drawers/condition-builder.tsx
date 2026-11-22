@@ -6,6 +6,7 @@ import type { DataGroup } from '../step-wording';
 import { findDataItem } from '../step-wording';
 import {
   EMPTY_RULE,
+  choiceLabel,
   conditionExpression,
   describeCondition,
   needsValue,
@@ -185,7 +186,7 @@ export function ConditionBuilder({ config, groups, onChange }: ConditionBuilderP
                     <option value="">Choose…</option>
                     {options.map((o) => (
                       <option key={o} value={o}>
-                        {o}
+                        {choiceLabel(o)}
                       </option>
                     ))}
                   </select>

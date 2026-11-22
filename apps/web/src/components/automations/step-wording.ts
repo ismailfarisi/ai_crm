@@ -1,6 +1,6 @@
-import type { AutomationEdge, AutomationNode, AutomationNodeType } from '@saas/shared';
+import { AUTOMATION_LOOKUP_SAMPLES, type AutomationEdge, type AutomationNode, type AutomationNodeType } from '@saas/shared';
 import { crmEventOf, findCrmEvent } from './crm-events';
-import { eventFieldsFor, triggerFieldExpression, type EventFieldType } from './event-data';
+import { eventFieldsFor, fieldsFromSample, triggerFieldExpression, type EventFieldType } from './event-data';
 
 /**
  * The words the builder uses for each kind of step, written for a workshop
@@ -60,8 +60,8 @@ export const STEP_WORDING: Record<AutomationNodeType, StepWording> & Record<stri
     kind: 'Do something',
   },
   crmMutateNode: {
-    label: 'Update a record',
-    description: 'Add or change a contact, or approve or reject a quote',
+    label: 'Look up or update a record',
+    description: 'Look up a quote, proof, invoice or today’s numbers; add or change a contact; approve or reject a quote',
     kind: 'Do something',
   },
   approvalNode: {
@@ -139,6 +139,9 @@ const LEGACY_LABELS: Record<string, AutomationNodeType> = {
   'Autonomous AI Agent': 'aiAgentNode',
   'Send Email': 'sendEmailNode',
   'CRM Mutation': 'crmMutateNode',
+  'Kerf Record': 'crmMutateNode',
+  'Send Message': 'sendMessageNode',
+  'Notify Staff': 'notifyStaffNode',
   'Human Approval': 'approvalNode',
 };
 
@@ -158,6 +161,8 @@ export interface DataItem {
   label: string;
   /** What is stored and evaluated, e.g. `$trigger.payload.quoteNumber`. */
   expression: string;
+  /** Another way the same value is written: `$json.<field>` for the step just before. */
+  alias?: string;
   type: EventFieldType;
   sample?: string | number;
   options?: readonly string[];
@@ -173,7 +178,7 @@ export interface DataGroup {
 /** What each kind of step hands on to later steps; `key` is the field in its output. */
 const STEP_OUTPUTS: Partial<Record<AutomationNodeType, (Omit<DataItem, 'expression'> & { key: string })[]>> = {
   aiPromptNode: [{ key: 'text', label: 'What the AI wrote', type: 'text', sample: 'Hi team, quote Q-2026-0042 was accepted…' }],
-  aiAgentNode: [{ key: 'solution', label: 'What the assistant answered', type: 'text', sample: 'I checked the order and…' }],
+  aiAgentNode: [{ key: 'solution', label: 'What the agent answered', type: 'text', sample: 'I checked the order and…' }],
   approvalNode: [
     {
       key: 'decision',
@@ -189,10 +194,24 @@ const STEP_OUTPUTS: Partial<Record<AutomationNodeType, (Omit<DataItem, 'expressi
     { key: 'data', label: 'What the other app sent back', type: 'text' },
   ],
   // For a later step that works on the same record: "Create a contact", then update it.
+  notifyStaffNode: [{ key: 'notified', label: 'How many people were alerted', type: 'number', sample: 3 }],
   crmMutateNode: [
     { key: 'recordId', label: 'ID of the record it changed', type: 'text', sample: '3f2a9c1e-5b7d-4e8a-9c21-7d5e4f3a2b10' },
   ],
 };
+
+const LOOKUP_LABELS: Record<string, string> = {
+  awaitingCustomer: 'Still waiting on the customer',
+  summaryText: 'The summary, ready to send',
+};
+
+/** What a "look up" step found: the fields of the record it looked up. */
+function lookupOutputs(config: Record<string, unknown> | undefined): (Omit<DataItem, 'expression'> & { key: string })[] | undefined {
+  const sample = AUTOMATION_LOOKUP_SAMPLES[String(config?.entity) as keyof typeof AUTOMATION_LOOKUP_SAMPLES];
+  const isLookup = config?.action === 'get' || config?.entity === 'summary';
+  if (!isLookup || !sample) return undefined;
+  return fieldsFromSample(sample).map((f) => ({ ...f, label: LOOKUP_LABELS[f.key] ?? f.label }));
+}
 
 /** Where a step's output lives at run time. Steps are addressed by id, which never changes. */
 export function stepOutputExpression(nodeId: string, key: string): string {
@@ -251,9 +270,16 @@ export function availableData(
   }
 
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  for (const id of stepsBefore(nodeId, edges)) {
+  const before = stepsBefore(nodeId, edges);
+  // `$json` is the output of the one step directly before this one.
+  const direct = edges.filter((e) => e.target === nodeId).map((e) => e.source);
+  const previous = direct.length === 1 ? direct[0] : null;
+  for (const id of before) {
     const step = byId.get(id);
-    const outputs = step ? STEP_OUTPUTS[step.type as AutomationNodeType] : undefined;
+    const outputs = step
+      ? (step.type === 'crmMutateNode' ? lookupOutputs(step.data?.config) : undefined) ??
+        STEP_OUTPUTS[step.type as AutomationNodeType]
+      : undefined;
     if (!step || !outputs) continue;
     groups.push({
       id,
@@ -261,6 +287,7 @@ export function availableData(
       items: outputs.map((o) => ({
         label: o.label,
         expression: stepOutputExpression(id, o.key),
+        alias: id === previous ? `$json.${o.key}` : undefined,
         type: o.type,
         sample: o.sample,
         options: o.options,
@@ -274,7 +301,7 @@ export function availableData(
 export function findDataItem(groups: DataGroup[], expression: string): (DataItem & { group: string }) | undefined {
   const wanted = expression.trim();
   for (const group of groups) {
-    const item = group.items.find((i) => i.expression === wanted);
+    const item = group.items.find((i) => i.expression === wanted || i.alias === wanted);
     if (item) return { ...item, group: group.title };
   }
   return undefined;

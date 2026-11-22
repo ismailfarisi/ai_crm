@@ -6,6 +6,8 @@ import { Bot, ShieldCheck } from 'lucide-react';
 import { AI_AGENT_STEP_NO_TASK, aiAgentStepTask } from '@saas/shared';
 import { toolLabel } from '@/components/settings/agents/agent-labels';
 import { agentChoice, agentChoiceProblem, useAgentOptions } from './agent-options';
+import { DataField } from '../drawers/data-field';
+import type { DataGroup } from '../step-wording';
 
 /** Tasks a workshop actually hands off; each fills the box as a starting point. */
 export const AGENT_TASK_EXAMPLES = [
@@ -46,15 +48,14 @@ export interface AiAgentStepFieldsProps {
   config: Record<string, unknown>;
   /** Replaces the step's whole config. */
   onChange: (config: Record<string, unknown>) => void;
-  showVariables: boolean;
-  onToggleVariables: () => void;
+  /** What earlier steps make available, for "Insert data". */
+  groups?: DataGroup[];
 }
 
 export function AiAgentStepFields({
   config,
   onChange,
-  showVariables,
-  onToggleVariables,
+  groups = [],
 }: AiAgentStepFieldsProps) {
   const options = useAgentOptions();
   const agentId = typeof config.agentId === 'string' ? config.agentId : '';
@@ -129,32 +130,17 @@ export function AiAgentStepFields({
       </div>
 
       <div className="space-y-1">
-        <div className="flex items-center justify-between">
-          <label htmlFor="agent-step-task" className="text-[11px] font-medium text-ink">
-            Task
-          </label>
-          <button
-            type="button"
-            data-testid="agent-step-insert-data-btn"
-            onClick={onToggleVariables}
-            className="text-[11px] text-ink font-semibold hover:underline cursor-pointer"
-          >
-            {showVariables ? 'Hide data from earlier steps' : 'Insert data from earlier steps'}
-          </button>
-        </div>
-        <textarea
-          id="agent-step-task"
+        <DataField
+          label="Task"
+          testId="agent-step-task-input"
+          multiline
           rows={6}
-          data-testid="agent-step-task-input"
+          groups={groups}
           value={typeof config.goal === 'string' ? config.goal : ''}
-          onChange={(e) => onChange({ ...config, goal: e.target.value })}
-          aria-invalid={!hasTask}
-          aria-describedby={hasTask ? undefined : 'agent-step-task-problem'}
+          onChange={(goal) => onChange({ ...config, goal })}
+          invalid={!hasTask}
+          describedBy={hasTask ? undefined : 'agent-step-task-problem'}
           placeholder="Say what the agent should do, as you would to a colleague."
-          className={
-            'w-full rounded-lg border p-2.5 text-xs text-ink focus:outline-none resize-none leading-relaxed ' +
-            (hasTask ? 'border-border focus:border-brand' : 'border-danger focus:border-danger')
-          }
         />
         {!hasTask && (
           <>
@@ -181,11 +167,6 @@ export function AiAgentStepFields({
               ))}
             </div>
           </>
-        )}
-        {hasTask && (
-          <p className="text-[11px] text-ink-subtle">
-            Text in {'{{ }}'} is replaced with data from the run, e.g. {'{{ $trigger.payload.quoteNumber }}'}.
-          </p>
         )}
       </div>
 

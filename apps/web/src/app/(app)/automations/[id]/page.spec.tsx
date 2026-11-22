@@ -250,7 +250,7 @@ describe('AutomationStudioPage', () => {
         const activate = screen.getByTestId('status-toggle-btn');
         expect(activate).toBeEnabled();
         fireEvent.click(activate);
-        fireEvent.click(screen.getByRole('button', { name: 'Activate automation' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Turn it on' }));
 
         await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
         const input = mutateAsync.mock.calls[0][0].input;

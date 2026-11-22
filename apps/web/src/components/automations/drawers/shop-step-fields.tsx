@@ -2,6 +2,8 @@
 
 import React from 'react';
 import { AUTOMATION_MESSAGE_CHANNELS, AUTOMATION_NOTIFY_GROUPS } from '@saas/shared';
+import { DataField } from './data-field';
+import type { DataGroup } from '../step-wording';
 
 const selectClass =
   'w-full rounded-lg border border-border px-2 py-1.5 text-xs text-ink font-semibold bg-surface-muted';
@@ -16,10 +18,12 @@ type StepConfig = Record<string, string | undefined>;
 export interface ShopStepFieldsProps {
   config: StepConfig;
   onChange: (config: StepConfig) => void;
+  /** What earlier steps make available, for "Insert data". */
+  groups?: DataGroup[];
 }
 
 /** "Send Message": a chat message on a connected channel. */
-export function MessageStepFields({ config, onChange }: ShopStepFieldsProps) {
+export function MessageStepFields({ config, onChange, groups = [] }: ShopStepFieldsProps) {
   const set = (key: string, value: string) => onChange({ ...config, [key]: value });
   const toCustomer = config.audience === 'customer';
   const channel =
@@ -57,42 +61,40 @@ export function MessageStepFields({ config, onChange }: ShopStepFieldsProps) {
         </select>
       </div>
 
-      <div className="space-y-1">
-        <label className={labelClass}>{toCustomer ? "Customer's number or chat" : "Colleague's email"}</label>
-        <input
-          type="text"
-          data-testid="message-to-input"
-          value={config.to || ''}
-          onChange={(e) => set('to', e.target.value)}
-          placeholder={toCustomer ? '{{ $trigger.payload.customerPhone }}' : 'production@yourshop.ae'}
-          className={inputClass}
-        />
-        <p className={hintClass}>
+      <DataField
+        label={toCustomer ? "Customer's number or chat" : "Colleague's email"}
+        testId="message-to-input"
+        groups={groups}
+        value={config.to || ''}
+        onChange={(v) => set('to', v)}
+        placeholder={toCustomer ? 'Use Insert data to pick the customer’s phone' : 'production@yourshop.ae'}
+        hint={
+          <>
           {toCustomer
-            ? `Only a customer who has already messaged you on ${channel.label} can be reached here, and the text must be written by you, not by an AI step. Use Send Email for everyone else.`
+            ? `Only a customer who has already messaged you on ${channel.label} can be reached here, and the text must be written by you, not by an AI step. Use “Send an email” for everyone else.`
             : `The email they sign in to Kerf with. They must have linked ${channel.label} to Kerf${
                 channel.value === 'SLACK' ? '; or enter a Slack channel ID such as C0123ABCD' : ''
               }. Separate several with commas.`}
-        </p>
-      </div>
+          </>
+        }
+      />
 
-      <div className="space-y-1">
-        <label className={labelClass}>Message</label>
-        <textarea
-          data-testid="message-body-input"
-          value={config.body || ''}
-          onChange={(e) => set('body', e.target.value)}
-          rows={4}
-          placeholder="Your order {{ $trigger.payload.orderNumber }} is ready to collect."
-          className={inputClass}
-        />
-      </div>
+      <DataField
+        label="Message"
+        testId="message-body-input"
+        multiline
+        rows={4}
+        groups={groups}
+        value={config.body || ''}
+        onChange={(v) => set('body', v)}
+        placeholder="Your order is ready to collect."
+      />
     </div>
   );
 }
 
 /** "Notify Staff": an alert in the bell. */
-export function NotifyStepFields({ config, onChange }: ShopStepFieldsProps) {
+export function NotifyStepFields({ config, onChange, groups = [] }: ShopStepFieldsProps) {
   const set = (key: string, value: string) => onChange({ ...config, [key]: value });
   const toPerson = config.audience === 'person';
 
@@ -144,28 +146,24 @@ export function NotifyStepFields({ config, onChange }: ShopStepFieldsProps) {
         </div>
       )}
 
-      <div className="space-y-1">
-        <label className={labelClass}>Title</label>
-        <input
-          type="text"
-          data-testid="notify-title-input"
-          value={config.title || ''}
-          onChange={(e) => set('title', e.target.value)}
-          placeholder="Deposit paid for {{ $trigger.payload.orderNumber }}"
-          className={inputClass}
-        />
-      </div>
+      <DataField
+        label="Title"
+        testId="notify-title-input"
+        groups={groups}
+        value={config.title || ''}
+        onChange={(v) => set('title', v)}
+        placeholder="Deposit paid, the job can start"
+      />
 
-      <div className="space-y-1">
-        <label className={labelClass}>Details (optional)</label>
-        <textarea
-          data-testid="notify-body-input"
-          value={config.body || ''}
-          onChange={(e) => set('body', e.target.value)}
-          rows={3}
-          className={inputClass}
-        />
-      </div>
+      <DataField
+        label="Details (optional)"
+        testId="notify-body-input"
+        multiline
+        rows={3}
+        groups={groups}
+        value={config.body || ''}
+        onChange={(v) => set('body', v)}
+      />
 
       <div className="space-y-1">
         <label className={labelClass}>Page to open (optional)</label>

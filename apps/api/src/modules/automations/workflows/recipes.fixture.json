@@ -76,7 +76,19 @@
         "data": {
           "label": "Still waiting on the customer?",
           "config": {
-            "condition": "$json.awaitingCustomer == true"
+            "condition": "$node[\"lookup-1\"].json.awaitingCustomer == true",
+            "conditionBuilder": {
+              "match": "all",
+              "rules": [
+                {
+                  "field": "$node[\"lookup-1\"].json.awaitingCustomer",
+                  "label": "Still waiting on the customer",
+                  "type": "choice",
+                  "op": "eq",
+                  "value": "true"
+                }
+              ]
+            }
           }
         }
       },
@@ -319,7 +331,19 @@
         "data": {
           "label": "Still waiting on the customer?",
           "config": {
-            "condition": "$json.awaitingCustomer == true"
+            "condition": "$node[\"lookup-1\"].json.awaitingCustomer == true",
+            "conditionBuilder": {
+              "match": "all",
+              "rules": [
+                {
+                  "field": "$node[\"lookup-1\"].json.awaitingCustomer",
+                  "label": "Still waiting on the customer",
+                  "type": "choice",
+                  "op": "eq",
+                  "value": "true"
+                }
+              ]
+            }
           }
         }
       },

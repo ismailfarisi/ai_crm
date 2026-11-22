@@ -19,6 +19,9 @@ export interface DataFieldProps {
   icon?: React.ReactNode;
   /** Shown in place of the label, for a field whose name is itself a choice. */
   labelSlot?: React.ReactNode;
+  /** Marks the field as needing attention; `describedBy` is the id of the message saying why. */
+  invalid?: boolean;
+  describedBy?: string;
 }
 
 const controlClass =
@@ -42,17 +45,22 @@ export function DataField({
   hint,
   icon,
   labelSlot,
+  invalid = false,
+  describedBy,
 }: DataFieldProps) {
   const id = useId();
   const controlRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const touched = useRef(false);
   const [open, setOpen] = useState(false);
   const hasData = groups.some((g) => g.items.length > 0);
 
   const insert = (expression: string) => {
     const el = controlRef.current;
     const token = `{{ ${expression} }}`;
-    const start = el?.selectionStart ?? value.length;
-    const end = el?.selectionEnd ?? value.length;
+    // A field nobody has clicked into reports its caret at the start; the value belongs at the end.
+    const placed = touched.current && el;
+    const start = placed ? (el.selectionStart ?? value.length) : value.length;
+    const end = placed ? (el.selectionEnd ?? value.length) : value.length;
     const before = value.slice(0, start);
     const after = value.slice(end);
     // A space keeps the value apart from the word before it.
@@ -72,7 +80,12 @@ export function DataField({
     'data-testid': testId,
     value,
     placeholder,
+    onFocus: () => {
+      touched.current = true;
+    },
     'aria-label': labelSlot ? label : undefined,
+    'aria-invalid': invalid || undefined,
+    'aria-describedby': describedBy,
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onChange(e.target.value),
   };
 
@@ -104,7 +117,7 @@ export function DataField({
           {...shared}
           ref={controlRef as React.RefObject<HTMLTextAreaElement>}
           rows={rows}
-          className={clsx(controlClass, 'resize-none leading-relaxed')}
+          className={clsx(controlClass, 'resize-none leading-relaxed', invalid && 'border-danger focus:border-danger')}
         />
       ) : (
         <input {...shared} ref={controlRef as React.RefObject<HTMLInputElement>} type="text" className={controlClass} />

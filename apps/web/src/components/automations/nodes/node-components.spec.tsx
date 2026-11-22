@@ -418,11 +418,11 @@ describe('Automation Node Components', () => {
       expect(screen.queryByText('5 minutes')).not.toBeInTheDocument();
     });
 
-    it('shows a bare number as milliseconds', () => {
+    it('reads a bare number as milliseconds', () => {
       renderWithReactFlow(
         <DelayNode data={{ label: 'Pause', config: { durationMs: '5000' } }} />,
       );
-      expect(screen.getByText('5000 ms')).toBeInTheDocument();
+      expect(screen.getByText('5 seconds')).toBeInTheDocument();
     });
   });
 

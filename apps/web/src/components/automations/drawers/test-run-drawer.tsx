@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import type { AutomationWorkflowDto, AutomationExecutionDto, AutomationNode } from '@saas/shared';
-import { findCrmEvent } from '../crm-events';
+import { crmEventOf, findCrmEvent } from '../crm-events';
 import { eventFieldsFor, sampleDataFor, sampleTriggerFor } from '../event-data';
 import { plainStepName } from '../step-wording';
 
@@ -56,7 +56,7 @@ function pendingActionOf(step: { output?: unknown }): unknown {
 
 export function TestRunDrawer({
   workflow,
-  triggerEvent = null,
+  triggerEvent: canvasEvent,
   nodes,
   hasUnsavedChanges,
   onExecuteTest,
@@ -64,6 +64,11 @@ export function TestRunDrawer({
   onClose,
   className,
 }: TestRunDrawerProps) {
+  // The event on the canvas, else the one the automation was saved with.
+  const triggerEvent =
+    canvasEvent !== undefined
+      ? canvasEvent
+      : crmEventOf(workflow?.triggerConfig as Record<string, unknown> | undefined);
   const fields = eventFieldsFor(triggerEvent);
   // The sample values, by field. Reset whenever another event is chosen.
   const [sample, setSample] = useState<Record<string, string | number>>(() => sampleDataFor(triggerEvent));

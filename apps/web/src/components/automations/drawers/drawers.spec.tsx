@@ -164,7 +164,11 @@ describe('Automation Drawers', () => {
     const { rerender } = render(
       <TestRunDrawer workflow={saved('quote.sent')} onExecuteTest={vi.fn()} onClose={vi.fn()} />,
     );
-    const input = () => screen.getByTestId('test-payload-input') as HTMLTextAreaElement;
+    // The sample is a form of the event's fields; "Edit as JSON" shows what is sent.
+    const input = () => {
+      fireEvent.click(screen.getByTestId('toggle-test-json-btn'));
+      return screen.getByTestId('test-payload-input') as HTMLTextAreaElement;
+    };
     expect(input().value).toContain('quote.sent');
 
     rerender(
@@ -174,8 +178,9 @@ describe('Automation Drawers', () => {
         onClose={vi.fn()}
       />,
     );
-    expect(input().value).toContain('expense.submitted');
-    expect(input().value).not.toContain('quote.sent');
+    const after = input().value;
+    expect(after).toContain('expense.submitted');
+    expect(after).not.toContain('quote.sent');
   });
 
   it('says a test run leaves out changes that are not saved', () => {

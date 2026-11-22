@@ -15,6 +15,8 @@ import {
   type AutomationTemplateId,
 } from './templates';
 import { CRM_EVENTS, CRM_EVENT_GROUPS, findCrmEvent, sampleTriggerFor } from './crm-events';
+import { stepsBefore } from './step-wording';
+import { describeCondition, readCondition } from './condition-rules';
 
 const teamEmail = 'owner@acme.test';
 const ids = AUTOMATION_TEMPLATES.map((t) => t.id);
@@ -114,7 +116,18 @@ describe('automation recipes', () => {
                 expect(jsonKeysFor(before[0]), `${node.id} reads $json.${key}`).toContain(key);
               }
             }
-            const stripped = text.replace(/\$trigger\.payload\.\w+/g, '').replace(/\$json\.\w+/g, '');
+            // A named earlier step: `$node["lookup-1"].json.field`, as the rule builder writes it.
+            const NODE_REF = /\$node\[\\"([\w-]+)\\"\]\.json\.(\w+)/g;
+            for (const m of text.matchAll(NODE_REF)) {
+              const source = g.nodes.find((n) => n.id === m[1]);
+              expect(source, `${node.id} reads a step that is not there: ${m[1]}`).toBeDefined();
+              expect(stepsBefore(node.id, g.edges), `${m[1]} runs before ${node.id}`).toContain(m[1]);
+              expect(jsonKeysFor(source!), `${node.id} reads ${m[1]}.${m[2]}`).toContain(m[2]);
+            }
+            const stripped = text
+              .replace(/\$trigger\.payload\.\w+/g, '')
+              .replace(/\$json\.\w+/g, '')
+              .replace(NODE_REF, '');
             expect(stripped).not.toMatch(/\$(trigger|json|node)/);
           }
         });
@@ -186,7 +199,12 @@ describe('automation recipes', () => {
         'conditionNode',
         'sendEmailNode',
       ]);
-      expect(g.nodes[3].data.config).toEqual({ condition: '$json.awaitingCustomer == true' });
+      const config = g.nodes[3].data.config as { condition: string; conditionBuilder: unknown };
+      expect(config.condition).toBe('$node["lookup-1"].json.awaitingCustomer == true');
+      // It opens in the rule builder, as "Still waiting on the customer is Yes", not as typed code.
+      const opened = readCondition(config);
+      expect(opened.mode).toBe('builder');
+      expect(describeCondition(opened.state)).toBe('Still waiting on the customer is Yes');
     }
   });
 });
