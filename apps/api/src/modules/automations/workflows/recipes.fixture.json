@@ -85,7 +85,7 @@
         "type": "sendEmailNode",
         "position": {
           "x": 100,
-          "y": 700
+          "y": 790
         },
         "data": {
           "label": "Follow up",
@@ -328,7 +328,7 @@
         "type": "sendEmailNode",
         "position": {
           "x": 100,
-          "y": 700
+          "y": 790
         },
         "data": {
           "label": "Remind the customer",

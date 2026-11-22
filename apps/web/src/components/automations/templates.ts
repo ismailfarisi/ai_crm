@@ -272,7 +272,8 @@ export function buildTemplateGraph(
       node('check-1', 'conditionNode', 3, 'Still waiting on the customer?', {
         condition: '$json.awaitingCustomer == true',
       }),
-      node('email-1', 'sendEmailNode', 4, email.label, {
+      // A condition card is taller than the others; leave room below it.
+      node('email-1', 'sendEmailNode', 4.6, email.label, {
         to: P('customerEmail'),
         subject: email.subject,
         body: email.body,
