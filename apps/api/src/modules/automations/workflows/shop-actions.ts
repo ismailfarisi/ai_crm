@@ -248,6 +248,12 @@ export function createShopActions(deps: ShopActionDeps) {
       .getRepository(Quote)
       .findOne({ where: { id, tenantId } });
     if (!quote) refuse('Look up a quote: that quote no longer exists');
+    // The link's hash is never loaded with a quote (select: false), so whether
+    // the quote was sent is asked of the database.
+    const sent =
+      (await deps.dataSource.getRepository(Quote).count({
+        where: { id, tenantId, acceptanceTokenHash: Not(IsNull()) },
+      })) > 0;
     const expired = Boolean(
       quote.acceptanceExpiresAt && quote.acceptanceExpiresAt < new Date(),
     );
@@ -266,7 +272,7 @@ export function createShopActions(deps: ShopActionDeps) {
       // Sent, still open, and the customer has said nothing yet.
       awaitingCustomer:
         quote.status === QuoteStatus.APPROVED &&
-        Boolean(quote.acceptanceTokenHash) &&
+        sent &&
         !quote.acceptedAt &&
         !quote.supersededAt &&
         !quote.customerResponse &&

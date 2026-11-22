@@ -151,6 +151,24 @@ describe('Automation Drawers', () => {
     expect(onExecute).toHaveBeenCalled();
   });
 
+
+  it('says a test run leaves out changes that are not saved', () => {
+    const { rerender } = render(
+      <TestRunDrawer workflow={sampleWorkflow} onExecuteTest={vi.fn()} onClose={vi.fn()} />,
+    );
+    expect(screen.queryByTestId('test-run-unsaved-note')).toBeNull();
+
+    rerender(
+      <TestRunDrawer
+        workflow={sampleWorkflow}
+        hasUnsavedChanges
+        onExecuteTest={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('test-run-unsaved-note').textContent).toContain('Save first');
+  });
+
   it('surfaces an AI tool preview when execution is waiting for approval', async () => {
     const execution: AutomationExecutionDto = {
       ...sampleExecution,

@@ -293,6 +293,7 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
         {isTestRunOpen && (
           <TestRunDrawer
             workflow={workflow}
+            hasUnsavedChanges={hasUnsavedChanges}
             onExecuteTest={handleExecuteTest}
             onGetExecution={testRunMutation.getExecution}
             onClose={() => setIsTestRunOpen(false)}

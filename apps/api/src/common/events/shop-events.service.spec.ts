@@ -1,7 +1,6 @@
 import {
   AUTOMATION_LOOKUP_SAMPLES,
   SHOP_EVENTS,
-  type ShopEventType,
 } from '@saas/shared';
 import { z } from 'zod';
 import type { DataSource, EntityManager } from 'typeorm';
@@ -231,7 +230,7 @@ describe('ShopEventsService', () => {
       const { service } = makeService(manager);
       const payload = await service.payloadFor(
         manager,
-        value as ShopEventType,
+        value,
         TENANT,
         ENTITY_ID[value.split('.')[0]],
         {
@@ -253,7 +252,7 @@ describe('ShopEventsService', () => {
     for (const event of published) {
       await service.payloadFor(
         manager,
-        event.value as ShopEventType,
+        event.value,
         TENANT,
         ENTITY_ID[event.value.split('.')[0]],
       );

@@ -19,6 +19,8 @@ import { crmEventOf, sampleTriggerFor } from '../crm-events';
 
 export interface TestRunDrawerProps {
   workflow: AutomationWorkflowDto | null;
+  /** A test run uses the saved automation, so edits not yet saved are left out. */
+  hasUnsavedChanges?: boolean;
   onExecuteTest: (payload: Record<string, any>) => Promise<AutomationExecutionDto | null>;
   onGetExecution?: (executionId: string) => Promise<AutomationExecutionDto>;
   onClose: () => void;
@@ -33,6 +35,7 @@ function pendingActionOf(step: { output?: unknown }): unknown {
 
 export function TestRunDrawer({
   workflow,
+  hasUnsavedChanges,
   onExecuteTest,
   onGetExecution,
   onClose,
@@ -155,6 +158,16 @@ export function TestRunDrawer({
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {hasUnsavedChanges && (
+          <div
+            data-testid="test-run-unsaved-note"
+            className="rounded-lg border border-border bg-brand-soft px-3 py-2 text-[11px] text-ink"
+          >
+            You have changes that are not saved. A test run uses the last saved version, and the
+            sample below belongs to it. Save first to test what you see.
+          </div>
+        )}
+
         {/* Test Payload Input Form */}
         <div className="space-y-1.5">
           <label className="text-xs font-semibold text-ink flex items-center justify-between">

@@ -96,7 +96,6 @@ function world(options: { customerAnswered?: boolean } = {}) {
           totalAmount: '18375.00',
           currency: 'AED',
           status: 'APPROVED',
-          acceptanceTokenHash: 'hash',
           acceptanceExpiresAt: null,
           acceptedAt: waiting ? null : new Date(),
           supersededAt: null,

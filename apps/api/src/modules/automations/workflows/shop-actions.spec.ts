@@ -60,7 +60,13 @@ function setup(tables: Tables = {}, permissions: string[] = ALL) {
   const repo = (entity: unknown) => {
     const one = (): unknown => {
       if (entity === ChannelMessage) return tables.inbound ?? null;
-      if (entity === Quote) return tables.quote ?? null;
+      // Like the real column (select: false), the link's hash is never loaded.
+      if (entity === Quote) {
+        if (!tables.quote) return null;
+        const loaded = { ...tables.quote };
+        delete loaded.acceptanceTokenHash;
+        return loaded;
+      }
       if (entity === QuoteProof) return tables.proof ?? null;
       if (entity === Invoice) return tables.invoice ?? null;
       if (entity === Organization) return { id: TENANT, baseCurrency: 'AED' };
@@ -104,6 +110,9 @@ function setup(tables: Tables = {}, permissions: string[] = ALL) {
       }),
       count: jest.fn((options: { where: Record<string, unknown> }) => {
         finds.push({ entity, where: options.where });
+        if (entity === Quote && options.where.id) {
+          return Promise.resolve(tables.quote?.acceptanceTokenHash ? 1 : 0);
+        }
         if (entity === Quote) return Promise.resolve(4);
         if (entity === QuoteProof) return Promise.resolve(2);
         if (entity === SalesOrder) return Promise.resolve(6);
@@ -147,8 +156,8 @@ function setup(tables: Tables = {}, permissions: string[] = ALL) {
   };
   const actions = createShopActions({
     dataSource: { getRepository: repo } as never,
-    channels: channels as never,
-    notifications: notifications as never,
+    channels: channels,
+    notifications: notifications,
     users: {
       findMember: jest.fn().mockResolvedValue({
         id: 'owner-1',
@@ -159,11 +168,11 @@ function setup(tables: Tables = {}, permissions: string[] = ALL) {
         isActive: true,
       }),
       findActiveEmails: jest.fn(),
-    } as never,
+    },
     rbac: {
       resolveAccess: jest.fn().mockResolvedValue({ permissions, roles: [] }),
-    } as never,
-    audit: audit as never,
+    },
+    audit: audit,
     tenantContext: {
       runAsAutomation: (_t: string, _e: string, fn: () => unknown) => fn(),
     } as never,
@@ -489,6 +498,9 @@ describe('Kerf record lookups', () => {
       Object.keys(AUTOMATION_LOOKUP_SAMPLES.quote).sort(),
     );
     expect(finds[0].where).toEqual({ id: QUOTE_ID, tenantId: TENANT });
+    // "Was it sent" is its own tenant-scoped query: the hash is not loaded.
+    expect(finds[1].where).toMatchObject({ id: QUOTE_ID, tenantId: TENANT });
+    expect(finds[1].where).toHaveProperty('acceptanceTokenHash');
   });
 
   it.each([
