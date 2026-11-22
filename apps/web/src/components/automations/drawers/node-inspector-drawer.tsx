@@ -428,6 +428,7 @@ export function NodeInspectorDrawer({
                 key={node.id}
                 config={config}
                 onChange={(next) => onUpdate(node.id, { config: next })}
+                groups={data}
               />
             )}
 

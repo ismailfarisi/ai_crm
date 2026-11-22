@@ -53,6 +53,15 @@ function AgentStepPreview({ config }: { config: Record<string, unknown> }) {
     </div>
   );
 }
+import { useNamedText } from '../canvas/canvas-actions';
+
+/** What an "Update a record" step does, as its card says it. */
+const RECORD_STEP_DOES: Record<string, string> = {
+  'contact.create': 'Create a contact',
+  'contact.update': 'Update a contact',
+  'quote.approve': 'Approve a quote',
+  'quote.reject': 'Reject a quote',
+};
 
 export interface ActionNodeData extends AutomationNodeData {
   config: {
@@ -76,6 +85,9 @@ export function ActionNode({
   const config = nodeData.config || {};
   const status = (nodeData as any).status || (nodeData as any).executionStatus;
 
+  // On the card, data picked from a list reads by its name, not as `{{ … }}`.
+  const named = useNamedText();
+
   let Icon = Globe;
   let category = 'Action';
   let defaultTitle = 'Action';
@@ -96,7 +108,7 @@ export function ActionNode({
           <span className="rounded bg-info-soft px-1 py-0.5 font-semibold text-info text-[11px]">
             {config.method || 'GET'}
           </span>
-          <span className="text-ink-muted truncate">{config.url || 'https://api.example.com'}</span>
+          <span className="text-ink-muted truncate">{named(config.url) || 'https://api.example.com'}</span>
         </div>
       );
       break;
@@ -109,14 +121,16 @@ export function ActionNode({
       iconColor = 'text-info';
       previewContent = (
         <div className="space-y-1 text-[11px]">
-          <div className="flex items-center justify-between text-ink-muted">
-            <span>Model:</span>
-            <span className="font-mono text-[11px] font-semibold text-info bg-info-soft px-1.5 py-0.5 rounded border border-info/20">
-              {config.model || 'gpt-4o-mini'}
-            </span>
-          </div>
+          {config.model && (
+            <div className="flex items-center justify-between text-ink-muted">
+              <span>Model:</span>
+              <span className="font-mono text-[11px] font-semibold text-info bg-info-soft px-1.5 py-0.5 rounded border border-info/20">
+                {config.model}
+              </span>
+            </div>
+          )}
           <p className="text-ink-muted truncate font-sans text-[11px]">
-            {config.prompt ? `"${config.prompt}"` : 'Generate completion...'}
+            {config.prompt ? `"${named(config.prompt)}"` : 'Not told what to write yet'}
           </p>
         </div>
       );
@@ -140,11 +154,11 @@ export function ActionNode({
       previewContent = (
         <div className="space-y-0.5 text-[11px] truncate">
           <div className="text-ink font-medium truncate">
-            To: <span className="text-ink-muted">{config.to || 'recipient@example.com'}</span>
+            To: <span className="text-ink-muted">{named(config.to) || 'nobody yet'}</span>
           </div>
           {config.subject && (
             <div className="text-ink-muted truncate text-[11px]">
-              Sub: {config.subject}
+              Subject: {named(config.subject)}
             </div>
           )}
         </div>
@@ -175,6 +189,13 @@ export function ActionNode({
   const title = plainStepName(type, nodeData.label) || defaultTitle;
   // Every action reads the same on the canvas: it does something.
   category = stepWording(type)?.kind ?? category;
+  // A step nobody has filled in yet says so, rather than showing a made-up setting.
+  if (type === 'crmMutateNode') {
+    const does = !(config.entity && config.action)
+      ? 'Not set up yet'
+      : RECORD_STEP_DOES[`${config.entity}.${config.action}`];
+    if (does) previewContent = <div className="text-[11px] text-ink-muted truncate">{does}</div>;
+  }
 
   return (
     <BaseNode

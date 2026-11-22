@@ -18,7 +18,11 @@ export interface StepWording {
   advanced?: boolean;
 }
 
-export const STEP_WORDING: Record<AutomationNodeType, StepWording> = {
+/**
+ * Typed loosely on purpose: a kind of step can be described here before, or
+ * in the same change as, it joins `AutomationNodeType`.
+ */
+export const STEP_WORDING: Record<AutomationNodeType, StepWording> & Record<string, StepWording> = {
   crmEventTrigger: {
     label: 'When something happens in Kerf',
     description: 'A quote is accepted, an invoice goes overdue, a contact is added…',
@@ -43,6 +47,16 @@ export const STEP_WORDING: Record<AutomationNodeType, StepWording> = {
   sendEmailNode: {
     label: 'Send an email',
     description: 'Email your team or the customer',
+    kind: 'Do something',
+  },
+  sendMessageNode: {
+    label: 'Send a message',
+    description: 'WhatsApp, Telegram or Slack, to a customer or a colleague',
+    kind: 'Do something',
+  },
+  notifyStaffNode: {
+    label: 'Alert the team in Kerf',
+    description: 'Put an alert in the bell for a colleague or a whole team',
     kind: 'Do something',
   },
   crmMutateNode: {
@@ -170,7 +184,14 @@ const STEP_OUTPUTS: Partial<Record<AutomationNodeType, (Omit<DataItem, 'expressi
     },
     { key: 'comment', label: "Approver's comment", type: 'text', sample: 'Looks fine, go ahead.' },
   ],
-  httpRequestNode: [{ key: 'status', label: 'Response code', type: 'number', sample: 200 }],
+  httpRequestNode: [
+    { key: 'status', label: 'Response code', type: 'number', sample: 200 },
+    { key: 'data', label: 'What the other app sent back', type: 'text' },
+  ],
+  // For a later step that works on the same record: "Create a contact", then update it.
+  crmMutateNode: [
+    { key: 'recordId', label: 'ID of the record it changed', type: 'text', sample: '3f2a9c1e-5b7d-4e8a-9c21-7d5e4f3a2b10' },
+  ],
 };
 
 /** Where a step's output lives at run time. Steps are addressed by id, which never changes. */
@@ -270,6 +291,18 @@ export function previewText(text: string, groups: DataGroup[]): string {
     const item = findDataItem(groups, expression);
     if (item?.sample !== undefined) return String(item.sample);
     return `[${item?.label ?? expression.trim()}]`;
+  });
+}
+
+/**
+ * The same text with each `{{ … }}` it recognises shown by its plain name:
+ * "Quote accepted: [Quote number]". For a step's card on the canvas, where
+ * there is no room for an example. Anything not recognised stays as typed.
+ */
+export function namedText(text: string, groups: DataGroup[]): string {
+  return text.replace(PLACEHOLDER, (typed: string, expression: string) => {
+    const item = findDataItem(groups, expression);
+    return item ? `[${item.label}]` : typed;
   });
 }
 
