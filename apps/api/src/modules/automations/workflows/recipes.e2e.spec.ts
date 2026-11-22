@@ -313,6 +313,16 @@ describe('ready-made recipes, end to end', () => {
     expect(mail.sendMail.mock.calls[0][0].to).toBe('orders@alnoorbakery.ae');
   });
 
+  it('a test run tells the steps it is one, so a look-up of the invented record can answer', async () => {
+    const recipe = recipes.find((r) => r.id === 'quote-follow-up')!;
+    world();
+    const state = await run(recipe, { testRun: true });
+    expect(state.nodeResults['lookup-1'].output).toMatchObject({
+      sampleRecord: true,
+      awaitingCustomer: true,
+    });
+  });
+
   it('the overdue reminder keeps AI text inside the team unless the organisation allows customers', async () => {
     const [toTeam, toCustomer] = recipes.filter(
       (r) => r.id === 'invoice-overdue-reminder',

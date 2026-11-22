@@ -18,6 +18,7 @@ import type { AutomationWorkflowDto, AutomationExecutionDto, AutomationNode } fr
 import { crmEventOf, findCrmEvent } from '../crm-events';
 import { eventFieldsFor, sampleDataFor, sampleTriggerFor } from '../event-data';
 import { plainStepName } from '../step-wording';
+import { stepOutcome } from '../runs/step-outcome';
 
 export interface TestRunDrawerProps {
   workflow: AutomationWorkflowDto | null;
@@ -82,6 +83,12 @@ export function TestRunDrawer({
   }
   const stepNames = new Map((nodes ?? []).map((n) => [n.id, plainStepName(n.type, n.data?.label)]));
   const nameOf = (nodeId: string) => stepNames.get(nodeId) ?? nodeId;
+  const stepTypes = new Map((nodes ?? []).map((n) => [n.id, n.type as string]));
+  /** What the step did, in words; a failed step says why and what to do. */
+  const outcomeOf = (nodeId: string) => {
+    const result = executionResult?.nodeResults?.[nodeId];
+    return result ? stepOutcome(result.type ?? stepTypes.get(nodeId), result) : '';
+  };
 
   const [isRunning, setIsRunning] = useState(false);
   const [executionResult, setExecutionResult] = useState<AutomationExecutionDto | null>(null);
@@ -338,6 +345,13 @@ export function TestRunDrawer({
                   </pre>
                 </div>
               )}
+            {executionResult.status === 'FAILED' &&
+              executionResult.errorMessage &&
+              !Object.values(executionResult.nodeResults ?? {}).some((r) => r.status === 'FAILED') && (
+                <p role="alert" data-testid="test-run-error" className="text-xs text-danger break-words">
+                  {executionResult.errorMessage}
+                </p>
+              )}
             {pollingError && (
               <p role="alert" className="text-xs text-danger">
                 {pollingError}
@@ -361,15 +375,28 @@ export function TestRunDrawer({
                         : 'border-border bg-surface-muted hover:bg-surface-muted',
                     )}
                   >
-                    <div className="flex items-center gap-2 truncate">
+                    <div className="flex items-start gap-2 min-w-0">
                       {res.status === 'SUCCESS' ? (
-                        <CheckCircle2 className="h-3.5 w-3.5 text-success shrink-0" />
+                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 text-success shrink-0" />
                       ) : res.status === 'WAITING' ? (
-                        <Clock className="h-3.5 w-3.5 text-brand shrink-0" />
+                        <Clock className="mt-0.5 h-3.5 w-3.5 text-brand shrink-0" />
                       ) : (
-                        <XCircle className="h-3.5 w-3.5 text-danger shrink-0" />
+                        <XCircle className="mt-0.5 h-3.5 w-3.5 text-danger shrink-0" />
                       )}
-                      <span className="truncate">{nameOf(nodeId)}</span>
+                      <span className="min-w-0">
+                        <span className="block truncate">{nameOf(nodeId)}</span>
+                        {outcomeOf(nodeId) && (
+                          <span
+                            data-testid={`step-outcome-${nodeId}`}
+                            className={clsx(
+                              'block text-[11px] font-normal break-words',
+                              res.status === 'FAILED' ? 'text-danger' : 'text-ink-muted',
+                            )}
+                          >
+                            {outcomeOf(nodeId)}
+                          </span>
+                        )}
+                      </span>
                     </div>
                     <span className="text-[11px] font-mono text-ink-subtle shrink-0">
                       {res.durationMs !== undefined ? formatTook(res.durationMs) : ''}
@@ -384,7 +411,7 @@ export function TestRunDrawer({
               <div className="space-y-2 pt-2">
                 <label className="text-[11px] font-semibold text-ink flex items-center gap-1">
                   <Terminal className="h-3 w-3 text-ink-muted" />
-                  Result of: {nameOf(selectedNodeResultKey)}
+                  Technical details: {nameOf(selectedNodeResultKey)}
                 </label>
                 <pre
                   data-testid="selected-node-output-json"

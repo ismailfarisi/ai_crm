@@ -228,7 +228,9 @@ describe('Automation Drawers', () => {
 
     fireEvent.click(screen.getByTestId('execute-test-btn'));
     expect(await screen.findByTestId('pending-agent-approval')).toBeDefined();
-    expect(screen.getByText('Waiting for someone to approve')).toBeDefined();
+    expect(
+      within(screen.getByTestId('pending-agent-approval')).getByText('Waiting for someone to approve'),
+    ).toBeDefined();
     expect(within(screen.getByTestId('pending-agent-approval')).getByText(/Create quote QT-1/)).toBeDefined();
   });
 

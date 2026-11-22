@@ -104,6 +104,8 @@ export interface AutomationActionContext {
   ownerUserId?: string;
   /** True when the step's text was written by an upstream AI step. */
   aiWritten: boolean;
+  /** True in a test run, which starts from invented sample data. */
+  testRun?: boolean;
 }
 
 export interface AiPromptActivityConfig {

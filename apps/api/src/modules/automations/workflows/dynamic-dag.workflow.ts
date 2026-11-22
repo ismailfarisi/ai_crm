@@ -357,6 +357,7 @@ export async function dynamicDagWorkflow(
           nodeId: node.id,
           ownerUserId: input.ownerUserId,
           aiWritten: usesAiOutput(node, input.nodes, input.edges),
+          ...(input.testRun ? { testRun: true } : {}),
         };
 
         switch (node.type) {

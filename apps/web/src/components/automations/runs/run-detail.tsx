@@ -9,6 +9,8 @@ import type { AutomationExecutionStatus } from '@saas/shared';
 import { useAutomationExecution } from '@/hooks/use-automations';
 import { ApprovalDecision } from './approval-decision';
 import { AgentStepResult } from '../agent-step/agent-step-result';
+import { plainStepName } from '../step-wording';
+import { stepOutcome, stepStatusWord } from './step-outcome';
 
 export function StatusChip({ status }: { status: AutomationExecutionStatus }) {
   return (
@@ -141,7 +143,7 @@ export function RunDetail({ executionId, onBack }: RunDetailProps) {
           <p className="text-xs text-ink-muted">{HIDDEN_COPY}</p>
         ) : (
           <details>
-            <summary className="text-[11px] text-ink-muted cursor-pointer">Trigger payload</summary>
+            <summary className="text-[11px] text-ink-muted cursor-pointer">The data it started with</summary>
             <JsonBlock value={execution.triggerPayload} />
           </details>
         )}
@@ -153,7 +155,9 @@ export function RunDetail({ executionId, onBack }: RunDetailProps) {
           <p className="text-xs text-ink-muted">Details weren&apos;t recorded for this run.</p>
         )}
         <ol className="space-y-1.5">
-          {steps.map((step) => (
+          {steps.map((step) => {
+            const outcome = stepOutcome(step.type, step);
+            return (
             <li
               key={step.nodeId}
               data-testid="run-step"
@@ -161,36 +165,52 @@ export function RunDetail({ executionId, onBack }: RunDetailProps) {
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-ink truncate">
-                  {step.label || step.type || step.nodeId}
+                  {plainStepName(step.type, step.label)}
                 </span>
-                <span className="text-[11px] font-mono text-ink-subtle shrink-0">
-                  {step.durationMs !== undefined ? `${step.durationMs}ms` : ''}
+                <span
+                  data-testid="run-step-status"
+                  className={clsx(
+                    'text-[11px] font-medium shrink-0',
+                    step.status === 'FAILED' ? 'text-danger' : 'text-ink-subtle',
+                  )}
+                >
+                  {stepStatusWord(step.status)}
+                  {step.durationMs !== undefined && step.status !== 'FAILED' ? ` · ${formatDuration(step.durationMs)}` : ''}
                 </span>
               </div>
-              <p className="text-[11px] text-ink-muted">
-                {step.type ?? '—'} · {step.status}
-              </p>
-              {step.error && <p className="text-[11px] text-danger break-words">{step.error}</p>}
+              {outcome && (
+                <p
+                  data-testid="run-step-outcome"
+                  role={step.status === 'FAILED' ? 'alert' : undefined}
+                  className={clsx(
+                    'text-[11px] break-words',
+                    step.status === 'FAILED' ? 'text-danger' : 'text-ink-muted',
+                  )}
+                >
+                  {outcome}
+                </p>
+              )}
               {!execution.dataHidden && step.type === 'aiAgentNode' && <AgentStepResult output={step.output} />}
               {!execution.dataHidden && (step.input !== undefined || step.output !== undefined) && (
                 <details className="mt-1">
-                  <summary className="text-[11px] text-ink-muted cursor-pointer">Input / Output</summary>
+                  <summary className="text-[11px] text-ink-muted cursor-pointer">Technical details</summary>
                   {step.input !== undefined && (
                     <>
-                      <p className="text-[11px] font-semibold text-ink-muted mt-1">Input</p>
+                      <p className="text-[11px] font-semibold text-ink-muted mt-1">How the step was set up</p>
                       <JsonBlock value={step.input} />
                     </>
                   )}
                   {step.output !== undefined && (
                     <>
-                      <p className="text-[11px] font-semibold text-ink-muted mt-1">Output</p>
+                      <p className="text-[11px] font-semibold text-ink-muted mt-1">What it returned</p>
                       <JsonBlock value={step.output} />
                     </>
                   )}
                 </details>
               )}
             </li>
-          ))}
+            );
+          })}
         </ol>
       </div>
     </div>

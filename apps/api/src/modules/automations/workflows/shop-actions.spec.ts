@@ -487,6 +487,22 @@ describe('Kerf record lookups', () => {
     validUntil: null,
   };
 
+  it('answers a test run about the invented sample quote, which is in no database', async () => {
+    const invented = AUTOMATION_LOOKUP_SAMPLES.quote.quoteId;
+    const config = { entity: 'quote', action: 'get', recordId: invented } as const;
+
+    const tested = await setup({}).actions.executeRecordLookupActivity(config, {
+      ...ctx,
+      testRun: true,
+    });
+    expect(tested).toEqual({ ...AUTOMATION_LOOKUP_SAMPLES.quote, sampleRecord: true });
+
+    // A real run never gets invented details.
+    await expect(
+      setup({}).actions.executeRecordLookupActivity(config, ctx),
+    ).rejects.toThrow(/that quote no longer exists/);
+  });
+
   it('says a sent, unanswered quote is still waiting on the customer', async () => {
     const { actions, finds } = setup({ quote: sentQuote });
     const result = await actions.executeRecordLookupActivity(

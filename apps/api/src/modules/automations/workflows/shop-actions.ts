@@ -6,6 +6,7 @@ import {
   PERMISSIONS,
   findNotifyGroup,
   invoicePosition,
+  lookupSampleForTest,
   needsReorder,
   type Permission,
 } from '@saas/shared';
@@ -644,6 +645,11 @@ export function createShopActions(deps: ShopActionDeps) {
           const entity = asText(config.entity);
           const owner = await resolveOwner(deps, ctx, 'look up records');
           if (entity === 'summary') return dailySummary(ctx.tenantId, owner);
+
+          // A test run starts from an invented record, which is not in the
+          // database: hand back its invented details instead of failing.
+          const invented = ctx.testRun ? lookupSampleForTest(config) : null;
+          if (invented) return { ...invented, sampleRecord: true };
 
           const recordId = asText(config.recordId).trim();
           if (!recordIdSchema.safeParse(recordId).success) {

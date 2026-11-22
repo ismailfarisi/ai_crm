@@ -156,3 +156,20 @@ export const AUTOMATION_LOOKUP_SAMPLES: Record<
       'Quotes waiting on customers: 4\nProofs waiting on customers: 2\nOrders in production: 6\nJobs due today: 3 (1 late)\nOverdue invoices: 2 (AED 12,400.00)\nPayments received yesterday: AED 9,187.50\nMaterials at or below minimum: 1\nPurchase orders waiting for approval: 1\nCustomer conversations waiting for a person: 2',
   },
 };
+
+const LOOKUP_SAMPLE_ID_FIELD = { quote: 'quoteId', proof: 'proofId', invoice: 'invoiceId' } as const;
+
+/**
+ * The made-up record a test run looks up when its sample data still carries
+ * the made-up id: Test Run starts from an invented quote, so there is no real
+ * one to find. Null for any other id, which is looked up for real.
+ */
+export function lookupSampleForTest(config: {
+  entity?: unknown;
+  recordId?: unknown;
+}): Record<string, string | number | boolean | null> | null {
+  const idField = LOOKUP_SAMPLE_ID_FIELD[config.entity as keyof typeof LOOKUP_SAMPLE_ID_FIELD];
+  if (!idField) return null;
+  const sample = AUTOMATION_LOOKUP_SAMPLES[config.entity as keyof typeof LOOKUP_SAMPLE_ID_FIELD];
+  return String(config.recordId ?? '').trim() === sample[idField] ? sample : null;
+}
