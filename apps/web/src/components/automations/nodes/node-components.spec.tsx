@@ -311,6 +311,27 @@ describe('Automation Node Components', () => {
       expect(screen.getByText('https://api.stripe.com/v1/customers')).toBeInTheDocument();
     });
 
+    it('does not invent settings for a step that has none yet', () => {
+      // What a newly added step starts with: a placeholder action and no record chosen.
+      const { unmount } = renderWithReactFlow(
+        <ActionNode type="crmMutateNode" data={{ label: '', config: { action: 'CREATE_CONTACT', payload: {} } }} />,
+      );
+      expect(screen.getByText('Not set up yet')).toBeInTheDocument();
+      expect(screen.queryByText('CREATE_CONTACT')).not.toBeInTheDocument();
+      unmount();
+
+      const filled = renderWithReactFlow(
+        <ActionNode type="crmMutateNode" data={{ label: '', config: { entity: 'contact', action: 'update' } }} />,
+      );
+      expect(screen.getByText('Update a contact')).toBeInTheDocument();
+      expect(screen.queryByText('CRM Entity')).not.toBeInTheDocument();
+      filled.unmount();
+
+      renderWithReactFlow(<ActionNode type="aiPromptNode" data={{ label: '', config: {} }} />);
+      expect(screen.queryByText('gpt-4o-mini')).not.toBeInTheDocument();
+      expect(screen.getByText('Not told what to write yet')).toBeInTheDocument();
+    });
+
     it('renders aiPromptNode with model and prompt summary', () => {
       renderWithReactFlow(
         <ActionNode
@@ -340,7 +361,7 @@ describe('Automation Node Components', () => {
 
       expect(screen.getByText('Send Welcome Email')).toBeInTheDocument();
       expect(screen.getByText('client@example.com')).toBeInTheDocument();
-      expect(screen.getByText('Sub: Welcome to our platform')).toBeInTheDocument();
+      expect(screen.getByText('Subject: Welcome to our platform')).toBeInTheDocument();
     });
 
     it('renders crmMutateNode with mutation action', () => {
@@ -349,7 +370,7 @@ describe('Automation Node Components', () => {
           type="crmMutateNode"
           data={{
             label: 'Create CRM Deal',
-            config: { action: 'CREATE_DEAL' },
+            config: { entity: 'deal', action: 'CREATE_DEAL' },
           }}
         />,
       );
@@ -455,6 +476,22 @@ describe('Automation Node Components', () => {
     it('shows nothing outside a canvas', () => {
       render(<AddStepButton />);
       expect(screen.queryByRole('button')).toBeNull();
+    });
+
+    it('a step card names the data it uses instead of showing braces', () => {
+      const nameData = vi.fn((_: string, text: string) => text.replace('{{ $trigger.payload.quoteNumber }}', '[Quote number]'));
+      render(
+        <ReactFlowProvider>
+          <CanvasActionsContext.Provider value={{ onAddAfter: vi.fn(), connectedOutputs: new Set(), nameData }}>
+            <ActionNode
+              type="sendEmailNode"
+              data={{ label: 'Send an email', config: { to: 'team@shop.ae', subject: 'Accepted: {{ $trigger.payload.quoteNumber }}' } }}
+            />
+          </CanvasActionsContext.Provider>
+        </ReactFlowProvider>,
+      );
+      expect(screen.getByText('Subject: Accepted: [Quote number]')).toBeInTheDocument();
+      expect(nameData).toHaveBeenCalledWith('step-1', 'Accepted: {{ $trigger.payload.quoteNumber }}');
     });
   });
 

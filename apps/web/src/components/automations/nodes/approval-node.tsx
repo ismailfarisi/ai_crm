@@ -7,6 +7,7 @@ import type { AutomationNodeData } from '@saas/shared';
 import { BaseNode } from './base-node';
 import { AddStepButton } from './add-step-button';
 import { plainStepName } from '../step-wording';
+import { useNamedText } from '../canvas/canvas-actions';
 
 export interface ApprovalNodeData extends AutomationNodeData {
   config: {
@@ -24,6 +25,8 @@ export function ApprovalNode({
   const config = nodeData.config || {};
   const status = (nodeData as any).status || (nodeData as any).executionStatus;
   const timeoutDuration = config.timeoutDuration || '3 days';
+  // Data picked from a list reads by its name on the card, not as `{{ … }}`.
+  const message = useNamedText()(config.message);
 
   return (
     <BaseNode
@@ -42,7 +45,7 @@ export function ApprovalNode({
         {/* Approver role and timeout info */}
         <div className="rounded-md bg-surface-muted p-2 border border-border/80 text-[11px] text-ink-muted space-y-1">
           {config.message ? (
-            <p className="line-clamp-2 text-ink">{config.message}</p>
+            <p className="line-clamp-2 text-ink">{message}</p>
           ) : null}
           <div className="flex items-center justify-between">
             <span className="text-ink-muted">Waits up to</span>

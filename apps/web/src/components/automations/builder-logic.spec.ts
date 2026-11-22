@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { CRM_EVENTS } from './crm-events';
-import { eventFieldsFor, sampleDataFor, sampleTriggerFor, triggerFieldExpression } from './event-data';
+import { eventFieldsFor, fieldLabel, fieldsFromSample, sampleDataFor, sampleTriggerFor, triggerFieldExpression } from './event-data';
 import {
   STEP_WORDING,
   availableData,
   findDataItem,
   plainStepName,
   previewText,
+  namedText,
   stepsBefore,
 } from './step-wording';
 import {
@@ -45,6 +46,44 @@ describe('event data: one place per event', () => {
     expect(trigger.eventType).toBe('quote.accepted');
     expect(trigger.payload.totalAmount).toBe(sampleDataFor('quote.accepted').totalAmount);
     expect(triggerFieldExpression('totalAmount')).toBe('$trigger.payload.totalAmount');
+  });
+
+  it('reads the field list off an event registered with only a sample of its data', () => {
+    const fields = fieldsFromSample({
+      orderId: '2f7e9a10-6c4b-4d2e-8a31-7b5c0d9e4f12',
+      orderNumber: 'SO-2026-0098',
+      totalAmount: 18375,
+      dueDate: '2026-12-02T00:00:00.000Z',
+      customerPhone: null,
+      rush: true,
+    });
+    expect(fields.map((f) => [f.key, f.label, f.type])).toEqual([
+      ['orderNumber', 'Order number', 'text'],
+      ['totalAmount', 'Total amount', 'number'],
+      ['dueDate', 'Due date', 'date'],
+      ['rush', 'Rush', 'choice'],
+      ['orderId', 'Order ID', 'text'],
+    ]);
+    expect(fieldLabel('poNumber')).toBe('PO number');
+    expect(fieldLabel('qtyCompleted')).toBe('Quantity completed');
+
+    // An event added to the list with a sample and nothing else is usable as it stands.
+    const events = CRM_EVENTS as unknown as Record<string, unknown>[];
+    events.push({
+      value: 'order.confirmed',
+      label: 'Order confirmed',
+      when: 'an order is confirmed',
+      sample: { orderNumber: 'SO-2026-0098', totalAmount: 18375 },
+    });
+    try {
+      expect(eventFieldsFor('order.confirmed').map((f) => f.label)).toEqual(['Order number', 'Total amount']);
+      expect(sampleTriggerFor('order.confirmed')).toMatchObject({
+        eventType: 'order.confirmed',
+        payload: { orderNumber: 'SO-2026-0098', totalAmount: 18375 },
+      });
+    } finally {
+      events.pop();
+    }
   });
 
   it('falls back to the record an undescribed event is about, and to nothing when unknown', () => {
@@ -97,6 +136,18 @@ describe('data available to a step', () => {
     expect(groups[1].items[0]).toMatchObject({ label: 'What the AI wrote', expression: '$node["ai"].json.text' });
   });
 
+  it('offers the record an earlier step created, so a later step can work on it', () => {
+    const steps = [nodes[0], { id: 'add', type: 'crmMutateNode' as const, data: { label: 'Add the lead' } }, { id: 'next', type: 'crmMutateNode' as const }];
+    const links = [
+      { source: nodes[0].id, target: 'add' },
+      { source: 'add', target: 'next' },
+    ];
+    const group = availableData('next', steps, links).find((g) => g.title === 'Add the lead');
+    expect(group?.items).toEqual([
+      expect.objectContaining({ label: 'ID of the record it changed', expression: '$node["add"].json.recordId' }),
+    ]);
+  });
+
   it('does not offer a step that runs later or on another path', () => {
     const titles = availableData('wait', nodes, edges).map((g) => g.title);
     expect(titles).toEqual(['Customer accepted a quote']);
@@ -108,6 +159,12 @@ describe('data available to a step', () => {
       'Quote Q-2026-0042 for 18500',
     );
     expect(previewText('Hi {{ $json.name }}', groups)).toBe('Hi [$json.name]');
+
+    // On a step's card: the name of the data, and anything typed by hand left as typed.
+    expect(namedText('Quote {{ $trigger.payload.quoteNumber }} for {{$trigger.payload.totalAmount}}', groups)).toBe(
+      'Quote [Quote number] for [Quote total]',
+    );
+    expect(namedText('Hi {{ $json.name }}', groups)).toBe('Hi {{ $json.name }}');
   });
 });
 

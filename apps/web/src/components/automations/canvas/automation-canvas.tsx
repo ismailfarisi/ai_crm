@@ -17,6 +17,8 @@ import '@xyflow/react/dist/style.css';
 import { NODE_TYPES } from '../nodes/node-types';
 import type { AutomationNodeType } from '@saas/shared';
 import { CanvasActionsContext, outputKey } from './canvas-actions';
+import { availableData, hasPlaceholder, namedText, type DataGroup } from '../step-wording';
+import { crmEventOf } from '../crm-events';
 
 /** Never zoom in past life size: one step alone should not fill the screen. */
 const FIT_VIEW = { maxZoom: 1, padding: 0.12 } as const;
@@ -51,6 +53,18 @@ export function AutomationCanvas({
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const flowInstanceRef = useRef<ReactFlowInstance | null>(null);
 
+  // What each step's data is called. Rebuilt when steps or their settings
+  // change, not on every pixel a step is dragged.
+  const graphKey = JSON.stringify(nodes.map((n) => [n.id, n.type, n.data?.label, crmEventOf(n.data?.config as Record<string, unknown> | undefined)]));
+  const nameData = useMemo(() => {
+    const steps = (JSON.parse(graphKey) as [string, string, string | undefined, string | null][]).map(
+      ([id, type, label, event]) => ({ id, type: type as AutomationNodeType, data: { label, config: { event } } }),
+    );
+    const known = new Map<string, DataGroup[]>(steps.map((s) => [s.id, availableData(s.id, steps, edges)]));
+    return (nodeId: string, text: string) =>
+      hasPlaceholder(text) ? namedText(text, known.get(nodeId) ?? []) : text;
+  }, [graphKey, edges]);
+
   const actions = useMemo(
     () =>
       onAddAfter
@@ -58,9 +72,10 @@ export function AutomationCanvas({
             onAddAfter,
             connectedOutputs: new Set(edges.map((e) => outputKey(e.source, e.sourceHandle))),
             scheduleSummary,
+            nameData,
           }
         : null,
-    [onAddAfter, edges, scheduleSummary],
+    [onAddAfter, edges, scheduleSummary, nameData],
   );
 
   // A step added with "+" may land outside the view: bring everything back in.

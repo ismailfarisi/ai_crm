@@ -32,11 +32,18 @@ const check: AutomationNode = {
   position: { x: 340, y: 200 },
   data: { label: 'Only continue if…', config: { condition: '' } },
 };
-const allNodes = [trigger, wait, email, check];
+const reject: AutomationNode = {
+  id: 'reject',
+  type: 'crmMutateNode',
+  position: { x: 680, y: 200 },
+  data: { label: 'Update a record', config: { entity: 'quote', action: 'reject' } },
+};
+const allNodes = [trigger, wait, email, check, reject];
 const edges: AutomationEdge[] = [
   { id: 'e1', source: 't', target: 'wait' },
   { id: 'e2', source: 'wait', target: 'mail' },
   { id: 'e3', source: 't', target: 'check' },
+  { id: 'e4', source: 'check', target: 'reject' },
 ];
 
 /** The inspector with the page's job done: updates are merged back into the step. */
@@ -88,6 +95,45 @@ describe('filling in a step without typing code', () => {
     expect(screen.getByTestId('email-subject-input-preview')).toHaveTextContent('Example: Quote accepted: Q-2026-0042');
     expect(onUpdate).toHaveBeenLastCalledWith({
       config: expect.objectContaining({ subject: 'Quote accepted: {{ $trigger.payload.quoteNumber }}' }),
+    });
+  });
+
+  it('says which record to change by picking it from the list, not by typing its ID', () => {
+    const onUpdate = vi.fn();
+    render(<Inspector start={reject} onUpdate={onUpdate} />);
+
+    fireEvent.click(screen.getByTestId('crm-record-id-input-insert-data'));
+    fireEvent.click(screen.getByText('Quote ID'));
+    expect(screen.getByTestId('crm-record-id-input')).toHaveValue('{{ $trigger.payload.quoteId }}');
+
+    fireEvent.change(screen.getByTestId('crm-reason-input'), { target: { value: 'Over budget for' } });
+    fireEvent.click(screen.getByTestId('crm-reason-input-insert-data'));
+    fireEvent.click(screen.getByText('Accepted by'));
+    expect(onUpdate).toHaveBeenLastCalledWith({
+      config: {
+        entity: 'quote',
+        action: 'reject',
+        recordId: '{{ $trigger.payload.quoteId }}',
+        reason: 'Over budget for {{ $trigger.payload.acceptedByName }}',
+      },
+    });
+  });
+
+  it('fills in a contact from the event: fields by their plain names, values picked from the list', () => {
+    const onUpdate = vi.fn();
+    const add: AutomationNode = { ...reject, data: { label: 'Update a record', config: { entity: 'contact', action: 'create' } } };
+    render(<Inspector start={add} onUpdate={onUpdate} />);
+
+    fireEvent.click(screen.getByTestId('crm-add-field-btn'));
+    const field = screen.getByTestId('crm-field-key-0');
+    expect(field).toHaveTextContent('First name');
+    expect(field).toHaveTextContent('Job title');
+    expect(field).not.toHaveTextContent('jobTitle');
+
+    fireEvent.click(screen.getByTestId('crm-field-value-0-insert-data'));
+    fireEvent.click(screen.getByText('Accepted by'));
+    expect(onUpdate).toHaveBeenLastCalledWith({
+      config: { entity: 'contact', action: 'create', fields: { firstName: '{{ $trigger.payload.acceptedByName }}' } },
     });
   });
 

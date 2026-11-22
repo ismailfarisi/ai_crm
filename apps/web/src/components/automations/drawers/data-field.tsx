@@ -17,6 +17,8 @@ export interface DataFieldProps {
   placeholder?: string;
   hint?: React.ReactNode;
   icon?: React.ReactNode;
+  /** Shown in place of the label, for a field whose name is itself a choice. */
+  labelSlot?: React.ReactNode;
 }
 
 const controlClass =
@@ -39,6 +41,7 @@ export function DataField({
   placeholder,
   hint,
   icon,
+  labelSlot,
 }: DataFieldProps) {
   const id = useId();
   const controlRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
@@ -69,16 +72,19 @@ export function DataField({
     'data-testid': testId,
     value,
     placeholder,
+    'aria-label': labelSlot ? label : undefined,
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onChange(e.target.value),
   };
 
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2">
-        <label htmlFor={id} className="text-[11px] font-medium text-ink flex items-center gap-1">
-          {icon}
-          {label}
-        </label>
+        {labelSlot ?? (
+          <label htmlFor={id} className="text-[11px] font-medium text-ink flex items-center gap-1">
+            {icon}
+            {label}
+          </label>
+        )}
         {hasData && (
           <button
             type="button"

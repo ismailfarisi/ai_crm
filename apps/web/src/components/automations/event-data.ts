@@ -1,3 +1,4 @@
+import { CONTACT_SOURCES } from '@saas/shared';
 import { CRM_EVENTS, findCrmEvent } from './crm-events';
 
 /**
@@ -5,8 +6,10 @@ import { CRM_EVENTS, findCrmEvent } from './crm-events';
  * the "Insert data" picker, the condition builder and the test run's sample,
  * so the three can never disagree about a field's name.
  *
- * Adding an event: add its entry to CRM_EVENTS, then either give that entry a
- * `fields` array or add an entry to EVENT_FIELDS below. An event with neither
+ * Adding an event: add its entry to CRM_EVENTS. That is enough if the entry
+ * carries a `sample` of its data: the field list is read off it. To choose
+ * the wording, the order or a list of choices, give the entry a `fields`
+ * array or add an entry to EVENT_FIELDS below. An event with none of these
  * falls back to the record its name starts with ("quote.sent" gets the quote
  * fields), so it is usable before anyone describes it.
  *
@@ -41,7 +44,13 @@ const CONTACT_FIELDS: EventField[] = [
     sample: 'lead',
     options: ['lead', 'qualified', 'customer', 'churned', 'archived'],
   },
-  { key: 'source', label: 'Where they came from', type: 'text', sample: 'website' },
+  {
+    key: 'source',
+    label: 'Where they came from',
+    type: 'choice',
+    sample: 'website',
+    options: [...CONTACT_SOURCES],
+  },
   { key: 'notes', label: 'Notes', type: 'text', sample: 'Asked about shopfront signage.' },
   { key: 'id', label: 'Contact ID', type: 'text', sample: '3f2a9c1e-5b7d-4e8a-9c21-7d5e4f3a2b10' },
 ];
@@ -125,12 +134,49 @@ const RECORD_FIELDS: Record<string, EventField[]> = {
   invoice: INVOICE_FIELDS,
 };
 
+/** Words a field name is made of that do not read well when merely capitalised. */
+const FIELD_WORDS: Record<string, string> = { id: 'ID', po: 'PO', qty: 'quantity', url: 'link', sku: 'SKU' };
+
+/** "customerEmail" → "Customer email", "poNumber" → "PO number". */
+export function fieldLabel(key: string): string {
+  const words = key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .split(/[\s_.-]+/)
+    .filter(Boolean)
+    .map((w) => FIELD_WORDS[w.toLowerCase()] ?? w.toLowerCase());
+  const text = words.join(' ');
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:?\d{2})?)?$/;
+
+/**
+ * The field list read off an example of the event's data, for an event that
+ * is registered with a `sample` and nothing more: names come from the keys,
+ * types from the values, and the ids go last because they are rarely wanted.
+ */
+export function fieldsFromSample(sample: Record<string, unknown>): EventField[] {
+  const fields: EventField[] = [];
+  for (const [key, value] of Object.entries(sample)) {
+    if (typeof value === 'number') fields.push({ key, label: fieldLabel(key), type: 'number', sample: value });
+    else if (typeof value === 'string')
+      fields.push({ key, label: fieldLabel(key), type: ISO_DATE.test(value) ? 'date' : 'text', sample: value });
+    else if (typeof value === 'boolean')
+      fields.push({ key, label: fieldLabel(key), type: 'choice', sample: String(value), options: ['true', 'false'] });
+  }
+  const isId = (f: EventField) => f.key === 'id' || f.key.endsWith('Id');
+  return [...fields.filter((f) => !isId(f)), ...fields.filter(isId)];
+}
+
 /** The fields an event carries; empty when nothing is known about it. */
 export function eventFieldsFor(event: string | null | undefined): EventField[] {
   if (!event) return [];
-  const own = (findCrmEvent(event) as { fields?: EventField[] } | undefined)?.fields;
-  if (own?.length) return own;
-  return EVENT_FIELDS[event] ?? RECORD_FIELDS[event.split('.')[0]] ?? [];
+  const known = findCrmEvent(event) as { fields?: EventField[]; sample?: Record<string, unknown> } | undefined;
+  if (known?.fields?.length) return known.fields;
+  if (EVENT_FIELDS[event]) return EVENT_FIELDS[event];
+  const fromSample = known?.sample ? fieldsFromSample(known.sample) : [];
+  if (fromSample.length > 0) return fromSample;
+  return RECORD_FIELDS[event.split('.')[0]] ?? [];
 }
 
 /** The event's data with a realistic value for every field. */

@@ -2,6 +2,9 @@
 
 import React, { useState } from 'react';
 import { Plus, X } from 'lucide-react';
+import { DataField } from './data-field';
+import type { DataGroup } from '../step-wording';
+import { fieldLabel } from '../event-data';
 
 // Mirrors CrmMutateConfig in apps/api/src/modules/automations/workflows/interfaces.ts
 // and the keys createContactSchema accepts.
@@ -36,8 +39,6 @@ export const CONTACT_FIELD_KEYS = [
 
 const selectClass =
   'w-full rounded-lg border border-border px-2 py-1.5 text-xs text-ink font-semibold bg-surface-muted';
-const inputClass =
-  'w-full rounded-lg border border-border px-3 py-1.5 text-xs font-mono text-ink focus:border-brand focus:outline-none';
 
 type FieldRow = [key: string, value: string];
 
@@ -63,9 +64,11 @@ function sameFields(a: Record<string, string>, b: Record<string, string>): boole
 export interface CrmStepFieldsProps {
   config: Record<string, any>;
   onChange: (config: Record<string, any>) => void;
+  /** What earlier steps make available, for "Insert data". */
+  groups?: DataGroup[];
 }
 
-export function CrmStepFields({ config, onChange }: CrmStepFieldsProps) {
+export function CrmStepFields({ config, onChange, groups = [] }: CrmStepFieldsProps) {
   const entity: string = ENTITIES.some((e) => e.value === config.entity) ? config.entity : '';
   const actions = ACTIONS[entity] ?? [];
   const action: string = actions.some((a) => a.value === config.action) ? config.action : '';
@@ -109,7 +112,7 @@ export function CrmStepFields({ config, onChange }: CrmStepFieldsProps) {
   return (
     <div className="space-y-3 pt-2 border-t border-border/40">
       <div className="space-y-1">
-        <label className="text-[11px] font-medium text-ink">Entity</label>
+        <label className="text-[11px] font-medium text-ink">Kind of record</label>
         <select
           data-testid="crm-entity-select"
           value={entity}
@@ -125,7 +128,7 @@ export function CrmStepFields({ config, onChange }: CrmStepFieldsProps) {
         </select>
       </div>
       <div className="space-y-1">
-        <label className="text-[11px] font-medium text-ink">Action</label>
+        <label className="text-[11px] font-medium text-ink">What to do</label>
         <select
           data-testid="crm-action-select"
           value={action}
@@ -142,72 +145,68 @@ export function CrmStepFields({ config, onChange }: CrmStepFieldsProps) {
       </div>
 
       {needsRecordId && (
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-ink">Record ID</label>
-          <input
-            type="text"
-            data-testid="crm-record-id-input"
-            value={config.recordId || ''}
-            onChange={(e) => onChange({ ...config, recordId: e.target.value })}
-            placeholder="{{ $trigger.payload.id }}"
-            className={inputClass}
-          />
-        </div>
+        <DataField
+          label="Which one"
+          testId="crm-record-id-input"
+          groups={groups}
+          value={config.recordId || ''}
+          onChange={(recordId) => onChange({ ...config, recordId })}
+          placeholder="Use Insert data to pick its ID"
+        />
       )}
 
       {entity === 'quote' && action === 'reject' && (
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-ink">Reason</label>
-          <input
-            type="text"
-            data-testid="crm-reason-input"
-            value={config.reason || ''}
-            onChange={(e) => onChange({ ...config, reason: e.target.value })}
-            placeholder="Why the quote is being rejected"
-            className={inputClass}
-          />
-        </div>
+        <DataField
+          label="Reason"
+          testId="crm-reason-input"
+          groups={groups}
+          value={config.reason || ''}
+          onChange={(reason) => onChange({ ...config, reason })}
+          placeholder="Why the quote is being rejected"
+        />
       )}
 
       {usesFields && (
         <div className="space-y-2">
-          <label className="text-[11px] font-medium text-ink">Contact fields</label>
+          <label className="text-[11px] font-medium text-ink">What to fill in on the contact</label>
           {rows.map(([key, value], i) => (
-            <div key={key} className="flex items-center gap-1.5">
-              <select
-                data-testid={`crm-field-key-${i}`}
-                value={key}
-                onChange={(e) =>
-                  setFieldRows(rows.map(([k, v], j): FieldRow => (j === i ? [e.target.value, v] : [k, v])))
-                }
-                className="w-28 shrink-0 rounded-lg border border-border px-2 py-1.5 text-xs text-ink bg-surface-muted"
-              >
-                {[key, ...unusedKeys].map((k) => (
-                  <option key={k} value={k}>
-                    {k}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="text"
-                data-testid={`crm-field-value-${i}`}
-                value={value ?? ''}
-                onChange={(e) =>
-                  setFieldRows(rows.map(([k, v], j): FieldRow => (j === i ? [k, e.target.value] : [k, v])))
-                }
-                placeholder="Value or {{ expression }}"
-                className={inputClass}
-              />
-              <button
-                type="button"
-                data-testid={`crm-remove-field-${i}`}
-                onClick={() => setFieldRows(rows.filter((_, j) => j !== i))}
-                className="p-1 rounded text-ink-subtle hover:text-danger cursor-pointer"
-                title="Remove field"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
+            <DataField
+              key={key}
+              label={fieldLabel(key)}
+              testId={`crm-field-value-${i}`}
+              groups={groups}
+              value={value ?? ''}
+              onChange={(next) => setFieldRows(rows.map(([k, v], j): FieldRow => (j === i ? [k, next] : [k, v])))}
+              placeholder="What to put there"
+              labelSlot={
+                <div className="flex items-center gap-1">
+                  <select
+                    data-testid={`crm-field-key-${i}`}
+                    aria-label="Field to fill in"
+                    value={key}
+                    onChange={(e) =>
+                      setFieldRows(rows.map(([k, v], j): FieldRow => (j === i ? [e.target.value, v] : [k, v])))
+                    }
+                    className="rounded-lg border border-border px-2 py-1 text-[11px] font-medium text-ink bg-surface-muted"
+                  >
+                    {[key, ...unusedKeys].map((k) => (
+                      <option key={k} value={k}>
+                        {fieldLabel(k)}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    data-testid={`crm-remove-field-${i}`}
+                    onClick={() => setFieldRows(rows.filter((_, j) => j !== i))}
+                    className="p-1 rounded text-ink-subtle hover:text-danger cursor-pointer"
+                    title="Remove field"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              }
+            />
           ))}
           {unusedKeys.length > 0 && (
             <button
