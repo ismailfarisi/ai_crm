@@ -355,6 +355,21 @@ describe('Automation Node Components', () => {
       expect(screen.getByText('Create CRM Deal')).toBeInTheDocument();
       expect(screen.getByText('CREATE_DEAL')).toBeInTheDocument();
     });
+
+    it('says in words what a Kerf Record step does', () => {
+      renderWithReactFlow(
+        <ActionNode
+          type="crmMutateNode"
+          data={{
+            label: 'Look up the quote',
+            config: { entity: 'quote', action: 'get' },
+          }}
+        />,
+      );
+
+      expect(screen.getByText('Look up a quote')).toBeInTheDocument();
+      expect(screen.queryByText('CRM Entity')).not.toBeInTheDocument();
+    });
   });
 
   describe('DelayNode', () => {
@@ -370,6 +385,21 @@ describe('Automation Node Components', () => {
 
       expect(screen.getByText('Wait 10 mins')).toBeInTheDocument();
       expect(screen.getByText('10 minutes')).toBeInTheDocument();
+    });
+
+    it('shows the wait the worker will use, not the five-minute default', () => {
+      renderWithReactFlow(
+        <DelayNode data={{ label: 'Wait 3 days', config: { durationMs: '3 days' } }} />,
+      );
+      expect(screen.getByText('3 days')).toBeInTheDocument();
+      expect(screen.queryByText('5 minutes')).not.toBeInTheDocument();
+    });
+
+    it('shows a bare number as milliseconds', () => {
+      renderWithReactFlow(
+        <DelayNode data={{ label: 'Pause', config: { durationMs: '5000' } }} />,
+      );
+      expect(screen.getByText('5000 ms')).toBeInTheDocument();
     });
   });
 

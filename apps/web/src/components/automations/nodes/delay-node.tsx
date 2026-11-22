@@ -22,7 +22,16 @@ export function DelayNode({
   const config = nodeData.config || {};
   const status = (nodeData as any).status || (nodeData as any).executionStatus;
   const delayMinutes = config.delayMinutes ?? 5;
-  const displayText = config.duration || `${delayMinutes} minute${delayMinutes === 1 ? '' : 's'}`;
+  // The worker reads durationMs, then duration, then delay; show the same one.
+  const set = [config.durationMs, config.duration, config.delay].find(
+    (value) => value != null && String(value).trim() !== '',
+  );
+  const displayText =
+    set == null
+      ? `${delayMinutes} minute${delayMinutes === 1 ? '' : 's'}`
+      : /^\s*\d+(\.\d+)?\s*$/.test(String(set))
+        ? `${Number(set)} ms`
+        : String(set);
 
   return (
     <BaseNode

@@ -5,6 +5,7 @@ import { Bell, Globe, Mail, Database, MessageCircle, MessageSquareText } from 'l
 import type { NodeProps, Node } from '@xyflow/react';
 import {
   AUTOMATION_MESSAGE_CHANNELS,
+  AUTOMATION_RECORD_ACTIONS,
   AUTOMATION_NOTIFY_GROUPS,
   type AutomationNodeData,
   type AutomationNodeType,
@@ -145,14 +146,21 @@ export function ActionNode({
       defaultTitle = 'CRM Mutation';
       iconBg = 'bg-brand-soft';
       iconColor = 'text-ink';
-      previewContent = (
-        <div className="flex items-center gap-1.5 text-[11px]">
-          <span className="rounded bg-brand-soft px-1.5 py-0.5 font-mono text-[11px] font-semibold text-ink uppercase tracking-tight">
-            {config.action || 'CREATE_CONTACT'}
-          </span>
-          <span className="text-ink-muted truncate">CRM Entity</span>
-        </div>
-      );
+      {
+        const recordAction = AUTOMATION_RECORD_ACTIONS.find(
+          (item) => item.entity === config.entity && item.action === config.action,
+        );
+        previewContent = recordAction ? (
+          <div className="text-[11px] text-ink-muted truncate">{recordAction.label}</div>
+        ) : (
+          <div className="flex items-center gap-1.5 text-[11px]">
+            <span className="rounded bg-brand-soft px-1.5 py-0.5 font-mono text-[11px] font-semibold text-ink uppercase tracking-tight">
+              {config.action || 'CREATE_CONTACT'}
+            </span>
+            <span className="text-ink-muted truncate">CRM Entity</span>
+          </div>
+        );
+      }
       break;
 
     default:
