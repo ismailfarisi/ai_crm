@@ -1279,6 +1279,46 @@ blank drawing for the RSC carton (it would need a second net kind).
 
 ## Automations
 
+### Automation chat messages to customers: written text only, and only to someone who wrote first — by design
+
+The Send Message step (WhatsApp, Telegram, Slack) follows the rule above for
+customer contact. The assistant's `channel_message.send` needs a person's
+approval for each message; an automation has nobody to ask, so the step is
+narrower instead:
+
+- Text that comes from an AI step is never sent to a customer on a chat
+  channel. No setting unlocks this (the AI-email-to-customers setting is for
+  email only). Send it to staff, or write the message in the step.
+- A customer can be messaged only at an address that has already messaged the
+  organisation on that channel. That is the one address known to be theirs, and
+  on WhatsApp the only one ordinary text is delivered to. Everyone else gets
+  Send Email. The ready-made recipes therefore email customers; none uses chat.
+- Staff are reached at the chat they linked themselves (or a Slack channel id);
+  an unlinked colleague fails the step with a message naming them.
+
+Every send is audited as `automation.message.send`, made as the automation's
+owner, and needs that owner to hold `channel:send`.
+
+### Shop events are published best-effort, and one path publishes none
+
+`ShopEventsService` publishes the order, job, proof, payment, purchasing,
+stock, expense and message events inside a savepoint: if the event cannot be
+written, the business change still commits and the automation does not start.
+An order created by the Temporal quote workflow's `generateInvoiceActivity`
+(not by a customer accepting through the link, which goes through
+`InvoicesService.createFromQuote`) publishes no `sales_order.created`: that
+activity runs outside Nest and has no event bus. `stock.low` fires when an item
+crosses its minimum, not on every movement below it. `purchase_order.received`
+fires on full receipt only, not on close-short. The event payload carries the
+customer's name, email and phone, so anyone who may edit automations can read
+them in a run, as with every other trigger payload.
+
+### The morning summary counts in UTC days
+
+"Due today", "late" and "paid yesterday" in the Kerf Record step's daily
+summary use UTC day boundaries, four hours behind UAE midnight. The 8:00
+schedule itself is in the automation's own time zone.
+
 ### No automation chaining — by design, this round
 
 Changes made by an automation step (an Update CRM record step, for instance)

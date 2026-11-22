@@ -30,7 +30,8 @@ import { ConditionBuilder } from './condition-builder';
 import { DurationInput } from './duration-input';
 import { CrmStepFields } from './crm-step-fields';
 import { AiAgentStepFields } from '../agent-step/ai-agent-step-fields';
-import { CRM_EVENTS, crmEventOf, findCrmEvent, normalizeCrmEventConfig } from '../crm-events';
+import { MessageStepFields, NotifyStepFields } from './shop-step-fields';
+import { CRM_EVENTS, CRM_EVENT_GROUPS, crmEventOf, findCrmEvent, normalizeCrmEventConfig } from '../crm-events';
 import { eventFieldsFor } from '../event-data';
 import { availableData, plainStepName, stepWording } from '../step-wording';
 import { delayConfig, formatDuration, parseDuration, readDelay } from '../duration';
@@ -432,6 +433,14 @@ export function NodeInspectorDrawer({
               />
             )}
 
+            {/* Send Message / Notify Staff Config */}
+            {node.type === 'sendMessageNode' && (
+              <MessageStepFields config={config} onChange={(next) => onUpdate(node.id, { config: next })} />
+            )}
+            {node.type === 'notifyStaffNode' && (
+              <NotifyStepFields config={config} onChange={(next) => onUpdate(node.id, { config: next })} />
+            )}
+
             {/* Trigger Nodes (Webhook / Schedule / CRM Event), by the automation's trigger type */}
             {triggerEditor === 'mismatch' && (
               <p data-testid="trigger-type-mismatch" className="pt-2 border-t border-border/40 text-[11px] text-ink-muted">
@@ -483,10 +492,14 @@ export function NodeInspectorDrawer({
                 >
                   <option value="">Choose an event</option>
                   {unknownEvent && <option value={unknownEvent}>Unknown event: {unknownEvent}</option>}
-                  {CRM_EVENTS.map((ev) => (
-                    <option key={ev.value} value={ev.value}>
-                      {ev.label}
-                    </option>
+                  {CRM_EVENT_GROUPS.map((group) => (
+                    <optgroup key={group} label={group}>
+                      {CRM_EVENTS.filter((ev) => ev.group === group).map((ev) => (
+                        <option key={ev.value} value={ev.value}>
+                          {ev.label}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
                 {eventFieldsFor(storedEvent).length > 0 && (

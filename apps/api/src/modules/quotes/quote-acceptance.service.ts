@@ -40,6 +40,7 @@ import { OrganizationsService } from '../organizations/organizations.service';
 import { Quote, QuoteStatus } from './entities/quote.entity';
 import { QuoteProofsService } from './quote-proofs.service';
 import { QuotesService } from './quotes.service';
+import { ShopEventsService } from '@/common/events';
 
 export const hashToken = (token: string) =>
   createHash('sha256').update(token).digest('hex');
@@ -91,6 +92,8 @@ export class QuoteAcceptanceService {
     @Optional() private readonly crypto?: ChannelCryptoService,
     @Optional()
     private readonly documentLocalization?: DocumentLocalizationService,
+    @Optional()
+    private readonly shopEvents?: ShopEventsService,
   ) {}
 
   /**
@@ -320,6 +323,9 @@ export class QuoteAcceptanceService {
         .join('\n\n'),
     });
 
+    await this.shopEvents?.emit('quote.sent', tenantId, quoteId, {
+      extra: { sentTo: to },
+    });
     this.logger.log(`Quote ${reference} sent to ${to}`);
     return { sentTo: to, ...link };
   }
@@ -630,7 +636,8 @@ export class QuoteAcceptanceService {
       proofs: (await this.proofs?.forPublic(quote)) ?? [],
       proofRequired: (await this.proofs?.isRequired(quote)) ?? false,
       proofBlocksAcceptance:
-        !quote.acceptedAt && ((await this.proofs?.blocksAcceptance(quote)) ?? false),
+        !quote.acceptedAt &&
+        ((await this.proofs?.blocksAcceptance(quote)) ?? false),
     };
   }
 }

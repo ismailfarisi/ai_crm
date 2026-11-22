@@ -23,6 +23,8 @@ export interface DynamicWorkflowInput {
    * auto-approve agent tools.
    */
   triggerType?: AutomationTriggerType;
+  /** A test run from the editor: waits are skipped so the result shows at once. */
+  testRun?: boolean;
 }
 
 export interface NodeExecutionResult {
@@ -196,3 +198,45 @@ export type {
   AiAgentToolCallRecord,
   AiAgentUsage,
 } from '@saas/shared';
+
+/** "Send message" step: a chat message on a connected channel. */
+export interface ChannelMessageActivityConfig {
+  channel: 'WHATSAPP_META' | 'TELEGRAM' | 'SLACK';
+  audience: 'customer' | 'staff';
+  /**
+   * Customer: the number or chat they write from. Staff: one or more staff
+   * email addresses, or a Slack channel id.
+   */
+  to: string;
+  body: string;
+}
+
+export interface ChannelMessageActivityResult {
+  channel: string;
+  audience: 'customer' | 'staff';
+  sent: string[];
+}
+
+/** "Notify staff" step: the bell in the app. */
+export interface StaffNotificationActivityConfig {
+  audience: 'group' | 'person';
+  /** A value of `AUTOMATION_NOTIFY_GROUPS`. */
+  group?: string;
+  /** Staff email addresses, comma separated. */
+  to?: string;
+  title: string;
+  body?: string;
+  /** A page in the app to open, e.g. `/production`. */
+  link?: string;
+}
+
+export interface StaffNotificationActivityResult {
+  notified: number;
+}
+
+/** The read-only half of the Kerf record step. */
+export interface RecordLookupActivityConfig {
+  entity: 'quote' | 'proof' | 'invoice' | 'summary';
+  action: 'get' | 'daily';
+  recordId?: string;
+}

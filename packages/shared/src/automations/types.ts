@@ -25,6 +25,8 @@ export type AutomationNodeType =
   | 'aiPromptNode'
   | 'aiAgentNode'
   | 'sendEmailNode'
+  | 'sendMessageNode'
+  | 'notifyStaffNode'
   | 'crmMutateNode'
   | 'approvalNode';
 

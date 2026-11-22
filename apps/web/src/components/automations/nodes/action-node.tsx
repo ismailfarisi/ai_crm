@@ -1,13 +1,20 @@
 'use client';
 
 import React from 'react';
-import { Globe, Mail, Database, MessageSquareText, Bot } from 'lucide-react';
+import { Bell, Globe, Mail, Database, MessageCircle, MessageSquareText, Bot } from 'lucide-react';
 import type { NodeProps, Node } from '@xyflow/react';
-import type { AutomationNodeData, AutomationNodeType } from '@saas/shared';
-import { aiAgentStepTask } from '@saas/shared';
+import {
+  AUTOMATION_MESSAGE_CHANNELS,
+  AUTOMATION_RECORD_ACTIONS,
+  AUTOMATION_NOTIFY_GROUPS,
+  aiAgentStepTask,
+  type AutomationNodeData,
+  type AutomationNodeType,
+} from '@saas/shared';
 import { BaseNode } from './base-node';
 import { plainStepName, stepWording } from '../step-wording';
 import { agentChoice, useAgentOptions } from '../agent-step/agent-options';
+import { useNamedText } from '../canvas/canvas-actions';
 
 /** Who the AI agent step runs as, and whether it is ready to run. */
 function AgentStepPreview({ config }: { config: Record<string, unknown> }) {
@@ -53,7 +60,6 @@ function AgentStepPreview({ config }: { config: Record<string, unknown> }) {
     </div>
   );
 }
-import { useNamedText } from '../canvas/canvas-actions';
 
 /** What an "Update a record" step does, as its card says it. */
 const RECORD_STEP_DOES: Record<string, string> = {
@@ -165,20 +171,67 @@ export function ActionNode({
       );
       break;
 
+    case 'sendMessageNode':
+      Icon = MessageCircle;
+      category = 'Message';
+      defaultTitle = 'Send Message';
+      iconBg = 'bg-success-soft';
+      iconColor = 'text-success';
+      previewContent = (
+        <div className="space-y-0.5 text-[11px] truncate">
+          <div className="text-ink font-medium truncate">
+            {AUTOMATION_MESSAGE_CHANNELS.find((c) => c.value === config.channel)?.label ?? 'Chat'} to{' '}
+            <span className="text-ink-muted">
+              {config.to || (config.audience === 'customer' ? 'a customer' : 'a colleague')}
+            </span>
+          </div>
+          {config.body && <div className="text-ink-muted truncate text-[11px]">{config.body}</div>}
+        </div>
+      );
+      break;
+
+    case 'notifyStaffNode':
+      Icon = Bell;
+      category = 'In-app';
+      defaultTitle = 'Notify Staff';
+      iconBg = 'bg-warning-soft';
+      iconColor = 'text-warning';
+      previewContent = (
+        <div className="space-y-0.5 text-[11px] truncate">
+          <div className="text-ink font-medium truncate">
+            To:{' '}
+            <span className="text-ink-muted">
+              {config.audience === 'person'
+                ? config.to || 'a colleague'
+                : (AUTOMATION_NOTIFY_GROUPS.find((g) => g.value === config.group)?.label ?? 'a group')}
+            </span>
+          </div>
+          {config.title && <div className="text-ink-muted truncate text-[11px]">{config.title}</div>}
+        </div>
+      );
+      break;
+
     case 'crmMutateNode':
       Icon = Database;
       category = 'CRM';
       defaultTitle = 'CRM Mutation';
       iconBg = 'bg-brand-soft';
       iconColor = 'text-ink';
-      previewContent = (
-        <div className="flex items-center gap-1.5 text-[11px]">
-          <span className="rounded bg-brand-soft px-1.5 py-0.5 font-mono text-[11px] font-semibold text-ink uppercase tracking-tight">
-            {config.action || 'CREATE_CONTACT'}
-          </span>
-          <span className="text-ink-muted truncate">CRM Entity</span>
-        </div>
-      );
+      {
+        const recordAction = AUTOMATION_RECORD_ACTIONS.find(
+          (item) => item.entity === config.entity && item.action === config.action,
+        );
+        previewContent = recordAction ? (
+          <div className="text-[11px] text-ink-muted truncate">{recordAction.label}</div>
+        ) : (
+          <div className="flex items-center gap-1.5 text-[11px]">
+            <span className="rounded bg-brand-soft px-1.5 py-0.5 font-mono text-[11px] font-semibold text-ink uppercase tracking-tight">
+              {config.action || 'CREATE_CONTACT'}
+            </span>
+            <span className="text-ink-muted truncate">CRM Entity</span>
+          </div>
+        );
+      }
       break;
 
     default:

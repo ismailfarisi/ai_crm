@@ -1,0 +1,1228 @@
+[
+  {
+    "id": "quote-follow-up",
+    "aiEmailToCustomers": false,
+    "triggerType": "CRM_EVENT",
+    "trigger": {
+      "eventType": "quote.sent",
+      "entityId": "8a4c2d6e-91b3-4e0a-b7f4-0c5d3e2a1f90",
+      "timestamp": "2026-11-21T08:00:00.000Z",
+      "payload": {
+        "quoteId": "8a4c2d6e-91b3-4e0a-b7f4-0c5d3e2a1f90",
+        "quoteNumber": "Q-2026-0142",
+        "title": "5,000 printed cake boxes",
+        "customerId": "5b1f6f0e-3c0a-4f57-9d0e-2b9f6a1c7e11",
+        "customerName": "Al Noor Bakery",
+        "customerEmail": "orders@alnoorbakery.ae",
+        "customerPhone": "+971501234567",
+        "totalAmount": 18375,
+        "currency": "AED",
+        "sentTo": "orders@alnoorbakery.ae",
+        "validUntil": "2026-12-04T00:00:00.000Z"
+      }
+    },
+    "nodes": [
+      {
+        "id": "trigger-1",
+        "type": "crmEventTrigger",
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "data": {
+          "label": "Quote sent",
+          "config": {
+            "event": "quote.sent"
+          }
+        }
+      },
+      {
+        "id": "delay-1",
+        "type": "delayNode",
+        "position": {
+          "x": 100,
+          "y": 250
+        },
+        "data": {
+          "label": "Wait 3 days",
+          "config": {
+            "durationMs": "3 days"
+          }
+        }
+      },
+      {
+        "id": "lookup-1",
+        "type": "crmMutateNode",
+        "position": {
+          "x": 100,
+          "y": 400
+        },
+        "data": {
+          "label": "Look up the quote",
+          "config": {
+            "entity": "quote",
+            "action": "get",
+            "recordId": "{{ $trigger.payload.quoteId }}"
+          }
+        }
+      },
+      {
+        "id": "check-1",
+        "type": "conditionNode",
+        "position": {
+          "x": 100,
+          "y": 550
+        },
+        "data": {
+          "label": "Still waiting on the customer?",
+          "config": {
+            "condition": "$json.awaitingCustomer == true"
+          }
+        }
+      },
+      {
+        "id": "email-1",
+        "type": "sendEmailNode",
+        "position": {
+          "x": 100,
+          "y": 790
+        },
+        "data": {
+          "label": "Follow up",
+          "config": {
+            "to": "{{ $trigger.payload.customerEmail }}",
+            "subject": "Your quote {{ $trigger.payload.quoteNumber }}",
+            "body": "Hello {{ $trigger.payload.customerName }},\n\nWe sent you quote {{ $trigger.payload.quoteNumber }} ({{ $trigger.payload.title }}) a few days ago. Do you have any questions, or would you like us to change anything?\n\nYou can accept it from the link in our earlier email, or just reply to this one.\n\nThank you"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e-trigger-1-delay-1",
+        "source": "trigger-1",
+        "target": "delay-1"
+      },
+      {
+        "id": "e-delay-1-lookup-1",
+        "source": "delay-1",
+        "target": "lookup-1"
+      },
+      {
+        "id": "e-lookup-1-check-1",
+        "source": "lookup-1",
+        "target": "check-1"
+      },
+      {
+        "id": "e-check-1-email-1",
+        "source": "check-1",
+        "target": "email-1",
+        "sourceHandle": "true"
+      }
+    ]
+  },
+  {
+    "id": "quote-accepted-notify",
+    "aiEmailToCustomers": false,
+    "triggerType": "CRM_EVENT",
+    "trigger": {
+      "eventType": "quote.accepted",
+      "entityId": "8a4c2d6e-91b3-4e0a-b7f4-0c5d3e2a1f90",
+      "timestamp": "2026-11-21T08:00:00.000Z",
+      "payload": {
+        "quoteId": "8a4c2d6e-91b3-4e0a-b7f4-0c5d3e2a1f90",
+        "quoteNumber": "Q-2026-0142",
+        "customerId": "5b1f6f0e-3c0a-4f57-9d0e-2b9f6a1c7e11",
+        "customerEmail": "orders@alnoorbakery.ae",
+        "acceptedByName": "Fatima Al Noor",
+        "totalAmount": 18375
+      }
+    },
+    "nodes": [
+      {
+        "id": "trigger-1",
+        "type": "crmEventTrigger",
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "data": {
+          "label": "Quote accepted",
+          "config": {
+            "event": "quote.accepted"
+          }
+        }
+      },
+      {
+        "id": "email-1",
+        "type": "sendEmailNode",
+        "position": {
+          "x": 100,
+          "y": 250
+        },
+        "data": {
+          "label": "Email the team",
+          "config": {
+            "to": "owner@shop.ae",
+            "subject": "Quote {{ $trigger.payload.quoteNumber }} accepted",
+            "body": "{{ $trigger.payload.acceptedByName }} accepted quote {{ $trigger.payload.quoteNumber }} for {{ $trigger.payload.totalAmount }}.\n\nCustomer: {{ $trigger.payload.customerEmail }}"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e-trigger-1-email-1",
+        "source": "trigger-1",
+        "target": "email-1"
+      }
+    ]
+  },
+  {
+    "id": "quote-changes-requested",
+    "aiEmailToCustomers": false,
+    "triggerType": "CRM_EVENT",
+    "trigger": {
+      "eventType": "quote.changes_requested",
+      "entityId": "8a4c2d6e-91b3-4e0a-b7f4-0c5d3e2a1f90",
+      "timestamp": "2026-11-21T08:00:00.000Z",
+      "payload": {
+        "quoteId": "8a4c2d6e-91b3-4e0a-b7f4-0c5d3e2a1f90",
+        "quoteNumber": "Q-2026-0142",
+        "title": "5,000 printed cake boxes",
+        "customerId": "5b1f6f0e-3c0a-4f57-9d0e-2b9f6a1c7e11",
+        "customerName": "Al Noor Bakery",
+        "customerEmail": "orders@alnoorbakery.ae",
+        "customerPhone": "+971501234567",
+        "totalAmount": 18375,
+        "currency": "AED",
+        "respondedByName": "Fatima Al Noor",
+        "note": "Can you quote 3,000 instead of 5,000?"
+      }
+    },
+    "nodes": [
+      {
+        "id": "trigger-1",
+        "type": "crmEventTrigger",
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "data": {
+          "label": "Customer asked for changes",
+          "config": {
+            "event": "quote.changes_requested"
+          }
+        }
+      },
+      {
+        "id": "notify-1",
+        "type": "notifyStaffNode",
+        "position": {
+          "x": 100,
+          "y": 250
+        },
+        "data": {
+          "label": "Alert sales",
+          "config": {
+            "audience": "group",
+            "group": "sales",
+            "title": "{{ $trigger.payload.customerName }} wants changes to quote {{ $trigger.payload.quoteNumber }}",
+            "body": "{{ $trigger.payload.respondedByName }} wrote: {{ $trigger.payload.note }}",
+            "link": "/quotes/{{ $trigger.payload.quoteId }}"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e-trigger-1-notify-1",
+        "source": "trigger-1",
+        "target": "notify-1"
+      }
+    ]
+  },
+  {
+    "id": "proof-reminder",
+    "aiEmailToCustomers": false,
+    "triggerType": "CRM_EVENT",
+    "trigger": {
+      "eventType": "proof.sent",
+      "entityId": "4b3a2c1d-0e9f-4a8b-9c6d-5e4f3a2b1c0d",
+      "timestamp": "2026-11-21T08:00:00.000Z",
+      "payload": {
+        "proofId": "4b3a2c1d-0e9f-4a8b-9c6d-5e4f3a2b1c0d",
+        "proofVersion": 2,
+        "quoteId": "8a4c2d6e-91b3-4e0a-b7f4-0c5d3e2a1f90",
+        "quoteNumber": "Q-2026-0142",
+        "title": "5,000 printed cake boxes",
+        "customerId": "5b1f6f0e-3c0a-4f57-9d0e-2b9f6a1c7e11",
+        "customerName": "Al Noor Bakery",
+        "customerEmail": "orders@alnoorbakery.ae",
+        "customerPhone": "+971501234567",
+        "status": "PENDING",
+        "note": "Logo moved 5 mm to the left as requested."
+      }
+    },
+    "nodes": [
+      {
+        "id": "trigger-1",
+        "type": "crmEventTrigger",
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "data": {
+          "label": "Proof sent",
+          "config": {
+            "event": "proof.sent"
+          }
+        }
+      },
+      {
+        "id": "delay-1",
+        "type": "delayNode",
+        "position": {
+          "x": 100,
+          "y": 250
+        },
+        "data": {
+          "label": "Wait 2 days",
+          "config": {
+            "durationMs": "2 days"
+          }
+        }
+      },
+      {
+        "id": "lookup-1",
+        "type": "crmMutateNode",
+        "position": {
+          "x": 100,
+          "y": 400
+        },
+        "data": {
+          "label": "Look up the proof",
+          "config": {
+            "entity": "proof",
+            "action": "get",
+            "recordId": "{{ $trigger.payload.proofId }}"
+          }
+        }
+      },
+      {
+        "id": "check-1",
+        "type": "conditionNode",
+        "position": {
+          "x": 100,
+          "y": 550
+        },
+        "data": {
+          "label": "Still waiting on the customer?",
+          "config": {
+            "condition": "$json.awaitingCustomer == true"
+          }
+        }
+      },
+      {
+        "id": "email-1",
+        "type": "sendEmailNode",
+        "position": {
+          "x": 100,
+          "y": 790
+        },
+        "data": {
+          "label": "Remind the customer",
+          "config": {
+            "to": "{{ $trigger.payload.customerEmail }}",
+            "subject": "Your artwork proof is waiting ({{ $trigger.payload.quoteNumber }})",
+            "body": "Hello {{ $trigger.payload.customerName }},\n\nWe sent you the artwork proof for {{ $trigger.payload.title }} and are waiting for your approval. We cannot start the job until you approve it or tell us what to change.\n\nYou can do either from the link in our earlier email.\n\nThank you"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e-trigger-1-delay-1",
+        "source": "trigger-1",
+        "target": "delay-1"
+      },
+      {
+        "id": "e-delay-1-lookup-1",
+        "source": "delay-1",
+        "target": "lookup-1"
+      },
+      {
+        "id": "e-lookup-1-check-1",
+        "source": "lookup-1",
+        "target": "check-1"
+      },
+      {
+        "id": "e-check-1-email-1",
+        "source": "check-1",
+        "target": "email-1",
+        "sourceHandle": "true"
+      }
+    ]
+  },
+  {
+    "id": "proof-approved-production",
+    "aiEmailToCustomers": false,
+    "triggerType": "CRM_EVENT",
+    "trigger": {
+      "eventType": "proof.approved",
+      "entityId": "4b3a2c1d-0e9f-4a8b-9c6d-5e4f3a2b1c0d",
+      "timestamp": "2026-11-21T08:00:00.000Z",
+      "payload": {
+        "proofId": "4b3a2c1d-0e9f-4a8b-9c6d-5e4f3a2b1c0d",
+        "proofVersion": 2,
+        "quoteId": "8a4c2d6e-91b3-4e0a-b7f4-0c5d3e2a1f90",
+        "quoteNumber": "Q-2026-0142",
+        "title": "5,000 printed cake boxes",
+        "customerId": "5b1f6f0e-3c0a-4f57-9d0e-2b9f6a1c7e11",
+        "customerName": "Al Noor Bakery",
+        "customerEmail": "orders@alnoorbakery.ae",
+        "customerPhone": "+971501234567",
+        "status": "APPROVED",
+        "respondedByName": "Fatima Al Noor",
+        "comment": "Looks good, go ahead."
+      }
+    },
+    "nodes": [
+      {
+        "id": "trigger-1",
+        "type": "crmEventTrigger",
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "data": {
+          "label": "Proof approved",
+          "config": {
+            "event": "proof.approved"
+          }
+        }
+      },
+      {
+        "id": "notify-1",
+        "type": "notifyStaffNode",
+        "position": {
+          "x": 100,
+          "y": 250
+        },
+        "data": {
+          "label": "Alert production",
+          "config": {
+            "audience": "group",
+            "group": "production",
+            "title": "Artwork approved: {{ $trigger.payload.title }}",
+            "body": "{{ $trigger.payload.customerName }} approved proof version {{ $trigger.payload.proofVersion }} for quote {{ $trigger.payload.quoteNumber }}.",
+            "link": "/quotes/{{ $trigger.payload.quoteId }}"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e-trigger-1-notify-1",
+        "source": "trigger-1",
+        "target": "notify-1"
+      }
+    ]
+  },
+  {
+    "id": "proof-changes-requested",
+    "aiEmailToCustomers": false,
+    "triggerType": "CRM_EVENT",
+    "trigger": {
+      "eventType": "proof.changes_requested",
+      "entityId": "4b3a2c1d-0e9f-4a8b-9c6d-5e4f3a2b1c0d",
+      "timestamp": "2026-11-21T08:00:00.000Z",
+      "payload": {
+        "proofId": "4b3a2c1d-0e9f-4a8b-9c6d-5e4f3a2b1c0d",
+        "proofVersion": 2,
+        "quoteId": "8a4c2d6e-91b3-4e0a-b7f4-0c5d3e2a1f90",
+        "quoteNumber": "Q-2026-0142",
+        "title": "5,000 printed cake boxes",
+        "customerId": "5b1f6f0e-3c0a-4f57-9d0e-2b9f6a1c7e11",
+        "customerName": "Al Noor Bakery",
+        "customerEmail": "orders@alnoorbakery.ae",
+        "customerPhone": "+971501234567",
+        "status": "CHANGES_REQUESTED",
+        "respondedByName": "Fatima Al Noor",
+        "comment": "Please make the logo bigger."
+      }
+    },
+    "nodes": [
+      {
+        "id": "trigger-1",
+        "type": "crmEventTrigger",
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "data": {
+          "label": "Customer asked for proof changes",
+          "config": {
+            "event": "proof.changes_requested"
+          }
+        }
+      },
+      {
+        "id": "notify-1",
+        "type": "notifyStaffNode",
+        "position": {
+          "x": 100,
+          "y": 250
+        },
+        "data": {
+          "label": "Alert sales",
+          "config": {
+            "audience": "group",
+            "group": "sales",
+            "title": "{{ $trigger.payload.customerName }} wants changes to the proof ({{ $trigger.payload.quoteNumber }})",
+            "body": "{{ $trigger.payload.respondedByName }} wrote: {{ $trigger.payload.comment }}",
+            "link": "/quotes/{{ $trigger.payload.quoteId }}"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e-trigger-1-notify-1",
+        "source": "trigger-1",
+        "target": "notify-1"
+      }
+    ]
+  },
+  {
+    "id": "deposit-paid-start-job",
+    "aiEmailToCustomers": false,
+    "triggerType": "CRM_EVENT",
+    "trigger": {
+      "eventType": "deposit.paid",
+      "entityId": "c3d1e5f7-2a4b-4c6d-9e8f-1a2b3c4d5e6f",
+      "timestamp": "2026-11-21T08:00:00.000Z",
+      "payload": {
+        "invoiceId": "c3d1e5f7-2a4b-4c6d-9e8f-1a2b3c4d5e6f",
+        "invoiceNumber": "INV-2026-0211",
+        "stageLabel": "50% deposit",
+        "customerId": "5b1f6f0e-3c0a-4f57-9d0e-2b9f6a1c7e11",
+        "customerName": "Al Noor Bakery",
+        "customerEmail": "orders@alnoorbakery.ae",
+        "amount": 9187.5,
+        "paidAmount": 9187.5,
+        "currency": "AED",
+        "dueDate": "2026-11-27T00:00:00.000Z",
+        "orderId": "2f7e9a10-6c4b-4d2e-8a31-7b5c0d9e4f12",
+        "customerPhone": "+971501234567",
+        "orderNumber": "SO-2026-0098",
+        "status": "PAID",
+        "paidOnline": true
+      }
+    },
+    "nodes": [
+      {
+        "id": "trigger-1",
+        "type": "crmEventTrigger",
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "data": {
+          "label": "Deposit paid",
+          "config": {
+            "event": "deposit.paid"
+          }
+        }
+      },
+      {
+        "id": "notify-1",
+        "type": "notifyStaffNode",
+        "position": {
+          "x": 100,
+          "y": 250
+        },
+        "data": {
+          "label": "Alert production",
+          "config": {
+            "audience": "group",
+            "group": "production",
+            "title": "Deposit paid: order {{ $trigger.payload.orderNumber }} can start",
+            "body": "{{ $trigger.payload.customerName }} paid {{ $trigger.payload.currency }} {{ $trigger.payload.paidAmount }} on invoice {{ $trigger.payload.invoiceNumber }}.",
+            "link": "/orders/{{ $trigger.payload.orderId }}"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e-trigger-1-notify-1",
+        "source": "trigger-1",
+        "target": "notify-1"
+      }
+    ]
+  },
+  {
+    "id": "materials-arrived",
+    "aiEmailToCustomers": false,
+    "triggerType": "CRM_EVENT",
+    "trigger": {
+      "eventType": "purchase_order.received",
+      "entityId": "7c6b5a4f-3e2d-4c1b-a09f-8e7d6c5b4a3f",
+      "timestamp": "2026-11-21T08:00:00.000Z",
+      "payload": {
+        "purchaseOrderId": "7c6b5a4f-3e2d-4c1b-a09f-8e7d6c5b4a3f",
+        "poNumber": "PO-2026-0064",
+        "supplierName": "Gulf Paper & Board",
+        "totalAmount": 6420,
+        "currency": "AED",
+        "expectedDate": "2026-11-25T00:00:00.000Z",
+        "status": "RECEIVED"
+      }
+    },
+    "nodes": [
+      {
+        "id": "trigger-1",
+        "type": "crmEventTrigger",
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "data": {
+          "label": "Materials arrived",
+          "config": {
+            "event": "purchase_order.received"
+          }
+        }
+      },
+      {
+        "id": "notify-1",
+        "type": "notifyStaffNode",
+        "position": {
+          "x": 100,
+          "y": 250
+        },
+        "data": {
+          "label": "Alert production",
+          "config": {
+            "audience": "group",
+            "group": "production",
+            "title": "Materials arrived: {{ $trigger.payload.poNumber }}",
+            "body": "Everything on purchase order {{ $trigger.payload.poNumber }} from {{ $trigger.payload.supplierName }} has been received.",
+            "link": "/purchasing/orders"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e-trigger-1-notify-1",
+        "source": "trigger-1",
+        "target": "notify-1"
+      }
+    ]
+  },
+  {
+    "id": "order-ready-customer",
+    "aiEmailToCustomers": false,
+    "triggerType": "CRM_EVENT",
+    "trigger": {
+      "eventType": "sales_order.ready",
+      "entityId": "2f7e9a10-6c4b-4d2e-8a31-7b5c0d9e4f12",
+      "timestamp": "2026-11-21T08:00:00.000Z",
+      "payload": {
+        "orderId": "2f7e9a10-6c4b-4d2e-8a31-7b5c0d9e4f12",
+        "orderNumber": "SO-2026-0098",
+        "quoteNumber": "Q-2026-0142",
+        "customerId": "5b1f6f0e-3c0a-4f57-9d0e-2b9f6a1c7e11",
+        "customerName": "Al Noor Bakery",
+        "customerEmail": "orders@alnoorbakery.ae",
+        "customerPhone": "+971501234567",
+        "totalAmount": 18375,
+        "currency": "AED",
+        "status": "IN_PRODUCTION",
+        "jobsFinished": 2
+      }
+    },
+    "nodes": [
+      {
+        "id": "trigger-1",
+        "type": "crmEventTrigger",
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "data": {
+          "label": "Order ready",
+          "config": {
+            "event": "sales_order.ready"
+          }
+        }
+      },
+      {
+        "id": "email-1",
+        "type": "sendEmailNode",
+        "position": {
+          "x": 100,
+          "y": 250
+        },
+        "data": {
+          "label": "Tell the customer",
+          "config": {
+            "to": "{{ $trigger.payload.customerEmail }}",
+            "subject": "Your order {{ $trigger.payload.orderNumber }} is ready",
+            "body": "Hello {{ $trigger.payload.customerName }},\n\nGood news: your order {{ $trigger.payload.orderNumber }} is finished and ready. Reply to this email to arrange collection or delivery.\n\nThank you"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e-trigger-1-email-1",
+        "source": "trigger-1",
+        "target": "email-1"
+      }
+    ]
+  },
+  {
+    "id": "stock-low-buyer",
+    "aiEmailToCustomers": false,
+    "triggerType": "CRM_EVENT",
+    "trigger": {
+      "eventType": "stock.low",
+      "entityId": "0d1c2b3a-4f5e-4d6c-8b8a-9f0e1d2c3b4a",
+      "timestamp": "2026-11-21T08:00:00.000Z",
+      "payload": {
+        "stockItemId": "0d1c2b3a-4f5e-4d6c-8b8a-9f0e1d2c3b4a",
+        "materialId": "3a2b1c0d-9e8f-4a7b-bc5d-4e3f2a1b0c9d",
+        "materialName": "350gsm white board",
+        "sku": "BRD-350-W",
+        "unit": "SHEET",
+        "qtyOnHand": 120,
+        "reorderPoint": 200,
+        "reorderQty": 1000
+      }
+    },
+    "nodes": [
+      {
+        "id": "trigger-1",
+        "type": "crmEventTrigger",
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "data": {
+          "label": "Stock fell to its minimum",
+          "config": {
+            "event": "stock.low"
+          }
+        }
+      },
+      {
+        "id": "notify-1",
+        "type": "notifyStaffNode",
+        "position": {
+          "x": 100,
+          "y": 250
+        },
+        "data": {
+          "label": "Alert the buyers",
+          "config": {
+            "audience": "group",
+            "group": "purchasing",
+            "title": "Running low: {{ $trigger.payload.materialName }}",
+            "body": "{{ $trigger.payload.qtyOnHand }} {{ $trigger.payload.unit }} left; the minimum is {{ $trigger.payload.reorderPoint }}. Usual reorder: {{ $trigger.payload.reorderQty }} {{ $trigger.payload.unit }}.",
+            "link": "/inventory"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e-trigger-1-notify-1",
+        "source": "trigger-1",
+        "target": "notify-1"
+      }
+    ]
+  },
+  {
+    "id": "invoice-overdue-reminder",
+    "aiEmailToCustomers": false,
+    "triggerType": "CRM_EVENT",
+    "trigger": {
+      "eventType": "invoice.overdue",
+      "entityId": "c3d1e5f7-2a4b-4c6d-9e8f-1a2b3c4d5e6f",
+      "timestamp": "2026-11-21T08:00:00.000Z",
+      "payload": {
+        "invoiceId": "c3d1e5f7-2a4b-4c6d-9e8f-1a2b3c4d5e6f",
+        "invoiceNumber": "INV-2026-0211",
+        "customerId": "5b1f6f0e-3c0a-4f57-9d0e-2b9f6a1c7e11",
+        "customerEmail": "orders@alnoorbakery.ae",
+        "amount": 9187.5,
+        "paidAmount": 0,
+        "dueDate": "2026-11-27T00:00:00.000Z"
+      }
+    },
+    "nodes": [
+      {
+        "id": "trigger-1",
+        "type": "crmEventTrigger",
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "data": {
+          "label": "Invoice overdue",
+          "config": {
+            "event": "invoice.overdue"
+          }
+        }
+      },
+      {
+        "id": "ai-1",
+        "type": "aiPromptNode",
+        "position": {
+          "x": 100,
+          "y": 250
+        },
+        "data": {
+          "label": "Write reminder",
+          "config": {
+            "prompt": "Write a short, polite plain-text payment reminder email to a customer about an overdue invoice. Use only these details: invoice number {{ $trigger.payload.invoiceNumber }}, amount {{ $trigger.payload.amount }}, amount paid so far {{ $trigger.payload.paidAmount }}, due date {{ $trigger.payload.dueDate }}. Do not include a subject line, placeholders or any detail not listed here. Do not invent anything."
+          }
+        }
+      },
+      {
+        "id": "email-1",
+        "type": "sendEmailNode",
+        "position": {
+          "x": 100,
+          "y": 400
+        },
+        "data": {
+          "label": "Send reminder",
+          "config": {
+            "to": "owner@shop.ae",
+            "subject": "Payment reminder: invoice {{ $trigger.payload.invoiceNumber }}",
+            "body": "Draft for {{ $trigger.payload.customerEmail }}:\n\n{{ $json.text }}"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e-trigger-1-ai-1",
+        "source": "trigger-1",
+        "target": "ai-1"
+      },
+      {
+        "id": "e-ai-1-email-1",
+        "source": "ai-1",
+        "target": "email-1"
+      }
+    ]
+  },
+  {
+    "id": "invoice-overdue-reminder",
+    "aiEmailToCustomers": true,
+    "triggerType": "CRM_EVENT",
+    "trigger": {
+      "eventType": "invoice.overdue",
+      "entityId": "c3d1e5f7-2a4b-4c6d-9e8f-1a2b3c4d5e6f",
+      "timestamp": "2026-11-21T08:00:00.000Z",
+      "payload": {
+        "invoiceId": "c3d1e5f7-2a4b-4c6d-9e8f-1a2b3c4d5e6f",
+        "invoiceNumber": "INV-2026-0211",
+        "customerId": "5b1f6f0e-3c0a-4f57-9d0e-2b9f6a1c7e11",
+        "customerEmail": "orders@alnoorbakery.ae",
+        "amount": 9187.5,
+        "paidAmount": 0,
+        "dueDate": "2026-11-27T00:00:00.000Z"
+      }
+    },
+    "nodes": [
+      {
+        "id": "trigger-1",
+        "type": "crmEventTrigger",
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "data": {
+          "label": "Invoice overdue",
+          "config": {
+            "event": "invoice.overdue"
+          }
+        }
+      },
+      {
+        "id": "ai-1",
+        "type": "aiPromptNode",
+        "position": {
+          "x": 100,
+          "y": 250
+        },
+        "data": {
+          "label": "Write reminder",
+          "config": {
+            "prompt": "Write a short, polite plain-text payment reminder email to a customer about an overdue invoice. Use only these details: invoice number {{ $trigger.payload.invoiceNumber }}, amount {{ $trigger.payload.amount }}, amount paid so far {{ $trigger.payload.paidAmount }}, due date {{ $trigger.payload.dueDate }}. Do not include a subject line, placeholders or any detail not listed here. Do not invent anything."
+          }
+        }
+      },
+      {
+        "id": "email-1",
+        "type": "sendEmailNode",
+        "position": {
+          "x": 100,
+          "y": 400
+        },
+        "data": {
+          "label": "Send reminder",
+          "config": {
+            "to": "{{ $trigger.payload.customerEmail }}",
+            "subject": "Payment reminder: invoice {{ $trigger.payload.invoiceNumber }}",
+            "body": "{{ $json.text }}"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e-trigger-1-ai-1",
+        "source": "trigger-1",
+        "target": "ai-1"
+      },
+      {
+        "id": "e-ai-1-email-1",
+        "source": "ai-1",
+        "target": "email-1"
+      }
+    ]
+  },
+  {
+    "id": "payment-thank-you",
+    "aiEmailToCustomers": false,
+    "triggerType": "CRM_EVENT",
+    "trigger": {
+      "eventType": "invoice.paid",
+      "entityId": "c3d1e5f7-2a4b-4c6d-9e8f-1a2b3c4d5e6f",
+      "timestamp": "2026-11-21T08:00:00.000Z",
+      "payload": {
+        "invoiceId": "c3d1e5f7-2a4b-4c6d-9e8f-1a2b3c4d5e6f",
+        "invoiceNumber": "INV-2026-0211",
+        "stageLabel": "50% deposit",
+        "customerId": "5b1f6f0e-3c0a-4f57-9d0e-2b9f6a1c7e11",
+        "customerName": "Al Noor Bakery",
+        "customerEmail": "orders@alnoorbakery.ae",
+        "amount": 9187.5,
+        "paidAmount": 9187.5,
+        "currency": "AED",
+        "dueDate": "2026-11-27T00:00:00.000Z",
+        "orderId": "2f7e9a10-6c4b-4d2e-8a31-7b5c0d9e4f12",
+        "status": "PAID"
+      }
+    },
+    "nodes": [
+      {
+        "id": "trigger-1",
+        "type": "crmEventTrigger",
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "data": {
+          "label": "Invoice paid in full",
+          "config": {
+            "event": "invoice.paid"
+          }
+        }
+      },
+      {
+        "id": "email-1",
+        "type": "sendEmailNode",
+        "position": {
+          "x": 100,
+          "y": 250
+        },
+        "data": {
+          "label": "Thank the customer",
+          "config": {
+            "to": "{{ $trigger.payload.customerEmail }}",
+            "subject": "Payment received: invoice {{ $trigger.payload.invoiceNumber }}",
+            "body": "Hello {{ $trigger.payload.customerName }},\n\nWe have received your payment and invoice {{ $trigger.payload.invoiceNumber }} is now paid in full. Thank you."
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e-trigger-1-email-1",
+        "source": "trigger-1",
+        "target": "email-1"
+      }
+    ]
+  },
+  {
+    "id": "expense-claim-submitted",
+    "aiEmailToCustomers": false,
+    "triggerType": "CRM_EVENT",
+    "trigger": {
+      "eventType": "expense.submitted",
+      "entityId": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+      "timestamp": "2026-11-21T08:00:00.000Z",
+      "payload": {
+        "expenseId": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+        "claimNumber": "EXP-0031",
+        "employeeName": "Rashid Khan",
+        "category": "Delivery and fuel",
+        "merchantName": "ENOC",
+        "amount": 180,
+        "currency": "AED",
+        "status": "SUBMITTED"
+      }
+    },
+    "nodes": [
+      {
+        "id": "trigger-1",
+        "type": "crmEventTrigger",
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "data": {
+          "label": "Expense claim submitted",
+          "config": {
+            "event": "expense.submitted"
+          }
+        }
+      },
+      {
+        "id": "notify-1",
+        "type": "notifyStaffNode",
+        "position": {
+          "x": 100,
+          "y": 250
+        },
+        "data": {
+          "label": "Alert the approvers",
+          "config": {
+            "audience": "group",
+            "group": "expense_approvers",
+            "title": "Expense claim from {{ $trigger.payload.employeeName }}",
+            "body": "{{ $trigger.payload.claimNumber }}: {{ $trigger.payload.currency }} {{ $trigger.payload.amount }} at {{ $trigger.payload.merchantName }} ({{ $trigger.payload.category }}).",
+            "link": "/finance/expenses"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e-trigger-1-notify-1",
+        "source": "trigger-1",
+        "target": "notify-1"
+      }
+    ]
+  },
+  {
+    "id": "handover-alert",
+    "aiEmailToCustomers": false,
+    "triggerType": "CRM_EVENT",
+    "trigger": {
+      "eventType": "conversation.handover",
+      "entityId": "6f5e4d3c-2b1a-4f0e-9d8c-7b6a5f4e3d2c",
+      "timestamp": "2026-11-21T08:00:00.000Z",
+      "payload": {
+        "contactId": "6f5e4d3c-2b1a-4f0e-9d8c-7b6a5f4e3d2c",
+        "contactName": "Fatima (Al Noor Bakery)",
+        "channel": "WhatsApp",
+        "provider": "WHATSAPP_META",
+        "threadId": "b4a5f6e7-d8c9-4b0a-9f2e-3d4c5b6a7f8e",
+        "reason": "HUMAN_REQUESTED",
+        "reasonLabel": "The customer asked for a person",
+        "summary": "Wants to change the delivery date for SO-2026-0098."
+      }
+    },
+    "nodes": [
+      {
+        "id": "trigger-1",
+        "type": "crmEventTrigger",
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "data": {
+          "label": "Conversation needs a person",
+          "config": {
+            "event": "conversation.handover"
+          }
+        }
+      },
+      {
+        "id": "email-1",
+        "type": "sendEmailNode",
+        "position": {
+          "x": 100,
+          "y": 250
+        },
+        "data": {
+          "label": "Email me",
+          "config": {
+            "to": "owner@shop.ae",
+            "subject": "{{ $trigger.payload.contactName }} is waiting for a person",
+            "body": "{{ $trigger.payload.contactName }} is waiting for a reply on {{ $trigger.payload.channel }}.\n\nWhy: {{ $trigger.payload.reasonLabel }}\n\n{{ $trigger.payload.summary }}\n\nOpen the Inbox in Kerf to reply."
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e-trigger-1-email-1",
+        "source": "trigger-1",
+        "target": "email-1"
+      }
+    ]
+  },
+  {
+    "id": "order-delivered-feedback",
+    "aiEmailToCustomers": false,
+    "triggerType": "CRM_EVENT",
+    "trigger": {
+      "eventType": "sales_order.fulfilled",
+      "entityId": "2f7e9a10-6c4b-4d2e-8a31-7b5c0d9e4f12",
+      "timestamp": "2026-11-21T08:00:00.000Z",
+      "payload": {
+        "orderId": "2f7e9a10-6c4b-4d2e-8a31-7b5c0d9e4f12",
+        "orderNumber": "SO-2026-0098",
+        "quoteNumber": "Q-2026-0142",
+        "customerId": "5b1f6f0e-3c0a-4f57-9d0e-2b9f6a1c7e11",
+        "customerName": "Al Noor Bakery",
+        "customerEmail": "orders@alnoorbakery.ae",
+        "customerPhone": "+971501234567",
+        "totalAmount": 18375,
+        "currency": "AED",
+        "status": "FULFILLED"
+      }
+    },
+    "nodes": [
+      {
+        "id": "trigger-1",
+        "type": "crmEventTrigger",
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "data": {
+          "label": "Order delivered or collected",
+          "config": {
+            "event": "sales_order.fulfilled"
+          }
+        }
+      },
+      {
+        "id": "delay-1",
+        "type": "delayNode",
+        "position": {
+          "x": 100,
+          "y": 250
+        },
+        "data": {
+          "label": "Wait 3 days",
+          "config": {
+            "durationMs": "3 days"
+          }
+        }
+      },
+      {
+        "id": "email-1",
+        "type": "sendEmailNode",
+        "position": {
+          "x": 100,
+          "y": 400
+        },
+        "data": {
+          "label": "Ask for feedback",
+          "config": {
+            "to": "{{ $trigger.payload.customerEmail }}",
+            "subject": "How did we do with order {{ $trigger.payload.orderNumber }}?",
+            "body": "Hello {{ $trigger.payload.customerName }},\n\nYour order {{ $trigger.payload.orderNumber }} was completed a few days ago. Is everything as you expected? If anything is not right, reply to this email and we will sort it out. If you are happy with it, a short review would mean a lot to us.\n\nThank you"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e-trigger-1-delay-1",
+        "source": "trigger-1",
+        "target": "delay-1"
+      },
+      {
+        "id": "e-delay-1-email-1",
+        "source": "delay-1",
+        "target": "email-1"
+      }
+    ]
+  },
+  {
+    "id": "daily-summary",
+    "aiEmailToCustomers": false,
+    "triggerType": "SCHEDULE",
+    "trigger": {},
+    "nodes": [
+      {
+        "id": "trigger-1",
+        "type": "scheduleTrigger",
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "data": {
+          "label": "Every morning at 8:00",
+          "config": {}
+        }
+      },
+      {
+        "id": "summary-1",
+        "type": "crmMutateNode",
+        "position": {
+          "x": 100,
+          "y": 250
+        },
+        "data": {
+          "label": "Get today's numbers",
+          "config": {
+            "entity": "summary",
+            "action": "daily"
+          }
+        }
+      },
+      {
+        "id": "email-1",
+        "type": "sendEmailNode",
+        "position": {
+          "x": 100,
+          "y": 400
+        },
+        "data": {
+          "label": "Email me",
+          "config": {
+            "to": "owner@shop.ae",
+            "subject": "Your shop this morning ({{ $json.date }})",
+            "body": "Good morning. Here is where things stand:\n\n{{ $json.summaryText }}"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e-trigger-1-summary-1",
+        "source": "trigger-1",
+        "target": "summary-1"
+      },
+      {
+        "id": "e-summary-1-email-1",
+        "source": "summary-1",
+        "target": "email-1"
+      }
+    ]
+  }
+]

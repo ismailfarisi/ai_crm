@@ -405,6 +405,7 @@ function AutomationStudio({ workflow, refresh }: AutomationStudioProps) {
             workflow={workflow}
             triggerEvent={triggerEvent}
             nodes={nodes as unknown as AutomationNode[]}
+            hasUnsavedChanges={hasUnsavedChanges && workflowStatus === 'ACTIVE'}
             onExecuteTest={handleExecuteTest}
             onGetExecution={testRunMutation.getExecution}
             onClose={() => setIsTestRunOpen(false)}

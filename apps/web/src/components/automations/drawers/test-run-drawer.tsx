@@ -25,6 +25,8 @@ export interface TestRunDrawerProps {
   triggerEvent?: string | null;
   /** The steps on the canvas, to show results under their names. */
   nodes?: AutomationNode[];
+  /** A test run uses the saved automation, so edits not yet saved are left out. */
+  hasUnsavedChanges?: boolean;
   onExecuteTest: (payload: Record<string, any>) => Promise<AutomationExecutionDto | null>;
   onGetExecution?: (executionId: string) => Promise<AutomationExecutionDto>;
   onClose: () => void;
@@ -56,6 +58,7 @@ export function TestRunDrawer({
   workflow,
   triggerEvent = null,
   nodes,
+  hasUnsavedChanges,
   onExecuteTest,
   onGetExecution,
   onClose,
@@ -184,6 +187,16 @@ export function TestRunDrawer({
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {hasUnsavedChanges && (
+          <div
+            data-testid="test-run-unsaved-note"
+            className="rounded-lg border border-border bg-brand-soft px-3 py-2 text-[11px] text-ink"
+          >
+            This automation is live and has changes that are not saved. A test run uses the last
+            saved version. Save first to test what you see.
+          </div>
+        )}
+
         {/* Sample data: a form of the event's fields, or JSON for those who want it */}
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
@@ -244,7 +257,7 @@ export function TestRunDrawer({
             </p>
           )}
           <p className="text-[11px] text-ink-subtle">
-            A test does what the steps say: emails are sent and records are changed. Waits are not shortened.
+            A test does what the steps say: emails and messages are sent and records are changed. Waits are skipped.
           </p>
         </div>
 

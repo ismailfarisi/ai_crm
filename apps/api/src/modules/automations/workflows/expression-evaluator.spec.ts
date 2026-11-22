@@ -267,3 +267,19 @@ describe('ExpressionEvaluator', () => {
     });
   });
 });
+
+describe('a template that starts and ends with a placeholder', () => {
+  it('fills in both, instead of reading the whole string as one expression', () => {
+    const context = { $json: { name: 'Fatima', note: 'make it blue' } };
+    expect(
+      interpolateObject('{{ $json.name }} wrote: {{ $json.note }}', context),
+    ).toBe('Fatima wrote: make it blue');
+    expect(interpolateObject('{{ $json.name }}{{ $json.note }}', context)).toBe(
+      'Fatimamake it blue',
+    );
+  });
+
+  it('still returns the value itself for a single placeholder', () => {
+    expect(interpolateObject('{{ $json.count }}', { $json: { count: 3 } })).toBe(3);
+  });
+});

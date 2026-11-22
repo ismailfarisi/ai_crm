@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, QueryFailedError, Repository } from 'typeorm';
@@ -50,6 +51,7 @@ import {
   allocateNextSequenceValue,
   formatTenantSequenceNumber,
 } from '../../database/tenant-sequence.util';
+import { ShopEventsService } from '@/common/events';
 
 const POSTGRES_UNIQUE_VIOLATION = '23505';
 
@@ -93,6 +95,8 @@ export class ExpensesService {
     private readonly temporalService: TemporalService,
     private readonly aiService: AiService,
     private readonly ledger: LedgerService,
+    @Optional()
+    private readonly shopEvents?: ShopEventsService,
   ) {}
 
   async generateNextClaimNumber(tenantId: string): Promise<string> {
@@ -185,7 +189,9 @@ export class ExpensesService {
         this.logger.warn(`Temporal workflow start deferred/failed: ${msg}`);
         savedClaim.temporalWorkflowId = workflowId;
       }
-      return this.expenseRepository.save(savedClaim);
+      const submitted = await this.expenseRepository.save(savedClaim);
+      await this.shopEvents?.emit('expense.submitted', tenantId, submitted.id);
+      return submitted;
     }
 
     return savedClaim;
@@ -293,7 +299,18 @@ export class ExpensesService {
             );
           }
 
-          return claims.save(locked);
+          const saved = await claims.save(locked);
+          if (saved.status === 'APPROVED' || saved.status === 'REJECTED') {
+            await this.shopEvents?.emit(
+              saved.status === 'APPROVED'
+                ? 'expense.approved'
+                : 'expense.rejected',
+              tenantId,
+              saved.id,
+              { manager },
+            );
+          }
+          return saved;
         },
       );
     } catch (err: unknown) {

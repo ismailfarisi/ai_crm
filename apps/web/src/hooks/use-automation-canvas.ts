@@ -48,6 +48,8 @@ export const DEFAULT_NODE_CONFIGS: Record<AutomationNodeType, Record<string, any
     timeoutDuration: '3 days',
   },
   sendEmailNode: { to: '', subject: '', body: '' },
+  sendMessageNode: { channel: 'WHATSAPP_META', audience: 'staff', to: '', body: '' },
+  notifyStaffNode: { audience: 'group', group: 'owners', title: '', body: '', link: '' },
   crmMutateNode: { action: 'CREATE_CONTACT', payload: {} },
   approvalNode: { message: '', timeoutDuration: '3 days' },
 };
