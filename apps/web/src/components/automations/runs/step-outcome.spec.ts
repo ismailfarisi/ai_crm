@@ -51,4 +51,14 @@ describe('what a step did, in words', () => {
     expect(stepStatusWord('FAILED')).toBe('Did not work');
     expect(stepStatusWord('SUCCESS')).toBe('Done');
   });
+
+  it('does not let a team-approved quote read as the customer having agreed', () => {
+    const text = stepOutcome('crmMutateNode', {
+      status: 'SUCCESS',
+      input: { entity: 'quote', action: 'get' },
+      output: { quoteNumber: 'Q-0042', status: 'APPROVED', awaitingCustomer: true, sampleRecord: true },
+    } as never);
+    expect(text).toContain('Found quote Q-0042: approved by your team. Still waiting on the customer');
+    expect(text).toContain('made-up quote');
+  });
 });

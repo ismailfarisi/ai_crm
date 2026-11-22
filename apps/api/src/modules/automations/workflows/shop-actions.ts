@@ -191,7 +191,7 @@ export function createShopActions(deps: ShopActionDeps) {
       );
       if (unlinked.length) {
         refuse(
-          `${unlinked.map((user) => user.email).join(', ')} ${unlinked.length === 1 ? 'has' : 'have'} not linked ${label} to Kerf yet, so there is nowhere to send this. They can link it from their profile, or use "Notify staff" to reach them in the app.`,
+          `${unlinked.map((user) => user.email).join(', ')} ${unlinked.length === 1 ? 'has' : 'have'} not linked ${label} to Kerf yet, so there is nowhere to send this. They can link it from their profile, or use an "Alert the team in Kerf" step to reach them in the app.`,
         );
       }
       return [

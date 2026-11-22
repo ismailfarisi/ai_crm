@@ -362,7 +362,9 @@ export function TestRunDrawer({
             <div className="space-y-1.5">
               <span className="text-[11px] font-medium text-ink-muted">Steps</span>
               <div className="space-y-1.5">
-                {Object.entries(executionResult.nodeResults || {}).map(([nodeId, res]) => (
+                {Object.entries(executionResult.nodeResults || {})
+                  .sort(([, a], [, b]) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime())
+                  .map(([nodeId, res]) => (
                   <button
                     key={nodeId}
                     type="button"

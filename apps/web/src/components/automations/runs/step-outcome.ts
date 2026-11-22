@@ -54,7 +54,13 @@ function recordOutcome(input: Record<string, unknown>, output: Record<string, un
   if (action === 'get') {
     const number = [output.quoteNumber, output.invoiceNumber, output.number].find((v) => typeof v === 'string' && v);
     const found = number ? `Found ${what} ${number}` : `Found the ${what}`;
-    const status = typeof output.status === 'string' && output.status ? `: ${output.status.toLowerCase().replace(/_/g, ' ')}` : '';
+    const statusWord = typeof output.status === 'string' ? output.status.toLowerCase().replace(/_/g, ' ') : '';
+    // A quote's "approved" is the team's sign-off, not the customer's yes.
+    const status = !statusWord
+      ? ''
+      : entity === 'quote' && statusWord === 'approved'
+        ? ': approved by your team'
+        : `: ${statusWord}`;
     const waiting =
       typeof output.awaitingCustomer === 'boolean'
         ? `. ${output.awaitingCustomer ? 'Still waiting on the customer' : 'The customer has already answered'}`
