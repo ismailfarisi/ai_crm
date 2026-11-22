@@ -152,6 +152,29 @@ describe('Automation Drawers', () => {
   });
 
 
+  it('brings the new event\'s sample when another event is saved while it is open', () => {
+    const saved = (event: string): AutomationWorkflowDto => ({
+      ...sampleWorkflow,
+      triggerType: 'CRM_EVENT',
+      triggerConfig: { event },
+    });
+    const { rerender } = render(
+      <TestRunDrawer workflow={saved('quote.sent')} onExecuteTest={vi.fn()} onClose={vi.fn()} />,
+    );
+    const input = () => screen.getByTestId('test-payload-input') as HTMLTextAreaElement;
+    expect(input().value).toContain('quote.sent');
+
+    rerender(
+      <TestRunDrawer
+        workflow={saved('expense.submitted')}
+        onExecuteTest={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(input().value).toContain('expense.submitted');
+    expect(input().value).not.toContain('quote.sent');
+  });
+
   it('says a test run leaves out changes that are not saved', () => {
     const { rerender } = render(
       <TestRunDrawer workflow={sampleWorkflow} onExecuteTest={vi.fn()} onClose={vi.fn()} />,

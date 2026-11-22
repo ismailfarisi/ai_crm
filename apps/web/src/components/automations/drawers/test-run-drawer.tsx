@@ -33,6 +33,22 @@ function pendingActionOf(step: { output?: unknown }): unknown {
   return output?.pendingAction;
 }
 
+/** The chosen event's own sample, shaped like a real run's trigger. */
+function samplePayloadFor(event: string | null): string {
+  return JSON.stringify(
+    sampleTriggerFor(event) ?? {
+      customerName: 'Acme Systems Corp',
+      customerEmail: 'contact@acmesystems.com',
+      amount: 24500,
+      currency: 'USD',
+      quoteNumber: 'QT-2026-TEST',
+      status: 'PENDING',
+    },
+    null,
+    2,
+  );
+}
+
 export function TestRunDrawer({
   workflow,
   hasUnsavedChanges,
@@ -41,21 +57,14 @@ export function TestRunDrawer({
   onClose,
   className,
 }: TestRunDrawerProps) {
-  const [testPayloadStr, setTestPayloadStr] = useState(
-    JSON.stringify(
-      // The chosen event's own sample, shaped like a real run's trigger.
-      sampleTriggerFor(crmEventOf(workflow?.triggerConfig as Record<string, unknown> | undefined)) ?? {
-        customerName: 'Acme Systems Corp',
-        customerEmail: 'contact@acmesystems.com',
-        amount: 24500,
-        currency: 'USD',
-        quoteNumber: 'QT-2026-TEST',
-        status: 'PENDING',
-      },
-      null,
-      2,
-    ),
-  );
+  const savedEvent = crmEventOf(workflow?.triggerConfig as Record<string, unknown> | undefined);
+  const [sampleEvent, setSampleEvent] = useState(savedEvent);
+  const [testPayloadStr, setTestPayloadStr] = useState(() => samplePayloadFor(savedEvent));
+  // Saving another event while the drawer is open brings that event's sample.
+  if (savedEvent !== sampleEvent) {
+    setSampleEvent(savedEvent);
+    setTestPayloadStr(samplePayloadFor(savedEvent));
+  }
 
   const [isRunning, setIsRunning] = useState(false);
   const [executionResult, setExecutionResult] = useState<AutomationExecutionDto | null>(null);
