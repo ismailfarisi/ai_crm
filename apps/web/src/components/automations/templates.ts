@@ -121,12 +121,12 @@ export const AUTOMATION_TEMPLATES = [
   },
   {
     id: 'stock-low-buyer',
-    name: 'Alert the buyer when stock runs low',
-    description: 'Alerts the people who raise purchase orders when a material falls to its minimum.',
+    name: 'Email the buyer when stock runs low',
+    description: 'Emails you when a material falls to its minimum, with how much is left and how much to reorder.',
     label: 'CRM event',
-    blurb: 'When a material falls to its minimum, alerts your buyers with how much is left and how much to reorder.',
+    blurb: 'Kerf already alerts your buyers in the app when a material falls to its minimum. This also emails how much is left and how much to reorder, so it is seen away from the screen.',
     category: 'Stock and purchasing',
-    reaches: 'Alerts buyers in the app',
+    reaches: 'Emails you',
   },
   {
     id: 'invoice-overdue-reminder',
@@ -389,13 +389,17 @@ export function buildTemplateGraph(
       ]);
     case 'stock-low-buyer':
       return eventRecipe('stock.low', 'Stock fell to its minimum', [
-        notify(
-          'Alert the buyers',
-          'purchasing',
-          `Running low: ${P('materialName')}`,
-          `${P('qtyOnHand')} ${P('unit')} left; the minimum is ${P('reorderPoint')}. Usual reorder: ${P('reorderQty')} ${P('unit')}.`,
-          '/inventory',
-        ),
+        // The buyers already get the bell alert Kerf raises itself; a second one would only repeat it.
+        node('email-1', 'sendEmailNode', 1, 'Email the buyer', {
+          to: opts.teamEmail,
+          subject: `Running low: ${P('materialName')}`,
+          body:
+            `${P('materialName')} has fallen to its minimum.\n\n` +
+            `Left in stock: ${P('qtyOnHand')} ${P('unit')}\n` +
+            `Minimum: ${P('reorderPoint')} ${P('unit')}\n` +
+            `Usual reorder: ${P('reorderQty')} ${P('unit')}\n\n` +
+            'Open Inventory in Kerf to raise a purchase order from the reorder suggestions.',
+        }),
       ]);
     case 'payment-thank-you':
       return eventRecipe('invoice.paid', 'Invoice paid in full', [

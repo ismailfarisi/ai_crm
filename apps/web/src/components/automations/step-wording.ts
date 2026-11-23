@@ -333,6 +333,69 @@ export function namedText(text: string, groups: DataGroup[]): string {
   });
 }
 
+/** Each piece of available data by the name a person sees and by what is stored. */
+function dataNames(groups: DataGroup[]) {
+  const uses = new Map<string, number>();
+  for (const group of groups) for (const item of group.items) uses.set(item.label, (uses.get(item.label) ?? 0) + 1);
+  const byName = new Map<string, string>();
+  const byExpression = new Map<string, string>();
+  for (const group of groups) {
+    for (const item of group.items) {
+      // A name two steps share says which step it is from.
+      const name = (uses.get(item.label) ?? 0) > 1 ? `${item.label} from ${group.title}` : item.label;
+      if (byName.has(name) || /[{}]/.test(name)) continue;
+      byName.set(name, item.expression);
+      byExpression.set(item.expression, name);
+      if (item.alias && !byExpression.has(item.alias)) byExpression.set(item.alias, name);
+    }
+  }
+  return { byName, byExpression };
+}
+
+/**
+ * A stored text as it is shown in a field: each `{{ $trigger.payload.total }}`
+ * it recognises becomes `{{Quote total}}`, which the field draws as a chip.
+ * Anything not recognised stays as typed.
+ */
+export function friendlyText(text: string, groups: DataGroup[]): string {
+  const { byExpression } = dataNames(groups);
+  return text.replace(PLACEHOLDER, (typed: string, expression: string) => {
+    const name = byExpression.get(expression.trim());
+    return name ? `{{${name}}}` : typed;
+  });
+}
+
+/** The reverse of `friendlyText`: what is stored and run. */
+export function codeText(text: string, groups: DataGroup[]): string {
+  const { byName } = dataNames(groups);
+  return text.replace(PLACEHOLDER, (typed: string, name: string) => {
+    const expression = byName.get(name.trim());
+    return expression ? `{{ ${expression} }}` : typed;
+  });
+}
+
+export interface DataChip {
+  start: number;
+  end: number;
+  name: string;
+}
+
+/** Where the chips sit in a text made by `friendlyText`. */
+export function dataChips(text: string, groups: DataGroup[]): DataChip[] {
+  const { byName } = dataNames(groups);
+  const chips: DataChip[] = [];
+  for (const match of text.matchAll(PLACEHOLDER)) {
+    const name = match[1].trim();
+    if (byName.has(name)) chips.push({ start: match.index, end: match.index + match[0].length, name });
+  }
+  return chips;
+}
+
+/** True when every placeholder in the text is data these steps make available. */
+export function knowsAllData(text: string, groups: DataGroup[]): boolean {
+  return [...text.matchAll(PLACEHOLDER)].every((match) => findDataItem(groups, match[1]) !== undefined);
+}
+
 export function hasPlaceholder(text: unknown): boolean {
   return typeof text === 'string' && /\{\{[^}]+\}\}/.test(text);
 }

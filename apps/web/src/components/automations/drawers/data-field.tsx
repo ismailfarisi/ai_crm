@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useId, useRef, useState } from 'react';
+import React, { useId, useLayoutEffect, useRef, useState } from 'react';
 import { ListPlus, X } from 'lucide-react';
 import clsx from 'clsx';
-import { hasPlaceholder, previewText, type DataGroup } from '../step-wording';
+import { codeText, dataChips, friendlyText, hasPlaceholder, previewText, type DataGroup } from '../step-wording';
 
 export interface DataFieldProps {
   label: string;
@@ -24,14 +24,17 @@ export interface DataFieldProps {
   describedBy?: string;
 }
 
-const controlClass =
-  'w-full rounded-lg border border-border px-3 py-2 text-xs text-ink focus:border-brand focus:outline-none';
+// The field and the layer that draws its text must lay their text out identically.
+const textClass = 'w-full rounded-lg border px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap break-words';
 
 /**
  * A text field that can take values from earlier steps. "Insert data" lists
- * them by their plain names and drops the chosen one in at the cursor as a
- * `{{ … }}` placeholder; the line underneath shows how the text will read
- * with sample values. Typing a placeholder by hand works exactly as before.
+ * them by their plain names and drops the chosen one in at the cursor, where
+ * it shows as a chip with that name: "Quote total". What is stored is still
+ * the `{{ … }}` placeholder the run fills in; the field holds `{{Quote
+ * total}}` and a layer under it draws the chip, so it stays an ordinary text
+ * box to type in. The line underneath shows how the text will read with
+ * sample values. A placeholder typed by hand works exactly as before.
  */
 export function DataField({
   label,
@@ -49,45 +52,107 @@ export function DataField({
   describedBy,
 }: DataFieldProps) {
   const id = useId();
-  const controlRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const controlRef = useRef<HTMLTextAreaElement | null>(null);
   const touched = useRef(false);
+  const lastCaret = useRef(0);
   const [open, setOpen] = useState(false);
   const hasData = groups.some((g) => g.items.length > 0);
 
-  const insert = (expression: string) => {
+  // What the box holds: the stored text with chip names in place of code.
+  const shown = friendlyText(value, groups);
+  const chips = dataChips(shown, groups);
+
+  const update = (next: string, caret?: number) => {
+    const code = codeText(next, groups);
+    onChange(code);
     const el = controlRef.current;
-    const token = `{{ ${expression} }}`;
-    // A field nobody has clicked into reports its caret at the start; the value belongs at the end.
-    const placed = touched.current && el;
-    const start = placed ? (el.selectionStart ?? value.length) : value.length;
-    const end = placed ? (el.selectionEnd ?? value.length) : value.length;
-    const before = value.slice(0, start);
-    const after = value.slice(end);
-    // A space keeps the value apart from the word before it.
-    const lead = before && !/\s$/.test(before) ? ' ' : '';
-    const next = `${before}${lead}${token}${after}`;
-    onChange(next);
-    setOpen(false);
-    const caret = before.length + lead.length + token.length;
+    // A placeholder typed out by hand turns into its chip, which is shorter; keep the caret after it.
+    const shorter = next.length - friendlyText(code, groups).length;
+    if (caret === undefined && shorter > 0 && el) caret = Math.max(0, el.selectionStart - shorter);
+    if (caret === undefined) return;
+    lastCaret.current = caret;
     requestAnimationFrame(() => {
       el?.focus();
       el?.setSelectionRange(caret, caret);
     });
   };
 
-  const shared = {
-    id,
-    'data-testid': testId,
-    value,
-    placeholder,
-    onFocus: () => {
-      touched.current = true;
-    },
-    'aria-label': labelSlot ? label : undefined,
-    'aria-invalid': invalid || undefined,
-    'aria-describedby': describedBy,
-    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onChange(e.target.value),
+  const insert = (expression: string) => {
+    const el = controlRef.current;
+    const named = friendlyText(`{{ ${expression} }}`, groups);
+    // A field nobody has clicked into reports its caret at the start; the value belongs at the end.
+    const placed = touched.current && el;
+    const start = placed ? (el.selectionStart ?? shown.length) : shown.length;
+    const end = placed ? (el.selectionEnd ?? shown.length) : shown.length;
+    const before = shown.slice(0, start);
+    const after = shown.slice(end);
+    // A space keeps the value apart from the word before it.
+    const lead = before && !/\s$/.test(before) ? ' ' : '';
+    setOpen(false);
+    update(`${before}${lead}${named}${after}`, before.length + lead.length + named.length);
   };
+
+  // A chip is one thing: Backspace or Delete beside or inside it removes all of it.
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!multiline && e.key === 'Enter') {
+      e.preventDefault();
+      return;
+    }
+    if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+    const el = e.currentTarget;
+    if (el.selectionStart !== el.selectionEnd) return;
+    const caret = el.selectionStart;
+    const chip = chips.find((c) =>
+      e.key === 'Backspace' ? caret > c.start && caret <= c.end : caret >= c.start && caret < c.end,
+    );
+    if (!chip) return;
+    e.preventDefault();
+    update(shown.slice(0, chip.start) + shown.slice(chip.end), chip.start);
+  };
+
+  // The caret never rests inside a chip: it steps over it, or lands on the nearer side.
+  const onSelect = (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
+    const el = e.currentTarget;
+    const caret = el.selectionStart;
+    if (caret !== el.selectionEnd) return;
+    const chip = chips.find((c) => caret > c.start && caret < c.end);
+    const from = lastCaret.current;
+    let to = caret;
+    if (chip) {
+      if (from >= chip.end) to = chip.start;
+      else if (from <= chip.start) to = chip.end;
+      else to = caret - chip.start < chip.end - caret ? chip.start : chip.end;
+      el.setSelectionRange(to, to);
+    }
+    lastCaret.current = to;
+  };
+
+  // The box grows with its text, so the chip layer never has to scroll with it.
+  useLayoutEffect(() => {
+    const el = controlRef.current;
+    if (!el || !el.scrollHeight) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight + (el.offsetHeight - el.clientHeight)}px`;
+  }, [shown]);
+
+  const pieces: React.ReactNode[] = [];
+  let at = 0;
+  chips.forEach((chip) => {
+    pieces.push(shown.slice(at, chip.start));
+    pieces.push(
+      <span
+        key={chip.start}
+        data-testid={`${testId}-chip`}
+        className="rounded bg-brand-soft box-decoration-clone ring-1 ring-inset ring-border"
+      >
+        <span className="text-transparent">{'{{'}</span>
+        {chip.name}
+        <span className="text-transparent">{'}}'}</span>
+      </span>,
+    );
+    at = chip.end;
+  });
+  pieces.push(shown.slice(at));
 
   return (
     <div className="space-y-1">
@@ -112,16 +177,38 @@ export function DataField({
         )}
       </div>
 
-      {multiline ? (
+      <div className="relative">
+        <div
+          aria-hidden
+          data-testid={`${testId}-shown`}
+          className={clsx(textClass, 'absolute inset-0 overflow-hidden border-transparent text-ink pointer-events-none')}
+        >
+          {pieces}
+        </div>
         <textarea
-          {...shared}
-          ref={controlRef as React.RefObject<HTMLTextAreaElement>}
-          rows={rows}
-          className={clsx(controlClass, 'resize-none leading-relaxed', invalid && 'border-danger focus:border-danger')}
+          id={id}
+          ref={controlRef}
+          data-testid={testId}
+          value={shown}
+          placeholder={placeholder}
+          rows={multiline ? rows : 1}
+          onFocus={() => {
+            touched.current = true;
+          }}
+          aria-label={labelSlot ? label : undefined}
+          aria-invalid={invalid || undefined}
+          aria-describedby={describedBy}
+          onChange={(e) => update(multiline ? e.target.value : e.target.value.replace(/[\r\n]+/g, ' '))}
+          onKeyDown={onKeyDown}
+          onSelect={onSelect}
+          className={clsx(
+            textClass,
+            // Its own text is see-through: the layer underneath draws the words and the chips.
+            'relative block resize-none overflow-hidden bg-transparent text-transparent caret-ink placeholder:text-ink-subtle focus:outline-none',
+            invalid ? 'border-danger focus:border-danger' : 'border-border focus:border-brand',
+          )}
         />
-      ) : (
-        <input {...shared} ref={controlRef as React.RefObject<HTMLInputElement>} type="text" className={controlClass} />
-      )}
+      </div>
 
       {open && (
         <div

@@ -275,7 +275,20 @@ describe('ready-made recipes, end to end', () => {
         expect(AUTOMATION_NOTIFY_GROUPS.map((g) => g.permission)).toContain(
           permission,
         );
-        expect(input.type).toBe('AUTOMATION');
+        // An alert about something Kerf already alerts on is filed with
+        // that alert, against the same record, so nobody gets two.
+        const joinsBuiltIn =
+          /^(quote|proof)\.(changes_requested|declined|approved)$/.test(
+            recipe.trigger.eventType,
+          );
+        expect(input.type).toBe(
+          !joinsBuiltIn
+            ? 'AUTOMATION'
+            : recipe.trigger.eventType.startsWith('proof.')
+              ? 'QUOTE_PROOF_RESPONSE'
+              : 'QUOTE_CUSTOMER_RESPONSE',
+        );
+        expect(Boolean(input.entityId)).toBe(joinsBuiltIn);
         expectFilledIn(input.title);
         expectFilledIn(input.body);
         expect(input.link).toMatch(/^\/[a-z]/);

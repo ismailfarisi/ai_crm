@@ -7,7 +7,7 @@ import { AI_AGENT_STEP_NO_TASK, aiAgentStepTask } from '@saas/shared';
 import { toolLabel } from '@/components/settings/agents/agent-labels';
 import { agentChoice, agentChoiceProblem, useAgentOptions } from './agent-options';
 import { DataField } from '../drawers/data-field';
-import type { DataGroup } from '../step-wording';
+import { knowsAllData, type DataGroup } from '../step-wording';
 
 /** Tasks a workshop actually hands off; each fills the box as a starting point. */
 export const AGENT_TASK_EXAMPLES = [
@@ -62,6 +62,8 @@ export function AiAgentStepFields({
   const choice = agentChoice(agentId, options);
   const agentProblem = agentChoiceProblem(choice);
   const usable = (options ?? []).filter((option) => option.isEnabled);
+  // Only starting points whose data this automation has, so none shows as code.
+  const examples = AGENT_TASK_EXAMPLES.filter((example) => knowsAllData(example.task, groups));
   const hasTask = aiAgentStepTask({ data: { label: '', config } }) !== '';
   const wait = typeof config.timeoutDuration === 'string' ? config.timeoutDuration : '';
   const waitKnown = WAIT_OPTIONS.some((option) => option.value === wait);
@@ -152,9 +154,9 @@ export function AiAgentStepFields({
             >
               {AI_AGENT_STEP_NO_TASK} The automation can&apos;t be switched on until it does.
             </p>
-            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            <div className={examples.length ? 'flex flex-wrap items-center gap-1.5 pt-1' : 'hidden'}>
               <span className="text-[11px] text-ink-muted">Start from:</span>
-              {AGENT_TASK_EXAMPLES.map((example) => (
+              {examples.map((example) => (
                 <button
                   key={example.label}
                   type="button"

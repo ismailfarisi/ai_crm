@@ -92,7 +92,10 @@ describe('filling in a step without typing code', () => {
     expect(screen.getByTestId('email-subject-input-data-list')).toHaveTextContent('From: Customer accepted a quote');
     fireEvent.click(screen.getByText('Quote number'));
 
-    expect(screen.getByTestId('email-subject-input')).toHaveValue('Quote accepted: {{ $trigger.payload.quoteNumber }}');
+    // The owner sees the name as a chip; the code is only what gets stored.
+    expect(screen.getByTestId('email-subject-input')).toHaveValue('Quote accepted: {{Quote number}}');
+    expect(screen.getByTestId('email-subject-input-chip')).toHaveTextContent('Quote number');
+    expect(screen.getByTestId('email-subject-input-shown').textContent).not.toContain('$trigger');
     expect(screen.getByTestId('email-subject-input-preview')).toHaveTextContent('Example: Quote accepted: Q-2026-0042');
     expect(onUpdate).toHaveBeenLastCalledWith({
       config: expect.objectContaining({ subject: 'Quote accepted: {{ $trigger.payload.quoteNumber }}' }),
@@ -105,7 +108,7 @@ describe('filling in a step without typing code', () => {
 
     fireEvent.click(screen.getByTestId('crm-record-id-input-insert-data'));
     fireEvent.click(screen.getByText('Quote ID'));
-    expect(screen.getByTestId('crm-record-id-input')).toHaveValue('{{ $trigger.payload.quoteId }}');
+    expect(screen.getByTestId('crm-record-id-input')).toHaveValue('{{Quote ID}}');
 
     fireEvent.change(screen.getByTestId('crm-reason-input'), { target: { value: 'Over budget for' } });
     fireEvent.click(screen.getByTestId('crm-reason-input-insert-data'));

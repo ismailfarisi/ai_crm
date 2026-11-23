@@ -400,8 +400,58 @@ describe('Notify staff step', () => {
         body: 'The job can start.',
         link: '/production',
       },
+      { refresh: true },
     );
     expect(result).toEqual({ notified: 3 });
+  });
+
+  // Kerf raises its own bell alert when stock runs low. The bell keeps one
+  // unread alert per person, type and record, so filing the automation's
+  // alert the same way leaves each buyer with one alert, not two.
+  it('files an alert about low stock with the alert Kerf already raised for it', async () => {
+    const { actions, notifications } = setup();
+    const stockItemId = '7d0c1a52-3f0e-4c57-9a43-0d6a4b1f2c11';
+    await actions.executeStaffNotificationActivity(
+      { audience: 'group', group: 'purchasing', title: 'Running low: Board' },
+      { ...ctx, startedBy: { eventType: 'stock.low', entityId: stockItemId } },
+    );
+    expect(notifications.notifyHolders).toHaveBeenCalledWith(
+      TENANT,
+      expect.anything(),
+      expect.objectContaining({
+        type: 'LOW_STOCK',
+        entityType: 'STOCK_ITEM',
+        entityId: stockItemId,
+        title: 'Running low: Board',
+      }),
+      { refresh: true },
+    );
+  });
+
+  it('files alerts about other events, and about a made-up test record, on their own', async () => {
+    const { actions, notifications } = setup();
+    const config = {
+      audience: 'group' as const,
+      group: 'production',
+      title: 'Deposit paid',
+    };
+    await actions.executeStaffNotificationActivity(config, {
+      ...ctx,
+      startedBy: {
+        eventType: 'deposit.paid',
+        entityId: '7d0c1a52-3f0e-4c57-9a43-0d6a4b1f2c11',
+      },
+    });
+    await actions.executeStaffNotificationActivity(config, {
+      ...ctx,
+      nodeId: 'notify-2',
+      startedBy: { eventType: 'stock.low', entityId: 'not-a-record' },
+    });
+    for (const [, , input] of notifications.notifyHolders.mock.calls) {
+      expect(input.type).toBe('AUTOMATION');
+      expect(input.entityId).toBeUndefined();
+    }
+    expect(notifications.notifyHolders).toHaveBeenCalledTimes(2);
   });
 
   it('notifies named people, found inside the organisation', async () => {
@@ -489,13 +539,20 @@ describe('Kerf record lookups', () => {
 
   it('answers a test run about the invented sample quote, which is in no database', async () => {
     const invented = AUTOMATION_LOOKUP_SAMPLES.quote.quoteId;
-    const config = { entity: 'quote', action: 'get', recordId: invented } as const;
+    const config = {
+      entity: 'quote',
+      action: 'get',
+      recordId: invented,
+    } as const;
 
     const tested = await setup({}).actions.executeRecordLookupActivity(config, {
       ...ctx,
       testRun: true,
     });
-    expect(tested).toEqual({ ...AUTOMATION_LOOKUP_SAMPLES.quote, sampleRecord: true });
+    expect(tested).toEqual({
+      ...AUTOMATION_LOOKUP_SAMPLES.quote,
+      sampleRecord: true,
+    });
 
     // A real run never gets invented details.
     await expect(

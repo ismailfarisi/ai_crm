@@ -106,6 +106,8 @@ export interface AutomationActionContext {
   aiWritten: boolean;
   /** True in a test run, which starts from invented sample data. */
   testRun?: boolean;
+  /** The Kerf event a real run started from, and the record it was about. */
+  startedBy?: { eventType: string; entityId: string };
 }
 
 export interface AiPromptActivityConfig {

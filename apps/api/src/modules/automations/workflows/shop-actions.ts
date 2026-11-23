@@ -13,7 +13,10 @@ import {
 import { z } from 'zod';
 import type { AuditService } from '@/modules/audit/audit.service';
 import type { ChannelsService } from '@/modules/channels/channels.service';
-import type { NotificationsService } from '@/modules/notifications/notifications.service';
+import type {
+  NotificationInput,
+  NotificationsService,
+} from '@/modules/notifications/notifications.service';
 import {
   ChannelMessage,
   MessageDirection,
@@ -51,6 +54,32 @@ import type {
 } from './interfaces';
 
 const MAX_RECIPIENTS = 10;
+
+/**
+ * Events Kerf raises its own bell alert for, with the type and record that
+ * alert is filed under. The bell holds one unread alert per person, type and
+ * record, so an automation's alert filed the same way joins the built-in one.
+ */
+const BUILT_IN_ALERTS: Record<
+  string,
+  { type: NotificationInput['type']; entityType: string }
+> = {
+  'stock.low': { type: 'LOW_STOCK', entityType: 'STOCK_ITEM' },
+  'quote.changes_requested': {
+    type: 'QUOTE_CUSTOMER_RESPONSE',
+    entityType: 'QUOTE',
+  },
+  'quote.declined': { type: 'QUOTE_CUSTOMER_RESPONSE', entityType: 'QUOTE' },
+  'proof.approved': { type: 'QUOTE_PROOF_RESPONSE', entityType: 'QUOTE' },
+  'proof.changes_requested': {
+    type: 'QUOTE_PROOF_RESPONSE',
+    entityType: 'QUOTE',
+  },
+  'conversation.handover': {
+    type: 'CONVERSATION_HANDOVER',
+    entityType: 'channel_thread',
+  },
+};
 const MAX_MESSAGE_LENGTH = 4000;
 const emailSchema = z.string().email();
 const recordIdSchema = z.string().uuid();
@@ -584,11 +613,26 @@ export function createShopActions(deps: ShopActionDeps) {
               'Notify staff: the link must be a page in Kerf, such as /production',
             );
           }
-          const input = {
-            type: 'AUTOMATION' as const,
+          // Kerf already alerts people about some events itself. An alert
+          // about the same record joins that one, so nobody is told twice.
+          const builtIn =
+            ctx.startedBy &&
+            recordIdSchema.safeParse(ctx.startedBy.entityId).success
+              ? new Map(Object.entries(BUILT_IN_ALERTS)).get(
+                  ctx.startedBy.eventType,
+                )
+              : undefined;
+          const input: NotificationInput = {
+            type: builtIn?.type ?? 'AUTOMATION',
             title,
             body,
             link: rawLink || '/notifications',
+            ...(builtIn && ctx.startedBy
+              ? {
+                  entityType: builtIn.entityType,
+                  entityId: ctx.startedBy.entityId,
+                }
+              : {}),
           };
 
           return deps.idempotency.runOnce(
@@ -625,6 +669,7 @@ export function createShopActions(deps: ShopActionDeps) {
                 ctx.tenantId,
                 group.permission,
                 input,
+                { refresh: true },
               );
               return { notified };
             },

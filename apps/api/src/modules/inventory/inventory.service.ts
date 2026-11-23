@@ -35,6 +35,7 @@ import {
   GoodsReceipt,
   GoodsReceiptLine,
 } from './entities/goods-receipt.entity';
+import { Material } from '../catalog/entities/material.entity';
 import { StockItem } from './entities/stock-item.entity';
 import { StockLocation } from './entities/stock-location.entity';
 import { StockMovement } from './entities/stock-movement.entity';
@@ -432,13 +433,20 @@ export class InventoryService {
     // while it stays below — and cleared when a delivery brings it back.
     const isLow = needsReorder(locked);
     if (isLow && !wasLow) {
+      const material = await manager
+        .getRepository(Material)
+        .findOne({ where: { id: materialId, tenantId }, withDeleted: true });
+      const unit = material?.uom ? ` ${material.uom}` : '';
       await this.notifications.notifyHolders(
         tenantId,
         PERMISSIONS.PURCHASE_ORDER_CREATE,
         {
           type: 'LOW_STOCK',
-          title: `Stock is at or below its reorder point (${locked.qtyOnHand} on hand)`,
-          body: 'Raise a purchase order from the reorder suggestions.',
+          title: `Running low: ${material?.name ?? 'a material'} (${Number(locked.qtyOnHand)}${unit} left)`,
+          body:
+            locked.reorderPoint == null
+              ? 'Raise a purchase order from the reorder suggestions.'
+              : `The minimum is ${Number(locked.reorderPoint)}${unit}. Raise a purchase order from the reorder suggestions.`,
           link: '/inventory',
           entityType: 'STOCK_ITEM',
           entityId: locked.id,
@@ -663,7 +671,13 @@ export class InventoryService {
       const receipt = await manager.getRepository(GoodsReceipt).save(
         manager.getRepository(GoodsReceipt).create({
           tenantId,
-          receiptNumber: await formatTenantSequenceNumber(manager, tenantId, 'goods_receipt_number', 'GRN', sequenceValue),
+          receiptNumber: await formatTenantSequenceNumber(
+            manager,
+            tenantId,
+            'goods_receipt_number',
+            'GRN',
+            sequenceValue,
+          ),
           purchaseOrderId: order.id,
           locationId: location.id,
           receivedById: actorId,

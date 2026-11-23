@@ -17,6 +17,10 @@ export interface NotificationInput {
   entityId?: string | null;
 }
 
+/** Matches `uq_notifications_unread_entity`: one unread alert per person per thing. */
+const REFRESH_UNREAD = `ON CONFLICT ("user_id", "type", "entity_id") WHERE "read_at" IS NULL AND "entity_id" IS NOT NULL
+         DO UPDATE SET "title" = EXCLUDED."title", "body" = EXCLUDED."body", "created_at" = now()`;
+
 /**
  * In-app notifications: the bell.
  *
@@ -47,7 +51,12 @@ export class NotificationsService {
     tenantId: string,
     permission: Permission,
     input: NotificationInput,
-    options: { manager?: EntityManager; excludeUserId?: string | null } = {},
+    options: {
+      manager?: EntityManager;
+      excludeUserId?: string | null;
+      /** A repeat replaces the unread alert's wording instead of being dropped. */
+      refresh?: boolean;
+    } = {},
   ): Promise<number> {
     const manager = options.manager ?? this.dataSource.manager;
     // Inside someone else's transaction, a failed statement would poison the
@@ -96,7 +105,7 @@ export class NotificationsService {
       await manager.query(
         `INSERT INTO "notifications" ("tenant_id", "user_id", "type", "title", "body", "link", "entity_type", "entity_id")
          VALUES ${tuples.join(', ')}
-         ON CONFLICT DO NOTHING`,
+         ${options.refresh ? REFRESH_UNREAD : 'ON CONFLICT DO NOTHING'}`,
         values,
       );
       if (savepoint) await manager.query('RELEASE SAVEPOINT notify_holders');
@@ -144,8 +153,7 @@ export class NotificationsService {
       await this.dataSource.manager.query(
         `INSERT INTO "notifications" ("tenant_id", "user_id", "type", "title", "body", "link", "entity_type", "entity_id")
          VALUES ${tuples.join(', ')}
-         ON CONFLICT ("user_id", "type", "entity_id") WHERE "read_at" IS NULL AND "entity_id" IS NOT NULL
-         DO UPDATE SET "title" = EXCLUDED."title", "body" = EXCLUDED."body", "created_at" = now()`,
+         ${REFRESH_UNREAD}`,
         values,
       );
       return recipients.length;

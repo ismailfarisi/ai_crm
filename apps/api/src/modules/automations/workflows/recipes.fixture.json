@@ -743,29 +743,27 @@
         }
       },
       {
-        "id": "notify-1",
-        "type": "notifyStaffNode",
+        "id": "email-1",
+        "type": "sendEmailNode",
         "position": {
           "x": 100,
           "y": 250
         },
         "data": {
-          "label": "Alert the buyers",
+          "label": "Email the buyer",
           "config": {
-            "audience": "group",
-            "group": "purchasing",
-            "title": "Running low: {{ $trigger.payload.materialName }}",
-            "body": "{{ $trigger.payload.qtyOnHand }} {{ $trigger.payload.unit }} left; the minimum is {{ $trigger.payload.reorderPoint }}. Usual reorder: {{ $trigger.payload.reorderQty }} {{ $trigger.payload.unit }}.",
-            "link": "/inventory"
+            "to": "owner@shop.ae",
+            "subject": "Running low: {{ $trigger.payload.materialName }}",
+            "body": "{{ $trigger.payload.materialName }} has fallen to its minimum.\n\nLeft in stock: {{ $trigger.payload.qtyOnHand }} {{ $trigger.payload.unit }}\nMinimum: {{ $trigger.payload.reorderPoint }} {{ $trigger.payload.unit }}\nUsual reorder: {{ $trigger.payload.reorderQty }} {{ $trigger.payload.unit }}\n\nOpen Inventory in Kerf to raise a purchase order from the reorder suggestions."
           }
         }
       }
     ],
     "edges": [
       {
-        "id": "e-trigger-1-notify-1",
+        "id": "e-trigger-1-email-1",
         "source": "trigger-1",
-        "target": "notify-1"
+        "target": "email-1"
       }
     ]
   },

@@ -126,6 +126,17 @@ export async function dynamicDagWorkflow(
 ): Promise<WorkflowExecutionState> {
   const startedAt = new Date().toISOString();
 
+  // Only a real event says what the run is about: a test run's record is
+  // invented, and a webhook's payload is whatever the caller sent.
+  const { eventType, entityId } = input.triggerPayload ?? {};
+  const startedBy =
+    input.triggerType === 'CRM_EVENT' &&
+    !input.testRun &&
+    typeof eventType === 'string' &&
+    typeof entityId === 'string'
+      ? { eventType, entityId }
+      : undefined;
+
   // In-memory maps for signal coordination
   const approvedNodes = new Map<string, NodeApprovalSignalPayload>();
   const rejectedNodes = new Map<string, NodeRejectionSignalPayload>();
@@ -358,6 +369,7 @@ export async function dynamicDagWorkflow(
           ownerUserId: input.ownerUserId,
           aiWritten: usesAiOutput(node, input.nodes, input.edges),
           ...(input.testRun ? { testRun: true } : {}),
+          ...(startedBy ? { startedBy } : {}),
         };
 
         switch (node.type) {
