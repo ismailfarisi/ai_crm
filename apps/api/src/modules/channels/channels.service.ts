@@ -32,7 +32,10 @@ import {
   ChannelCommandService,
   type ChannelCommandResult,
 } from './services/channel-command.service';
-import { ChannelDriver } from './interfaces/channel-driver.interface';
+import {
+  ChannelDriver,
+  type InboundMedia,
+} from './interfaces/channel-driver.interface';
 import { MetaWhatsAppDriver } from './drivers/meta-whatsapp.driver';
 import { TelegramDriver } from './drivers/telegram.driver';
 import { SlackDriver } from './drivers/slack.driver';
@@ -46,6 +49,14 @@ import { newInboundMessageSignal } from './workflows/interfaces';
 import { IntentAgentConfigService } from './services/intent-agent-config.service';
 import { ChannelThreadService } from './services/channel-thread.service';
 import { ShopEventsService } from '@/common/events';
+import { ATTACHMENT_MAX_BYTES } from '@saas/shared';
+import { AttachmentsService } from '../storage/attachments.service';
+import {
+  type MessageFileDto,
+  type StoredMessageFile,
+  filenameFor,
+  toMessageFileDtos,
+} from './message-files';
 
 export interface SendMessageDto {
   contactId?: string;
@@ -76,6 +87,8 @@ export class ChannelsService {
     private readonly threads?: ChannelThreadService,
     @Optional()
     private readonly shopEvents?: ShopEventsService,
+    @Optional()
+    private readonly attachments?: AttachmentsService,
   ) {}
 
   /** The URL the given provider's inbound webhook is reachable at — must match the route in ChannelsWebhookController. */
@@ -447,7 +460,7 @@ export class ChannelsService {
   async getMessages(
     orgId: string,
     query?: { contactId?: string; limit?: number },
-  ): Promise<ChannelMessage[]> {
+  ): Promise<(ChannelMessage & { files?: MessageFileDto[] })[]> {
     const where: any = { organizationId: orgId };
     if (query?.contactId) {
       where.contactId = query.contactId;
@@ -498,10 +511,13 @@ export class ChannelsService {
         contactDto.isStaff = true;
       }
 
+      const files = toMessageFileDtos(message);
+
       return {
         ...message,
         contact: contactDto,
         ...(staffUser ? { staffUser } : {}),
+        ...(files.length ? { files } : {}),
       };
     });
   }
@@ -642,6 +658,9 @@ export class ChannelsService {
             metadata: {
               externalId: parsed.externalMessageId,
               rawPayload: parsed.rawPayload,
+              ...(parsed.files?.length
+                ? { files: parsed.files.map(toStoredFile) }
+                : {}),
             },
             status: MessageStatus.RECEIVED,
           }),
@@ -696,8 +715,13 @@ export class ChannelsService {
             body: commandResult.reply.body,
           });
         }
+        this.keepFilesInBackground(orgId, provider, saved.id, parsed.files);
         return { success: true };
       }
+
+      // Started only now: a failed command deletes the row above, and the
+      // files would be left belonging to a message that no longer exists.
+      this.keepFilesInBackground(orgId, provider, saved.id, parsed.files);
 
       // A customer wrote, whoever answers it: a person or the AI.
       await this.shopEvents?.emit('message.received', orgId, saved.id);
@@ -785,6 +809,80 @@ export class ChannelsService {
     });
   }
 
+  /**
+   * Copies a message's files out of the provider and into our own store,
+   * without making the webhook wait: WhatsApp keeps a file for 30 days and a
+   * Telegram or Resend link lasts an hour, so the inbox cannot rely on them.
+   * Never throws; a file that cannot be fetched is marked so the inbox says so.
+   */
+  private keepFilesInBackground(
+    orgId: string,
+    provider: ChannelProviderType,
+    messageId: string,
+    files: InboundMedia[] | undefined,
+  ): void {
+    if (!files?.length || !this.attachments) return;
+    void this.keepFiles(orgId, provider, messageId, files).catch((err) => {
+      this.logger.warn(
+        `Could not keep the files of message ${messageId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
+  }
+
+  async keepFiles(
+    orgId: string,
+    provider: ChannelProviderType,
+    messageId: string,
+    files: InboundMedia[],
+  ): Promise<StoredMessageFile[]> {
+    const attachments = this.attachments;
+    if (!attachments) return [];
+    const kept: StoredMessageFile[] = [];
+    for (const [index, file] of files.entries()) {
+      const entry = toStoredFile(file, index);
+      try {
+        const fetched = await this.downloadMedia(
+          orgId,
+          provider,
+          file.id,
+          ATTACHMENT_MAX_BYTES,
+        );
+        // The message says what the file is; the download often says only
+        // "a file".
+        const mimeType =
+          file.mimeType && file.mimeType !== 'application/octet-stream'
+            ? file.mimeType
+            : fetched.mimeType;
+        const row = await attachments.storeReceived(
+          orgId,
+          'CHANNEL_MESSAGE',
+          messageId,
+          { buffer: fetched.buffer, mimeType, filename: entry.filename },
+        );
+        kept.push({
+          ...entry,
+          attachmentId: row.id,
+          sizeBytes: row.sizeBytes,
+        });
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `Could not keep file ${index + 1} of message ${messageId}: ${reason}`,
+        );
+        kept.push({ ...entry, error: reason.slice(0, 200) });
+      }
+    }
+    // One statement that touches only `files`, so it cannot undo a change
+    // made to the rest of the metadata while the downloads were running.
+    await this.messageRepo.query(
+      `UPDATE "${this.messageRepo.metadata.tableName}"
+          SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{files}', $1::jsonb)
+        WHERE id = $2 AND "organizationId" = $3`,
+      [JSON.stringify(kept), messageId, orgId],
+    );
+    return kept;
+  }
+
   async updateAiClassification(
     messageId: string,
     patch: Partial<
@@ -840,4 +938,12 @@ export function channelAiWorkflowId(
     .digest('hex')
     .slice(0, 32);
   return `channel-ai-${orgId}-${provider}-${digest}`;
+}
+
+function toStoredFile(file: InboundMedia, index: number): StoredMessageFile {
+  return {
+    ref: file.id,
+    mimeType: file.mimeType,
+    filename: filenameFor(file, index),
+  };
 }

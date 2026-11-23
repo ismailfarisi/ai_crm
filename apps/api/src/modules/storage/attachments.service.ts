@@ -131,6 +131,47 @@ export class AttachmentsService {
     return dto;
   }
 
+  /**
+   * Stores a file that arrived by itself (a customer's WhatsApp photo) rather
+   * than from someone signed in. The caller vouches for the owner record; the
+   * size limit is an upload's.
+   */
+  async storeReceived(
+    tenantId: string,
+    ownerType: AttachmentOwnerType,
+    ownerId: string,
+    file: { buffer: Buffer; mimeType: string; filename: string },
+  ): Promise<Attachment> {
+    if (!file.buffer.length) throw new BadRequestException('The file is empty');
+    if (file.buffer.length > ATTACHMENT_MAX_BYTES) {
+      throw new BadRequestException(
+        `That file is ${formatBytes(file.buffer.length)}. The limit is ${formatBytes(ATTACHMENT_MAX_BYTES)}.`,
+      );
+    }
+    // A customer sends what they have: a CorelDRAW file, a voice note. A
+    // type off the list is kept as a plain download rather than refused, so
+    // a browser saves it and never renders it.
+    const declared = file.mimeType.split(';')[0].trim().toLowerCase();
+    const contentType = isAllowedAttachmentType(declared)
+      ? declared
+      : 'application/octet-stream';
+    const key = this.storage.keyFor(tenantId, ownerType, ownerId);
+    await this.storage.put(key, file.buffer, contentType);
+    return this.attachments.save(
+      this.attachments.create({
+        tenantId,
+        ownerType,
+        ownerId,
+        filename: safeFilename(file.filename),
+        contentType,
+        sizeBytes: file.buffer.length,
+        storageKey: key,
+        checksum: createHash('sha256').update(file.buffer).digest('hex'),
+        uploadedById: null,
+      }),
+    );
+  }
+
   /** A short-lived URL, after re-checking the owner's read permission. */
   async link(user: AuthenticatedUser, id: string): Promise<AttachmentLinkDto> {
     const row = await this.find(user.organizationId, id);

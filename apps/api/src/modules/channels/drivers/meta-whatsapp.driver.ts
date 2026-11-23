@@ -5,6 +5,15 @@ import {
   ParsedWebhookMessage,
 } from '../interfaces/channel-driver.interface';
 
+const FILE_KINDS = ['image', 'document', 'video', 'audio', 'sticker'] as const;
+const PLACEHOLDER: Record<(typeof FILE_KINDS)[number], string> = {
+  image: 'Image',
+  document: 'Document',
+  video: 'Video',
+  audio: 'Voice message',
+  sticker: 'Sticker',
+};
+
 export class MetaWhatsAppDriver implements ChannelDriver {
   async testConnection(
     credentials: Record<string, any>,
@@ -77,13 +86,11 @@ export class MetaWhatsAppDriver implements ChannelDriver {
   ): Promise<ParsedWebhookMessage | null> {
     const msg = body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
     if (!msg) return null;
-    const file =
-      msg.type === 'image'
-        ? msg.image
-        : msg.type === 'document'
-          ? msg.document
-          : null;
-    const media: InboundMedia | undefined =
+    // WhatsApp carries one file per message; an album arrives as several
+    // messages, each with its own id.
+    const kind = FILE_KINDS.find((k) => k === msg.type);
+    const file = kind ? msg[kind] : null;
+    const kept: InboundMedia | undefined =
       file?.id && file?.mime_type
         ? {
             id: String(file.id),
@@ -92,19 +99,23 @@ export class MetaWhatsAppDriver implements ChannelDriver {
             ...(file.caption ? { caption: String(file.caption) } : {}),
           }
         : undefined;
+    // Only a picture or a document can be a receipt or an invoice.
+    const media =
+      kind === 'image' || kind === 'document' ? kept : undefined;
     return {
       senderIdentifier: String(msg.from),
       body:
         msg.text?.body ||
-        media?.caption ||
-        (media
-          ? media.filename
-            ? `[Document: ${media.filename}]`
-            : '[Image]'
+        kept?.caption ||
+        (kept
+          ? kept.filename
+            ? `[Document: ${kept.filename}]`
+            : `[${PLACEHOLDER[kind!]}]`
           : '[Media/Unsupported Content]'),
       externalMessageId: String(msg.id),
       rawPayload: body,
       ...(media ? { media } : {}),
+      ...(kept ? { files: [kept] } : {}),
     };
   }
 

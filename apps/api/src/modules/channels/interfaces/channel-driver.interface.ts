@@ -24,7 +24,13 @@ export interface ParsedWebhookMessage {
   body: string;
   externalMessageId?: string;
   rawPayload: Record<string, any>;
+  /**
+   * The one file a chat command can act on (a receipt, a supplier invoice):
+   * the first image or document. Voice notes and videos are not offered.
+   */
   media?: InboundMedia;
+  /** Every file that came with the message, to be kept and shown in the inbox. */
+  files?: InboundMedia[];
 }
 
 export interface ChannelDriver {

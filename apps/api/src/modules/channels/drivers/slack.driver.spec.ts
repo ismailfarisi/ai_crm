@@ -152,6 +152,40 @@ describe('SlackDriver', () => {
       });
     });
 
+    it('lists every file in the message, and acts on the first', async () => {
+      const eventBody = {
+        type: 'event_callback',
+        event: {
+          type: 'message',
+          subtype: 'file_share',
+          channel: 'D0999',
+          user: 'U0456',
+          ts: '1700000000.000200',
+          files: [
+            { id: 'F1', mimetype: 'image/png', name: 'front.png' },
+            { id: 'F2', mimetype: 'image/png', name: 'back.png' },
+            { id: 'F3', mimetype: 'application/pdf', name: 'spec.pdf' },
+          ],
+        },
+      };
+      const { rawBody, headers } = signedRequest(eventBody);
+      const parsed = await driver.parseWebhookPayload(
+        credentials,
+        headers,
+        eventBody,
+        rawBody,
+      );
+      expect(parsed?.body).toBe('[3 Slack files]');
+      expect(parsed?.media?.id).toBe('F1');
+      expect(parsed?.files?.map((f) => f.id)).toEqual(['F1', 'F2', 'F3']);
+      expect(parsed?.files?.[2]).toEqual({
+        id: 'F3',
+        mimeType: 'application/pdf',
+        filename: 'spec.pdf',
+        caption: undefined,
+      });
+    });
+
     it('names the file when a file-only message has no text', async () => {
       const eventBody = {
         type: 'event_callback',

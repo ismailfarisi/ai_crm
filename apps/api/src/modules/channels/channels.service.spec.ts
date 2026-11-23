@@ -34,6 +34,7 @@ function makeService(
     intentAgentConfigService?: any;
     tenantContext?: any;
     threads?: any;
+    attachments?: any;
   } = {},
 ) {
   const configs: ChannelConfig[] = [];
@@ -120,6 +121,14 @@ function makeService(
       if (idx >= 0) messages.splice(idx, 1);
       return { affected: idx >= 0 ? 1 : 0 };
     }),
+    metadata: { tableName: 'channel_messages' },
+    // Mirrors the one raw statement: jsonb_set of `files` on one message.
+    query: jest.fn().mockImplementation(async (_sql: string, params: any[]) => {
+      const row = messages.find((m) => m.id === params[1]);
+      if (row) {
+        row.metadata = { ...row.metadata, files: JSON.parse(params[0]) };
+      }
+    }),
   };
 
   const contactsService =
@@ -174,6 +183,8 @@ function makeService(
     overrides.intentAgentConfigService as any,
     overrides.tenantContext as any,
     overrides.threads,
+    undefined,
+    overrides.attachments,
   );
   return {
     service,
@@ -1026,6 +1037,289 @@ describe('ChannelsService', () => {
         );
         expect(start).toHaveBeenCalledTimes(1);
       });
+    });
+  });
+
+  describe('files sent with a message', () => {
+    const originalFetch = global.fetch;
+    afterEach(() => {
+      global.fetch = originalFetch;
+    });
+
+    /** Telegram's two calls for one file: the path, then the bytes. */
+    const telegramServes = (...files: (string | Error)[]) => {
+      const mock = jest.fn();
+      for (const file of files) {
+        if (file instanceof Error) {
+          mock.mockRejectedValueOnce(file);
+          continue;
+        }
+        mock
+          .mockResolvedValueOnce({
+            json: async () => ({
+              ok: true,
+              result: { file_path: 'documents/f.bin', file_size: file.length },
+            }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            arrayBuffer: async () => new TextEncoder().encode(file).buffer,
+          });
+      }
+      global.fetch = mock as never;
+      return mock;
+    };
+
+    const store = () => {
+      let seq = 0;
+      return {
+        storeReceived: jest.fn(
+          async (_org: string, _type: string, _id: string, file: any) => ({
+            id: `att-${++seq}`,
+            sizeBytes: file.buffer.length,
+          }),
+        ),
+      };
+    };
+
+    const settle = async () => {
+      for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+    };
+
+    const document = {
+      message: {
+        message_id: 501,
+        chat: { id: '998877' },
+        document: {
+          file_id: 'tg-doc-1',
+          file_name: 'sign-artwork.pdf',
+          mime_type: 'application/pdf',
+        },
+      },
+    };
+
+    const enabled = async (overrides: Parameters<typeof makeService>[0]) => {
+      const made = makeService(overrides);
+      await made.service.saveConfig(orgId, ChannelProviderType.TELEGRAM, true, {
+        botToken: 'token',
+      });
+      return made;
+    };
+
+    it('copies a customer’s file into our store and records it on the message', async () => {
+      const attachments = store();
+      const { service, messages } = await enabled({ attachments });
+      telegramServes('%PDF-artwork');
+
+      const res = await service.processInboundWebhook(
+        orgId,
+        ChannelProviderType.TELEGRAM,
+        {},
+        document,
+      );
+      await settle();
+
+      expect(attachments.storeReceived).toHaveBeenCalledWith(
+        orgId,
+        'CHANNEL_MESSAGE',
+        res.messageId,
+        expect.objectContaining({
+          filename: 'sign-artwork.pdf',
+          mimeType: 'application/pdf',
+        }),
+      );
+      expect(messages[0].metadata.files).toEqual([
+        {
+          ref: 'tg-doc-1',
+          mimeType: 'application/pdf',
+          filename: 'sign-artwork.pdf',
+          attachmentId: 'att-1',
+          sizeBytes: 12,
+        },
+      ]);
+    });
+
+    it('shows the file in the inbox, saved and with its size', async () => {
+      const attachments = store();
+      const { service } = await enabled({ attachments });
+      telegramServes('%PDF-artwork');
+      await service.processInboundWebhook(
+        orgId,
+        ChannelProviderType.TELEGRAM,
+        {},
+        document,
+      );
+      await settle();
+
+      const [message] = await service.getMessages(orgId);
+      expect(message.files).toEqual([
+        {
+          filename: 'sign-artwork.pdf',
+          mimeType: 'application/pdf',
+          status: 'saved',
+          attachmentId: 'att-1',
+          sizeBytes: 12,
+        },
+      ]);
+    });
+
+    it('answers the provider without waiting for the download', async () => {
+      const attachments = store();
+      const { service, messages } = await enabled({ attachments });
+      global.fetch = jest.fn(() => new Promise(() => undefined)) as never;
+
+      const res = await service.processInboundWebhook(
+        orgId,
+        ChannelProviderType.TELEGRAM,
+        {},
+        document,
+      );
+
+      expect(res.success).toBe(true);
+      // Until the copy lands the inbox is told the file is on its way.
+      expect(messages[0].metadata.files).toEqual([
+        {
+          ref: 'tg-doc-1',
+          mimeType: 'application/pdf',
+          filename: 'sign-artwork.pdf',
+        },
+      ]);
+      const [message] = await service.getMessages(orgId);
+      expect(message.files?.[0].status).toBe('saving');
+    });
+
+    it('keeps the files that arrive when one of several cannot be fetched', async () => {
+      const attachments = store();
+      const { service, messages } = await enabled({ attachments });
+      messages.push({
+        id: 'm-1',
+        organizationId: orgId,
+        metadata: { externalId: 'x' },
+      } as unknown as ChannelMessage);
+      telegramServes('one', new Error('network down'), 'three');
+
+      const kept = await service.keepFiles(
+        orgId,
+        ChannelProviderType.TELEGRAM,
+        'm-1',
+        [
+          { id: 'a', mimeType: 'image/jpeg' },
+          { id: 'b', mimeType: 'image/jpeg' },
+          { id: 'c', mimeType: 'application/pdf', filename: 'spec.pdf' },
+        ],
+      );
+
+      expect(kept.map((f) => f.attachmentId)).toEqual(['att-1', undefined, 'att-2']);
+      expect(kept[1].error).toBe('network down');
+      // A photo has no name of its own; it is numbered by its place.
+      expect(kept.map((f) => f.filename)).toEqual([
+        'photo-1.jpg',
+        'photo-2.jpg',
+        'spec.pdf',
+      ]);
+      // The rest of the metadata is left as it was.
+      expect(messages[0].metadata).toEqual({ externalId: 'x', files: kept });
+      const [message] = await service.getMessages(orgId);
+      expect(message.files?.map((f) => f.status)).toEqual([
+        'saved',
+        'failed',
+        'saved',
+      ]);
+    });
+
+    it('trusts the message over the download for what kind of file it is', async () => {
+      const attachments = store();
+      const { service, messages } = await enabled({ attachments });
+      messages.push({ id: 'm-1', organizationId: orgId, metadata: {} } as any);
+      telegramServes('bytes', 'bytes');
+
+      await service.keepFiles(orgId, ChannelProviderType.TELEGRAM, 'm-1', [
+        { id: 'a', mimeType: 'application/pdf', filename: 'a.pdf' },
+        { id: 'b', mimeType: 'application/octet-stream', filename: 'b.cdr' },
+      ]);
+
+      const types = attachments.storeReceived.mock.calls.map(
+        (call) => call[3].mimeType,
+      );
+      // Telegram serves `documents/f.bin` as a plain download either way.
+      expect(types).toEqual(['application/pdf', 'application/octet-stream']);
+    });
+
+    it('keeps a staff member’s file too, once their command has been handled', async () => {
+      const attachments = store();
+      const channelCommandService = {
+        handleInboundMessage: jest
+          .fn()
+          .mockResolvedValue({ handled: true, userId: 'staff-user-1' }),
+      };
+      const { service, messages } = await enabled({
+        attachments,
+        channelCommandService,
+      });
+      telegramServes('%PDF-receipt');
+
+      await service.processInboundWebhook(
+        orgId,
+        ChannelProviderType.TELEGRAM,
+        {},
+        document,
+      );
+      await settle();
+
+      // The command got the file to act on, and nothing typed with it.
+      expect(channelCommandService.handleInboundMessage).toHaveBeenCalledWith(
+        orgId,
+        ChannelProviderType.TELEGRAM,
+        '998877',
+        '',
+        expect.objectContaining({ id: 'tg-doc-1' }),
+      );
+      expect(messages[0].metadata.staffUserId).toBe('staff-user-1');
+      expect(messages[0].metadata.files[0].attachmentId).toBe('att-1');
+    });
+
+    it('stores nothing for a message whose command failed and was released', async () => {
+      const attachments = store();
+      const channelCommandService = {
+        handleInboundMessage: jest.fn().mockRejectedValue(new Error('boom')),
+      };
+      const { service, messages } = await enabled({
+        attachments,
+        channelCommandService,
+      });
+      const fetchMock = telegramServes('%PDF');
+
+      await expect(
+        service.processInboundWebhook(
+          orgId,
+          ChannelProviderType.TELEGRAM,
+          {},
+          document,
+        ),
+      ).rejects.toThrow('boom');
+      await settle();
+
+      expect(messages).toHaveLength(0);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(attachments.storeReceived).not.toHaveBeenCalled();
+    });
+
+    it('does not download a redelivered message’s files a second time', async () => {
+      const attachments = store();
+      const { service } = await enabled({ attachments });
+      telegramServes('%PDF-artwork', '%PDF-artwork');
+
+      await service.processInboundWebhook(orgId, ChannelProviderType.TELEGRAM, {}, document);
+      const again = await service.processInboundWebhook(
+        orgId,
+        ChannelProviderType.TELEGRAM,
+        {},
+        document,
+      );
+      await settle();
+
+      expect(again.duplicate).toBe(true);
+      expect(attachments.storeReceived).toHaveBeenCalledTimes(1);
     });
   });
 });

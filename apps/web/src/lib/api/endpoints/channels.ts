@@ -27,6 +27,15 @@ import type {
 } from '@saas/shared';
 import { apiFetch } from '../client';
 
+/** A file that came with a message. `attachmentId` opens it once it is saved. */
+export interface ChannelMessageFileDto {
+  filename: string;
+  mimeType: string;
+  status: 'saved' | 'saving' | 'failed';
+  attachmentId?: string;
+  sizeBytes?: number;
+}
+
 export interface ChannelMessageDto {
   id: string;
   organizationId: string;
@@ -48,6 +57,8 @@ export interface ChannelMessageDto {
   sender: string;
   recipient: string;
   body: string;
+  /** Files the sender attached; absent when there were none. */
+  files?: ChannelMessageFileDto[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   metadata?: Record<string, any>;
   status: 'pending' | 'sent' | 'delivered' | 'failed' | 'received';

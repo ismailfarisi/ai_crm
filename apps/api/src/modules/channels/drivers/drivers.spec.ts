@@ -149,6 +149,139 @@ describe('Channel Drivers', () => {
         );
         expect(parsed).toBeNull();
       });
+
+      it('ignores a message with neither words nor a file', async () => {
+        const parsed = await driver.parseWebhookPayload({}, {}, {
+          message: { message_id: 7, chat: { id: 1001 }, location: {} },
+        });
+        expect(parsed).toBeNull();
+      });
+
+      it('reads a photo, taking the largest of the sizes Telegram sends', async () => {
+        const payload = {
+          message: {
+            message_id: 43,
+            chat: { id: 1001 },
+            photo: [
+              { file_id: 'small', width: 90, height: 60 },
+              { file_id: 'large', width: 1280, height: 853 },
+            ],
+          },
+        };
+        const parsed = await driver.parseWebhookPayload({}, {}, payload);
+        const photo = { id: 'large', mimeType: 'image/jpeg' };
+        expect(parsed).toEqual({
+          senderIdentifier: '1001',
+          body: '[Image]',
+          externalMessageId: '43',
+          rawPayload: payload,
+          media: photo,
+          files: [photo],
+        });
+      });
+
+      it('reads a document and the words sent with it', async () => {
+        const parsed = await driver.parseWebhookPayload({}, {}, {
+          message: {
+            message_id: 44,
+            chat: { id: 1001 },
+            caption: 'Artwork for the shop sign',
+            document: {
+              file_id: 'doc-1',
+              file_name: 'sign.pdf',
+              mime_type: 'application/pdf',
+            },
+          },
+        });
+        const doc = {
+          id: 'doc-1',
+          mimeType: 'application/pdf',
+          filename: 'sign.pdf',
+          caption: 'Artwork for the shop sign',
+        };
+        expect(parsed?.body).toBe('Artwork for the shop sign');
+        expect(parsed?.media).toEqual(doc);
+        expect(parsed?.files).toEqual([doc]);
+      });
+
+      it('names a document sent without words', async () => {
+        const parsed = await driver.parseWebhookPayload({}, {}, {
+          message: {
+            message_id: 45,
+            chat: { id: 1001 },
+            document: { file_id: 'doc-2', file_name: 'logo.cdr' },
+          },
+        });
+        expect(parsed?.body).toBe('[Document: logo.cdr]');
+        expect(parsed?.files?.[0].mimeType).toBe('application/octet-stream');
+      });
+
+      it('keeps a voice message but does not offer it to chat commands', async () => {
+        const parsed = await driver.parseWebhookPayload({}, {}, {
+          message: {
+            message_id: 46,
+            chat: { id: 1001 },
+            voice: { file_id: 'voice-1', mime_type: 'audio/ogg' },
+          },
+        });
+        expect(parsed?.body).toBe('[Voice message]');
+        expect(parsed?.media).toBeUndefined();
+        expect(parsed?.files).toEqual([{ id: 'voice-1', mimeType: 'audio/ogg' }]);
+      });
+    });
+
+    describe('downloadMedia', () => {
+      it('resolves the file path, then downloads it with the bot token', async () => {
+        const fetchMock = jest
+          .fn()
+          .mockResolvedValueOnce({
+            json: async () => ({
+              ok: true,
+              result: { file_path: 'photos/file_7.jpg', file_size: 4 },
+            }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            arrayBuffer: async () => new Uint8Array([1, 2, 3, 4]).buffer,
+          });
+        global.fetch = fetchMock as any;
+
+        const file = await driver.downloadMedia({ botToken: 'T' }, 'f/1', 100);
+
+        expect(fetchMock).toHaveBeenNthCalledWith(
+          1,
+          'https://api.telegram.org/botT/getFile?file_id=f%2F1',
+        );
+        expect(fetchMock).toHaveBeenNthCalledWith(
+          2,
+          'https://api.telegram.org/file/botT/photos/file_7.jpg',
+        );
+        expect(file.buffer).toHaveLength(4);
+        expect(file.mimeType).toBe('image/jpeg');
+      });
+
+      it('refuses a file over the limit before downloading it', async () => {
+        const fetchMock = jest.fn().mockResolvedValueOnce({
+          json: async () => ({
+            ok: true,
+            result: { file_path: 'documents/big.pdf', file_size: 500 },
+          }),
+        });
+        global.fetch = fetchMock as any;
+        await expect(
+          driver.downloadMedia({ botToken: 'T' }, 'big', 100),
+        ).rejects.toThrow('too large');
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+      });
+
+      it('reports what Telegram said when it will not give the file', async () => {
+        global.fetch = jest.fn().mockResolvedValue({
+          json: async () => ({ ok: false, description: 'file is too big' }),
+        }) as any;
+        await expect(
+          driver.downloadMedia({ botToken: 'T' }, 'x', 100),
+        ).rejects.toThrow('file is too big');
+      });
     });
 
     describe('registerWebhook', () => {
@@ -357,6 +490,68 @@ describe('Channel Drivers', () => {
       it('returns null for empty payload structure', async () => {
         const parsed = await driver.parseWebhookPayload({}, {}, {});
         expect(parsed).toBeNull();
+      });
+
+      const whatsapp = (message: Record<string, unknown>) => ({
+        entry: [
+          {
+            changes: [
+              {
+                value: {
+                  messages: [{ from: '15551234567', id: 'wamid.1', ...message }],
+                },
+              },
+            ],
+          },
+        ],
+      });
+
+      it('lists a document both as the file to act on and as a file to keep', async () => {
+        const parsed = await driver.parseWebhookPayload(
+          {},
+          {},
+          whatsapp({
+            type: 'document',
+            document: {
+              id: 'media-1',
+              mime_type: 'application/pdf',
+              filename: 'artwork.pdf',
+            },
+          }),
+        );
+        const doc = {
+          id: 'media-1',
+          mimeType: 'application/pdf',
+          filename: 'artwork.pdf',
+        };
+        expect(parsed?.body).toBe('[Document: artwork.pdf]');
+        expect(parsed?.media).toEqual(doc);
+        expect(parsed?.files).toEqual([doc]);
+      });
+
+      it('keeps a video or voice note without offering it to chat commands', async () => {
+        const video = await driver.parseWebhookPayload(
+          {},
+          {},
+          whatsapp({
+            type: 'video',
+            video: { id: 'media-2', mime_type: 'video/mp4' },
+          }),
+        );
+        expect(video?.body).toBe('[Video]');
+        expect(video?.media).toBeUndefined();
+        expect(video?.files).toEqual([{ id: 'media-2', mimeType: 'video/mp4' }]);
+
+        const voice = await driver.parseWebhookPayload(
+          {},
+          {},
+          whatsapp({
+            type: 'audio',
+            audio: { id: 'media-3', mime_type: 'audio/ogg; codecs=opus' },
+          }),
+        );
+        expect(voice?.body).toBe('[Voice message]');
+        expect(voice?.files).toEqual([{ id: 'media-3', mimeType: 'audio/ogg' }]);
       });
     });
   });
@@ -577,6 +772,89 @@ describe('Channel Drivers', () => {
       it('returns null if no sender found', async () => {
         const parsed = await driver.parseWebhookPayload({}, {}, {});
         expect(parsed).toBeNull();
+      });
+
+      it('lists every attachment, each tied to its email', async () => {
+        const parsed = await driver.parseWebhookPayload({}, {}, {
+          type: 'email.received',
+          data: {
+            from: 'customer@domain.com',
+            subject: 'Artwork for the banner',
+            email_id: 'email-1',
+            attachments: [
+              { id: 'att-1', filename: 'banner.pdf', content_type: 'application/pdf' },
+              { id: 'att-2', filename: 'logo.png', content_type: 'image/png; name=logo.png' },
+            ],
+          },
+        });
+        expect(parsed?.body).toBe('Artwork for the banner');
+        // Nothing a chat command acts on: email is not a staff command channel.
+        expect(parsed?.media).toBeUndefined();
+        expect(parsed?.files).toEqual([
+          { id: 'email-1/att-1', mimeType: 'application/pdf', filename: 'banner.pdf' },
+          { id: 'email-1/att-2', mimeType: 'image/png', filename: 'logo.png' },
+        ]);
+      });
+    });
+
+    describe('downloadMedia', () => {
+      const originalFetch = global.fetch;
+      afterEach(() => {
+        global.fetch = originalFetch;
+      });
+
+      it('asks Resend for a download link, then fetches it', async () => {
+        const fetchMock = jest
+          .fn()
+          .mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+              download_url: 'https://inbound-cdn.resend.com/x?signature=s',
+              content_type: 'application/pdf',
+              size: 4,
+            }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            arrayBuffer: async () => new TextEncoder().encode('%PDF').buffer,
+          });
+        global.fetch = fetchMock as never;
+
+        const file = await driver.downloadMedia(
+          { apiKey: 're_123' },
+          'email-1/att-1',
+          100,
+        );
+
+        expect(fetchMock).toHaveBeenNthCalledWith(
+          1,
+          'https://api.resend.com/emails/receiving/email-1/attachments/att-1',
+          { headers: { Authorization: 'Bearer re_123' } },
+        );
+        expect(fetchMock).toHaveBeenNthCalledWith(
+          2,
+          'https://inbound-cdn.resend.com/x?signature=s',
+        );
+        expect(file.mimeType).toBe('application/pdf');
+        expect(file.buffer.toString()).toBe('%PDF');
+      });
+
+      it('refuses an attachment over the limit before downloading it', async () => {
+        const fetchMock = jest.fn().mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ download_url: 'https://x', size: 500 }),
+        });
+        global.fetch = fetchMock as never;
+        await expect(
+          driver.downloadMedia({ apiKey: 're_123' }, 'email-1/att-1', 100),
+        ).rejects.toThrow('too large');
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+      });
+
+      it('refuses a reference that is not an email and an attachment', async () => {
+        await expect(
+          driver.downloadMedia({ apiKey: 're_123' }, 'att-1', 100),
+        ).rejects.toThrow('Not a Resend attachment reference');
       });
     });
   });

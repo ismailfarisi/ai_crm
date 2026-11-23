@@ -15,6 +15,7 @@ export const ATTACHMENT_OWNER_TYPES = [
   'EXPENSE_CLAIM',
   'EMPLOYEE',
   'LEAVE_RECORD',
+  'CHANNEL_MESSAGE',
 ] as const;
 export type AttachmentOwnerType = (typeof ATTACHMENT_OWNER_TYPES)[number];
 

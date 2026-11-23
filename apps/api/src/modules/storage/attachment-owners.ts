@@ -11,6 +11,7 @@ import { Invoice } from '../quotes/entities/invoice.entity';
 import { Employee } from '../payroll/entities/employee.entity';
 import { LeaveRecord } from '../payroll/entities/leave-record.entity';
 import { Quote } from '../quotes/entities/quote.entity';
+import { ChannelMessage } from '../channels/entities/channel-message.entity';
 
 /**
  * What an attachment can hang off, and whose permissions it borrows.
@@ -73,5 +74,13 @@ export const ATTACHMENT_OWNERS: Record<
     read: PERMISSIONS.EMPLOYEE_MANAGE,
     write: PERMISSIONS.EMPLOYEE_MANAGE,
     label: 'leave record',
+  },
+  // A file a customer or colleague sent on a channel: seen by whoever can
+  // read the inbox. Nobody uploads to a message by hand; the channel does.
+  CHANNEL_MESSAGE: {
+    entity: ChannelMessage,
+    read: PERMISSIONS.CHANNEL_READ,
+    write: PERMISSIONS.CHANNEL_SEND,
+    label: 'message',
   },
 };

@@ -1610,8 +1610,35 @@ plus `chat:write`, `im:write` (DM replies) and `files:read` (attachments).
 Every Slack user gets their own contact and conversation — a reply from the
 inbox opens a DM with that sender rather than posting back into the channel
 the message came from, so staff replies to a shared-channel question arrive
-privately. Only the first file on a message is ingested; contact names start
-as the Slack user id until someone renames the contact.
+privately. Every file on a message is kept and shown in the inbox, but a chat
+command (a receipt, a supplier invoice) still reads only the first; contact
+names start as the Slack user id until someone renames the contact.
+
+---
+
+## Files sent on a channel
+
+### Copied into our store in the background — by design
+
+A file on an inbound WhatsApp, Telegram, Slack or Resend message is downloaded
+after the webhook has answered and stored as an attachment owned by the
+`CHANNEL_MESSAGE`, so `channel:read` opens it. Until the copy lands the inbox
+shows "Saving…"; a download that fails, or has not landed ten minutes after
+the message, shows "Could not be saved". There is no retry: a file lost to an
+API restart mid-download or a provider outage stays failed.
+
+### Limits — open
+
+- **25 MB per file** (`ATTACHMENT_MAX_BYTES`), and Telegram's Bot API will not
+  serve a file over 20 MB at all.
+- **Types outside the upload allow-list** (CorelDRAW, audio, video, HTML) are
+  kept as `application/octet-stream`: downloadable, never previewed.
+- **An album is one message per file** on WhatsApp and Telegram, because that
+  is how the providers deliver it.
+- **The SMTP email channel has no attachment format**; only Resend's
+  `email.received` attachments are read. Mailboxes under `/email` are
+  separate and still fetch attachments on demand.
+- **Chat commands act on the first image or document only.**
 
 ---
 

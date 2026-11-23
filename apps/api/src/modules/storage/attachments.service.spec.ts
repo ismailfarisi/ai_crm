@@ -122,6 +122,91 @@ describe('AttachmentsService', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  describe('a file that arrived on a channel', () => {
+    const MESSAGE = 'aaaaaaaa-0000-0000-0000-000000000001';
+
+    it('is stored with no uploader, under the message it came with', async () => {
+      const row = await service.storeReceived('org1', 'CHANNEL_MESSAGE', MESSAGE, {
+        buffer: Buffer.from('%PDF-1.4 artwork'),
+        mimeType: 'application/pdf; name=a.pdf',
+        filename: '../artwork.pdf',
+      });
+      expect(storage.keyFor).toHaveBeenCalledWith('org1', 'CHANNEL_MESSAGE', MESSAGE);
+      expect(storage.put).toHaveBeenCalledWith(
+        'org1/quote/q1/key',
+        expect.any(Buffer),
+        'application/pdf',
+      );
+      expect(row).toMatchObject({
+        tenantId: 'org1',
+        ownerType: 'CHANNEL_MESSAGE',
+        ownerId: MESSAGE,
+        filename: 'artwork.pdf',
+        contentType: 'application/pdf',
+        sizeBytes: 16,
+        uploadedById: null,
+      });
+    });
+
+    it('keeps a type off the list as a plain download instead of refusing it', async () => {
+      for (const mimeType of ['application/x-coreldraw', 'audio/ogg', 'text/html']) {
+        const row = await service.storeReceived('org1', 'CHANNEL_MESSAGE', MESSAGE, {
+          buffer: Buffer.from('bytes'),
+          mimeType,
+          filename: 'file',
+        });
+        expect(row.contentType).toBe('application/octet-stream');
+      }
+    });
+
+    it('refuses an empty file and one over the size limit', async () => {
+      await expect(
+        service.storeReceived('org1', 'CHANNEL_MESSAGE', MESSAGE, {
+          buffer: Buffer.alloc(0),
+          mimeType: 'image/png',
+          filename: 'x.png',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(
+        service.storeReceived('org1', 'CHANNEL_MESSAGE', MESSAGE, {
+          buffer: Buffer.alloc(26 * 1024 * 1024),
+          mimeType: 'image/png',
+          filename: 'x.png',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(storage.put).not.toHaveBeenCalled();
+    });
+
+    it('is opened by whoever can read the inbox, and nobody else', async () => {
+      attachments.findOne.mockResolvedValue({
+        id: 'a1',
+        ownerType: 'CHANNEL_MESSAGE',
+        ownerId: MESSAGE,
+        storageKey: 'k',
+        filename: 'artwork.pdf',
+      });
+      await expect(
+        service.link(asUser([PERMISSIONS.QUOTE_READ]), 'a1'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      const link = await service.link(asUser([PERMISSIONS.CHANNEL_READ]), 'a1');
+      expect(link.filename).toBe('artwork.pdf');
+    });
+
+    it('is not opened for a message in another tenant', async () => {
+      attachments.findOne.mockResolvedValue({
+        id: 'a1',
+        ownerType: 'CHANNEL_MESSAGE',
+        ownerId: MESSAGE,
+        storageKey: 'k',
+        filename: 'artwork.pdf',
+      });
+      ownerExists.mockResolvedValue(false);
+      await expect(
+        service.link(asUser([PERMISSIONS.CHANNEL_READ]), 'a1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
   it('will not reach a record in another tenant, permission or not', async () => {
     ownerExists.mockResolvedValue(false);
     await expect(

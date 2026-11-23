@@ -163,15 +163,15 @@ export class SlackDriver implements ChannelDriver {
       return Promise.resolve(null);
     }
     const text = (event.text ?? '').trim();
+    const files = (event.files ?? []).map((f) => ({
+      id: f.id,
+      mimeType: f.mimetype ?? 'application/octet-stream',
+      filename: f.name,
+      caption: text || undefined,
+    }));
     const file = event.files?.[0];
-    const media = file
-      ? {
-          id: file.id,
-          mimeType: file.mimetype ?? 'application/octet-stream',
-          filename: file.name,
-          caption: text || undefined,
-        }
-      : undefined;
+    // A chat command acts on one file: the first.
+    const media = files[0];
     return Promise.resolve({
       // The user, not the channel: each Slack user gets their own contact
       // and conversation, and a reply DMs them (conversations.open on send).
@@ -179,11 +179,14 @@ export class SlackDriver implements ChannelDriver {
       body:
         text ||
         (file
-          ? `[Slack file: ${file.name ?? file.id}]`
+          ? files.length > 1
+            ? `[${files.length} Slack files]`
+            : `[Slack file: ${file.name ?? file.id}]`
           : '(Slack message without text)'),
       externalMessageId: event.client_msg_id ?? event.ts,
       rawPayload: body as Record<string, any>,
       media,
+      ...(files.length ? { files } : {}),
     });
   }
 

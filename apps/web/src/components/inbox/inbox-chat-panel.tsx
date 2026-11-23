@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/primitives';
 import { ChannelBadge, channelName, type ThreadGroup } from './inbox-thread-list';
 import { HandoverBar } from './handover';
 import { CustomerSenderBar } from './customer-sender';
+import { MessageFiles, isFilePlaceholder } from './message-files';
 
 interface InboxChatPanelProps {
   thread: ThreadGroup | null;
@@ -195,7 +196,11 @@ export function InboxChatPanel({ thread, onMessageSent, onBack }: InboxChatPanel
                     <p className="mb-1 text-xs font-semibold text-ink-muted">Subject: {msg.metadata.subject}</p>
                   )}
 
-                  <p className="whitespace-pre-wrap break-words">{msg.body}</p>
+                  {msg.files?.length ? <MessageFiles files={msg.files} /> : null}
+
+                  {!isFilePlaceholder(msg.body, msg.files) && (
+                    <p className="whitespace-pre-wrap break-words">{msg.body}</p>
+                  )}
 
                   <div className="mt-1.5 flex flex-wrap items-center justify-end gap-x-1.5 gap-y-1 text-xs text-ink-muted">
                     <span>{channelName(msg.provider)}</span>
