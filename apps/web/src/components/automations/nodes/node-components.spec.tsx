@@ -523,6 +523,23 @@ describe('Automation Node Components', () => {
       expect(screen.getByText('Subject: Accepted: [Quote number]')).toBeInTheDocument();
       expect(nameData).toHaveBeenCalledWith('step-1', 'Accepted: {{ $trigger.payload.quoteNumber }}');
     });
+
+    it.each([
+      ['sendMessageNode', { channel: 'WHATSAPP_META', audience: 'customer', to: 'x', body: 'Ready: {{ $trigger.payload.quoteNumber }}' }],
+      ['notifyStaffNode', { audience: 'group', group: 'purchasing', title: 'Low: {{ $trigger.payload.quoteNumber }}' }],
+      ['aiAgentNode', { goal: 'Chase {{ $trigger.payload.quoteNumber }}' }],
+    ])('a %s card names its data too', (type, config) => {
+      const nameData = (_: string, text: string) => text.replace('{{ $trigger.payload.quoteNumber }}', '[Quote number]');
+      const { container } = render(
+        <ReactFlowProvider>
+          <CanvasActionsContext.Provider value={{ onAddAfter: vi.fn(), connectedOutputs: new Set(), nameData }}>
+            <ActionNode type={type as 'aiAgentNode'} data={{ label: 'Step', config }} />
+          </CanvasActionsContext.Provider>
+        </ReactFlowProvider>,
+      );
+      expect(container.textContent).toContain('[Quote number]');
+      expect(container.textContent).not.toContain('{{');
+    });
   });
 
   describe('NodePaletteDrawer (the step chooser)', () => {

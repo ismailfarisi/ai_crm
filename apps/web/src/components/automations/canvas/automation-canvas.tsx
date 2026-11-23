@@ -55,10 +55,20 @@ export function AutomationCanvas({
 
   // What each step's data is called. Rebuilt when steps or their settings
   // change, not on every pixel a step is dragged.
-  const graphKey = JSON.stringify(nodes.map((n) => [n.id, n.type, n.data?.label, crmEventOf(n.data?.config as Record<string, unknown> | undefined)]));
+  const graphKey = JSON.stringify(
+    nodes.map((n) => {
+      const config = n.data?.config as Record<string, unknown> | undefined;
+      // What a look-up step hands on depends on what it looks up.
+      return [n.id, n.type, n.data?.label, crmEventOf(config), config?.entity ?? null, config?.action ?? null];
+    }),
+  );
   const nameData = useMemo(() => {
-    const steps = (JSON.parse(graphKey) as [string, string, string | undefined, string | null][]).map(
-      ([id, type, label, event]) => ({ id, type: type as AutomationNodeType, data: { label, config: { event } } }),
+    const steps = (JSON.parse(graphKey) as [string, string, string | undefined, string | null, unknown, unknown][]).map(
+      ([id, type, label, event, entity, action]) => ({
+        id,
+        type: type as AutomationNodeType,
+        data: { label, config: { event, entity, action } },
+      }),
     );
     const known = new Map<string, DataGroup[]>(steps.map((s) => [s.id, availableData(s.id, steps, edges)]));
     return (nodeId: string, text: string) =>

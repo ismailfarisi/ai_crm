@@ -19,7 +19,7 @@ import { useNamedText } from '../canvas/canvas-actions';
 /** Who the AI agent step runs as, and whether it is ready to run. */
 function AgentStepPreview({ config }: { config: Record<string, unknown> }) {
   const choice = agentChoice(config.agentId, useAgentOptions());
-  const task = aiAgentStepTask({ data: { label: '', config } });
+  const task = useNamedText()(aiAgentStepTask({ data: { label: '', config } }));
   const agentName =
     choice.state === 'ok' || choice.state === 'off'
       ? choice.agent.name
@@ -182,10 +182,10 @@ export function ActionNode({
           <div className="text-ink font-medium truncate">
             {AUTOMATION_MESSAGE_CHANNELS.find((c) => c.value === config.channel)?.label ?? 'Chat'} to{' '}
             <span className="text-ink-muted">
-              {config.to || (config.audience === 'customer' ? 'a customer' : 'a colleague')}
+              {named(config.to) || (config.audience === 'customer' ? 'a customer' : 'a colleague')}
             </span>
           </div>
-          {config.body && <div className="text-ink-muted truncate text-[11px]">{config.body}</div>}
+          {config.body && <div className="text-ink-muted truncate text-[11px]">{named(config.body)}</div>}
         </div>
       );
       break;
@@ -202,11 +202,11 @@ export function ActionNode({
             To:{' '}
             <span className="text-ink-muted">
               {config.audience === 'person'
-                ? config.to || 'a colleague'
+                ? named(config.to) || 'a colleague'
                 : (AUTOMATION_NOTIFY_GROUPS.find((g) => g.value === config.group)?.label ?? 'a group')}
             </span>
           </div>
-          {config.title && <div className="text-ink-muted truncate text-[11px]">{config.title}</div>}
+          {config.title && <div className="text-ink-muted truncate text-[11px]">{named(config.title)}</div>}
         </div>
       );
       break;
