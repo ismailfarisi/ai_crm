@@ -9,6 +9,7 @@ interface Seed {
   orderStatus?: string;
   orderLines?: any[];
   stock?: any[];
+  materials?: any[];
   tolerance?: number;
 }
 
@@ -75,6 +76,7 @@ function makeService(seed: Seed = {}) {
         PurchaseOrder: [order],
         PurchaseOrderLine: orderLines,
         StockItem: stock,
+        Material: seed.materials ?? [],
         StockMovement: movements,
         StockLocation: locations,
         GoodsReceipt: receipts,
@@ -200,12 +202,17 @@ function makeService(seed: Seed = {}) {
   };
 
   const ledger = {
+    provisionChartOfAccounts: jest.fn(async () => []),
     resolveLines: jest.fn(async (_t: string, lines: any[]) =>
       lines.map((l) => ({
         ledgerAccountId: `ledger-${l.role}`,
         ledgerAccountCode:
-          { INVENTORY: '1200', GRNI: '1250', COGS: '5000' }[l.role as string] ??
-          '6000',
+          {
+            INVENTORY: '1200',
+            GRNI: '1250',
+            COGS: '5000',
+            OPENING_BALANCE_EQUITY: '3100',
+          }[l.role as string] ?? '6000',
         financeAccountId: null,
         ...l,
       })),
@@ -662,6 +669,327 @@ describe('InventoryService.adjust', () => {
     expect(movements[0].type).toBe('ADJUSTMENT');
     expect(movements[0].note).toBe('Stock count');
     expect(movements[0].actorId).toBe(actorId);
+  });
+});
+
+describe('InventoryService.adjust: what stock coming back is worth', () => {
+  const position = (over: Record<string, unknown> = {}) => ({
+    id: 'stock-1',
+    tenantId,
+    materialId: 'mat-1',
+    locationId,
+    qtyOnHand: 160,
+    qtyReserved: 0,
+    qtyOnOrder: 0,
+    avgUnitCost: 10.25,
+    reorderPoint: null,
+    reorderQty: null,
+    ...over,
+  });
+  /** Debit and credit per account code, summed over every journal posted. */
+  const byCode = (journals: any[]) => {
+    const totals: Record<string, { debit: number; credit: number }> = {};
+    for (const line of journals.flatMap((j) => j.lines)) {
+      const t = (totals[line.ledgerAccountCode] ??= { debit: 0, credit: 0 });
+      t.debit += line.debit;
+      t.credit += line.credit;
+    }
+    return totals;
+  };
+  const isWholeFils = (n: number) =>
+    Math.abs(n * 100 - Math.round(n * 100)) < 1e-9;
+
+  it('values a recount upwards at the standing average, leaving the average alone', async () => {
+    const { service, stock, movements, journals } = makeService({
+      stock: [position()],
+    });
+
+    await service.adjust(tenantId, actorId, {
+      materialId: 'mat-1',
+      qtyDelta: 5,
+      note: 'Recount: five more on the top shelf',
+    });
+
+    // 165 at 10.25 is 1,691.25: the five came back worth 51.25, not nothing.
+    expect(stock[0].qtyOnHand).toBe(165);
+    expect(stock[0].avgUnitCost).toBe(10.25);
+    expect(movements[0].unitCost).toBe(10.25);
+    expect(movements[0].avgUnitCostAfter).toBe(10.25);
+    expect(journals).toHaveLength(1);
+    expect(journals[0].totalAmount).toBe(51.25);
+    expect(byCode(journals)).toEqual({
+      '1200': { debit: 51.25, credit: 0 },
+      '5000': { debit: 0, credit: 51.25 },
+    });
+  });
+
+  it('puts back exactly what the same write-off took out', async () => {
+    const { service, stock, journals } = makeService({ stock: [position()] });
+
+    await service.adjust(tenantId, actorId, {
+      materialId: 'mat-1',
+      qtyDelta: -10,
+      note: 'Damaged',
+    });
+    await service.adjust(tenantId, actorId, {
+      materialId: 'mat-1',
+      qtyDelta: 10,
+      note: 'Found: not damaged after all',
+    });
+
+    expect(stock[0].qtyOnHand).toBe(160);
+    expect(stock[0].avgUnitCost).toBe(10.25);
+    expect(byCode(journals)).toEqual({
+      '1200': { debit: 102.5, credit: 102.5 },
+      '5000': { debit: 102.5, credit: 102.5 },
+    });
+  });
+
+  it('refuses a unit cost on a correction rather than guessing it is an opening count', async () => {
+    const { service, movements } = makeService({ stock: [position()] });
+
+    await expect(
+      service.adjust(tenantId, actorId, {
+        materialId: 'mat-1',
+        qtyDelta: 5,
+        unitCost: 12,
+        note: 'Recount',
+      }),
+    ).rejects.toThrow(/only given for an opening count/i);
+    expect(movements).toHaveLength(0);
+  });
+
+  it('with nothing on hand, uses the last average the position held', async () => {
+    const { service, stock, movements, journals } = makeService({
+      stock: [position({ qtyOnHand: 0, avgUnitCost: 10.25 })],
+      materials: [{ id: 'mat-1', tenantId, costPerUom: 99 }],
+    });
+
+    await service.adjust(tenantId, actorId, {
+      materialId: 'mat-1',
+      qtyDelta: 4,
+      note: 'Found behind the guillotine',
+    });
+
+    expect(stock[0].avgUnitCost).toBe(10.25);
+    expect(movements[0].unitCost).toBe(10.25);
+    expect(journals[0].totalAmount).toBe(41);
+  });
+
+  it('with no stock and no average ever, uses the material’s catalog cost', async () => {
+    const { service, stock, movements, journals } = makeService({
+      materials: [{ id: 'mat-1', tenantId, costPerUom: 3.5 }],
+    });
+
+    await service.adjust(tenantId, actorId, {
+      materialId: 'mat-1',
+      qtyDelta: 20,
+      note: 'Found on the mezzanine',
+    });
+
+    expect(stock[0].qtyOnHand).toBe(20);
+    expect(stock[0].avgUnitCost).toBe(3.5);
+    expect(movements[0].unitCost).toBe(3.5);
+    expect(byCode(journals)).toEqual({
+      '1200': { debit: 70, credit: 0 },
+      '5000': { debit: 0, credit: 70 },
+    });
+  });
+
+  it('with no cost on record anywhere, adds the stock at zero and posts nothing', async () => {
+    const { service, stock, journals } = makeService({
+      materials: [{ id: 'mat-1', tenantId, costPerUom: 0 }],
+    });
+
+    await service.adjust(tenantId, actorId, {
+      materialId: 'mat-1',
+      qtyDelta: 20,
+      note: 'Found',
+    });
+
+    expect(stock[0].qtyOnHand).toBe(20);
+    expect(stock[0].avgUnitCost).toBe(0);
+    expect(journals).toHaveLength(0);
+  });
+
+  it('brings a negative balance back up at the average it went down at', async () => {
+    const { service, stock, journals } = makeService({
+      stock: [position({ qtyOnHand: -10, avgUnitCost: 10 })],
+    });
+
+    await service.adjust(tenantId, actorId, {
+      materialId: 'mat-1',
+      qtyDelta: 15,
+      note: 'Recount',
+    });
+
+    // From -100 of value to +50: the 15 units are worth 150.
+    expect(stock[0].qtyOnHand).toBe(5);
+    expect(stock[0].avgUnitCost).toBe(10);
+    expect(byCode(journals)).toEqual({
+      '1200': { debit: 150, credit: 0 },
+      '5000': { debit: 0, credit: 150 },
+    });
+  });
+
+  it('posts whole fils only, and nothing at all for a value under a fil', async () => {
+    const { service, journals } = makeService({
+      stock: [position({ qtyOnHand: 7, avgUnitCost: 0.3333 })],
+    });
+
+    // 0.01 of a unit at 0.3333 is worth 0.0033: under a fil.
+    await service.adjust(tenantId, actorId, {
+      materialId: 'mat-1',
+      qtyDelta: 0.01,
+      note: 'Offcut',
+    });
+    expect(journals).toHaveLength(0);
+
+    // 3 at 0.3333 is 0.9999, which the ledger holds as 1.00.
+    await service.adjust(tenantId, actorId, {
+      materialId: 'mat-1',
+      qtyDelta: -3,
+      note: 'Scrapped',
+    });
+    expect(journals).toHaveLength(1);
+    expect(journals[0].totalAmount).toBe(1);
+    for (const line of journals[0].lines) {
+      expect(isWholeFils(line.debit)).toBe(true);
+      expect(isWholeFils(line.credit)).toBe(true);
+    }
+  });
+});
+
+describe('InventoryService.adjust: opening stock', () => {
+  it('credits opening balance equity, not cost of sales', async () => {
+    const { service, stock, movements, journals, ledger } = makeService();
+
+    await service.adjust(tenantId, actorId, {
+      materialId: 'mat-1',
+      kind: 'OPENING',
+      qtyDelta: 20,
+      unitCost: 12,
+      note: 'Opening stock count',
+    });
+
+    expect(stock[0].qtyOnHand).toBe(20);
+    expect(stock[0].avgUnitCost).toBe(12);
+    expect(movements[0].unitCost).toBe(12);
+    expect(ledger.provisionChartOfAccounts).toHaveBeenCalled();
+    expect(journals).toHaveLength(1);
+    expect(journals[0].entryNumber).toMatch(/^JE-OS-/);
+    expect(journals[0].totalAmount).toBe(240);
+    expect(
+      journals[0].lines.map((l: any) => [
+        l.ledgerAccountCode,
+        l.debit,
+        l.credit,
+      ]),
+    ).toEqual([
+      ['1200', 240, 0],
+      ['3100', 0, 240],
+    ]);
+  });
+
+  it('blends into stock already held, and still credits equity', async () => {
+    const { service, stock, journals } = makeService({
+      stock: [
+        {
+          id: 'stock-1',
+          tenantId,
+          materialId: 'mat-1',
+          locationId,
+          qtyOnHand: 100,
+          qtyReserved: 0,
+          qtyOnOrder: 0,
+          avgUnitCost: 2,
+          reorderPoint: null,
+          reorderQty: null,
+        },
+      ],
+    });
+
+    await service.adjust(tenantId, actorId, {
+      materialId: 'mat-1',
+      kind: 'OPENING',
+      qtyDelta: 100,
+      unitCost: 4,
+      note: 'Opening stock count',
+    });
+
+    expect(stock[0].qtyOnHand).toBe(200);
+    expect(stock[0].avgUnitCost).toBe(3);
+    expect(journals[0].lines[1].ledgerAccountCode).toBe('3100');
+    expect(journals[0].totalAmount).toBe(400);
+  });
+
+  it('needs a unit cost and a quantity above zero', async () => {
+    const { service, movements } = makeService();
+
+    await expect(
+      service.adjust(tenantId, actorId, {
+        materialId: 'mat-1',
+        kind: 'OPENING',
+        qtyDelta: 20,
+        note: 'Opening stock count',
+      }),
+    ).rejects.toThrow(/cost of a unit/i);
+    await expect(
+      service.adjust(tenantId, actorId, {
+        materialId: 'mat-1',
+        kind: 'OPENING',
+        qtyDelta: -20,
+        unitCost: 12,
+        note: 'Opening stock count',
+      }),
+    ).rejects.toThrow(/adds stock/i);
+    expect(movements).toHaveLength(0);
+  });
+
+  it('is refused on top of a negative balance', async () => {
+    const { service, movements, journals } = makeService({
+      stock: [
+        {
+          id: 'stock-1',
+          tenantId,
+          materialId: 'mat-1',
+          locationId,
+          qtyOnHand: -10,
+          qtyReserved: 0,
+          qtyOnOrder: 0,
+          avgUnitCost: 10,
+          reorderPoint: null,
+          reorderQty: null,
+        },
+      ],
+    });
+
+    await expect(
+      service.adjust(tenantId, actorId, {
+        materialId: 'mat-1',
+        kind: 'OPENING',
+        qtyDelta: 30,
+        unitCost: 12,
+        note: 'Opening stock count',
+      }),
+    ).rejects.toThrow(/correct the count first/i);
+    expect(movements).toHaveLength(0);
+    expect(journals).toHaveLength(0);
+  });
+
+  it('entered at zero cost posts nothing', async () => {
+    const { service, stock, journals } = makeService();
+
+    await service.adjust(tenantId, actorId, {
+      materialId: 'mat-1',
+      kind: 'OPENING',
+      qtyDelta: 20,
+      unitCost: 0,
+      note: 'Free samples held at go-live',
+    });
+
+    expect(stock[0].qtyOnHand).toBe(20);
+    expect(journals).toHaveLength(0);
   });
 });
 

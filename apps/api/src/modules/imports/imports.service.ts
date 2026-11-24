@@ -714,12 +714,13 @@ export class ImportsService {
       }
       case 'opening-stock': {
         // The same posting as an opening count on the Stock screen: stock in
-        // at the stated cost, Dr Inventory / Cr Stock adjustment.
+        // at the stated cost, Dr Inventory / Cr Opening balance equity.
         await this.inventory.adjust(
           tenantId,
           actor.id,
           {
             materialId: value.materialId as string,
+            kind: 'OPENING',
             qtyDelta: value.quantity as number,
             unitCost: value.unitCost as number,
             note: 'Opening stock (import)',

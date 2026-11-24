@@ -218,6 +218,7 @@ describe('ImportsService', () => {
       'user-1',
       {
         materialId: 'm-1',
+        kind: 'OPENING',
         qtyDelta: 250,
         unitCost: 4.8,
         note: 'Opening stock (import)',

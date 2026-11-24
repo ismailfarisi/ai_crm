@@ -356,8 +356,8 @@ function UploadStep({
             <TemplateButtons entity={entity} />
             {entity === 'opening-stock' && (
               <p className="text-xs text-ink-muted">
-                Each row is booked as a stock adjustment at its unit cost, and posted to the books. A material
-                that already has stock is skipped.
+                Each row is booked as opening stock at its unit cost, and posted to the books against opening
+                balance equity. A material that already has stock is skipped.
               </p>
             )}
           </CardBody>
