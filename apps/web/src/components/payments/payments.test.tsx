@@ -60,6 +60,25 @@ describe('PublicInvoiceView', () => {
     expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: 'POST', credentials: 'omit' });
   });
 
+  it('takes the discount off above the subtotal, so each row is the sum so far', async () => {
+    fetchMock.mockImplementationOnce(() =>
+      respond(
+        invoice({ subtotalAmount: 4000, discountAmount: 1000, taxAmount: 200, totalAmount: 4200, balanceDue: 4200 }),
+      ),
+    );
+    const { container } = render(<PublicInvoiceView token="tok" justPaid={false} />);
+    await screen.findByText('Subtotal');
+
+    const rows = [...container.querySelectorAll('dl > div')].map((row) => row.textContent);
+    expect(rows.slice(0, 5)).toEqual([
+      'Lines5,000.00 AED',
+      'Discount−1,000.00 AED',
+      'Subtotal4,000.00 AED',
+      'VAT200.00 AED',
+      'Total4,200.00 AED',
+    ]);
+  });
+
   it('says how to pay when online payment is off', async () => {
     fetchMock.mockImplementationOnce(() => respond(invoice({ canPayOnline: false })));
     render(<PublicInvoiceView token="tok" justPaid={false} />);
