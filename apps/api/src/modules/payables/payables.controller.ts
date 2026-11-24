@@ -19,12 +19,14 @@ import {
   createBillSchema,
   PERMISSIONS,
   recordBillPaymentSchema,
+  statementQuerySchema,
   type BillCaptureResult,
   type BillQueryPayload,
   type BillReasonPayload,
   type CreateBillPayload,
   type PaginatedResult,
   type RecordBillPaymentPayload,
+  type StatementQueryPayload,
 } from '@saas/shared';
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
 import { zodBody, zodQuery } from '@/common/pipes/zod-validation.pipe';
@@ -61,10 +63,17 @@ export class PayablesController {
   @ApiOperation({
     summary: 'What is owed to suppliers, by how overdue',
     description:
-      'Reconciles against the payables ledger account. A non-zero `difference` means a bill and its journal entry have come apart.',
+      'As of today, or of `asOf` for a past date. Reconciles supplier bills plus approved, unreimbursed expense claims against the payables ledger account. A non-zero `difference` means the account holds something neither explains.',
   })
-  async aging(@CurrentUser() user: AuthenticatedUser): Promise<AgingReport> {
-    return this.payables.aging(user.organizationId);
+  async aging(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(zodQuery(statementQuerySchema)) q: StatementQueryPayload,
+  ): Promise<AgingReport> {
+    // A date-only `asOf` means the whole of that day.
+    const asOf = q.asOf ? new Date(q.asOf) : new Date();
+    if (q.asOf && asOf.getUTCHours() === 0 && asOf.getUTCMinutes() === 0)
+      asOf.setUTCHours(23, 59, 59, 999);
+    return this.payables.aging(user.organizationId, asOf);
   }
 
   @Get('bills/:id')

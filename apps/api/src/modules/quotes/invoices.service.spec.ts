@@ -252,6 +252,47 @@ describe('InvoicesService', () => {
       );
     });
 
+    it('refuses a payment dated before the invoice was issued, and says which date to use', async () => {
+      invoiceRepo.findOne = jest.fn().mockResolvedValue({
+        ...baseInvoice(),
+        invoiceNumber: 'INV-2026-0001',
+        issuedAt: new Date('2026-11-20T09:30:00Z'),
+      });
+
+      await expect(
+        service.recordPayment(
+          tenantId,
+          invoiceId,
+          { accountId: 'acc-1', amount: 400, paidAt: '2026-10-11' },
+          'user-1',
+        ),
+      ).rejects.toThrow(
+        'INV-2026-0001 was issued on 2026-11-20, so a payment on it cannot be dated 2026-10-11. Use 2026-11-20 or later.',
+      );
+      expect(financeService.recordInvoicePayment).not.toHaveBeenCalled();
+    });
+
+    it('accepts a payment dated the day the invoice was issued, and posts it on that date', async () => {
+      invoiceRepo.findOne = jest.fn().mockResolvedValue({
+        ...baseInvoice(),
+        issuedAt: new Date('2026-11-20T09:30:00Z'),
+      });
+      paymentSum = 400;
+
+      await service.recordPayment(
+        tenantId,
+        invoiceId,
+        { accountId: 'acc-1', amount: 400, paidAt: '2026-11-20' },
+        'user-1',
+      );
+
+      expect(financeService.recordInvoicePayment).toHaveBeenCalledWith(
+        tenantId,
+        expect.objectContaining({ entryDate: new Date('2026-11-20') }),
+        expect.anything(),
+      );
+    });
+
     it('rejects a payment exceeding the remaining balance', async () => {
       invoiceRepo.findOne = jest.fn().mockResolvedValue(baseInvoice());
 

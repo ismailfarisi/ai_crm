@@ -11,12 +11,14 @@ import {
   EntityManager,
   In,
   IsNull,
+  LessThanOrEqual,
   Not,
   Repository,
 } from 'typeorm';
 import {
   AGING_BUCKETS,
   agingBucket,
+  billBalanceAsOf,
   billPostingLines,
   reverseChargeTax,
   billTotals,
@@ -24,6 +26,7 @@ import {
   firstOfMonth,
   isSpread,
   monthsTouched,
+  paymentDateProblem,
   canTransitionBill,
   LEDGER_ROLES,
   PERMISSIONS,
@@ -43,6 +46,7 @@ import {
   formatTenantSequenceNumber,
 } from '@/database/tenant-sequence.util';
 import { LedgerService } from '../finance/ledger.service';
+import { ExpenseClaim } from '../finance/entities/expense-claim.entity';
 import { FinanceAccount } from '../finance/entities/finance-account.entity';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
 import { TaxService } from '../tax/tax.service';
@@ -59,6 +63,8 @@ import {
   SupplierBill,
   SupplierBillLine,
 } from './entities/supplier-bill.entity';
+
+const UUID = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 
 export interface Actor {
   userId: string;
@@ -81,10 +87,20 @@ export interface BillableOrderLine {
 export interface AgingReport {
   asOf: string;
   buckets: Record<AgingBucket, number>;
+  /** Outstanding supplier bills, in base currency. */
   total: number;
+  /** Approved expense claims not yet reimbursed. Owed to staff, held in the same payables account. */
+  staffClaimsTotal: number;
+  staffClaims: {
+    id: string;
+    claimNumber: string;
+    employeeName: string;
+    /** In base currency, as posted. */
+    outstanding: number;
+  }[];
   /** The payables account balance, which the report must agree with. */
   ledgerBalance: number;
-  /** `total - ledgerBalance`. Anything but zero means a bill posted without a matching record, or the reverse. */
+  /** `total + staffClaimsTotal - ledgerBalance`. Anything but zero means the account holds something neither the bills nor the claims explain. */
   difference: number;
   bills: {
     id: string;
@@ -809,6 +825,13 @@ export class PayablesService {
       if (!account) throw new NotFoundException('Account not found');
 
       const paidAt = input.paidAt ?? new Date();
+      // The bill's journal entry is dated its bill date. A payment before
+      // that would leave the payables account in debit until the bill lands.
+      const dateProblem = paymentDateProblem(
+        { number: bill.billNumber, kind: 'bill', date: bill.billDate },
+        paidAt,
+      );
+      if (dateProblem) throw new BadRequestException(dateProblem);
       const paymentRate = await fxRateFor(
         manager,
         tenantId,
@@ -971,16 +994,48 @@ export class PayablesService {
    * ------------------------------------------------------------------ */
 
   /**
-   * What is owed, by how late it is — and whether that agrees with the ledger.
+   * What was owed at `asOf`, by how late it was, and whether that agrees with
+   * the ledger on the same day.
    *
    * The reconciliation is the useful half. A report that merely lists bills
    * cannot tell you when the payables account has drifted from them.
+   *
+   * A bill's `paidAmount` is today's figure, so each balance is rebuilt from
+   * what had happened by `asOf`: the bill (from its bill date, which is the
+   * date its journal entry carries), each payment, each reversal.
+   *
+   * Supplier bills are not all the payables account holds. An approved expense
+   * claim is owed to the employee from the same account until it is
+   * reimbursed, so those are listed beside the bills and counted in the
+   * comparison. `difference` is then what neither explains.
    */
   async aging(tenantId: string, asOf: Date = new Date()): Promise<AgingReport> {
-    const open = await this.bills.find({
+    const payments = await this.payments.find({
+      where: { tenantId, paidAt: LessThanOrEqual(asOf) },
+    });
+    const paymentsOf = new Map<string, BillPayment[]>();
+    for (const payment of payments) {
+      paymentsOf.set(payment.billId, [
+        ...(paymentsOf.get(payment.billId) ?? []),
+        payment,
+      ]);
+    }
+    // Every bill posted by the day, including ones paid off since. A bill
+    // dated after the day but already paid before it (possible before payment
+    // dates were checked) is included too: the ledger holds that payment.
+    const posted = In(['APPROVED', 'PARTIALLY_PAID', 'PAID'] as BillStatus[]);
+    const paidEarly = [...paymentsOf.keys()];
+    const bills = await this.bills.find({
       where: [
-        { tenantId, status: 'APPROVED', deletedAt: IsNull() },
-        { tenantId, status: 'PARTIALLY_PAID', deletedAt: IsNull() },
+        {
+          tenantId,
+          status: posted,
+          deletedAt: IsNull(),
+          billDate: LessThanOrEqual(asOf),
+        },
+        ...(paidEarly.length
+          ? [{ tenantId, status: posted, deletedAt: IsNull(), id: In(paidEarly) }]
+          : []),
       ],
       order: { dueDate: 'ASC' },
     });
@@ -991,12 +1046,20 @@ export class PayablesService {
     // Totals are in base currency at each bill's booked rate, which is what
     // the payables account holds, so the reconciliation below compares like
     // with like across currencies.
-    const rows = open.map((bill) => {
-      const outstanding = money(bill.totalAmount - bill.paidAmount);
+    const rows: AgingReport['bills'] = [];
+    for (const bill of bills) {
+      const outstanding = billBalanceAsOf(
+        bill,
+        paymentsOf.get(bill.id) ?? [],
+        asOf,
+      );
+      if (Math.round(outstanding * 100) === 0) continue;
       const outstandingBase = toBase(outstanding, bill.fxRate ?? 1);
-      const bucket = agingBucket(bill.dueDate, asOf);
+      // Paid ahead of the bill: nothing is late, the supplier holds our money.
+      const bucket =
+        outstanding < 0 ? 'CURRENT' : agingBucket(bill.dueDate, asOf);
       buckets[bucket] = money(buckets[bucket] + outstandingBase);
-      return {
+      rows.push({
         id: bill.id,
         billNumber: bill.billNumber,
         supplierName: bill.supplierName,
@@ -1005,13 +1068,21 @@ export class PayablesService {
         currency: bill.currency,
         outstandingBase,
         bucket,
-      };
-    });
+      });
+    }
     const total = money(rows.reduce((s, r) => s + r.outstandingBase, 0));
 
     const payablesAccount = await this.ledger.byRole(
       tenantId,
       LEDGER_ROLES.ACCOUNTS_PAYABLE,
+    );
+    const staffClaims = await this.staffClaimsOwed(
+      tenantId,
+      payablesAccount.id,
+      asOf,
+    );
+    const staffClaimsTotal = money(
+      staffClaims.reduce((s, c) => s + c.outstanding, 0),
     );
     const trial = await this.ledger.trialBalance(tenantId, asOf);
     const ledgerBalance =
@@ -1022,10 +1093,68 @@ export class PayablesService {
       asOf: asOf.toISOString(),
       buckets,
       total,
+      staffClaimsTotal,
+      staffClaims,
       ledgerBalance,
-      difference: money(total - ledgerBalance),
+      difference: money(total + staffClaimsTotal - ledgerBalance),
       bills: rows,
     };
+  }
+
+  /**
+   * Approved expense claims not yet reimbursed at `asOf`, in base currency.
+   *
+   * A claim keeps neither the date its approval was posted on nor the rate,
+   * and a claim approved after its month closed is posted on the first open
+   * day, not the day it was spent. The claim's own journal entries hold both,
+   * so what is owed on each claim is read from the payables lines of those
+   * entries: credited on approval, debited on reimbursement.
+   */
+  private async staffClaimsOwed(
+    tenantId: string,
+    payablesAccountId: string,
+    asOf: Date,
+  ): Promise<NonNullable<AgingReport['staffClaims']>> {
+    const entries = await this.dataSource.getRepository(JournalEntry).find({
+      where: {
+        tenantId,
+        referenceType: 'EXPENSE',
+        entryDate: LessThanOrEqual(asOf),
+      },
+    });
+    const owedCents = new Map<string, number>();
+    for (const entry of entries) {
+      if (!entry.referenceId) continue;
+      // The reimbursement is filed under `<claim id>:reimbursement`.
+      const claimId = entry.referenceId.split(':')[0];
+      for (const line of entry.lines ?? []) {
+        if (line.ledgerAccountId !== payablesAccountId) continue;
+        owedCents.set(
+          claimId,
+          (owedCents.get(claimId) ?? 0) +
+            Math.round(Number(line.credit ?? 0) * 100) -
+            Math.round(Number(line.debit ?? 0) * 100),
+        );
+      }
+    }
+    const owing = [...owedCents].filter(([, c]) => c !== 0);
+    if (!owing.length) return [];
+    const ids = owing.map(([id]) => id).filter((id) => UUID.test(id));
+    const claims = ids.length
+      ? await this.dataSource.getRepository(ExpenseClaim).find({
+          where: { tenantId, id: In(ids) },
+          select: { id: true, claimNumber: true, employeeName: true },
+        })
+      : [];
+    const byId = new Map(claims.map((c) => [c.id, c]));
+    return owing
+      .map(([id, c]) => ({
+        id,
+        claimNumber: byId.get(id)?.claimNumber ?? id,
+        employeeName: byId.get(id)?.employeeName ?? 'Unknown',
+        outstanding: c / 100,
+      }))
+      .sort((a, b) => a.claimNumber.localeCompare(b.claimNumber));
   }
 
   /* ------------------------------------------------------------------ */

@@ -13,6 +13,7 @@ import {
   formatCustomerAddress,
   formatOrganizationAddress,
   invoicePosition,
+  paymentDateProblem,
   quoteDocumentTaxes,
   RecordInvoicePaymentPayload,
   UniversalDocumentData,
@@ -206,6 +207,18 @@ export class InvoicesService {
       }
 
       const paidAt = payload.paidAt ? new Date(payload.paidAt) : new Date();
+      // A payment dated before the invoice would post before the receivable
+      // exists, leaving the customer in credit in the ledger for the days in
+      // between. Money taken ahead of the work is a deposit invoice.
+      const dateProblem = paymentDateProblem(
+        {
+          number: invoice.invoiceNumber,
+          kind: 'invoice',
+          date: invoice.issuedAt,
+        },
+        paidAt,
+      );
+      if (dateProblem) throw new BadRequestException(dateProblem);
       const paymentRate = await fxRateFor(
         manager,
         tenantId,

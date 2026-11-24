@@ -6,6 +6,7 @@ import { AlertCircle, ArrowRight } from 'lucide-react';
 import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input, Select } from '@/components/ui/field';
+import { paymentDateProblem, utcDay } from '@saas/shared';
 import type { FinanceAccountDto, InvoiceDto, RecordInvoicePaymentPayload } from '@saas/shared';
 import { formatFinanceCurrency } from '../finance/dashboard/treasury-stat-cards';
 import { formatAccountNumber } from '../finance/dashboard/account-balance-grid';
@@ -68,6 +69,16 @@ export function RecordPaymentModal({
     }
     if (numericAmount > remaining + 0.01) {
       setError(`Payment cannot exceed the remaining balance of ${formatFinanceCurrency(remaining, invoice.currency)}.`);
+      return;
+    }
+
+    // The API refuses a payment dated before the invoice; say so here first.
+    const dateProblem = paymentDateProblem(
+      { number: invoice.invoiceNumber, kind: 'invoice', date: invoice.issuedAt },
+      paidAt,
+    );
+    if (dateProblem) {
+      setError(dateProblem);
       return;
     }
 
@@ -185,9 +196,11 @@ export function RecordPaymentModal({
               id="input-payment-date"
               type="date"
               value={paidAt}
+              min={utcDay(invoice.issuedAt)}
               onChange={(e) => setPaidAt(e.target.value)}
               required
             />
+            <p className="text-xs text-ink-subtle">Not before the invoice date, {utcDay(invoice.issuedAt)}.</p>
           </div>
         </div>
 

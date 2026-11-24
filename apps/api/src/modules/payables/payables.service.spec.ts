@@ -322,6 +322,36 @@ describe('PayablesService.recordPayment', () => {
     ).toEqual(['Dr', 'Cr']);
   });
 
+  it('refuses a payment dated before the bill, and says which date to use', async () => {
+    const { service, bill, saved } = approved();
+
+    await expect(
+      service.recordPayment(tenantId, 'bill-1', 'u', {
+        financeAccountId: 'acc-1',
+        reference: null,
+        paidAt: new Date('2026-08-20'),
+      }),
+    ).rejects.toThrow(
+      'BILL-2026-0001 is dated 2026-09-01, so a payment on it cannot be dated 2026-08-20. Use 2026-09-01 or later.',
+    );
+    expect(bill.paidAmount).toBe(0);
+    expect(saved.journal).toHaveLength(0);
+    expect(saved.queries).toHaveLength(0);
+  });
+
+  it('accepts a payment dated the bill date, and posts it on that date', async () => {
+    const { service, bill, saved } = approved();
+
+    await service.recordPayment(tenantId, 'bill-1', 'u', {
+      financeAccountId: 'acc-1',
+      reference: null,
+      paidAt: new Date('2026-09-01'),
+    });
+
+    expect(bill.status).toBe('PAID');
+    expect(saved.journal[0].entryDate).toEqual(new Date('2026-09-01'));
+  });
+
   it('marks a part payment PARTIALLY_PAID', async () => {
     const { service, bill } = approved();
 

@@ -116,6 +116,16 @@ describe('receivables and payables figures', () => {
     expect(summariseReceivables(receivables)).toEqual({ total: 18372.5, overdue: 7872.5, overdueCount: 2, invoiceCount: 3 });
   });
 
+  it('does not let a credit owed back to a customer shrink what is overdue', () => {
+    const withCredit = {
+      ...receivables,
+      rows: [...receivables.rows, { ...receivables.rows[0], invoiceId: 'credit', outstanding: -55, outstandingBase: -55, bucket: 'CURRENT' as const, daysOverdue: 0 }],
+      customerCredits: 55,
+      total: receivables.total - 55,
+    };
+    expect(summariseReceivables(withCredit)).toMatchObject({ total: 18317.5, overdue: 7872.5, overdueCount: 2 });
+  });
+
   it('splits supplier bills into overdue and due in the next week', () => {
     expect(summarisePayables(payables, new Date('2026-10-30T09:00:00Z'))).toEqual({
       total: 11500,

@@ -395,9 +395,25 @@ export interface BillableOrderLineDto {
 export interface AgingReportDto {
   asOf: string;
   buckets: Record<AgingBucket, number>;
+  /** Outstanding supplier bills, in base currency. */
   total: number;
+  /** The payables account balance at `asOf`. */
   ledgerBalance: number;
+  /** `total + staffClaimsTotal - ledgerBalance`. Zero unless the account holds something neither explains. */
   difference: number;
+  /**
+   * Approved expense claims not yet reimbursed. They are owed to staff, not
+   * suppliers, but sit in the same payables account, so the reconciliation
+   * has to count them.
+   */
+  staffClaimsTotal?: number;
+  staffClaims?: {
+    id: string;
+    claimNumber: string;
+    employeeName: string;
+    /** In base currency, as posted. */
+    outstanding: number;
+  }[];
   bills: {
     id: string;
     billNumber: string;
