@@ -31,12 +31,16 @@ vi.mock('@/lib/session-context', () => ({
   useSession: () => ({ check: () => true }),
   useCan: () => true,
 }));
-const aging = vi.hoisted(() => ({ data: undefined as unknown, asOf: [] as (string | undefined)[] }));
+const aging = vi.hoisted(() => ({
+  data: undefined as unknown,
+  loading: false,
+  asOf: [] as (string | undefined)[],
+}));
 vi.mock('@/hooks/use-bills', () => ({
   useBills: () => ({ data: { items: [bill] }, isPending: false, isError: false }),
   useBillAging: (asOf?: string) => {
     aging.asOf.push(asOf);
-    return { data: aging.data };
+    return { data: aging.data, isPlaceholderData: aging.loading };
   },
 }));
 vi.mock('./capture-bill-flow', () => ({ CaptureBillFlow: () => null }));
@@ -91,6 +95,16 @@ describe('BillsView: what is owed', () => {
     render(<BillsView />);
     fireEvent.change(screen.getByLabelText('As of date'), { target: { value: '2026-11-01' } });
     expect(aging.asOf.at(-1)).toBe('2026-11-01');
+  });
+
+  it('does not put the new date on the last report while the new one loads', () => {
+    aging.data = report({});
+    aging.loading = true;
+    render(<BillsView />);
+    fireEvent.change(screen.getByLabelText('As of date'), { target: { value: '2026-11-18' } });
+    expect(screen.queryByTestId('bills-owed-on-date')).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'What is owed' })).toHaveAttribute('aria-busy', 'true');
+    aging.loading = false;
   });
 
   it('waits for a whole year while a date is typed by hand', () => {

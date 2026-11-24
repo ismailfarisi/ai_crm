@@ -64,7 +64,8 @@ export function BillsView() {
   // A date typed by hand passes through years like 0002 on the way to 2026.
   // The report waits for a real one rather than loading each of those.
   const [reportDate, setReportDate] = useState('');
-  const { data: aging } = useBillAging(reportDate || undefined);
+  // While another date loads, `aging` is still the report for the last one.
+  const { data: aging, isPlaceholderData: loadingDate } = useBillAging(reportDate || undefined);
   const pickAsOf = (value: string) => {
     setAsOf(value);
     if (value === '' || Number(value.slice(0, 4)) >= 1900) setReportDate(value);
@@ -162,7 +163,11 @@ export function BillsView() {
       />
 
       {aging && (aging.total !== 0 || (aging.staffClaimsTotal ?? 0) !== 0 || aging.difference !== 0 || asOf || reportDate) && (
-        <section className="mb-6 rounded border border-line bg-surface p-4" aria-label="What is owed">
+        <section
+          className={`mb-6 rounded border border-line bg-surface p-4 ${loadingDate ? 'opacity-60' : ''}`}
+          aria-label="What is owed"
+          aria-busy={loadingDate || undefined}
+        >
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="text-sm font-medium text-ink">Owed to suppliers</h2>
             <div className="flex flex-wrap items-baseline gap-3">
@@ -194,7 +199,7 @@ export function BillsView() {
               </div>
             ))}
           </dl>
-          {reportDate && (
+          {reportDate && !loadingDate && (
             // The list further down is each bill as it stands today. For a
             // past date the bills owed on that day are these, at that day's balance.
             <div className="mt-3" data-testid="bills-owed-on-date">
