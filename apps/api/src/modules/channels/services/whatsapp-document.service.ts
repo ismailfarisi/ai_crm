@@ -34,18 +34,34 @@ import {
 } from '../whatsapp-window';
 import { ChannelCryptoService } from './channel-crypto.service';
 
+interface Message {
+  text: string;
+  url: string | null;
+  expiresAt?: string | null;
+}
+
 interface Outgoing {
   customerId: string | null;
   customerName: string;
   /** What is being sent, for the template's first blank: "quote Q-0012". */
   label: string;
-  text: string;
-  url: string | null;
   kind: 'quote' | 'proof' | 'invoice';
   documentId: string;
+  /**
+   * Builds the message. For a quote or proof this issues a new acceptance
+   * link, which stops the one the customer already has from working.
+   */
+  build: () => Promise<Message>;
+  /**
+   * Set when `build` issues a new link: on the click-to-chat route the link
+   * is only issued once staff press Open WhatsApp (`openChat`), so a send
+   * they abandon does not break the link the customer already has.
+   */
+  issuesLink?: { preview: string; openChat: boolean };
 }
 
 const FALLBACK = 'so it opens WhatsApp on your own phone or computer instead.';
+const LINK_PLACEHOLDER = '[link]';
 
 /**
  * Sends a customer the link to a quote, an artwork proof or an invoice on
@@ -85,20 +101,24 @@ export class WhatsAppDocumentService {
     const tenantId = user.organizationId;
     const quote = await this.loadQuote(tenantId, quoteId);
     const to = await this.numberFor(tenantId, quote.customerId, input.to);
-    const link = await this.acceptance.createLink(tenantId, quoteId);
     const sender = await this.senderName(tenantId);
     const reference = quote.quoteNumber ?? 'your quote';
+    const text = (url: string) =>
+      [
+        `Hi ${quote.customerName},`,
+        `Here is ${reference}${quote.title ? ` (${quote.title})` : ''} from ${sender}. You can view and accept it here: ${url}`,
+      ].join('\n\n');
     const result = await this.deliver(user, to, {
       customerId: quote.customerId,
       customerName: quote.customerName,
       label: quote.quoteNumber ? `quote ${quote.quoteNumber}` : 'your quote',
-      url: link.url,
       kind: 'quote',
       documentId: quote.id,
-      text: [
-        `Hi ${quote.customerName},`,
-        `Here is ${reference}${quote.title ? ` (${quote.title})` : ''} from ${sender}. You can view and accept it here: ${link.url}`,
-      ].join('\n\n'),
+      build: async () => {
+        const link = await this.acceptance.createLink(tenantId, quoteId);
+        return { text: text(link.url), url: link.url, expiresAt: link.expiresAt };
+      },
+      issuesLink: { preview: text(LINK_PLACEHOLDER), openChat: !!input.openChat },
     });
     if (result.method === 'CHANNEL') {
       await this.acceptance.recordSent(tenantId, quoteId, `WhatsApp +${to}`);
@@ -120,21 +140,25 @@ export class WhatsAppDocumentService {
       );
     }
     const to = await this.numberFor(tenantId, quote.customerId, input.to);
-    // The proof is shown and answered on the quote's own customer page.
-    const link = await this.acceptance.createLink(tenantId, quoteId);
     const sender = await this.senderName(tenantId);
     const reference = quote.quoteNumber ?? 'your quote';
+    const text = (url: string) =>
+      [
+        `Hi ${quote.customerName},`,
+        `The artwork proof (version ${proof.version}) for ${reference} from ${sender} is ready. Please check it and approve it or ask for changes here: ${url}`,
+      ].join('\n\n');
     return this.deliver(user, to, {
       customerId: quote.customerId,
       customerName: quote.customerName,
       label: `artwork proof ${proof.version} for ${reference}`,
-      url: link.url,
       kind: 'proof',
       documentId: proof.id,
-      text: [
-        `Hi ${quote.customerName},`,
-        `The artwork proof (version ${proof.version}) for ${reference} from ${sender} is ready. Please check it and approve it or ask for changes here: ${link.url}`,
-      ].join('\n\n'),
+      // The proof is shown and answered on the quote's own customer page.
+      build: async () => {
+        const link = await this.acceptance.createLink(tenantId, quoteId);
+        return { text: text(link.url), url: link.url, expiresAt: link.expiresAt };
+      },
+      issuesLink: { preview: text(LINK_PLACEHOLDER), openChat: !!input.openChat },
     });
   }
 
@@ -163,14 +187,17 @@ export class WhatsAppDocumentService {
       customerId: invoice.customerId,
       customerName: invoice.customerName,
       label: `invoice ${invoice.invoiceNumber}`,
-      url: payUrl,
       kind: 'invoice',
       documentId: invoice.id,
-      text: [
-        `Hi ${invoice.customerName},`,
-        `Here is invoice ${invoice.invoiceNumber} from ${sender} for ${amount}${due}.` +
-          (payUrl ? ` You can view and pay it here: ${payUrl}` : ''),
-      ].join('\n\n'),
+      build: () =>
+        Promise.resolve({
+          url: payUrl,
+          text: [
+            `Hi ${invoice.customerName},`,
+            `Here is invoice ${invoice.invoiceNumber} from ${sender} for ${amount}${due}.` +
+              (payUrl ? ` You can view and pay it here: ${payUrl}` : ''),
+          ].join('\n\n'),
+        }),
     });
     if (result.method === 'CHANNEL') {
       await this.invoices.markSent(tenantId, invoiceId);
@@ -229,15 +256,36 @@ export class WhatsAppDocumentService {
     out: Outgoing,
   ): Promise<WhatsAppSendResultDto> {
     const tenantId = user.organizationId;
-    const clickToChat = (reason: string): WhatsAppSendResultDto => ({
-      method: 'CLICK_TO_CHAT',
-      to,
-      text: out.text,
-      url: out.url,
-      chatUrl: `https://wa.me/${to}?text=${encodeURIComponent(out.text)}`,
-      reason,
-      usedTemplate: false,
-    });
+    const clickToChat = async (
+      reason: string,
+      built?: Message,
+    ): Promise<WhatsAppSendResultDto> => {
+      if (!built && out.issuesLink && !out.issuesLink.openChat) {
+        return {
+          method: 'CLICK_TO_CHAT',
+          to,
+          text: out.issuesLink.preview,
+          url: null,
+          expiresAt: null,
+          chatUrl: null,
+          reason,
+          usedTemplate: false,
+          linkPending: true,
+        };
+      }
+      const message = built ?? (await out.build());
+      return {
+        method: 'CLICK_TO_CHAT',
+        to,
+        text: message.text,
+        url: message.url,
+        expiresAt: message.expiresAt ?? null,
+        chatUrl: `https://wa.me/${to}?text=${encodeURIComponent(message.text)}`,
+        reason,
+        usedTemplate: false,
+        linkPending: false,
+      };
+    };
 
     const config = await this.configs.findOne({
       where: {
@@ -257,8 +305,7 @@ export class WhatsAppDocumentService {
     }
 
     const last = await lastWhatsAppMessageFrom(this.messages, tenantId, to);
-    let template:
-      { name: string; language: string; parameters: string[] } | undefined;
+    let template: { name: string; language: string } | undefined;
     if (!insideWhatsAppWindow(last)) {
       const credentials = this.crypto.decrypt(config.encryptedCredentials);
       const name = String(credentials?.documentTemplateName ?? '').trim();
@@ -267,14 +314,10 @@ export class WhatsAppDocumentService {
           `${out.customerName} has not written to your business WhatsApp in the last 24 hours. WhatsApp then only allows an approved message template, and none is set up, ${FALLBACK}`,
         );
       }
-      template = {
-        name,
-        language:
-          String(credentials?.documentTemplateLanguage ?? '').trim() || 'en',
-        // A template blank cannot hold a line break.
-        parameters: [out.label, out.url ?? out.text.replace(/\s+/g, ' ')],
-      };
+      template = { name, language: String(credentials?.documentTemplateLanguage ?? '').trim() || 'en' };
     }
+
+    const message = await out.build();
 
     // The conversation the customer already has in the inbox, or a new one.
     const contactId =
@@ -291,9 +334,20 @@ export class WhatsAppDocumentService {
       await this.channels.sendMessage(tenantId, user.id, {
         provider: ChannelProviderType.WHATSAPP_META,
         recipient: to,
-        body: out.text,
+        body: message.text,
         contactId,
-        ...(template ? { template } : {}),
+        ...(template
+          ? {
+              template: {
+                ...template,
+                // A template blank cannot hold a line break.
+                parameters: [
+                  out.label,
+                  message.url ?? message.text.replace(/\s+/g, ' '),
+                ],
+              },
+            }
+          : {}),
         metadata: { document: { kind: out.kind, id: out.documentId } },
       });
     } catch (err: unknown) {
@@ -304,16 +358,19 @@ export class WhatsAppDocumentService {
       return clickToChat(
         // Meta's own error text can echo credentials; it stays in the server log.
         `WhatsApp did not accept the message from your business number, ${FALLBACK}`,
+        message,
       );
     }
     return {
       method: 'CHANNEL',
       to,
-      text: out.text,
-      url: out.url,
+      text: message.text,
+      url: message.url,
+      expiresAt: message.expiresAt ?? null,
       chatUrl: null,
       reason: null,
       usedTemplate: !!template,
+      linkPending: false,
     };
   }
 }

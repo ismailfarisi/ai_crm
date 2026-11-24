@@ -286,9 +286,12 @@ export function QuoteCustomerPanel({
                 what={summary.quoteNumber || 'this quote'}
                 customerName={summary.customerName || null}
                 disabled={busy !== null || hasUnsavedChanges}
-                send={async (to) => {
-                  const result = await api.quoteAcceptance.sendOnWhatsApp(quoteId, { to });
-                  if (result.method === 'CHANNEL') router.refresh();
+                send={async (to, openChat) => {
+                  const result = await api.quoteAcceptance.sendOnWhatsApp(quoteId, { to, openChat });
+                  if (result.url && result.expiresAt) {
+                    setLink({ url: result.url, expiresAt: result.expiresAt });
+                    router.refresh();
+                  }
                   return result;
                 }}
               />

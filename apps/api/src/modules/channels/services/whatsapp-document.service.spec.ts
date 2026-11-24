@@ -175,11 +175,25 @@ describe('Send on WhatsApp', () => {
     const { service, user, channels, acceptance } = setup({
       lastInboundAgo: 30 * HOUR,
     });
-    const result = await service.sendQuote(user, 'quote-1');
+    const pending = await service.sendQuote(user, 'quote-1');
 
+    // Nothing is issued until staff press Open WhatsApp, so the link the
+    // customer already has keeps working if they close the dialog.
+    expect(pending).toMatchObject({
+      method: 'CLICK_TO_CHAT',
+      linkPending: true,
+      chatUrl: null,
+      url: null,
+    });
+    expect(pending.text).toContain('[link]');
+    expect(acceptance.createLink).not.toHaveBeenCalled();
+
+    const result = await service.sendQuote(user, 'quote-1', { openChat: true });
+    expect(acceptance.createLink).toHaveBeenCalledTimes(1);
     expect(channels.sendMessage).not.toHaveBeenCalled();
     expect(acceptance.recordSent).not.toHaveBeenCalled();
     expect(result.method).toBe('CLICK_TO_CHAT');
+    expect(result.linkPending).toBe(false);
     expect(result.reason).toContain('24 hours');
     expect(result.chatUrl).toMatch(/^https:\/\/wa\.me\/971501234567\?text=/);
     expect(decodeURIComponent(result.chatUrl!.split('text=')[1])).toContain(
@@ -193,6 +207,7 @@ describe('Send on WhatsApp', () => {
     });
     const result = await service.sendProof(user, 'quote-1');
     expect(result.method).toBe('CLICK_TO_CHAT');
+    expect(result.linkPending).toBe(true);
     expect(channels.sendMessage).not.toHaveBeenCalled();
     expect(contacts.findOrCreateForChannel).not.toHaveBeenCalled();
   });

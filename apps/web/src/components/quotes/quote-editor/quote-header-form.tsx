@@ -25,7 +25,7 @@ interface QuoteHeaderFormProps {
 }
 
 const PAYMENT_TERMS_OPTIONS = [
-  { value: 'immediate', label: 'Immediate payment' },
+  { value: 'immediate', label: 'Due on receipt' },
   { value: 'net_15', label: 'Net 15 days' },
   { value: 'net_30', label: 'Net 30 days' },
   { value: 'net_60', label: 'Net 60 days' },

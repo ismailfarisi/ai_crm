@@ -13,6 +13,7 @@ import {
   type OrganizationProfileDto,
   type SessionDto,
   quoteDisplayStatus,
+  DOCUMENT_TIME_ZONE,
 } from '@saas/shared';
 import { serverFetchOrNull } from '@/lib/api/server';
 import { can } from '@/lib/access';
@@ -43,6 +44,7 @@ function getFormattedDate(date: Date = new Date()): string {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
+    timeZone: DOCUMENT_TIME_ZONE,
   });
 }
 

@@ -40,6 +40,10 @@ export function DataTableCardGrid<TData>({
           (c) => c.column.id !== 'select' && c.column.id !== 'actions' && c.column.id !== cardTitleKey
         );
         const actionsCell = visibleCells.find((c) => c.column.id === 'actions');
+        // Keeps the title column's own cell, so a title that links to the record still opens it.
+        const titleCell = cardTitleKey
+          ? visibleCells.find((c) => c.column.id === cardTitleKey)
+          : undefined;
 
         const titleVal = cardTitleKey ? String(item[cardTitleKey] ?? '') : undefined;
         const subtitleVal = cardSubtitleKey ? String(item[cardSubtitleKey] ?? '') : undefined;
@@ -63,8 +67,14 @@ export function DataTableCardGrid<TData>({
                     </div>
                   )}
                   <div>
-                    {titleVal && (
-                      <h4 className="text-sm font-semibold text-ink line-clamp-1">{titleVal}</h4>
+                    {titleCell ? (
+                      <h4 className="text-sm font-semibold text-ink line-clamp-1">
+                        {flexRender(titleCell.column.columnDef.cell, titleCell.getContext())}
+                      </h4>
+                    ) : (
+                      titleVal && (
+                        <h4 className="text-sm font-semibold text-ink line-clamp-1">{titleVal}</h4>
+                      )
                     )}
                     {subtitleVal && (
                       <p className="text-xs text-ink-muted line-clamp-1">{subtitleVal}</p>

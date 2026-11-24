@@ -106,7 +106,7 @@ export function QuoteProofsPanel({
                 size="sm"
                 what={`artwork proof v${latest.version}`}
                 customerName={customerName}
-                send={(to) => api.quoteAcceptance.sendProofOnWhatsApp(quoteId, { to })}
+                send={(to, openChat) => api.quoteAcceptance.sendProofOnWhatsApp(quoteId, { to, openChat })}
               />
             )}
           </>

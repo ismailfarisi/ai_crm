@@ -20,7 +20,8 @@ export function SendOnWhatsAppButton({
   /** What is being sent, in the dialog title: "Q-0012", "artwork proof v2", "invoice INV-0007". */
   what: string;
   customerName: string | null;
-  send: (to: string | null) => Promise<WhatsAppSendResultDto>;
+  /** `openChat`: staff pressed Open WhatsApp, so a pending quote or proof link may now be issued. */
+  send: (to: string | null, openChat?: boolean) => Promise<WhatsAppSendResultDto>;
   disabled?: boolean;
   size?: 'sm' | 'md';
 }) {
@@ -44,6 +45,31 @@ export function SendOnWhatsAppButton({
       setResult(await send(to.trim() || null));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not send.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openChat = async () => {
+    if (!result) return;
+    if (!result.linkPending) {
+      window.open(result.chatUrl!, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    // Opened before the request so the browser does not block it as a pop-up.
+    const tab = window.open('', '_blank');
+    if (tab) tab.opener = null;
+    setBusy(true);
+    setError(null);
+    try {
+      const issued = await send(to.trim() || null, true);
+      setResult(issued);
+      if (issued.chatUrl && tab) tab.location.href = issued.chatUrl;
+      else if (issued.chatUrl) window.open(issued.chatUrl, '_blank', 'noopener,noreferrer');
+      else tab?.close();
+    } catch (err) {
+      tab?.close();
+      setError(err instanceof Error ? err.message : 'Could not open WhatsApp.');
     } finally {
       setBusy(false);
     }
@@ -78,12 +104,8 @@ export function SendOnWhatsAppButton({
               <Button type="button" variant="outline" onClick={close}>
                 Close
               </Button>
-              {result.chatUrl && (
-                <Button
-                  type="button"
-                  variant="primary"
-                  onClick={() => window.open(result.chatUrl!, '_blank', 'noopener,noreferrer')}
-                >
+              {(result.chatUrl || result.linkPending) && (
+                <Button type="button" variant="primary" loading={busy} onClick={openChat}>
                   <ExternalLink className="size-4" aria-hidden />
                   Open WhatsApp
                 </Button>
@@ -123,6 +145,17 @@ export function SendOnWhatsAppButton({
                   </span>
                 </p>
                 {result.reason && <p className="text-ink-muted">{result.reason}</p>}
+                {result.linkPending && (
+                  <p className="text-ink-muted">
+                    Opening WhatsApp makes a new link for {customer}. Any link they were sent before
+                    stops working.
+                  </p>
+                )}
+                {error && (
+                  <p role="alert" className="text-sm text-danger">
+                    {error}
+                  </p>
+                )}
               </>
             )}
             <div className="whitespace-pre-wrap [overflow-wrap:anywhere] rounded-md border border-border bg-surface-subtle p-3 text-ink-muted">

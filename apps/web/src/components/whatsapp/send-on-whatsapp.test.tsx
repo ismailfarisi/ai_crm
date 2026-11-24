@@ -8,9 +8,11 @@ const base: WhatsAppSendResultDto = {
   to: '971501234567',
   text: 'Hello, here is your quote Q-0012: https://app/q/abc',
   url: 'https://app/q/abc',
+  expiresAt: null,
   chatUrl: null,
   reason: null,
   usedTemplate: false,
+  linkPending: false,
 };
 
 async function sendWith(result: WhatsAppSendResultDto, to = '') {
@@ -53,6 +55,37 @@ describe('SendOnWhatsAppButton', () => {
       'noopener,noreferrer',
     );
     expect(send).toHaveBeenCalledWith('+971 50 123 4567');
+  });
+
+  it('only makes the new quote link once Open WhatsApp is pressed', async () => {
+    const tab = { opener: {}, location: { href: '' }, close: vi.fn() };
+    vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ...base,
+        method: 'CLICK_TO_CHAT',
+        text: 'Hello, here is your quote Q-0012: [link]',
+        url: null,
+        reason: 'No WhatsApp number is connected.',
+        linkPending: true,
+      })
+      .mockResolvedValueOnce({
+        ...base,
+        method: 'CLICK_TO_CHAT',
+        chatUrl: 'https://wa.me/971501234567?text=Hello',
+      });
+    render(<SendOnWhatsAppButton what="Q-0012" customerName="Al Noor" send={send} />);
+    fireEvent.click(screen.getByRole('button', { name: /send on whatsapp/i }));
+    const buttons = screen.getAllByRole('button', { name: /send on whatsapp/i });
+    fireEvent.click(buttons[buttons.length - 1]);
+    expect(await screen.findByText(/any link they were sent before stops working/i)).toBeTruthy();
+    expect(send).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: /open whatsapp/i }));
+    await vi.waitFor(() => expect(tab.location.href).toBe('https://wa.me/971501234567?text=Hello'));
+    expect(send).toHaveBeenLastCalledWith(null, true);
+    expect(tab.opener).toBeNull();
   });
 
   it('shows why it could not send at all', async () => {
