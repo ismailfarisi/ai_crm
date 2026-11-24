@@ -6,7 +6,7 @@ import { InvoicePayment } from '../quotes/entities/invoice-payment.entity';
 import { DocumentPdfRendererService } from '../document-templates/document-pdf-renderer.service';
 import { DocumentTemplatesService } from '../document-templates/document-templates.service';
 import { Organization } from '../organizations/entities/organization.entity';
-import { universalDocumentDataSchema } from '@saas/shared';
+import { DOCUMENT_TIME_ZONE, universalDocumentDataSchema } from '@saas/shared';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 describe('CustomerStatementService', () => {
@@ -388,7 +388,7 @@ describe('CustomerStatementService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should parse string dates and set to date to end-of-day', async () => {
+    it('should parse string dates and print the period on the days asked for', async () => {
       const data = await service.generateStatementData(
         'org-1',
         'cust-1',
@@ -396,11 +396,33 @@ describe('CustomerStatementService', () => {
         '2026-09-30',
       );
 
-      const periodTo = data.statementSummary?.periodTo as Date;
-      expect(periodTo.getUTCHours()).toBe(23);
-      expect(periodTo.getUTCMinutes()).toBe(59);
-      expect(periodTo.getUTCSeconds()).toBe(59);
-      expect(periodTo.getUTCMilliseconds()).toBe(999);
+      // The period runs to the end of the UTC day, but the PDF prints dates in
+      // Dubai time, where 23:59Z on the 30th is already 1 October.
+      const inDubai = (d: unknown) =>
+        (d as Date).toLocaleDateString('en-CA', {
+          timeZone: DOCUMENT_TIME_ZONE,
+        });
+      expect(inDubai(data.statementSummary?.periodFrom)).toBe('2026-09-01');
+      expect(inDubai(data.statementSummary?.periodTo)).toBe('2026-09-30');
+      expect(inDubai(data.issuedAt)).toBe('2026-09-30');
+    });
+
+    it('still counts a payment made late on the last day of the period', async () => {
+      const lateOnTheDay = new Date('2026-09-30T22:30:00.000Z');
+      mockPaymentRepo.find = jest
+        .fn()
+        .mockResolvedValue([
+          { id: 'late', invoiceId: 'inv-1', amount: 100, paidAt: lateOnTheDay },
+        ]);
+
+      const data = await service.generateStatementData(
+        'org-1',
+        'cust-1',
+        '2026-09-01',
+        '2026-09-30',
+      );
+
+      expect(data.totals.amountPaid).toBe(100);
     });
 
     it('should throw NotFoundException if customer does not exist', async () => {

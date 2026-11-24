@@ -31,11 +31,16 @@ export function summariseReceivables(report: ReceivablesAgingDto) {
   // Summed from the overdue buckets: `total` is net of credits owed back to
   // customers, which are in no bucket.
   const overdue = Object.entries(report.buckets).reduce((s, [bucket, v]) => (bucket === 'CURRENT' ? s : s + v), 0);
+  const creditRows = report.rows.filter((r) => r.outstanding < 0);
+  const credits =
+    report.customerCredits ?? -creditRows.reduce((s, r) => s + r.outstandingBase, 0);
   return {
     total: report.total,
     overdue: Math.round(overdue * 100) / 100,
     overdueCount: overdueRows.length,
-    invoiceCount: report.rows.length,
+    invoiceCount: report.rows.filter((r) => r.outstanding > 0).length,
+    customerCredits: Math.round(credits * 100) / 100 || 0,
+    creditCount: creditRows.length,
   };
 }
 
@@ -157,16 +162,23 @@ export function ReceivablesHeadline() {
   return (
     <Headline
       id="receivables"
-      title="Customers owe you"
+      title={r && r.total < 0 ? 'You owe customers' : 'Customers owe you'}
       isLoading={isLoading}
       error={isError ? 'Could not load what customers owe.' : null}
-      figure={r && data ? formatFinanceCurrency(r.total, data.baseCurrency) : undefined}
+      figure={r && data ? formatFinanceCurrency(Math.abs(r.total), data.baseCurrency) : undefined}
       href="/finance/reports?report=receivables-aging"
       linkLabel="See receivables aging"
     >
       {r && data && (
         <>
-          <p>On {plural(r.invoiceCount, 'unpaid invoice')}.</p>
+          <p>{r.invoiceCount > 0 ? `On ${plural(r.invoiceCount, 'unpaid invoice')}.` : 'No unpaid invoices.'}</p>
+          {r.creditCount > 0 && (
+            <p data-testid="receivables-credits" className="tabular-nums">
+              {r.total < 0
+                ? `Credit from overpayments and credit notes, on ${plural(r.creditCount, 'invoice')}.`
+                : `After ${formatFinanceCurrency(r.customerCredits, data.baseCurrency)} owed back to customers on ${plural(r.creditCount, 'invoice')}.`}
+            </p>
+          )}
           {r.overdueCount > 0 ? (
             <p data-testid="receivables-overdue" className="font-medium text-danger tabular-nums">
               {formatFinanceCurrency(r.overdue, data.baseCurrency)} overdue on {plural(r.overdueCount, 'invoice')}

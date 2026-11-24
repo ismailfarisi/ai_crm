@@ -113,7 +113,14 @@ const payables: AgingReportDto = {
 
 describe('receivables and payables figures', () => {
   it('reads what customers owe and what is overdue straight off the aging report', () => {
-    expect(summariseReceivables(receivables)).toEqual({ total: 18372.5, overdue: 7872.5, overdueCount: 2, invoiceCount: 3 });
+    expect(summariseReceivables(receivables)).toEqual({
+      total: 18372.5,
+      overdue: 7872.5,
+      overdueCount: 2,
+      invoiceCount: 3,
+      customerCredits: 0,
+      creditCount: 0,
+    });
   });
 
   it('does not let a credit owed back to a customer shrink what is overdue', () => {
@@ -123,7 +130,14 @@ describe('receivables and payables figures', () => {
       customerCredits: 55,
       total: receivables.total - 55,
     };
-    expect(summariseReceivables(withCredit)).toMatchObject({ total: 18317.5, overdue: 7872.5, overdueCount: 2 });
+    expect(summariseReceivables(withCredit)).toMatchObject({
+      total: 18317.5,
+      overdue: 7872.5,
+      overdueCount: 2,
+      invoiceCount: 3,
+      customerCredits: 55,
+      creditCount: 1,
+    });
   });
 
   it('splits supplier bills into overdue and due in the next week', () => {
@@ -149,6 +163,25 @@ describe('headline tiles that load their own report', () => {
     expect(screen.getByRole('link', { name: 'See receivables aging' })).toHaveAttribute(
       'href',
       '/finance/reports?report=receivables-aging',
+    );
+  });
+
+  it('says you owe customers, not a negative amount, when credits are more than what is owed', () => {
+    const inCredit: ReceivablesAgingDto = {
+      ...receivables,
+      rows: [{ ...receivables.rows[0], invoiceId: 'paid', outstanding: -100, outstandingBase: -100, bucket: 'CURRENT', daysOverdue: 0 }],
+      buckets: { CURRENT: 0, DAYS_1_30: 0, DAYS_31_60: 0, DAYS_61_90: 0, DAYS_OVER_90: 0 },
+      customerCredits: 100,
+      total: -100,
+    };
+    vi.mocked(useFinancialReport).mockReturnValue({ data: inCredit, isLoading: false, isError: false } as never);
+    render(<ReceivablesHeadline />);
+    expect(screen.getByText('You owe customers')).toBeInTheDocument();
+    expect(screen.queryByText('Customers owe you')).not.toBeInTheDocument();
+    expect(nbsp(screen.getByTestId('headline-receivables-figure').textContent!)).toBe('AED 100.00');
+    expect(screen.getByText('No unpaid invoices.')).toBeInTheDocument();
+    expect(screen.getByTestId('receivables-credits')).toHaveTextContent(
+      'Credit from overpayments and credit notes, on 1 invoice.',
     );
   });
 

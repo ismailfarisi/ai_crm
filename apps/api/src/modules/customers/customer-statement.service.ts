@@ -26,6 +26,17 @@ import {
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
+/**
+ * Statement periods are whole UTC days, but the PDF prints dates in the
+ * document time zone, so the end of a UTC day (23:59:59Z) would print as the
+ * next day in Dubai. Midday UTC prints as the same calendar day there.
+ */
+export function statementDisplayDate(d: Date): Date {
+  return new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12),
+  );
+}
+
 function normalizeStatementDate(
   val: Date | string,
   paramName: string,
@@ -331,7 +342,7 @@ export class CustomerStatementService {
       type: 'STATEMENT',
       number: docNumber,
       status: 'ISSUED',
-      issuedAt: toDate,
+      issuedAt: statementDisplayDate(toDate),
       currency: customer.currency || invoices[0]?.currency || 'USD',
       organization: {
         name: organization?.name || 'Kerf',
@@ -359,8 +370,8 @@ export class CustomerStatementService {
       statementSummary: {
         openingBalance,
         closingBalance,
-        periodFrom: fromDate,
-        periodTo: toDate,
+        periodFrom: statementDisplayDate(fromDate),
+        periodTo: statementDisplayDate(toDate),
         aging,
       },
       notes: customer.notes || undefined,
