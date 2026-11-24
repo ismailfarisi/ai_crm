@@ -53,6 +53,7 @@ function setup() {
     {} as never,
     senders as never,
     lookup as never,
+    { prices: jest.fn(), stockLevels: jest.fn() } as never,
   );
   const actor = (permissions: Permission[]) => ({
     organizationId: 'org',

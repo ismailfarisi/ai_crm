@@ -73,6 +73,10 @@ export class CatalogItem extends SoftDeletableEntity {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
+  /** Customer agents may tell a customer this item's list price. Off until the owner ticks it. */
+  @Column({ name: 'show_price_to_customers', type: 'boolean', default: false })
+  showPriceToCustomers: boolean;
+
   /** The item's own tax treatment. A customer rule can still override it, e.g. reverse charge. */
   @Column({ name: 'tax_code_id', type: 'uuid', nullable: true })
   taxCodeId: string | null;

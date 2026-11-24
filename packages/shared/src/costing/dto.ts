@@ -77,6 +77,7 @@ export interface CatalogItemDto {
   taxRate: number;
   leadTimeDays: number;
   isActive: boolean;
+  showPriceToCustomers: boolean;
   createdAt: string;
   updatedAt: string;
 }

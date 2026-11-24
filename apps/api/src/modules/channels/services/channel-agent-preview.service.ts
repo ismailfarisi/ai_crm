@@ -14,6 +14,7 @@ import {
 } from '../skills/skill-router.service';
 import { ChannelAgentService } from './channel-agent.service';
 import { CustomerLookupService } from './customer-lookup.service';
+import { CatalogLookupService } from './catalog-lookup.service';
 import {
   CustomerSenderService,
   type VerifiedSender,
@@ -52,8 +53,9 @@ export class ChannelAgentPreviewService {
     private readonly router: SkillRouterService,
     private readonly senders: CustomerSenderService,
     lookup: CustomerLookupService,
+    catalog: CatalogLookupService,
   ) {
-    this.runner = new ChannelAgentRunner({ aiService, agents, lookup });
+    this.runner = new ChannelAgentRunner({ aiService, agents, lookup, catalog });
   }
 
   async preview(
