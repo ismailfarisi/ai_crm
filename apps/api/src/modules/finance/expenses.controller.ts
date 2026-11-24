@@ -18,9 +18,14 @@ import {
   BILL_CAPTURE_MAX_BYTES,
   isBillCaptureContentType,
   PERMISSIONS,
+  type ExpenseTaxOptionsDto,
 } from '@saas/shared';
 import type { UploadedFileLike } from '../storage/storage.types';
-import { CurrentUser, RequirePermissions } from '@/common/decorators';
+import {
+  CurrentUser,
+  RequireAnyPermission,
+  RequirePermissions,
+} from '@/common/decorators';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '@/modules/rbac/guards/permissions.guard';
@@ -111,6 +116,19 @@ export class ExpensesController {
       organizationId: user.organizationId,
       userId: user.id,
     });
+  }
+
+  @Get('tax-options')
+  @RequireAnyPermission(PERMISSIONS.EXPENSE_SUBMIT, PERMISSIONS.FINANCE_READ)
+  @ApiOperation({
+    summary: 'VAT types for a claim',
+    description:
+      'The purchase tax codes a claim can record its VAT under, and whether the supplier tax number is needed to claim it back',
+  })
+  async taxOptions(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ExpenseTaxOptionsDto> {
+    return this.expensesService.taxOptions(user.organizationId);
   }
 
   @Get(':id')

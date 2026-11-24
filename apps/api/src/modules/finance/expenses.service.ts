@@ -45,8 +45,19 @@ import {
   EXPENSE_NOTES_MAX_LENGTH,
   LEDGER_ROLES,
   expenseCategoryRole,
+  expenseClaimPostingLines,
+  expenseClaimTax,
+  expenseClaimTaxProblem,
+  isUaeVatMode,
+  isValidTrn,
+  normaliseTrn,
+  suggestExpenseTaxCode,
+  type ExpenseClaimTax,
   type ExpenseStatus,
+  type ExpenseTaxOptionsDto,
 } from '@saas/shared';
+import { TaxCode } from '../tax/entities/tax.entity';
+import { Organization } from '../organizations/entities/organization.entity';
 import {
   allocateNextSequenceValue,
   formatTenantSequenceNumber,
@@ -64,6 +75,19 @@ function cleanNotes(notes: string | null | undefined): string | null {
     );
   }
   return trimmed || null;
+}
+
+/** The supplier's tax number as stored: digits only when it is a TRN. */
+function cleanTaxId(value: string | null | undefined): string | null {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  if (!trimmed) return null;
+  if (isValidTrn(trimmed)) return normaliseTrn(trimmed);
+  if (trimmed.length > 32) {
+    throw new BadRequestException(
+      'The supplier tax number can be at most 32 characters.',
+    );
+  }
+  return trimmed;
 }
 
 /** A second posting for a reference the database allows only one of. */
@@ -139,6 +163,12 @@ export class ExpensesService {
       dto.employeeName || currentUser?.name || currentUser?.email || 'Employee';
     const items = dto.items || [];
     const status: ExpenseStatus = dto.status || 'SUBMITTED';
+    const tax = await this.claimTaxFields(tenantId, {
+      amount: dto.amount,
+      taxCodeId: dto.taxCodeId,
+      taxAmount: dto.taxAmount,
+      supplierTaxId: dto.supplierTaxId,
+    });
 
     const claim = this.expenseRepository.create({
       tenantId,
@@ -158,6 +188,7 @@ export class ExpensesService {
       receiptUrl: dto.receiptUrl || null,
       notes: cleanNotes(dto.notes),
       items,
+      ...tax,
     });
 
     const savedClaim = await this.expenseRepository.save(claim);
@@ -203,6 +234,37 @@ export class ExpensesService {
     dto: UpdateExpenseClaimDto,
   ): Promise<ExpenseClaim> {
     const claim = await this.findById(tenantId, id);
+    await this.assertNotPosted(tenantId, claim, dto);
+
+    if (
+      dto.amount !== undefined ||
+      dto.taxCodeId !== undefined ||
+      dto.taxAmount !== undefined ||
+      dto.supplierTaxId !== undefined
+    ) {
+      // Choosing a different VAT type starts the VAT again from its rate
+      // unless the amount is given with it.
+      const sameCode =
+        dto.taxCodeId === undefined || dto.taxCodeId === claim.taxCodeId;
+      Object.assign(
+        claim,
+        await this.claimTaxFields(tenantId, {
+          amount: dto.amount ?? claim.amount,
+          taxCodeId:
+            dto.taxCodeId === undefined ? claim.taxCodeId : dto.taxCodeId,
+          taxAmount:
+            dto.taxAmount !== undefined
+              ? dto.taxAmount
+              : sameCode && dto.amount === undefined
+                ? claim.taxAmount
+                : null,
+          supplierTaxId:
+            dto.supplierTaxId === undefined
+              ? claim.supplierTaxId
+              : dto.supplierTaxId,
+        }),
+      );
+    }
 
     if (dto.category !== undefined) claim.category = dto.category;
     if (dto.amount !== undefined) claim.amount = dto.amount;
@@ -285,7 +347,11 @@ export class ExpensesService {
 
           this.applyTransition(locked, dto);
 
-          if (locked.status === 'APPROVED') {
+          if (locked.status === 'REJECTED') {
+            // An approved claim that is then rejected was already in the
+            // books: take it, and its VAT, back out.
+            await this.reverseExpenseAccrual(tenantId, locked, manager);
+          } else if (locked.status === 'APPROVED') {
             await this.postExpenseAccrual(tenantId, locked, manager);
           } else if (locked.status === 'PAID') {
             // A claim can be reimbursed straight from submitted, so make sure
@@ -434,6 +500,16 @@ export class ExpensesService {
     // first open day: the approver did not choose the date and cannot move it.
     const rate = await fxRateFor(manager, tenantId, claim.currency, spent);
 
+    // The VAT is split out here, at approval, from the code as it stands now:
+    // recoverable VAT to the tax account like a bill's input tax, the rest to
+    // the cost. The employee is owed the gross either way.
+    const { split, problem } = await this.claimTax(manager, tenantId, claim);
+    if (problem) {
+      throw new BadRequestException(
+        `${label} cannot be approved yet. ${problem}`,
+      );
+    }
+
     const entry = journal.create({
       tenantId,
       entryNumber: `JE-EXP-${label}`,
@@ -445,28 +521,257 @@ export class ExpensesService {
       fxRate: rate,
       lines: await this.ledger.resolveLines(
         tenantId,
-        [
+        expenseClaimPostingLines(
           {
-            role: expenseCategoryRole(claim.category),
-            accountName: claim.category || 'Operating expense',
-            debit: amount,
-            credit: 0,
-            description: `Expense claim ${label} — ${claim.category ?? 'uncategorised'}`,
+            label,
+            category: claim.category,
+            expenseRole: expenseCategoryRole(claim.category),
           },
-          {
-            role: LEDGER_ROLES.ACCOUNTS_PAYABLE,
-            accountName: 'Accounts payable',
-            debit: 0,
-            credit: amount,
-            description: `Payable for expense claim ${label}`,
-          },
-        ],
+          split,
+        ),
         manager,
         rate,
       ),
     });
 
     await journal.save(entry);
+
+    // What reached the tax account, kept on the claim for the tax report.
+    claim.taxAmount = split.tax;
+    claim.recoverableTax = split.recoverable;
+    claim.reverseChargeTax = split.selfAssessed;
+    claim.fxRate = rate;
+    claim.taxPostedAt = new Date();
+    claim.taxReversedAt = null;
+  }
+
+  /**
+   * Takes an approved claim back out of the books when it is rejected.
+   *
+   * The accrual is never edited: its mirror image is posted, dated today (or
+   * the first open day), so the expense, the payable and any VAT all return
+   * to zero. The tax report shows the VAT leaving in the period of the
+   * rejection, the way a credit note reduces the period it is issued in. A
+   * claim that never reached the ledger has nothing to reverse.
+   */
+  private async reverseExpenseAccrual(
+    tenantId: string,
+    claim: ExpenseClaim,
+    manager: EntityManager,
+  ): Promise<void> {
+    const journal = manager.getRepository(JournalEntry);
+    const accrual = await journal.findOne({
+      where: { tenantId, referenceType: 'EXPENSE', referenceId: claim.id },
+    });
+    if (!accrual) return;
+    const reversed = await journal.findOne({
+      where: { tenantId, reversesEntryId: accrual.id },
+    });
+    if (reversed) return;
+
+    const label = claim.claimNumber || claim.id;
+    const now = new Date();
+    await journal.save(
+      journal.create({
+        tenantId,
+        entryNumber: `JE-EXPREV-${label}`,
+        referenceType: 'EXPENSE',
+        referenceId: `${claim.id}:reversal`,
+        reversesEntryId: accrual.id,
+        entryDate: await BooksService.openPostingDate(manager, tenantId, now),
+        totalAmount: accrual.totalAmount,
+        currency: accrual.currency,
+        fxRate: accrual.fxRate,
+        // Stored lines are already in base currency, so the mirror is exact.
+        lines: await this.ledger.resolveLines(
+          tenantId,
+          (accrual.lines ?? []).map((line) => ({
+            ledgerAccountId: line.ledgerAccountId,
+            accountName: line.accountName,
+            debit: Number(line.credit) || 0,
+            credit: Number(line.debit) || 0,
+            description: `Rejected: ${line.description}`,
+          })),
+          manager,
+        ),
+      }),
+    );
+    if (claim.taxPostedAt) claim.taxReversedAt = now;
+  }
+
+  /* ------------------------------------------------------------------ *
+   * VAT
+   * ------------------------------------------------------------------ */
+
+  /**
+   * The VAT fields of a claim as they should be stored, checked against the
+   * organisation's purchase tax codes.
+   *
+   * No code means no VAT, and the claim is the claim it always was. With a
+   * code, the VAT is the amount given or, left out, worked out from the rate.
+   */
+  private async claimTaxFields(
+    tenantId: string,
+    input: {
+      amount: number;
+      taxCodeId?: string | null;
+      taxAmount?: number | null;
+      supplierTaxId?: string | null;
+    },
+  ): Promise<Pick<ExpenseClaim, 'taxCodeId' | 'taxAmount' | 'supplierTaxId'>> {
+    const supplierTaxId = cleanTaxId(input.supplierTaxId);
+    if (!input.taxCodeId) {
+      return { taxCodeId: null, taxAmount: 0, supplierTaxId };
+    }
+    const manager = this.expenseRepository.manager;
+    const code = await manager.getRepository(TaxCode).findOne({
+      where: { id: input.taxCodeId, tenantId, kind: 'PURCHASE' },
+    });
+    if (!code || !code.isActive) {
+      throw new BadRequestException(
+        'That VAT type is not available. Choose one from the list, or "No VAT".',
+      );
+    }
+    const problem = expenseClaimTaxProblem(
+      input.amount,
+      input.taxAmount,
+      code,
+      { uae: await this.inUaeVatMode(manager, tenantId), supplierTaxId },
+    );
+    if (problem) throw new BadRequestException(problem);
+    return {
+      taxCodeId: code.id,
+      taxAmount: expenseClaimTax(input.amount, input.taxAmount, code).tax,
+      supplierTaxId,
+    };
+  }
+
+  /**
+   * The VAT types a claim can be filed under: the organisation's purchase tax
+   * codes. Read by anyone who can submit a claim, who need not be able to see
+   * the tax settings. An organisation with no codes gets an empty list and
+   * its claim form shows no VAT question at all.
+   */
+  async taxOptions(tenantId: string): Promise<ExpenseTaxOptionsDto> {
+    const manager = this.expenseRepository.manager;
+    const codes = await manager.getRepository(TaxCode).find({
+      where: { tenantId, kind: 'PURCHASE' },
+      order: { code: 'ASC' },
+    });
+    return {
+      codes: codes.map((code) => ({
+        id: code.id,
+        code: code.code,
+        name: code.name,
+        rate: Number(code.rate),
+        isReverseCharge: code.isReverseCharge,
+        treatment: code.treatment ?? null,
+        isActive: code.isActive,
+      })),
+      supplierTaxIdRequired: await this.inUaeVatMode(manager, tenantId),
+    };
+  }
+
+  /**
+   * What would happen to the VAT on a claim with these details, without
+   * saving anything: for a surface (the chat receipt skill) that has to say
+   * it in words before the claim exists.
+   */
+  async previewTax(
+    tenantId: string,
+    input: {
+      amount: number;
+      taxCodeId?: string | null;
+      taxAmount?: number | null;
+      supplierTaxId?: string | null;
+    },
+  ): Promise<{ split: ExpenseClaimTax; problem: string | null }> {
+    return this.claimTax(this.expenseRepository.manager, tenantId, {
+      amount: input.amount,
+      taxCodeId: input.taxCodeId ?? null,
+      taxAmount: input.taxAmount as number,
+      supplierTaxId: input.supplierTaxId ?? null,
+    });
+  }
+
+  /** How a claim's amount splits into cost and VAT under its code today. */
+  private async claimTax(
+    manager: EntityManager,
+    tenantId: string,
+    claim: Pick<
+      ExpenseClaim,
+      'amount' | 'taxCodeId' | 'taxAmount' | 'supplierTaxId'
+    >,
+  ): Promise<{ split: ExpenseClaimTax; problem: string | null }> {
+    const amount = Number(claim.amount) || 0;
+    if (!claim.taxCodeId) {
+      return { split: expenseClaimTax(amount, 0, null), problem: null };
+    }
+    const code = await manager.getRepository(TaxCode).findOne({
+      where: { id: claim.taxCodeId, tenantId, kind: 'PURCHASE' },
+    });
+    if (!code) {
+      return {
+        split: expenseClaimTax(amount, 0, null),
+        problem:
+          'Its VAT type no longer exists. Edit the claim and choose one from the list, or "No VAT".',
+      };
+    }
+    return {
+      split: expenseClaimTax(amount, claim.taxAmount, code),
+      problem: expenseClaimTaxProblem(amount, claim.taxAmount, code, {
+        uae: await this.inUaeVatMode(manager, tenantId),
+        supplierTaxId: claim.supplierTaxId,
+      }),
+    };
+  }
+
+  private async inUaeVatMode(
+    manager: EntityManager,
+    tenantId: string,
+  ): Promise<boolean> {
+    const organization = await manager
+      .getRepository(Organization)
+      .findOne({ where: { id: tenantId } });
+    return Boolean(organization && isUaeVatMode(organization));
+  }
+
+  /**
+   * A claim that is in the ledger keeps the figures it was posted with.
+   *
+   * Changing its amount, category, date or VAT afterwards would leave the
+   * claim saying one thing and the books another, and moving its status by
+   * hand would let it be approved a second time with nothing posted. Reject
+   * it instead, which reverses the posting, and submit a corrected claim.
+   */
+  private async assertNotPosted(
+    tenantId: string,
+    claim: ExpenseClaim,
+    dto: UpdateExpenseClaimDto,
+  ): Promise<void> {
+    const sameDay = (a: string | Date, b: Date) =>
+      new Date(a).getTime() === new Date(b).getTime();
+    const changes =
+      (dto.amount !== undefined && Number(dto.amount) !== Number(claim.amount)) ||
+      (dto.currency !== undefined && dto.currency !== claim.currency) ||
+      (dto.category !== undefined && dto.category !== claim.category) ||
+      (dto.status !== undefined && dto.status !== claim.status) ||
+      (dto.expenseDate !== undefined &&
+        !(dto.expenseDate && sameDay(dto.expenseDate, claim.expenseDate))) ||
+      (dto.taxCodeId !== undefined &&
+        (dto.taxCodeId || null) !== claim.taxCodeId) ||
+      (dto.taxAmount != null &&
+        Number(dto.taxAmount) !== Number(claim.taxAmount)) ||
+      (dto.supplierTaxId !== undefined &&
+        cleanTaxId(dto.supplierTaxId) !== claim.supplierTaxId);
+    if (!changes) return;
+    const posted = await this.journalRepository.findOne({
+      where: { tenantId, referenceType: 'EXPENSE', referenceId: claim.id },
+    });
+    if (!posted) return;
+    throw new ConflictException(
+      `${claim.claimNumber || 'This claim'} is already in the books, so its amount, category, date, VAT and status can no longer be changed. To correct it, reject it and submit a new claim.`,
+    );
   }
 
   /**
@@ -624,7 +929,10 @@ export class ExpensesService {
     const instruction =
       'Extract structured expense data from this receipt. Categorize into one of: ' +
       'Meals & Entertainment, Travel, Software & Subscriptions, Office Supplies, General Expense. ' +
-      'If a field is unclear or missing, make your best estimate and lower the confidence score accordingly.';
+      'If a field is unclear or missing, make your best estimate and lower the confidence score accordingly. ' +
+      'The amount is the total paid, VAT included. If the receipt prints a VAT or tax amount, return it as taxAmount. ' +
+      "If it prints the seller's tax registration number (TRN, VAT No, Tax Reg No), return it as supplierTaxId exactly as printed. " +
+      'Leave both out when the receipt does not show them; never guess either.';
 
     const content: AiContentBlock[] = [];
     if (file) {
@@ -658,7 +966,11 @@ export class ExpensesService {
         );
       }
 
-      return { ...parsed.data, rawText: rawText || undefined };
+      return {
+        ...parsed.data,
+        ...(await this.suggestReceiptTax(actor.organizationId, parsed.data)),
+        rawText: rawText || undefined,
+      };
     } catch (err) {
       if (err instanceof BadRequestException) throw err;
 
@@ -672,6 +984,51 @@ export class ExpensesService {
         ...ExpensesService.DEGRADED_RESULT,
         rawText: rawText || undefined,
       };
+    }
+  }
+
+  /**
+   * The VAT type a scanned receipt should start on: one that lets the VAT be
+   * claimed back when the receipt shows both the VAT and the supplier's tax
+   * number, the blocked one for entertainment, otherwise none. A suggestion
+   * only — the claimant sees it on the form and can change it — so a failure
+   * to work one out never fails the scan.
+   */
+  private async suggestReceiptTax(
+    tenantId: string,
+    receipt: {
+      amount: number;
+      taxAmount?: number;
+      supplierTaxId?: string;
+      category: string;
+    },
+  ): Promise<{ taxCodeId?: string | null; supplierTaxId?: string | null }> {
+    if (!(Number(receipt.taxAmount) > 0)) return {};
+    try {
+      const manager = this.expenseRepository.manager;
+      const codes = await manager.getRepository(TaxCode).find({
+        where: { tenantId, kind: 'PURCHASE', isActive: true },
+      });
+      const code = suggestExpenseTaxCode(
+        codes,
+        {
+          amount: receipt.amount,
+          taxAmount: receipt.taxAmount,
+          supplierTaxId: receipt.supplierTaxId,
+          category: receipt.category,
+        },
+        await this.inUaeVatMode(manager, tenantId),
+      );
+      return {
+        taxCodeId: code?.id ?? null,
+        supplierTaxId: isValidTrn(receipt.supplierTaxId)
+          ? normaliseTrn(receipt.supplierTaxId)
+          : (receipt.supplierTaxId ?? null),
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Could not suggest a VAT type for the receipt: ${msg}`);
+      return {};
     }
   }
 

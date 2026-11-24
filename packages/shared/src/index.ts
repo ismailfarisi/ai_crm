@@ -36,6 +36,7 @@ export * from './automations/shop-steps';
 export * from './finance/ledger';
 export * from './finance/types';
 export * from './finance/expense-categories';
+export * from './finance/expense-tax';
 export * from './finance/recurring';
 export * from './finance/books';
 export * from './finance/reconciliation-suggest';

@@ -1,7 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
-import type { ExpenseClaimDto, ScannedReceiptResult } from '@saas/shared';
+import type { ExpenseClaimDto, ExpenseTaxOptionsDto, ScannedReceiptResult } from '@saas/shared';
 import {
   ExpenseStatusBadge,
   ExpenseStatusRibbon,
@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   allowed: true,
   useExpense: vi.fn(),
   accounts: [] as unknown[],
+  taxOptions: undefined as unknown,
 }));
 
 // Polyfill HTMLDialogElement for jsdom if needed
@@ -70,12 +71,14 @@ beforeEach(() => {
   mocks.baseCurrency = 'USD';
   mocks.allowed = true;
   mocks.accounts = [];
+  mocks.taxOptions = undefined;
   mocks.useExpense.mockReset();
 });
 
 // Mock hook useScanReceipt
 vi.mock('@/hooks/use-expenses', () => ({
   useExpense: (id: string) => mocks.useExpense(id),
+  useExpenseTaxOptions: () => ({ data: mocks.taxOptions }),
   useReceiptSource: (url?: string | null) => ({ src: url ?? null, isPdf: /\.pdf$/i.test(url ?? ''), isLoading: false }),
   useScanReceipt: () => ({
     mutateAsync: vi.fn().mockResolvedValue({
@@ -609,6 +612,154 @@ describe('SubmitExpenseModal Component', () => {
   });
 });
 
+const TRN = '100123456700003';
+const UAE_TAX: ExpenseTaxOptionsDto = {
+  supplierTaxIdRequired: true,
+  codes: [
+    { id: 'sr', code: 'SR', name: 'Standard rated 5%', rate: 5, isReverseCharge: false, treatment: 'STANDARD', isActive: true },
+    { id: 'bl', code: 'BL', name: 'Blocked input VAT 5%', rate: 5, isReverseCharge: false, treatment: 'BLOCKED', isActive: true },
+    { id: 'old', code: 'OLD', name: 'Old rate', rate: 4, isReverseCharge: false, treatment: 'STANDARD', isActive: false },
+  ],
+};
+
+describe('SubmitExpenseModal VAT', () => {
+  const fill = () => {
+    fireEvent.change(screen.getByTestId('input-merchant-name'), { target: { value: 'ENOC' } });
+    fireEvent.change(screen.getByTestId('select-category'), { target: { value: 'Consumables' } });
+    fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '210' } });
+  };
+
+  // An organisation with no tax codes: the form and the request are as before.
+  it('asks nothing about VAT when the organisation has no tax codes', async () => {
+    const handleSubmit = vi.fn();
+    render(<SubmitExpenseModal open={true} onClose={vi.fn()} onSubmit={handleSubmit} />);
+    expect(screen.queryByTestId('expense-vat-section')).toBeNull();
+
+    fill();
+    fireEvent.click(screen.getByTestId('btn-submit-claim'));
+    await waitFor(() => expect(handleSubmit).toHaveBeenCalled());
+    const payload = handleSubmit.mock.calls[0][0];
+    expect(payload).not.toHaveProperty('taxCodeId');
+    expect(payload).not.toHaveProperty('taxAmount');
+  });
+
+  it('defaults to No VAT and offers only the codes that are switched on', async () => {
+    const handleSubmit = vi.fn();
+    render(<SubmitExpenseModal open={true} onClose={vi.fn()} onSubmit={handleSubmit} taxOptions={UAE_TAX} />);
+    const select = screen.getByTestId('select-tax-code');
+    expect(select).toHaveValue('');
+    expect(Array.from(select.querySelectorAll('option')).map((o) => o.textContent)).toEqual([
+      'No VAT',
+      'Standard rated 5% (VAT is claimed back)',
+      'Blocked input VAT 5% (VAT cannot be claimed back)',
+    ]);
+    expect(screen.queryByTestId('input-tax-amount')).toBeNull();
+    expect(screen.queryByTestId('input-supplier-tax-id')).toBeNull();
+
+    fill();
+    fireEvent.click(screen.getByTestId('btn-submit-claim'));
+    await waitFor(() => expect(handleSubmit).toHaveBeenCalled());
+    expect(handleSubmit.mock.calls[0][0]).not.toHaveProperty('taxCodeId');
+  });
+
+  it('says in plain words what a standard-rated receipt does, and sends it', async () => {
+    const handleSubmit = vi.fn();
+    render(<SubmitExpenseModal open={true} onClose={vi.fn()} onSubmit={handleSubmit} taxOptions={UAE_TAX} />);
+    fill();
+    fireEvent.change(screen.getByTestId('select-tax-code'), { target: { value: 'sr' } });
+    // The VAT is worked out from the rate until one is typed.
+    expect(screen.getByTestId('input-tax-amount')).toHaveAttribute('placeholder', '10.00');
+    expect(screen.getByTestId('expense-vat-summary')).toHaveTextContent(
+      'Includes $10.00 of VAT, which is claimed back from the tax authority. The cost to the business is $200.00. You are paid back the full $210.00.',
+    );
+
+    // Without the supplier's tax number the VAT cannot be claimed.
+    fireEvent.click(screen.getByTestId('btn-submit-claim'));
+    expect(handleSubmit).not.toHaveBeenCalled();
+    expect(screen.getByText(/tax number \(TRN\)/i, { selector: '[role="alert"], p.text-danger, p' })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByTestId('input-supplier-tax-id'), { target: { value: TRN } });
+    fireEvent.click(screen.getByTestId('btn-submit-claim'));
+    await waitFor(() =>
+      expect(handleSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ amount: 210, taxCodeId: 'sr', taxAmount: null, supplierTaxId: TRN }),
+        null,
+      ),
+    );
+  });
+
+  it('sends the VAT typed from the receipt, and refuses more than the rate allows', async () => {
+    const handleSubmit = vi.fn();
+    render(<SubmitExpenseModal open={true} onClose={vi.fn()} onSubmit={handleSubmit} taxOptions={UAE_TAX} />);
+    fill();
+    fireEvent.change(screen.getByTestId('select-tax-code'), { target: { value: 'sr' } });
+    fireEvent.change(screen.getByTestId('input-supplier-tax-id'), { target: { value: TRN } });
+    fireEvent.change(screen.getByTestId('input-tax-amount'), { target: { value: '30' } });
+    fireEvent.click(screen.getByTestId('btn-submit-claim'));
+    expect(handleSubmit).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByTestId('input-tax-amount'), { target: { value: '6.5' } });
+    fireEvent.click(screen.getByTestId('btn-submit-claim'));
+    await waitFor(() =>
+      expect(handleSubmit).toHaveBeenCalledWith(expect.objectContaining({ taxCodeId: 'sr', taxAmount: 6.5 }), null),
+    );
+  });
+
+  it('keeps blocked VAT as cost and does not need the tax number', async () => {
+    const handleSubmit = vi.fn();
+    render(<SubmitExpenseModal open={true} onClose={vi.fn()} onSubmit={handleSubmit} taxOptions={UAE_TAX} />);
+    fill();
+    fireEvent.change(screen.getByTestId('select-tax-code'), { target: { value: 'bl' } });
+    expect(screen.getByTestId('expense-vat-summary')).toHaveTextContent(
+      'Includes $10.00 of VAT that cannot be claimed back, so it stays part of the cost.',
+    );
+    fireEvent.click(screen.getByTestId('btn-submit-claim'));
+    await waitFor(() =>
+      expect(handleSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ taxCodeId: 'bl', supplierTaxId: null }),
+        null,
+      ),
+    );
+  });
+
+  const scanWith = async (scan: Partial<ScannedReceiptResult>) => {
+    const mockScan = vi.fn().mockResolvedValue({
+      merchantName: 'ENOC',
+      amount: 210,
+      currency: 'AED',
+      expenseDate: '2026-10-15',
+      category: 'Travel',
+      confidence: 0.96,
+      items: [],
+      ...scan,
+    });
+    render(
+      <SubmitExpenseModal open={true} onClose={vi.fn()} onSubmit={vi.fn()} onScanReceipt={mockScan} taxOptions={UAE_TAX} />,
+    );
+    fireEvent.change(screen.getByTestId('receipt-file-input'), {
+      target: { files: [new File(['jpeg'], 'enoc.jpg', { type: 'image/jpeg' })] },
+    });
+    fireEvent.click(await screen.findByTestId('btn-scan-receipt'));
+    await waitFor(() => expect(mockScan).toHaveBeenCalled());
+    await screen.findByTestId('ai-scan-success-banner');
+  };
+
+  it('fills in the VAT and the tax number the scanner read', async () => {
+    await scanWith({ taxAmount: 10, supplierTaxId: TRN, taxCodeId: 'sr' });
+    expect(screen.getByTestId('select-tax-code')).toHaveValue('sr');
+    expect(screen.getByTestId('input-tax-amount')).toHaveValue(10);
+    expect(screen.getByTestId('input-supplier-tax-id')).toHaveValue(TRN);
+  });
+
+  it('stays on No VAT and says why when the receipt shows VAT but no tax number', async () => {
+    await scanWith({ taxAmount: 10, supplierTaxId: null, taxCodeId: null });
+    expect(screen.getByTestId('select-tax-code')).toHaveValue('');
+    expect(screen.getByTestId('expense-vat-scan-note')).toHaveTextContent(
+      /shows AED\s10\.00 of VAT, but no supplier tax number \(TRN\) was found/,
+    );
+  });
+});
+
 describe('ExpenseClaimsTable Component', () => {
   it('renders the claims table rows, with no second row of totals', () => {
     render(<ExpenseClaimsTable claims={mockClaims} />);
@@ -873,6 +1024,83 @@ describe('ExpenseDetailView', () => {
       fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reimburse claim' }));
     });
     expect(signalClaim).toHaveBeenCalledWith({ action: 'REIMBURSE', accountId: 'pc' });
+  });
+
+  describe('VAT', () => {
+    const vatClaim = { currency: 'AED', amount: 210, taxCodeId: 'sr', taxAmount: 10, supplierTaxId: TRN };
+
+    it('says nothing about VAT for an organisation with no tax codes', () => {
+      withClaim({});
+      render(<ExpenseDetailView id="exp-1" />);
+      expect(screen.queryByTestId('claim-vat')).toBeNull();
+    });
+
+    it('says none was recorded on a claim without VAT', () => {
+      mocks.taxOptions = UAE_TAX;
+      withClaim({});
+      render(<ExpenseDetailView id="exp-1" />);
+      expect(screen.getByTestId('claim-vat')).toHaveTextContent('No VAT is claimed back on this expense.');
+    });
+
+    it('shows what will happen to the VAT before the claim is approved', () => {
+      mocks.taxOptions = UAE_TAX;
+      withClaim({ ...vatClaim, status: 'SUBMITTED' });
+      render(<ExpenseDetailView id="exp-1" />);
+      expect(screen.getByTestId('claim-vat-type')).toHaveTextContent('Standard rated 5%');
+      expect(screen.getByTestId('claim-vat-amount')).toHaveTextContent(/AED\s10\.00/);
+      expect(screen.getByTestId('claim-vat-trn')).toHaveTextContent(TRN);
+      expect(screen.getByTestId('claim-vat-outcome')).toHaveTextContent(
+        /Includes AED\s10\.00 of VAT, which is claimed back from the tax authority\. The cost to the business is AED\s200\.00\. This happens when the claim is approved\./,
+      );
+    });
+
+    it('shows what was posted once approved, whatever the code says now', () => {
+      // The code was switched to blocked after approval: the claim still
+      // says what reached the tax account.
+      mocks.taxOptions = {
+        ...UAE_TAX,
+        codes: UAE_TAX.codes.map((c) => (c.id === 'sr' ? { ...c, treatment: 'BLOCKED' as const } : c)),
+      };
+      withClaim({ ...vatClaim, status: 'APPROVED', recoverableTax: 10, taxPostedAt: '2026-10-20T08:00:00Z' });
+      render(<ExpenseDetailView id="exp-1" />);
+      const outcome = screen.getByTestId('claim-vat-outcome');
+      expect(outcome).toHaveTextContent(/AED\s10\.00 of VAT, which is claimed back/);
+      expect(outcome).not.toHaveTextContent('This happens when');
+    });
+
+    it('says blocked VAT stays in the cost', () => {
+      mocks.taxOptions = UAE_TAX;
+      withClaim({ ...vatClaim, taxCodeId: 'bl', supplierTaxId: null, status: 'APPROVED', recoverableTax: 0, taxPostedAt: '2026-10-20T08:00:00Z' });
+      render(<ExpenseDetailView id="exp-1" />);
+      expect(screen.getByTestId('claim-vat-outcome')).toHaveTextContent(
+        /AED\s10\.00 of VAT that cannot be claimed back, so it stays part of the cost\./,
+      );
+      expect(screen.getByTestId('claim-vat-trn')).toHaveTextContent('Not given');
+    });
+
+    it('says the VAT was taken back out of a claim rejected after approval', () => {
+      mocks.taxOptions = UAE_TAX;
+      withClaim({
+        ...vatClaim,
+        status: 'REJECTED',
+        recoverableTax: 10,
+        taxPostedAt: '2026-10-20T08:00:00Z',
+        taxReversedAt: '2026-10-21T08:00:00Z',
+      });
+      render(<ExpenseDetailView id="exp-1" />);
+      expect(screen.getByTestId('claim-vat-outcome')).toHaveTextContent(
+        'its cost and its VAT were taken back out of the books and the tax return',
+      );
+    });
+
+    it('says no VAT was claimed on a claim rejected before approval', () => {
+      mocks.taxOptions = UAE_TAX;
+      withClaim({ ...vatClaim, status: 'REJECTED' });
+      render(<ExpenseDetailView id="exp-1" />);
+      expect(screen.getByTestId('claim-vat-outcome')).toHaveTextContent(
+        'The claim was rejected, so no VAT was claimed back.',
+      );
+    });
   });
 
   it('hides the approval actions without expense:approve', () => {

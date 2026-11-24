@@ -444,6 +444,43 @@ Box 2 (tourist refunds) and box 7 (import adjustments) are always zero.
 The tax report and VAT201 take bills by `approvedAt`, as before. A bill dated
 in September but approved in October lands in October's return.
 
+### An expense claim's VAT is dated by approval, and comes back out on rejection — by design
+
+A claim with a purchase tax code is a purchase like a bill: on approval the
+recoverable VAT goes to the tax account, the rest to the cost, and the gross is
+owed to the employee (account 2100, unchanged). The tax report and VAT201 take
+it by `taxPostedAt` (the moment it was approved), the same way bills go by
+`approvedAt`, while its journal is dated by the day the money was spent, as a
+claim's always was. So a receipt from September approved in October is in
+October's return and September's ledger; over all time the tax account and the
+returns agree.
+
+What reached the tax account is stored on the claim (`recoverableTax`,
+`reverseChargeTax`, `fxRate`), so editing a tax code later does not change a
+return that was already filed.
+
+A claim rejected after it was approved is not edited out of the books: a
+mirror-image journal (`<claim id>:reversal`, `reversesEntryId`) is posted on
+the day of the rejection, and the tax report shows the VAT leaving in that
+period (`taxReversedAt`), like a credit note. Before this, an approved claim
+that was then rejected stayed in the ledger as a cost and a payable for ever.
+
+Once a claim is in the books its amount, currency, category, date, VAT and
+status cannot be edited. There is no "void" and no way to re-open a rejected or
+paid claim: the correction is to reject it (while approved) and submit a new
+one. A paid claim cannot be reversed at all yet.
+
+In UAE VAT mode recoverable VAT needs the supplier's TRN on the claim (15
+digits, format check only). Without one the claim form, the receipt scanner and
+the chat receipt skill all leave the claim on "No VAT". A simplified tax
+invoice, which need not show the buyer, is accepted on the same terms as a full
+one; nothing checks that the invoice is addressed to the business.
+
+The scanner only ever suggests a code: the standard one when the receipt shows
+VAT and a TRN, the blocked one for a meal or entertainment. Whether a
+particular meal is blocked (staff entertainment) or recoverable (a business
+trip) is the approver's call, and they can change it before approving.
+
 ### Purchase orders carry no tax code — open
 
 `tax_code_id` is on sales documents and on supplier bills, but not on purchase

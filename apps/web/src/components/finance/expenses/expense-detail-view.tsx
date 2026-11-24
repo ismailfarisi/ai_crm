@@ -32,6 +32,7 @@ import { AttachmentsPanel } from '@/components/platform/attachments-panel';
 import { ActivityTimeline } from '@/components/platform/activity-timeline';
 import { ExpenseStatusRibbon, ExpenseStatusBadge } from './expense-status-ribbon';
 import { ReceiptPreviewCard } from './receipt-preview-card';
+import { ClaimVatSummary } from './claim-vat-summary';
 import { formatExpenseCurrency, reimbursementAccount } from './expense-money';
 import {
   ApproveClaimDialog,
@@ -263,6 +264,8 @@ export function ExpenseDetailView({ id }: ExpenseDetailViewProps) {
                   {notes || 'None given'}
                 </p>
               </div>
+
+              <ClaimVatSummary claim={claim} />
             </CardBody>
           </Card>
 

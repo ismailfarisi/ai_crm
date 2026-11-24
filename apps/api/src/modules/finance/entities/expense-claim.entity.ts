@@ -81,6 +81,71 @@ export class ExpenseClaim {
   @Column({ type: 'jsonb', default: [] })
   items: ExpenseItemDto[];
 
+  /**
+   * The purchase tax code for the VAT on the receipt. Null means no VAT: the
+   * whole amount is cost, as on every claim from before claims carried tax.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  taxCodeId: string | null;
+
+  /** The VAT inside `amount`, as the receipt shows it. */
+  @Column({
+    type: 'numeric',
+    precision: 14,
+    scale: 2,
+    default: 0,
+    transformer: numericTransformer,
+  })
+  taxAmount: number;
+
+  /** The supplier's tax number (TRN) from the receipt. */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  supplierTaxId: string | null;
+
+  /**
+   * The VAT that went to the tax account when the claim was approved. Fixed
+   * then, so the tax report states what was posted even if the code changes.
+   */
+  @Column({
+    type: 'numeric',
+    precision: 14,
+    scale: 2,
+    default: 0,
+    transformer: numericTransformer,
+  })
+  recoverableTax: number;
+
+  /** VAT self-assessed at approval on a reverse-charge code. */
+  @Column({
+    type: 'numeric',
+    precision: 14,
+    scale: 2,
+    default: 0,
+    transformer: numericTransformer,
+  })
+  reverseChargeTax: number;
+
+  /** Base currency per unit of `currency` the claim was posted at. */
+  @Column({
+    type: 'numeric',
+    precision: 18,
+    scale: 8,
+    default: 1,
+    transformer: numericTransformer,
+  })
+  fxRate: number;
+
+  /**
+   * When the claim reached the books. The tax return takes the claim in the
+   * period this falls in, the way a bill is taken when it is approved.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  taxPostedAt: Date | null;
+
+  /** When an approved claim was rejected and its posting reversed. */
+  @Column({ type: 'timestamptz', nullable: true })
+  taxReversedAt: Date | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 

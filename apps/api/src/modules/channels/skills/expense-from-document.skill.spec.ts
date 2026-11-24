@@ -39,6 +39,25 @@ function setup(scan: Record<string, unknown> = reading()) {
       claimNumber: 'EXP-0007',
       currency: 'AED',
     }),
+    // 5% VAT inside the total, claimed back.
+    previewTax: jest.fn(
+      async (_org: string, input: { amount: number; taxAmount?: number | null }) => {
+        const tax =
+          input.taxAmount ?? Math.round((input.amount * 5 * 100) / 105) / 100;
+        return {
+          split: {
+            gross: input.amount,
+            tax,
+            recoverable: tax,
+            selfAssessed: 0,
+            cost: input.amount - tax,
+            net: input.amount - tax,
+            blocked: false,
+          },
+          problem: null,
+        };
+      },
+    ),
   };
   const receipts = { attach: jest.fn().mockResolvedValue({}) };
   const actors = {
@@ -238,5 +257,120 @@ describe('ExpenseFromDocumentSkill', () => {
     await skill.execute(value, ctx());
     expect(expenses.create).toHaveBeenCalledTimes(1);
     expect(receipts.attach).toHaveBeenCalledTimes(2);
+  });
+
+  describe('VAT on the receipt', () => {
+    const TRN = '100123456700003';
+    const withVat = (over: Record<string, unknown> = {}) =>
+      reading({
+        amount: 210,
+        taxAmount: 10,
+        supplierTaxId: TRN,
+        taxCodeId: 'code-sr',
+        ...over,
+      });
+
+    it('says nothing about VAT for a receipt that shows none', async () => {
+      const { skill, expenses } = setup();
+      const value = await resolved(skill);
+      expect(value.vat).toBeUndefined();
+      expect(value.notes).toEqual([]);
+      expect(expenses.previewTax).not.toHaveBeenCalled();
+      expect(await skill.preview(value)).not.toMatch(/VAT/);
+    });
+
+    it('fills in the VAT and the supplier tax number, and says what happens to it in plain words', async () => {
+      const { skill, expenses } = setup(withVat());
+      const value = await resolved(skill);
+
+      expect(expenses.previewTax).toHaveBeenCalledWith('org-1', {
+        amount: 210,
+        taxCodeId: 'code-sr',
+        taxAmount: 10,
+        supplierTaxId: TRN,
+      });
+      expect(value.vat).toMatchObject({
+        taxCodeId: 'code-sr',
+        taxAmount: 10,
+        supplierTaxId: TRN,
+      });
+      const preview = await skill.preview(value);
+      expect(preview).toContain('10.00 AED');
+      expect(preview).toMatch(/claimed back/);
+      expect(preview).toContain(`Supplier tax number (TRN): ${TRN}.`);
+    });
+
+    it('submits the claim with the VAT type, the VAT and the tax number', async () => {
+      const { skill, expenses } = setup(withVat());
+      await skill.execute(await resolved(skill), ctx());
+      expect(expenses.create).toHaveBeenCalledWith(
+        'org-1',
+        expect.objectContaining({
+          amount: 210,
+          taxCodeId: 'code-sr',
+          taxAmount: 10,
+          supplierTaxId: TRN,
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('submits a claim without VAT exactly as before', async () => {
+      const { skill, expenses } = setup();
+      await skill.execute(await resolved(skill), ctx());
+      const dto = expenses.create.mock.calls[0][1];
+      expect(dto).not.toHaveProperty('taxCodeId');
+      expect(dto).not.toHaveProperty('taxAmount');
+    });
+
+    it('claims no VAT, and says why, when the tax number could not be read', async () => {
+      const { skill, expenses } = setup(
+        withVat({ supplierTaxId: null, taxCodeId: null }),
+      );
+      const value = await resolved(skill);
+      expect(value.vat).toBeUndefined();
+      expect(value.notes.join(' ')).toMatch(
+        /shows 10\.00 of VAT, but I could not read the supplier’s tax number \(TRN\)/,
+      );
+      await skill.execute(value, ctx());
+      expect(expenses.create.mock.calls[0][1]).not.toHaveProperty('taxCodeId');
+    });
+
+    it('claims no VAT when the organisation has no matching VAT type', async () => {
+      const { skill } = setup(withVat({ taxCodeId: null }));
+      const value = await resolved(skill);
+      expect(value.vat).toBeUndefined();
+      expect(value.notes.join(' ')).toMatch(/could not match it to one of your VAT types/);
+    });
+
+    it('works the VAT out again when the person typed a different total', async () => {
+      const { skill, expenses } = setup(withVat());
+      const value = await resolved(skill, { amount: 105 });
+      expect(expenses.previewTax).toHaveBeenCalledWith(
+        'org-1',
+        expect.objectContaining({ amount: 105, taxAmount: null }),
+      );
+      expect(value.vat?.taxAmount).toBe(5);
+    });
+
+    it('claims no VAT when it does not fit the total', async () => {
+      const { skill, expenses } = setup(withVat({ taxAmount: 90 }));
+      expenses.previewTax.mockResolvedValueOnce({
+        split: { tax: 90 },
+        problem: 'The VAT is more than 5% of the total.',
+      } as never);
+      const value = await resolved(skill);
+      expect(value.vat).toBeUndefined();
+      expect(value.notes.join(' ')).toMatch(/does not fit the total/);
+    });
+
+    it('still submits the claim when the VAT types cannot be checked', async () => {
+      const { skill, expenses } = setup(withVat());
+      expenses.previewTax.mockRejectedValueOnce(new Error('db down'));
+      const value = await resolved(skill);
+      expect(value.vat).toBeUndefined();
+      await skill.execute(value, ctx());
+      expect(expenses.create).toHaveBeenCalled();
+    });
   });
 });
