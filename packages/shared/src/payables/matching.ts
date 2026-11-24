@@ -2,6 +2,7 @@ import type { JournalLineInput, LedgerRole } from '../finance/ledger';
 import { LEDGER_ROLES } from '../finance/ledger';
 import { expenseCategoryRole, normaliseExpenseCategory } from '../finance/expense-categories';
 import { monthsTouched } from '../finance/recurring';
+import { documentDay } from '../platform/dates';
 
 /**
  * Supplier bills: three-way matching, the journal a bill posts, and aging.
@@ -302,10 +303,8 @@ export const AGING_BUCKETS: AgingBucket[] = [
 
 /** Whole days past due, by calendar date in UTC — a bill due today is current. */
 export function daysOverdue(dueDate: Date | string, asOf: Date = new Date()): number {
-  const due = new Date(dueDate);
-  const a = Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth(), asOf.getUTCDate());
-  const d = Date.UTC(due.getUTCFullYear(), due.getUTCMonth(), due.getUTCDate());
-  return Math.floor((a - d) / 86_400_000);
+  const day = (v: Date | string) => Date.parse(`${documentDay(v)}T00:00:00Z`);
+  return Math.floor((day(asOf) - day(dueDate)) / 86_400_000);
 }
 
 export function agingBucket(dueDate: Date | string | null, asOf: Date = new Date()): AgingBucket {

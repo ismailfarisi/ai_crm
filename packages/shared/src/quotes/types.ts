@@ -1,5 +1,6 @@
 import type { BillingStage } from '../orders/billing';
 import { documentTaxLines, type DocumentTaxLine } from '../tax/tax';
+import { startOfDocumentDay } from '../platform/dates';
 
 export type QuoteLineItemType = 'product' | 'section' | 'note';
 
@@ -360,14 +361,13 @@ export interface VoidInvoicePayload {
 }
 
 /**
- * The moment an invoice due before it counts as overdue: the start of today,
- * by calendar date in UTC. An invoice is overdue once its whole due day has
- * passed, so one due today (including "Due on receipt", whose due date is the
- * moment it was issued) is not overdue yet. UTC is the day the receivables
- * ageing, the period lock and the ledger all count in.
+ * The moment an invoice due before it counts as overdue: the start of today
+ * in UAE time, the day every screen and PDF prints. An invoice is overdue once
+ * its whole due day has passed, so one due today (including "Due on receipt",
+ * whose due date is the moment it was issued) is not overdue yet.
  */
 export function invoiceOverdueCutoff(now: Date = new Date()): Date {
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  return startOfDocumentDay(now);
 }
 
 /** True when `dueDate` fell on a day that has already ended, by the same day as {@link invoiceOverdueCutoff}. */

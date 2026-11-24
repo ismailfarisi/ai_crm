@@ -84,3 +84,38 @@ export function formatDisplayMonth(
     timeZone: parsed.dateOnly ? 'UTC' : (options.timeZone ?? DOCUMENT_TIME_ZONE),
   }).format(parsed.date);
 }
+
+/**
+ * The calendar day a moment falls on in UAE time, as `YYYY-MM-DD`: the same
+ * day {@link formatDisplayDate} prints. A `YYYY-MM-DD` value is returned as is.
+ */
+export function documentDay(value: Date | string, timeZone: string = DOCUMENT_TIME_ZONE): string {
+  if (typeof value === 'string' && DATE_ONLY.test(value)) return value;
+  return new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone,
+  }).format(new Date(value));
+}
+
+/** The moment the UAE day containing `now` began (midnight Dubai, 20:00 UTC the day before). */
+export function startOfDocumentDay(now: Date = new Date(), timeZone: string = DOCUMENT_TIME_ZONE): Date {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-GB', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+      timeZone,
+    })
+      .formatToParts(now)
+      .map((p) => [p.type, Number(p.value)]),
+  ) as Record<string, number>;
+  const wall = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  const offset = wall - Math.floor(now.getTime() / 1000) * 1000;
+  return new Date(Date.UTC(parts.year, parts.month - 1, parts.day) - offset);
+}

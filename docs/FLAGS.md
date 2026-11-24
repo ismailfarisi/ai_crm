@@ -292,16 +292,17 @@ read from the payables lines of the claim's own journal entries, since the
 claim row keeps neither the posting date nor the rate. They are not aged into
 the overdue buckets: a claim has no due date.
 
-### An invoice is overdue the day after it falls due, counted in UTC — by design
+### An invoice is overdue the day after it falls due, counted in UAE time — by design
 
 `isInvoiceOverdue`, the ageing buckets, the overdue-reminder sweep and the
-daily summary all ask the same question: did the due date fall on a UTC day
-that has already ended (`invoiceOverdueCutoff`)? So an invoice on "Due on
-receipt" terms, whose due date is the moment it was issued, is current for the
-rest of that day and overdue from midnight. UTC is the day the ageing, the
-period lock and the ledger count in; for a UAE shop that means an invoice due
-today turns overdue at 4am Dubai time, not midnight. Counting in each
-organisation's own timezone would need a timezone setting the app does not have.
+daily summary's overdue count all ask the same question: did the due date fall
+on a UAE day that has already ended (`invoiceOverdueCutoff`, `daysOverdue`)? So
+an invoice on "Due on receipt" terms, whose due date is the moment it was
+issued, is current for the rest of that day and overdue from midnight Dubai
+time. It is the same day the screens and PDFs print (`DOCUMENT_TIME_ZONE`), so
+an invoice shown as due 25 Nov is never overdue on 25 Nov. The ledger, period
+lock and report ranges still compare in UTC; a shop outside the UAE would need
+a per-organisation timezone setting the app does not have.
 
 ### What a customer owes is one number everywhere — by design
 

@@ -181,7 +181,14 @@ describe('isInvoiceOverdue', () => {
   it('is not overdue on its due day, even when due on receipt', () => {
     const issued = '2026-11-24T09:15:00.000Z';
     expect(isInvoiceOverdue(open(issued), new Date('2026-11-24T09:16:00.000Z'))).toBe(false);
-    expect(isInvoiceOverdue(open(issued), new Date('2026-11-24T23:59:59.000Z'))).toBe(false);
+    // 23:59:59 in Dubai, the last second of the due day.
+    expect(isInvoiceOverdue(open(issued), new Date('2026-11-24T19:59:59.000Z'))).toBe(false);
+    expect(isInvoiceOverdue(open(issued), new Date('2026-11-24T20:00:00.000Z'))).toBe(true);
+  });
+
+  it('reads a date-only due date as that UAE day', () => {
+    expect(isInvoiceOverdue(open('2026-11-24'), new Date('2026-11-24T19:59:00Z'))).toBe(false);
+    expect(isInvoiceOverdue(open('2026-11-24'), new Date('2026-11-24T20:00:00Z'))).toBe(true);
   });
 
   it('is overdue once the due day has ended', () => {
@@ -203,8 +210,9 @@ describe('isInvoiceOverdue', () => {
     expect(isInvoiceOverdue(open(null), later)).toBe(false);
   });
 
-  it('cuts off at the start of the UTC day', () => {
-    expect(invoiceOverdueCutoff(new Date('2026-11-25T19:59:00Z')).toISOString()).toBe('2026-11-25T00:00:00.000Z');
+  it('cuts off at midnight UAE time', () => {
+    expect(invoiceOverdueCutoff(new Date('2026-11-25T19:59:00Z')).toISOString()).toBe('2026-11-24T20:00:00.000Z');
+    expect(invoiceOverdueCutoff(new Date('2026-11-25T20:00:00Z')).toISOString()).toBe('2026-11-25T20:00:00.000Z');
   });
 });
 

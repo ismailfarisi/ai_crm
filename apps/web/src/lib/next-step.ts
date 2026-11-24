@@ -6,6 +6,7 @@ import type {
   SalesOrderDto,
   SalesOrderStatus,
 } from '@saas/shared';
+import { formatDate } from '@/lib/utils';
 
 /**
  * "What do I do next?" for a quote, a sales order and an invoice, worked out
@@ -255,7 +256,7 @@ export function quoteNextStep(q: QuoteStepInput): NextStep<QuoteStepAction> {
     return {
       ...base,
       title: 'Waiting for the customer to accept',
-      detail: `The acceptance link${q.sentExpiresAt ? ` works until ${new Date(q.sentExpiresAt).toLocaleDateString()}` : ' is out'}. If they said yes another way, record their acceptance below.`,
+      detail: `The acceptance link${q.sentExpiresAt ? ` works until ${formatDate(q.sentExpiresAt)}` : ' is out'}. If they said yes another way, record their acceptance below.`,
     };
   }
   if (!q.order) {
@@ -327,7 +328,7 @@ export function invoiceNextStep(
     ...base,
     title: overdue ? 'Overdue: chase payment' : invoice.status === 'PARTIALLY_PAID' ? 'Collect the rest' : 'Wait for payment',
     detail: `${fmt(balance, currency)} is still owed${
-      invoice.dueDate ? `${overdue ? ', due on' : ', due'} ${new Date(invoice.dueDate).toLocaleDateString()}` : ''
+      invoice.dueDate ? `${overdue ? ', due on' : ', due'} ${formatDate(invoice.dueDate)}` : ''
     }. Record the payment when it arrives.`,
     action: { kind: 'payment' },
   };
