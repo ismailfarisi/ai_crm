@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ArrowRight, Check, CheckCircle2, Info } from 'lucide-react';
+import { ArrowRight, Check, CheckCircle2, Info, UserRound } from 'lucide-react';
 import type { NextStep } from '@/lib/next-step';
 import { cn } from '@/lib/utils';
 
@@ -10,13 +10,17 @@ import { cn } from '@/lib/utils';
 export function NextStepCard({
   step,
   action,
+  allowed,
   className,
 }: {
   step: NextStep<unknown>;
   /** The button for `step.action`, already permission-checked; null hides it. */
   action?: ReactNode;
+  /** Whether this user can take the step; defaults to whether a button was given. */
+  allowed?: boolean;
   className?: string;
 }) {
+  const askSomeone = step.action !== undefined && step.whoCan && !(allowed ?? Boolean(action));
   const Icon = step.finished ? CheckCircle2 : ArrowRight;
   return (
     <section
@@ -45,6 +49,12 @@ export function NextStepCard({
               {step.title}
             </h2>
             <p className="mt-0.5 max-w-prose text-sm text-ink-muted">{step.detail}</p>
+            {askSomeone && (
+              <p className="mt-1 flex items-center gap-1.5 text-xs text-ink-subtle">
+                <UserRound className="size-3.5" aria-hidden />
+                {step.whoCan}
+              </p>
+            )}
             {step.note && (
               <p className="mt-1 flex items-center gap-1.5 text-xs text-warning">
                 <Info className="size-3.5" aria-hidden />
