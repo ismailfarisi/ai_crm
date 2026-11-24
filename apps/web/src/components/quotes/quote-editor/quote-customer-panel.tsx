@@ -47,6 +47,8 @@ interface QuoteCustomerPanelProps {
   onDialogChange: (dialog: CustomerDialog) => void;
   /** On a phone, Send lives in the bottom bar under the thumb instead. */
   hideSendButton?: boolean;
+  /** An acceptance link went out (emailed or copied); passes when it expires. */
+  onSent?: (expiresAt: string) => void;
 }
 
 /**
@@ -72,6 +74,7 @@ export function QuoteCustomerPanel({
   dialog,
   onDialogChange,
   hideSendButton = false,
+  onSent,
 }: QuoteCustomerPanelProps) {
   const router = useRouter();
   const canSeeCost = useCan({ permission: PERMISSIONS.QUOTE_VIEW_COST });
@@ -91,6 +94,7 @@ export function QuoteCustomerPanel({
     try {
       const created = await api.quoteAcceptance.createLink(quoteId);
       setLink(created);
+      onSent?.(created.expiresAt);
       try {
         await navigator.clipboard.writeText(created.url);
         toast.success('Acceptance link copied. Any earlier link no longer works.');
@@ -115,6 +119,7 @@ export function QuoteCustomerPanel({
     try {
       const sent = await api.quoteAcceptance.send(quoteId);
       setLink({ url: sent.url, expiresAt: sent.expiresAt });
+      onSent?.(sent.expiresAt);
       closeDialog();
       toast.success(`Quote sent to ${sent.sentTo}. Any earlier link no longer works.`);
     } catch (err) {

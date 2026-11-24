@@ -10,6 +10,7 @@ import { formatRelative, initials } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge, Card, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { ContactMessagesTab } from '@/components/contacts/contact-messages-tab';
+import { ContactCustomerCard } from '@/components/contacts/contact-customer-card';
 
 export function ContactDetailView({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -92,6 +93,8 @@ export function ContactDetailView({ params }: { params: Promise<{ id: string }> 
               </div>
             </div>
           </Card>
+
+          <ContactCustomerCard contact={contact} />
 
           {/* Tab Navigation */}
           <div className="border-b border-border">

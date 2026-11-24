@@ -7,6 +7,9 @@ import { OrderStatusPill } from './orders-view';
 const setStatus = vi.fn();
 const planWork = vi.fn();
 let order: SalesOrderDto;
+// An open order with no billing schedule: the next step is to start the job.
+const NEXT_TITLE = 'Start the job';
+const NEXT_ACTION = 'Start production';
 
 vi.mock('@/hooks/use-sales-orders', () => ({
   useSalesOrder: () => ({ data: order, isPending: false, isError: false, error: null }),
@@ -19,8 +22,13 @@ vi.mock('@/hooks/use-work-orders', () => ({
   useWorkOrders: () => ({ data: [] }),
 }));
 
+vi.mock('@/hooks/use-credits', () => ({
+  useDeliveryNotes: () => ({ data: [] }),
+  useDeliveryNoteAction: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
 vi.mock('@/lib/session-context', () => ({
-  useCan: () => false,
+  useCan: () => true,
   useSession: () => ({ check: () => true }),
 }));
 
@@ -65,10 +73,12 @@ describe('OrderDetail', () => {
     expect(within(foot).getByText('AED 1,050.00')).toBeDefined();
   });
 
-  it('has one amber button in the header: the next step', () => {
+  it('has one amber button, in the next-step card, and the header actions stay quieter', () => {
     render(<OrderDetail id="so-1" />);
     const amber = screen.getAllByRole('button').filter((b) => b.className.includes('bg-brand'));
-    expect(amber.map((b) => b.textContent)).toEqual(['Start production']);
+    expect(amber.map((b) => b.textContent)).toEqual([NEXT_ACTION]);
+    const card = screen.getByRole('region', { name: NEXT_TITLE });
+    expect(within(card).getByRole('button', { name: NEXT_ACTION })).toBeDefined();
   });
 
   it('asks before marking fulfilled, and says what has not shipped', async () => {

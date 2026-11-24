@@ -227,7 +227,16 @@ export function ContactsView() {
     <>
       <PageHeader
         title="Contacts"
-        description={scopeDescription}
+        description={
+          <>
+            {scopeDescription} Contacts are people: leads, buyers, and anyone who messages you
+            on a chat channel (they arrive as Leads). The companies you quote and invoice are in{' '}
+            <Link href="/customers" className="font-medium text-ink underline underline-offset-2">
+              Customers
+            </Link>
+            ; open a contact to link or create theirs.
+          </>
+        }
         actions={
           <>
             <ImportLink entity="contacts" />

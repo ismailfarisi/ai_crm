@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -63,6 +64,9 @@ import { ActivityTimeline } from '@/components/platform/activity-timeline';
 import { useQuoteSalesOrder } from '@/hooks/use-sales-orders';
 import { useQuoteDepositDefault } from '@/hooks/use-online-payments';
 import { QuoteDepositStatus } from './quote-deposit-status';
+import { useQuoteDeposit } from '@/hooks/use-online-payments';
+import { quoteNextStep } from '@/lib/next-step';
+import { NextStepCard } from '@/components/documents/next-step-card';
 import { QuoteCustomerPanel, type CustomerDialog } from './quote-customer-panel';
 
 /** A field to focus once the line it belongs to is on screen. */
@@ -107,6 +111,8 @@ export function QuoteEditorPage({
   const canApprove = check({ permission: PERMISSIONS.QUOTE_APPROVE });
   const canCreate = check({ permission: PERMISSIONS.QUOTE_CREATE });
   const canUpdate = check({ permission: PERMISSIONS.QUOTE_UPDATE });
+  const canReadOrders = check({ permission: PERMISSIONS.SALES_ORDER_READ });
+  const canReadInvoices = check({ permission: PERMISSIONS.INVOICE_READ });
 
   // Loading & Saving States
   const [isLoading, setIsLoading] = useState(!initialQuote && Boolean(quoteId));
@@ -194,9 +200,11 @@ export function QuoteEditorPage({
     supersededAt: initialQuote?.supersededAt ?? null,
     version: initialQuote?.version ?? 1,
   });
+  const [sentExpiresAt, setSentExpiresAt] = useState<string | null>(initialQuote?.acceptanceExpiresAt ?? null);
   // Shared with the customer panel, which fetches the same order.
   const { data: orderResult } = useQuoteSalesOrder(id, status === 'APPROVED' || Boolean(acceptance.acceptedAt));
   const existingOrder = orderResult?.order ?? null;
+  const { data: deposit = null } = useQuoteDeposit(id ?? null, Boolean(acceptance.acceptedAt));
   // A new quote starts with the deposit set in payment settings.
   const { data: depositDefault } = useQuoteDepositDefault(!id && canCreate);
   const defaultDepositPercent = depositDefault?.defaultDepositPercent ?? 0;
@@ -266,6 +274,7 @@ export function QuoteEditorPage({
               supersededAt: q.supersededAt ?? null,
               version: q.version ?? 1,
             });
+            setSentExpiresAt(q.acceptanceExpiresAt ?? null);
           }
         })
         .catch((err) => {
@@ -812,6 +821,42 @@ export function QuoteEditorPage({
         </div>
       )}
 
+      {id && (() => {
+        const step = quoteNextStep({
+          status,
+          sent: Boolean(sentExpiresAt),
+          sentExpiresAt,
+          acceptedAt: acceptance.acceptedAt,
+          supersededAt: acceptance.supersededAt,
+          order: existingOrder,
+          deposit,
+          canApprove,
+        });
+        const action = step.action;
+        return (
+          <NextStepCard
+            step={step}
+            action={
+              action?.kind === 'openOrder' && canReadOrders ? (
+                <Link
+                  href={`/orders/${action.orderId}`}
+                  className="inline-flex h-9 items-center gap-2 rounded-full bg-brand px-4 text-sm font-semibold text-on-brand shadow-xs hover:bg-brand-hover"
+                >
+                  Open {action.orderNumber}
+                </Link>
+              ) : action?.kind === 'openInvoice' && canReadInvoices ? (
+                <Link
+                  href={`/invoices/${action.invoiceId}`}
+                  className="inline-flex h-9 items-center gap-2 rounded-full bg-brand px-4 text-sm font-semibold text-on-brand shadow-xs hover:bg-brand-hover"
+                >
+                  Open {action.invoiceNumber}
+                </Link>
+              ) : null
+            }
+          />
+        );
+      })()}
+
       {/* Approved, accepted or ordered: the customer panel says which, once. */}
       {id && (
         <QuoteCustomerPanel
@@ -828,6 +873,7 @@ export function QuoteEditorPage({
           dialog={customerDialog}
           onDialogChange={setCustomerDialog}
           hideSendButton={isPhone}
+          onSent={setSentExpiresAt}
           summary={{
             quoteNumber: headerData.quoteNumber ?? '',
             customerName: headerData.customerName ?? '',

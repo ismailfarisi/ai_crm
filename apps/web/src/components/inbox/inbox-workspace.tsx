@@ -153,7 +153,7 @@ export function InboxWorkspace() {
 
   return (
     // dvh, not vh: on a phone the browser bar would otherwise cover the composer.
-    <div className="flex h-[calc(100dvh-8.5rem)] min-h-[24rem] flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-xs">
+    <div className="flex h-[calc(100dvh-11rem)] min-h-[24rem] flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-xs">
       {isMessagesLoading ? (
         <div className="flex h-full items-center justify-center p-8">
           <div className="space-y-4 text-center">

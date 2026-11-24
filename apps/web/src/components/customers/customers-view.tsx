@@ -116,7 +116,16 @@ export function CustomersView() {
     <>
       <PageHeader
         title="Customers"
-        description="The companies you sell to."
+        description={
+          <>
+            The companies you quote, sell to and invoice. The people you talk to, including chat
+            senders, are in{' '}
+            <Link href="/contacts" className="font-medium text-ink underline underline-offset-2">
+              Contacts
+            </Link>
+            .
+          </>
+        }
         actions={
           <>
             <ImportLink entity="customers" />

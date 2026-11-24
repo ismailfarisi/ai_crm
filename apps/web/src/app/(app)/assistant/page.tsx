@@ -7,6 +7,7 @@ import { useCreateAssistantConversation } from '@/hooks/use-assistant';
 import { useAssistant } from '@/components/assistant/assistant-provider';
 import { AssistantThread } from '@/components/assistant/assistant-thread';
 import { ConversationList } from '@/components/assistant/conversation-list';
+import { MessagesSwitcher } from '@/components/layout/messages-switcher';
 
 export default function AssistantPage({ searchParams }: { searchParams: Promise<{ c?: string }> }) {
   const { c } = use(searchParams);
@@ -22,7 +23,8 @@ export default function AssistantPage({ searchParams }: { searchParams: Promise<
       permission={PERMISSIONS.ASSISTANT_USE}
       fallback={<p className="text-sm text-ink-muted">You don&apos;t have access to the assistant.</p>}
     >
-      <div className="flex h-[calc(100vh-9rem)] flex-col overflow-hidden md:flex-row rounded-2xl border border-border bg-surface">
+      <MessagesSwitcher />
+      <div className="flex h-[calc(100vh-11.5rem)] flex-col overflow-hidden md:flex-row rounded-2xl border border-border bg-surface">
         <div className="max-h-40 shrink-0 overflow-y-auto border-b border-border md:max-h-none md:w-64 md:border-b-0 md:border-r">
           <ConversationList
             activeId={conversationId}

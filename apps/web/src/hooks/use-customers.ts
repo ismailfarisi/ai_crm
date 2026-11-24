@@ -6,8 +6,9 @@ import type { CreateCustomerPayload, UpdateCustomerPayload } from '@saas/shared'
 import { api, queryKeys, type CustomerListParams } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/client';
 
-export function useCustomers(params: CustomerListParams) {
+export function useCustomers(params: CustomerListParams, options: { enabled?: boolean } = {}) {
   return useQuery({
+    enabled: options.enabled ?? true,
     queryKey: queryKeys.customers(params),
     queryFn: () => api.customers.list(params),
     // Keeps the previous page on screen while the next one loads, so the table

@@ -27,6 +27,8 @@ import { Badge, PageHeader } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/button';
 import { useCan } from '@/lib/session-context';
 import { formatMoney, formatDate } from '@/lib/utils';
+import { invoiceNextStep } from '@/lib/next-step';
+import { NextStepCard } from '@/components/documents/next-step-card';
 import {
   useDownloadInvoicePdf,
   useInvoice,
@@ -71,6 +73,7 @@ export function InvoiceDetailPage({ invoiceId }: { invoiceId: string }) {
 
   const canManage = useCan({ permission: PERMISSIONS.INVOICE_MANAGE });
   const canCredit = useCan({ permission: PERMISSIONS.CREDIT_NOTE_READ });
+  const canReadOrders = useCan({ permission: PERMISSIONS.SALES_ORDER_READ });
 
   const [paying, setPaying] = useState(false);
   const [printing, setPrinting] = useState(false);
@@ -107,6 +110,32 @@ export function InvoiceDetailPage({ invoiceId }: { invoiceId: string }) {
     ? formatOrganizationAddress(orgProfile).join(', ') || undefined
     : undefined;
 
+  const nextStep = invoiceNextStep({ ...invoice, currency });
+  const stepAction = nextStep.action;
+  const stepButton =
+    stepAction?.kind === 'send' && canManage ? (
+      <Button size="sm" onClick={handleSendNow} loading={sending}>
+        <Mail className="size-3.5" aria-hidden />
+        Email to customer
+      </Button>
+    ) : stepAction?.kind === 'payment' && canManage ? (
+      <Button size="sm" onClick={() => setPaying(true)}>
+        <Wallet className="size-3.5" aria-hidden />
+        Record payment
+      </Button>
+    ) : stepAction?.kind === 'openOrder' && canReadOrders ? (
+      <Link
+        href={`/orders/${stepAction.orderId}`}
+        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border px-3 text-xs font-medium text-ink hover:bg-surface-muted"
+      >
+        Open the sales order
+      </Link>
+    ) : null;
+
+  async function handleSendNow() {
+    await handleSend();
+  }
+
   const handleSend = async () => {
     setSending(true);
     try {
@@ -134,7 +163,7 @@ export function InvoiceDetailPage({ invoiceId }: { invoiceId: string }) {
         actions={
           <>
             {canManage && !isFinal && (
-              <Button size="sm" onClick={() => setPaying(true)}>
+              <Button size="sm" variant="outline" onClick={() => setPaying(true)}>
                 <Wallet className="size-3.5" aria-hidden />
                 Record payment
               </Button>
@@ -150,6 +179,8 @@ export function InvoiceDetailPage({ invoiceId }: { invoiceId: string }) {
           </>
         }
       />
+
+      <NextStepCard step={nextStep} action={stepButton} />
 
       <div className="flex items-center gap-2">
         <InvoiceStatusBadge status={invoice.status} />

@@ -318,8 +318,9 @@ describe('QuoteEditorPage - orders, costs and undo', () => {
     } as never);
     renderWithClient(<QuoteEditorPage initialQuote={{ ...sampleQuote, status: 'APPROVED' }} />);
 
-    expect(screen.getByText('Order raised')).toBeDefined();
-    expect(screen.getByRole('link', { name: /SO-2026-0001/ })).toBeDefined();
+    expect(screen.getAllByText('Order raised').length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('link', { name: /SO-2026-0001/ }).length).toBeGreaterThan(0);
+    expect(screen.getByRole('region', { name: 'Carry on in the sales order' })).toBeDefined();
     expect(screen.queryByRole('button', { name: /send to customer/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /mark as accepted/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /revise/i })).toBeNull();

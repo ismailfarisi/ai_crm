@@ -98,7 +98,7 @@ export function EmailWorkspace() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-9rem)] gap-4">
+    <div className="flex h-[calc(100vh-11.5rem)] gap-4">
       {/* Left rail: compose, accounts, folders */}
       <aside className="flex w-52 shrink-0 flex-col gap-4">
         {canSend && (
