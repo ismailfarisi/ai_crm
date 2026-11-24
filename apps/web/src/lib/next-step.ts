@@ -29,6 +29,8 @@ export interface NextStep<A> {
   /** Something worth knowing that is not the next step, e.g. an unpaid deposit after work began. */
   note?: string;
   finished?: boolean;
+  /** Who to ask, for someone who cannot take the step themselves. */
+  whoCan?: string;
 }
 
 const fmt = (n: number, currency: string) =>
@@ -99,6 +101,7 @@ export function orderNextStep(order: SalesOrderDto, deliveries: DeliveryNoteDto[
       title: `Invoice the ${nextStage.label.toLowerCase()}`,
       detail: `Your billing schedule asks for ${nextStage.label.toLowerCase()} (${fmt(nextStage.totalAmount, order.currency)}) when the customer accepts. Raise that invoice so they can pay it.`,
       action: { kind: 'invoice', stageId: nextStage.id, label: nextStage.label, amount: nextStage.totalAmount },
+      whoCan: 'Ask someone who can invoice sales orders to raise it.',
     };
   }
 
@@ -110,6 +113,7 @@ export function orderNextStep(order: SalesOrderDto, deliveries: DeliveryNoteDto[
       title: isDeposit ? 'Collect the deposit' : 'Collect the payment',
       detail: `${unpaidUpfront.invoiceNumber} for ${unpaidUpfront.label.toLowerCase()} is not paid yet. Record the payment when it arrives, then start the job. You can start sooner if you trust the customer.`,
       action: { kind: 'payment', invoiceId: unpaidUpfront.invoiceId, invoiceNumber: unpaidUpfront.invoiceNumber },
+      whoCan: 'Ask someone who can manage invoices to record the payment.',
     };
   }
 
@@ -125,6 +129,7 @@ export function orderNextStep(order: SalesOrderDto, deliveries: DeliveryNoteDto[
       title: 'Start the job',
       detail: `${upfront.length ? `${isDeposit ? 'The deposit is' : 'It is'} paid. ` : ''}Starting production turns the catalog products on this order into work orders. If nothing here is made from a catalog product, skip this and prepare the delivery.`,
       action: { kind: 'status', to: 'IN_PRODUCTION', label: 'Start production' },
+      whoCan: 'Ask someone who can update sales orders to start it.',
     };
   }
 
@@ -136,6 +141,7 @@ export function orderNextStep(order: SalesOrderDto, deliveries: DeliveryNoteDto[
       title: `Invoice delivery ${uninvoicedDelivery.deliveryNoteNumber}`,
       detail: 'This order is invoiced per delivery. Bill what this delivery carried.',
       action: { kind: 'invoiceDelivery', noteId: uninvoicedDelivery.id, noteNumber: uninvoicedDelivery.deliveryNoteNumber },
+      whoCan: 'Ask someone who can invoice sales orders to bill it.',
     };
   }
 
@@ -148,6 +154,7 @@ export function orderNextStep(order: SalesOrderDto, deliveries: DeliveryNoteDto[
         title: `Dispatch ${draft.deliveryNoteNumber}`,
         detail: 'A delivery is ready. Dispatch it when it leaves the shop; stock and shipped quantities move then.',
         action: { kind: 'dispatch', noteId: draft.id, noteNumber: draft.deliveryNoteNumber },
+        whoCan: 'Ask someone who can dispatch deliveries to send it.',
       };
     }
     if (leftToShip) {
@@ -158,6 +165,7 @@ export function orderNextStep(order: SalesOrderDto, deliveries: DeliveryNoteDto[
         detail:
           'When the work is ready, prepare a delivery note for what is going out. The order is marked fulfilled once everything has been dispatched.',
         action: { kind: 'deliver' },
+        whoCan: 'Ask someone who can create deliveries to prepare it.',
       };
     }
     return {
@@ -166,6 +174,7 @@ export function orderNextStep(order: SalesOrderDto, deliveries: DeliveryNoteDto[
       title: 'Mark it fulfilled',
       detail: 'Everything has shipped. Mark the order fulfilled to move on to invoicing.',
       action: { kind: 'status', to: 'FULFILLED', label: 'Mark fulfilled' },
+      whoCan: 'Ask someone who can update sales orders to mark it fulfilled.',
     };
   }
 
@@ -178,6 +187,7 @@ export function orderNextStep(order: SalesOrderDto, deliveries: DeliveryNoteDto[
       title: isLast ? 'Send the final invoice' : `Invoice ${nextStage.label.toLowerCase()}`,
       detail: `The job is delivered. Raise the invoice for ${nextStage.label.toLowerCase()} (${fmt(nextStage.totalAmount, order.currency)}).`,
       action: { kind: 'invoice', stageId: nextStage.id, label: nextStage.label, amount: nextStage.totalAmount },
+      whoCan: 'Ask someone who can invoice sales orders to raise it.',
     };
   }
 
@@ -188,6 +198,7 @@ export function orderNextStep(order: SalesOrderDto, deliveries: DeliveryNoteDto[
       title: 'Collect payment',
       detail: `${fmt(outstanding, order.currency)} is still owed on this order. Record each payment on its invoice.`,
       action: { kind: 'payment', invoiceId: openStage?.invoiceId ?? null, invoiceNumber: openStage?.invoiceNumber ?? null },
+      whoCan: 'Ask someone who can manage invoices to record the payment.',
     };
   }
 
@@ -197,6 +208,7 @@ export function orderNextStep(order: SalesOrderDto, deliveries: DeliveryNoteDto[
     title: 'Close the order',
     detail: 'Delivered, invoiced and paid. Close the order to take it off your open list.',
     action: { kind: 'status', to: 'CLOSED', label: 'Close order' },
+    whoCan: 'Ask someone who can update sales orders to close it.',
   };
 }
 
@@ -238,10 +250,10 @@ export function quoteNextStep(q: QuoteStepInput): NextStep<QuoteStepAction> {
     return { ...base, title: 'Replaced by a newer version', detail: 'Work on the latest version of this quote.', finished: true };
   }
   if (q.status === 'DRAFT') {
-    return { ...base, title: 'Get it approved', detail: 'Check the lines and prices, then submit the quote for approval.', action: { kind: 'toolbar' } };
+    return { ...base, title: 'Get it approved', detail: 'Check the lines and prices, then submit the quote for approval.', action: { kind: 'toolbar' }, whoCan: 'Ask someone who can edit quotes to submit it.' };
   }
   if (q.status === 'REJECTED') {
-    return { ...base, title: 'Fix and resubmit', detail: 'The quote was rejected. Make the changes asked for, then resubmit it.', action: { kind: 'toolbar' } };
+    return { ...base, title: 'Fix and resubmit', detail: 'The quote was rejected. Make the changes asked for, then resubmit it.', action: { kind: 'toolbar' }, whoCan: 'Ask someone who can edit quotes to resubmit it.' };
   }
   if (q.status === 'AWAITING_APPROVAL') {
     return q.canApprove
@@ -250,7 +262,7 @@ export function quoteNextStep(q: QuoteStepInput): NextStep<QuoteStepAction> {
   }
   if (!accepted && !q.order) {
     if (!q.sent) {
-      return { ...base, title: 'Send it to the customer', detail: 'They get an email with a link to review and accept the quote online.', action: { kind: 'toolbar' } };
+      return { ...base, title: 'Send it to the customer', detail: 'They get an email with a link to review and accept the quote online.', action: { kind: 'toolbar' }, whoCan: 'Ask someone who can edit quotes to send it.' };
     }
     return {
       ...base,
@@ -267,6 +279,7 @@ export function quoteNextStep(q: QuoteStepInput): NextStep<QuoteStepAction> {
       title: `Collect the ${q.deposit.label.toLowerCase()}`,
       detail: `${q.deposit.invoiceNumber} is waiting for payment. Record it on the invoice when it arrives.`,
       action: { kind: 'openInvoice', invoiceId: q.deposit.invoiceId, invoiceNumber: q.deposit.invoiceNumber },
+      whoCan: 'Ask someone who can manage invoices to record it.',
     };
   }
   return {
@@ -274,6 +287,7 @@ export function quoteNextStep(q: QuoteStepInput): NextStep<QuoteStepAction> {
     title: 'Carry on in the sales order',
     detail: `The job now lives in ${q.order.orderNumber}: production, delivery and the remaining invoices are handled there.`,
     action: { kind: 'openOrder', orderId: q.order.id, orderNumber: q.order.orderNumber },
+    whoCan: 'Ask someone who can see sales orders to follow it there.',
   };
 }
 
@@ -320,6 +334,7 @@ export function invoiceNextStep(
         ? `Email the invoice to ${invoice.customerEmail}. If they have already paid, record the payment instead.`
         : 'The customer has no email address. Print or download the PDF and send it yourself, or add their email on the customer.',
       action: invoice.customerEmail ? { kind: 'send' } : undefined,
+      whoCan: invoice.customerEmail ? 'Ask someone who can manage invoices to send it.' : undefined,
     };
   }
   const overdue = invoice.dueDate && new Date(invoice.dueDate).getTime() < new Date(today.toDateString()).getTime();
@@ -330,5 +345,6 @@ export function invoiceNextStep(
       invoice.dueDate ? `${overdue ? ', due on' : ', due'} ${new Date(invoice.dueDate).toLocaleDateString()}` : ''
     }. Record the payment when it arrives.`,
     action: { kind: 'payment' },
+    whoCan: 'Ask someone who can manage invoices to record it.',
   };
 }

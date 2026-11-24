@@ -836,6 +836,7 @@ export function QuoteEditorPage({
         return (
           <NextStepCard
             step={step}
+            allowed={action?.kind === 'toolbar' ? canUpdate : undefined}
             action={
               action?.kind === 'openOrder' && canReadOrders ? (
                 <Link

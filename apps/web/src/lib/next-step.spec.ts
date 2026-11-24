@@ -168,3 +168,29 @@ describe('invoiceNextStep', () => {
     expect(invoiceNextStep({ ...inv, status: 'CANCELLED' }, today).finished).toBe(true);
   });
 });
+
+describe('who to ask, for staff who cannot take the step', () => {
+  it('every step with an action names who can take it', () => {
+    const paidDeposit = deposit({ invoiceId: 'i1', invoiceNumber: 'INV-1', invoiceStatus: 'PAID' });
+    const start = orderNextStep(order({ billingSchedule: [paidDeposit, balance()], invoicedAmount: 300, paidAmount: 300 }));
+    expect(start.whoCan).toBe('Ask someone who can update sales orders to start it.');
+    const unpaid = orderNextStep(order({ billingSchedule: [deposit({ invoiceId: 'i1', invoiceNumber: 'INV-1', invoiceStatus: 'ISSUED' }), balance()], invoicedAmount: 300 }));
+    expect(unpaid.whoCan).toBe('Ask someone who can manage invoices to record the payment.');
+  });
+
+  it('quotes and invoices say who can send, submit or record', () => {
+    const q = { status: 'APPROVED' as const, sent: false, acceptedAt: null, supersededAt: null, order: null, deposit: null, canApprove: false };
+    expect(quoteNextStep({ ...q, status: 'DRAFT' }).whoCan).toBe('Ask someone who can edit quotes to submit it.');
+    expect(quoteNextStep(q).whoCan).toBe('Ask someone who can edit quotes to send it.');
+    const inv = { status: 'ISSUED' as const, amount: 1000, paidAmount: 0, sentAt: '2026-01-02', dueDate: null, paidAt: null, salesOrderId: null, customerEmail: 'a@b.c', currency: 'AED' };
+    expect(invoiceNextStep(inv).whoCan).toBe('Ask someone who can manage invoices to record it.');
+    expect(invoiceNextStep({ ...inv, sentAt: null }).whoCan).toBe('Ask someone who can manage invoices to send it.');
+  });
+
+  it('says nothing when there is nothing to press', () => {
+    const q = { status: 'AWAITING_APPROVAL' as const, sent: false, acceptedAt: null, supersededAt: null, order: null, deposit: null, canApprove: false };
+    expect(quoteNextStep(q).whoCan).toBeUndefined();
+    const inv = { status: 'ISSUED' as const, amount: 1000, paidAmount: 0, sentAt: null, dueDate: null, paidAt: null, salesOrderId: null, customerEmail: null, currency: 'AED' };
+    expect(invoiceNextStep(inv).whoCan).toBeUndefined();
+  });
+});

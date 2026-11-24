@@ -79,6 +79,7 @@ export function ContactCustomerCard({ contact }: { contact: ContactDto }) {
               <p className="max-w-prose text-xs text-ink-muted">
                 A contact is a person you talk to. To quote or invoice them, add their company to Customers.
                 {contact.status === 'customer' && ' Marking a contact as "Customer" does not do this on its own.'}
+                {!canCreate && ' Ask someone who can add customers to do it.'}
               </p>
             </>
           )}
