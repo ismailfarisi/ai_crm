@@ -220,7 +220,14 @@ export interface ReceivablesAgingDto {
   asOf: string;
   baseCurrency: string;
   rows: ReceivablesAgingRowDto[];
+  /** Amounts customers owe, by how late. Credits owed back to customers are not in here. */
   buckets: Record<ReceivablesAgingRowDto['bucket'], number>;
+  /**
+   * Money owed back to customers (paid or credited beyond what was invoiced),
+   * as a positive figure. Rows with a negative `outstanding` make it up.
+   */
+  customerCredits?: number;
+  /** Net of `customerCredits`: the sum of the buckets less the credits. */
   total: number;
   /** The receivables account balance, for reconciliation. */
   ledgerBalance: number;

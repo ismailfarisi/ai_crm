@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, Ban, Banknote, PauseCircle, ShieldCheck, Undo2 } from 'lucide-react';
-import { PERMISSIONS, canTransitionBill } from '@saas/shared';
+import { PERMISSIONS, canTransitionBill, paymentDateProblem, utcDay } from '@saas/shared';
 import {
   useBill,
   useBillAction,
@@ -39,6 +39,8 @@ export function BillDetail({ id }: { id: string }) {
   const [accountId, setAccountId] = useState('');
   const [amount, setAmount] = useState('');
   const [reference, setReference] = useState('');
+  // Empty means today (or the bill date, if that is later).
+  const [paidOn, setPaidOn] = useState('');
   const [reason, setReason] = useState('');
 
   if (isPending) return <p className="text-ink-muted">Loading…</p>;
@@ -47,6 +49,11 @@ export function BillDetail({ id }: { id: string }) {
   }
 
   const outstanding = Math.round((bill.totalAmount - bill.paidAmount) * 100) / 100;
+  // The API refuses a payment dated before the bill; the picker starts there.
+  const today = new Date().toISOString().slice(0, 10);
+  const earliestPayDate = utcDay(bill.billDate);
+  const payDate = paidOn || (earliestPayDate > today ? earliestPayDate : today);
+  const payDateProblem = paymentDateProblem({ number: bill.billNumber, kind: 'bill', date: bill.billDate }, payDate);
   const can = (to: Parameters<typeof canTransitionBill>[1]) => canTransitionBill(bill.status, to);
   const variances = bill.status === 'DRAFT' ? (match?.variances ?? []) : [];
   // A quantity overrun is goods not in the building or already billed. No
@@ -250,7 +257,7 @@ export function BillDetail({ id }: { id: string }) {
             </Button>
             <Button
               loading={pay.isPending}
-              disabled={!accountId}
+              disabled={!accountId || Boolean(payDateProblem)}
               onClick={async () => {
                 await pay.mutateAsync({
                   id,
@@ -258,11 +265,14 @@ export function BillDetail({ id }: { id: string }) {
                     financeAccountId: accountId,
                     amount: amount ? Number(amount) : undefined,
                     reference: reference || null,
+                    // Today is left to the server, which stamps the time too.
+                    ...(payDate !== today ? { paidAt: new Date(payDate) } : {}),
                   },
                 });
                 setPaying(false);
                 setAmount('');
                 setReference('');
+                setPaidOn('');
               }}
             >
               Pay {amount ? money(Number(amount)) : money(outstanding)}
@@ -297,6 +307,16 @@ export function BillDetail({ id }: { id: string }) {
             hint="Leave blank to pay the full outstanding balance."
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
+          />
+          <Input
+            id="pay-date"
+            label="Paid on"
+            type="date"
+            min={earliestPayDate}
+            hint={`A payment cannot be dated before the bill (${earliestPayDate}).`}
+            error={payDateProblem ?? undefined}
+            value={payDate}
+            onChange={(e) => setPaidOn(e.target.value)}
           />
           <Input
             id="pay-reference"

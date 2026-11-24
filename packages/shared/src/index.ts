@@ -66,6 +66,7 @@ export * from './credits/credit-notes';
 export * from './schemas/credits';
 export * from './schemas/vat';
 export * from './finance/currency';
+export * from './finance/aging';
 export * from './billing/subscriptions';
 export * from './notifications/preferences';
 export * from './schemas/billing';

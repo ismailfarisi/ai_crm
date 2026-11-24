@@ -245,6 +245,16 @@ function ReceivablesAging({ params }: { params: ReportParams }) {
           </div>
         ))}
       </dl>
+      {(data.customerCredits ?? 0) > 0 && (
+        // A customer who paid, then was credited, is owed money back. That is
+        // not a late debt, so it is kept out of the overdue columns above.
+        <p className="text-sm text-ink-muted" data-testid="customer-credits">
+          Owed back to customers:{' '}
+          <span className="font-medium tabular-nums text-ink">{money(data.customerCredits ?? 0)}</span> (credit notes
+          or payments beyond what was invoiced, listed below as credits). Net of that, customers owe{' '}
+          {money(data.total)}.
+        </p>
+      )}
       {data.difference !== 0 && (
         <p className="flex items-center gap-2 text-sm text-warning">
           <AlertTriangle className="size-4" />
@@ -272,7 +282,9 @@ function ReceivablesAging({ params }: { params: ReportParams }) {
                   {money(r.outstanding)} {r.currency}
                 </td>
                 <td className="px-4 py-1.5 text-right tabular-nums">{money(r.outstandingBase)}</td>
-                <td className={`px-4 py-1.5 text-right tabular-nums ${r.daysOverdue > 0 ? 'text-danger' : ''}`}>{r.daysOverdue}</td>
+                <td className={`px-4 py-1.5 text-right tabular-nums ${r.daysOverdue > 0 ? 'text-danger' : ''}`}>
+                  {r.outstanding < 0 ? 'Credit' : r.daysOverdue}
+                </td>
               </tr>
             ))}
           </tbody>

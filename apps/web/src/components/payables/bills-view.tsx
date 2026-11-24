@@ -59,7 +59,17 @@ const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits
 export function BillsView() {
   const [status, setStatus] = useState<BillStatus | ''>('');
   const { data, isPending, isError, error } = useBills({ page: 1, limit: 100, ...(status ? { status } : {}) });
-  const { data: aging } = useBillAging();
+  // Empty means today. A past date shows what was owed on that day.
+  const [asOf, setAsOf] = useState('');
+  // A date typed by hand passes through years like 0002 on the way to 2026.
+  // The report waits for a real one rather than loading each of those.
+  const [reportDate, setReportDate] = useState('');
+  // While another date loads, `aging` is still the report for the last one.
+  const { data: aging, isPlaceholderData: loadingDate } = useBillAging(reportDate || undefined);
+  const pickAsOf = (value: string) => {
+    setAsOf(value);
+    if (value === '' || Number(value.slice(0, 4)) >= 1900) setReportDate(value);
+  };
 
   const columns = useMemo<ColumnDef<SupplierBillDto, unknown>[]>(
     () => [
@@ -152,11 +162,28 @@ export function BillsView() {
         }
       />
 
-      {aging && aging.total > 0 && (
-        <section className="mb-6 rounded border border-line bg-surface p-4" aria-label="What is owed">
+      {aging && (aging.total !== 0 || (aging.staffClaimsTotal ?? 0) !== 0 || aging.difference !== 0 || asOf || reportDate) && (
+        <section
+          className={`mb-6 rounded border border-line bg-surface p-4 ${loadingDate ? 'opacity-60' : ''}`}
+          aria-label="What is owed"
+          aria-busy={loadingDate || undefined}
+        >
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="text-sm font-medium text-ink">Owed to suppliers</h2>
-            <p className="text-lg font-semibold tabular-nums text-ink">{money(aging.total)}</p>
+            <div className="flex flex-wrap items-baseline gap-3">
+              <label className="flex items-center gap-2 text-xs text-ink-subtle">
+                As of
+                <input
+                  type="date"
+                  aria-label="As of date"
+                  value={asOf}
+                  max={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => pickAsOf(e.target.value)}
+                  className="h-8 rounded border border-line bg-surface px-2 text-sm text-ink"
+                />
+              </label>
+              <p className="text-lg font-semibold tabular-nums text-ink">{money(aging.total)}</p>
+            </div>
           </div>
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             {AGING_BUCKETS.map((bucket) => (
@@ -172,12 +199,62 @@ export function BillsView() {
               </div>
             ))}
           </dl>
+          {reportDate && !loadingDate && (
+            // The list further down is each bill as it stands today. For a
+            // past date the bills owed on that day are these, at that day's balance.
+            <div className="mt-3" data-testid="bills-owed-on-date">
+              <h3 className="mb-1 text-xs font-medium text-ink-subtle">Bills owed on {reportDate}</h3>
+              {aging.bills.length === 0 ? (
+                <p className="text-sm text-ink-muted">No bill was owed on that day.</p>
+              ) : (
+                <ul className="divide-y divide-line text-sm">
+                  {aging.bills.map((bill) => (
+                    <li key={bill.id} className="flex flex-wrap items-baseline justify-between gap-2 py-1.5">
+                      <span className="text-ink">
+                        {bill.billNumber} <span className="text-ink-muted">{bill.supplierName}</span>
+                      </span>
+                      <span className="flex items-baseline gap-3">
+                        <span className="text-xs text-ink-subtle">{BUCKET_LABELS[bill.bucket]}</span>
+                        <span className="tabular-nums font-medium text-ink">
+                          {money(bill.outstanding)}
+                          {bill.currency ? ` ${bill.currency}` : ''}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="mt-2 text-xs text-ink-subtle">
+                The list below shows each bill as it stands today, not on {reportDate}.
+              </p>
+            </div>
+          )}
+          {(aging.staffClaimsTotal ?? 0) !== 0 && (
+            // Approved claims sit in the same payables account as supplier
+            // bills until they are reimbursed, so the account is the two together.
+            <p className="mt-3 text-sm text-ink-muted" data-testid="staff-claims-owed">
+              Also owed to staff:{' '}
+              <span className="font-medium tabular-nums text-ink">{money(aging.staffClaimsTotal ?? 0)}</span> on{' '}
+              <Link href="/finance/expenses" className="underline underline-offset-2 hover:text-ink">
+                {aging.staffClaims?.length === 1
+                  ? `expense claim ${aging.staffClaims[0].claimNumber} (${aging.staffClaims[0].employeeName})`
+                  : `${aging.staffClaims?.length ?? 0} approved expense claims`}
+              </Link>{' '}
+              awaiting reimbursement. With the bills above, the payables account holds {money(aging.ledgerBalance)}.
+            </p>
+          )}
           {aging.difference !== 0 && (
-            // Should never show. If it does, a bill and its journal entry have come apart.
-            <p className="mt-3 flex items-center gap-2 text-sm text-danger">
-              <AlertTriangle className="size-4" />
-              Bills total {money(aging.total)} but the payables account holds {money(aging.ledgerBalance)} — a
-              difference of {money(aging.difference)} that needs looking into.
+            // Bills and approved claims together should equal the account. When
+            // they do not, something was posted to it that is neither.
+            <p className="mt-3 flex items-center gap-2 text-sm text-danger" role="alert">
+              <AlertTriangle className="size-4 shrink-0" />
+              <span>
+                {(aging.staffClaimsTotal ?? 0) !== 0
+                  ? `Bills and approved expense claims total ${money(aging.total + (aging.staffClaimsTotal ?? 0))}`
+                  : `Bills total ${money(aging.total)}`}{' '}
+                but the payables account holds {money(aging.ledgerBalance)} — a difference of {money(aging.difference)}{' '}
+                that needs looking into.
+              </span>
             </p>
           )}
         </section>

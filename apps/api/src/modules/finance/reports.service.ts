@@ -4,7 +4,7 @@ import { Between, In, LessThanOrEqual, Not, Repository } from 'typeorm';
 import {
   agingBucket,
   AGING_BUCKETS,
-  invoicePosition,
+  invoiceBalanceAsOf,
   LEDGER_ROLES,
   NORMAL_BALANCE,
   toBase,
@@ -20,7 +20,11 @@ import {
   SalesOrderLine,
 } from '../orders/entities/sales-order.entity';
 import { WorkOrder } from '../production/entities/work-order.entity';
-import { CreditNote } from '../credits/entities/credit-note.entity';
+import {
+  CreditNote,
+  CreditNoteRefund,
+} from '../credits/entities/credit-note.entity';
+import { InvoicePayment } from '../quotes/entities/invoice-payment.entity';
 import { Invoice, InvoiceStatus } from '../quotes/entities/invoice.entity';
 import { Quote } from '../quotes/entities/quote.entity';
 import { JournalEntry } from './entities/journal-entry.entity';
@@ -159,32 +163,91 @@ export class ReportsService {
     };
   }
 
+  /**
+   * What customers owed at `asOf`, by how late it was, and whether that
+   * agrees with the receivables account on the same day.
+   *
+   * An invoice's own totals (`paidAmount`, `creditedAmount`) are today's, so
+   * for a past date the balance is rebuilt from what had happened by then:
+   * the issue, each payment, each credit note and refund, and a void. Those
+   * are the same dated events the ledger posted, which is what makes the two
+   * sides comparable for any day and not only for today.
+   *
+   * A negative balance is money owed back to the customer. It counts in
+   * `total` (the ledger holds it in the same account) but not in the overdue
+   * buckets: a credit is not a late debt.
+   */
   async receivablesAging(
     tenantId: string,
     asOf: Date,
   ): Promise<ReceivablesAgingDto> {
-    const open = await this.invoices.find({
-      where: {
-        tenantId,
-        status: In([
-          InvoiceStatus.ISSUED,
-          InvoiceStatus.PARTIALLY_PAID,
-          InvoiceStatus.PAID,
-        ]),
-        issuedAt: LessThanOrEqual(asOf),
-      },
+    const manager = this.invoices.manager;
+    const [payments, credits, refunds] = await Promise.all([
+      // Every payment, later ones included: an invoice's paid total can only
+      // be checked against its payment rows if all of them are here. Which
+      // ones count on the day is decided by date, per invoice, below.
+      manager.getRepository(InvoicePayment).find({ where: { tenantId } }),
+      this.creditNotes.find({
+        where: { tenantId, status: 'ISSUED', issuedAt: LessThanOrEqual(asOf) },
+      }),
+      manager.getRepository(CreditNoteRefund).find({
+        where: { tenantId, refundedAt: LessThanOrEqual(asOf) },
+      }),
+    ]);
+    const byInvoice = <T extends { invoiceId: string }>(rows: T[]) => {
+      const map = new Map<string, T[]>();
+      for (const row of rows) {
+        map.set(row.invoiceId, [...(map.get(row.invoiceId) ?? []), row]);
+      }
+      return map;
+    };
+    const paymentsOf = byInvoice(payments);
+    const creditsOf = byInvoice(credits);
+    const refundsOf = byInvoice(refunds);
+
+    // Every invoice that existed on the day, whatever became of it since: one
+    // voided later was still owed then. An invoice issued after the day but
+    // carrying a payment dated before it (possible before payment dates were
+    // checked) is included too, because the ledger holds that money already.
+    const paidEarly = [
+      ...new Set(
+        payments
+          .filter((p) => new Date(p.paidAt).getTime() <= asOf.getTime())
+          .map((p) => p.invoiceId),
+      ),
+    ];
+    const invoices = await this.invoices.find({
+      where: [
+        { tenantId, issuedAt: LessThanOrEqual(asOf) },
+        ...(paidEarly.length ? [{ tenantId, id: In(paidEarly) }] : []),
+      ],
       order: { dueDate: 'ASC' },
     });
+
     const buckets = Object.fromEntries(
       AGING_BUCKETS.map((b) => [b, 0]),
     ) as ReceivablesAgingDto['buckets'];
     const rows: ReceivablesAgingDto['rows'] = [];
-    for (const invoice of open) {
-      const outstanding = invoicePosition(invoice).balance;
+    let customerCredits = 0;
+    for (const invoice of invoices) {
+      const outstanding = invoiceBalanceAsOf(
+        invoice,
+        {
+          payments: paymentsOf.get(invoice.id),
+          credits: creditsOf.get(invoice.id),
+          refunds: refundsOf.get(invoice.id),
+        },
+        asOf,
+      );
       if (cents(outstanding) === 0) continue;
       const outstandingBase = toBase(outstanding, invoice.fxRate ?? 1);
-      const bucket = agingBucket(invoice.dueDate, asOf);
-      buckets[bucket] = round2(buckets[bucket] + outstandingBase);
+      const isCredit = outstanding < 0;
+      const bucket = isCredit ? 'CURRENT' : agingBucket(invoice.dueDate, asOf);
+      if (isCredit) {
+        customerCredits = round2(customerCredits - outstandingBase);
+      } else {
+        buckets[bucket] = round2(buckets[bucket] + outstandingBase);
+      }
       rows.push({
         invoiceId: invoice.id,
         invoiceNumber: invoice.invoiceNumber,
@@ -193,14 +256,15 @@ export class ReportsService {
         outstanding,
         outstandingBase,
         dueDate: invoice.dueDate?.toISOString() ?? null,
-        daysOverdue: invoice.dueDate
-          ? Math.max(
-              0,
-              Math.floor(
-                (asOf.getTime() - invoice.dueDate.getTime()) / 86_400_000,
-              ),
-            )
-          : 0,
+        daysOverdue:
+          invoice.dueDate && !isCredit
+            ? Math.max(
+                0,
+                Math.floor(
+                  (asOf.getTime() - invoice.dueDate.getTime()) / 86_400_000,
+                ),
+              )
+            : 0,
         bucket,
       });
     }
@@ -218,6 +282,7 @@ export class ReportsService {
       baseCurrency: await baseCurrencyFor(this.journal.manager, tenantId),
       rows,
       buckets,
+      customerCredits,
       total,
       ledgerBalance,
       difference: round2(total - ledgerBalance),

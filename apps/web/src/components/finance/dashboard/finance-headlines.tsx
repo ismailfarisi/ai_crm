@@ -28,9 +28,12 @@ export function summariseCash(accounts: readonly FinanceAccountDto[], base: stri
 /** What customers owe, and how much of it is past due, from the receivables aging report. */
 export function summariseReceivables(report: ReceivablesAgingDto) {
   const overdueRows = report.rows.filter((r) => r.bucket !== 'CURRENT');
+  // Summed from the overdue buckets: `total` is net of credits owed back to
+  // customers, which are in no bucket.
+  const overdue = Object.entries(report.buckets).reduce((s, [bucket, v]) => (bucket === 'CURRENT' ? s : s + v), 0);
   return {
     total: report.total,
-    overdue: Math.round((report.total - (report.buckets.CURRENT ?? 0)) * 100) / 100,
+    overdue: Math.round(overdue * 100) / 100,
     overdueCount: overdueRows.length,
     invoiceCount: report.rows.length,
   };

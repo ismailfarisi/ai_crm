@@ -33,7 +33,9 @@ export const payablesEndpoints = {
     get: (id: string) => apiFetch<SupplierBillDto>(`/bills/${id}`),
     match: (id: string) => apiFetch<BillMatchDto>(`/bills/${id}/match`),
     payments: (id: string) => apiFetch<BillPaymentDto[]>(`/bills/${id}/payments`),
-    aging: () => apiFetch<AgingReportDto>('/bills/aging'),
+    /** As of today, or of `asOf` (YYYY-MM-DD) for what was owed on a past day. */
+    aging: (asOf?: string) =>
+      apiFetch<AgingReportDto>('/bills/aging', asOf ? { query: { asOf } } : undefined),
     billable: (purchaseOrderId: string) =>
       apiFetch<BillableOrderLineDto[]>(`/purchase-orders/${purchaseOrderId}/billable`),
     create: (input: CreateBillPayload) =>
