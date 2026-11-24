@@ -19,7 +19,9 @@ function matches(row: Row, where: Row): boolean {
       case 'isNull':
         return actual == null;
       default:
-        throw new Error(`fakeRepository: unsupported operator ${expected.type}`);
+        throw new Error(
+          `fakeRepository: unsupported operator ${expected.type}`,
+        );
     }
   });
 }

@@ -1034,7 +1034,14 @@ export class PayablesService {
           billDate: LessThanOrEqual(asOf),
         },
         ...(paidEarly.length
-          ? [{ tenantId, status: posted, deletedAt: IsNull(), id: In(paidEarly) }]
+          ? [
+              {
+                tenantId,
+                status: posted,
+                deletedAt: IsNull(),
+                id: In(paidEarly),
+              },
+            ]
           : []),
       ],
       order: { dueDate: 'ASC' },

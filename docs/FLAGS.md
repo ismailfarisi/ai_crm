@@ -223,6 +223,39 @@ receivables aging report (which values at document rates) differs from the
 receivables account by the revaluation amount. That is the revaluation doing its
 job, but it reads like an error in the report.
 
+### A payment cannot be dated before its invoice or bill — by design
+
+`POST /invoices/:id/payments` and `POST /bills/:id/payments` refuse a `paidAt`
+on an earlier UTC day than the invoice's issue date or the bill's date. The
+payment's journal entry carries that date, so an earlier one put receivables
+(or payables) the wrong way round for the days in between. Money that really
+moved first is recorded on the document's date; the same day is always allowed,
+whatever the hour. Advance money from a customer is still taken as a deposit
+invoice (see "Customer deposits are taken as a deposit invoice"), which is
+issued before it is paid, so that flow is untouched. There is still no way to
+record an unapplied receipt before any invoice exists. Payments stored before
+this rule keep their dates: nothing is rewritten, and the ageing reports show
+them as a credit until the document's date.
+
+### Ageing reports are rebuilt from dated events, and show credits apart — by design
+
+For any `asOf`, receivables and payables ageing add up what had happened to
+each document by then (issue, payments, credit notes, refunds, reversals, a
+void) instead of reading its running totals, which are today's. Three things
+follow. A date-only `asOf` means the end of that UTC day. A credit note is
+dated when it was issued and a refund when it was paid, because that is the
+date their journal entries carry. And an invoice the customer has paid or been
+credited beyond stays in the report as a negative row: it is in `total` (the
+receivables account holds it) and in `customerCredits`, but in no overdue
+bucket, because money owed back to a customer is not a late debt.
+
+Payables ageing also lists approved expense claims awaiting reimbursement
+(`staffClaims`). They sit in the same 2100 account as supplier bills, so the
+report compares bills plus claims with that account. What is owed on a claim is
+read from the payables lines of the claim's own journal entries, since the
+claim row keeps neither the posting date nor the rate. They are not aged into
+the overdue buckets: a claim has no due date.
+
 ### Base currency cannot change once anything is posted — by design
 
 Every ledger entry is denominated in it. `PUT /finance/currencies/base` refuses

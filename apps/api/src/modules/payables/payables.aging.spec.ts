@@ -71,19 +71,36 @@ const billEntry = (b: any) => ({
   referenceId: b.id,
   entryDate: b.billDate,
   lines: [
-    { ledgerAccountId: 'ledger-expense', debit: b.totalAmount * b.fxRate, credit: 0 },
+    {
+      ledgerAccountId: 'ledger-expense',
+      debit: b.totalAmount * b.fxRate,
+      credit: 0,
+    },
     { ledgerAccountId: AP, debit: 0, credit: b.totalAmount * b.fxRate },
   ],
 });
 
-const paymentEntry = (billId: string, at: Date, base: number, reversal = false) => ({
+const paymentEntry = (
+  billId: string,
+  at: Date,
+  base: number,
+  reversal = false,
+) => ({
   tenantId,
   referenceType: 'BILL',
   referenceId: billId,
   entryDate: at,
   lines: [
-    { ledgerAccountId: AP, debit: reversal ? 0 : base, credit: reversal ? base : 0 },
-    { ledgerAccountId: 'ledger-bank', debit: reversal ? base : 0, credit: reversal ? 0 : base },
+    {
+      ledgerAccountId: AP,
+      debit: reversal ? 0 : base,
+      credit: reversal ? base : 0,
+    },
+    {
+      ledgerAccountId: 'ledger-bank',
+      debit: reversal ? base : 0,
+      credit: reversal ? 0 : base,
+    },
   ],
 });
 
@@ -189,8 +206,22 @@ describe('PayablesService.aging: as of a past date', () => {
   // Today the bill is fully paid. On the days in between it was not.
   const paid = bill({ status: 'PAID', paidAmount: 1000 });
   const payments = [
-    { id: 'p1', tenantId, billId: 'bill-1', amount: 400, paidAt: new Date('2026-03-10T00:00:00Z'), reversedAt: new Date('2026-03-12T08:00:00Z') },
-    { id: 'p2', tenantId, billId: 'bill-1', amount: 1000, paidAt: new Date('2026-04-20T00:00:00Z'), reversedAt: null },
+    {
+      id: 'p1',
+      tenantId,
+      billId: 'bill-1',
+      amount: 400,
+      paidAt: new Date('2026-03-10T00:00:00Z'),
+      reversedAt: new Date('2026-03-12T08:00:00Z'),
+    },
+    {
+      id: 'p2',
+      tenantId,
+      billId: 'bill-1',
+      amount: 1000,
+      paidAt: new Date('2026-04-20T00:00:00Z'),
+      reversedAt: null,
+    },
   ];
   const journal = [
     billEntry(paid),
@@ -224,23 +255,46 @@ describe('PayablesService.aging: as of a past date', () => {
   });
 
   it('converts each bill at its own booked rate', async () => {
-    const foreign = bill({ id: 'bill-2', billNumber: 'BILL-2026-0002', currency: 'USD', fxRate: 3.6725, totalAmount: 200 });
-    const part = { id: 'p3', tenantId, billId: 'bill-2', amount: 50, paidAt: new Date('2026-03-15T00:00:00Z'), reversedAt: null };
+    const foreign = bill({
+      id: 'bill-2',
+      billNumber: 'BILL-2026-0002',
+      currency: 'USD',
+      fxRate: 3.6725,
+      totalAmount: 200,
+    });
+    const part = {
+      id: 'p3',
+      tenantId,
+      billId: 'bill-2',
+      amount: 50,
+      paidAt: new Date('2026-03-15T00:00:00Z'),
+      reversedAt: null,
+    };
     const world = makeService({
       bills: [foreign],
       payments: [part],
       journal: [
-        { ...billEntry(foreign), lines: [{ ledgerAccountId: AP, debit: 0, credit: 734.5 }] },
+        {
+          ...billEntry(foreign),
+          lines: [{ ledgerAccountId: AP, debit: 0, credit: 734.5 }],
+        },
         paymentEntry('bill-2', part.paidAt, 183.63),
       ],
     });
 
     const before = await world.aging(tenantId, day('2026-03-14'));
-    expect(before.bills[0]).toMatchObject({ outstanding: 200, currency: 'USD', outstandingBase: 734.5 });
+    expect(before.bills[0]).toMatchObject({
+      outstanding: 200,
+      currency: 'USD',
+      outstandingBase: 734.5,
+    });
     expect(before.difference).toBe(0);
 
     const after = await world.aging(tenantId, day('2026-03-15'));
-    expect(after.bills[0]).toMatchObject({ outstanding: 150, outstandingBase: 550.88 });
+    expect(after.bills[0]).toMatchObject({
+      outstanding: 150,
+      outstandingBase: 550.88,
+    });
     // 734.50 - 183.63 = 550.87 in the ledger; the cent is rounding, not a lost entry.
     expect(Math.abs(after.difference)).toBeLessThanOrEqual(0.01);
   });
