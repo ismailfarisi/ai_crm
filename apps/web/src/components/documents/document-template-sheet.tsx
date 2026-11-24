@@ -370,7 +370,7 @@ export function DocumentTemplateSheet({
                   <th className={`${tableDensity} text-right w-16`}>Tax</th>
                 )}
                 {config.itemsTable?.showLineTotal && (
-                  <th className={`${tableDensity} text-right w-24`}>Total</th>
+                  <th className={`${tableDensity} text-right w-24`}>Amount</th>
                 )}
               </tr>
             </thead>
