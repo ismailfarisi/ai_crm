@@ -5,21 +5,17 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Bell,
-  ChevronDown,
   ChevronRight,
-  Database,
   LogOut,
   Menu,
   Moon,
-  Search,
   Sun,
   X,
 } from 'lucide-react';
 import { PERMISSIONS } from '@saas/shared';
 import { useSession } from '@/lib/session-context';
 import { cn, initials } from '@/lib/utils';
-import { CORE_ACTION_ITEMS, SECONDARY_SECTIONS, type NavItem } from '@/lib/nav';
-import { useAutomationApprovalCount } from '@/hooks/use-automations';
+import { allNavItems } from '@/lib/nav';
 import { useCustomObjects } from '@/hooks/use-custom-objects';
 import { Button } from '@/components/ui/button';
 import { AssistantProvider } from '@/components/assistant/assistant-provider';
@@ -28,9 +24,10 @@ import { AssistantPanel } from '@/components/assistant/assistant-panel';
 import { KerfMark } from '@/components/brand/kerf-mark';
 import { NotificationBell } from './notification-bell';
 import { BillingBanner } from './billing-banner';
+import { SidebarNav, activeHrefFor } from './sidebar-nav';
 
 function pageTitleFor(pathname: string, customObjects?: { slug: string; name: string }[]): string {
-  const allItems = [...CORE_ACTION_ITEMS, ...SECONDARY_SECTIONS.flatMap((s) => s.items)];
+  const allItems = allNavItems();
   const matchHref = activeHrefFor(pathname, allItems);
   const match = allItems.find((item) => item.href === matchHref);
   if (match) return match.label;
@@ -43,228 +40,12 @@ function pageTitleFor(pathname: string, customObjects?: { slug: string; name: st
   return 'Dashboard';
 }
 
-/**
- * The one visible item the pathname belongs to: an exact match or a path
- * prefix, and the longest href wins, so /automations/approvals does not also
- * light up /automations.
- */
-function activeHrefFor(pathname: string, items: NavItem[]): string | null {
-  let best: string | null = null;
-  for (const item of items) {
-    const matches =
-      pathname === item.href ||
-      (item.href !== '/dashboard' && pathname.startsWith(`${item.href}/`));
-    if (matches && (best === null || item.href.length > best.length)) best = item.href;
-  }
-  return best;
-}
-
-function NavBadge({ kind }: { kind: NonNullable<NavItem['badge']> }) {
-  const { can } = useSession();
-  const canApprove = can(PERMISSIONS.AUTOMATION_APPROVE);
-  const { data } = useAutomationApprovalCount({
-    enabled: kind === 'automationApprovals' && canApprove,
-  });
-  const count = canApprove ? (data?.count ?? 0) : 0;
-  if (count <= 0) return null;
-  return (
-    <span
-      data-testid={`nav-badge-${kind}`}
-      className="ml-auto rounded-full bg-brand px-1.5 py-0.5 text-[11px] font-semibold leading-none text-on-brand"
-    >
-      {count > 99 ? '99+' : count}
-    </span>
-  );
-}
-
 export function AppShell({ children }: { children: ReactNode }) {
   const { session, check, logout } = useSession();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    Settings: true,
-    'Custom Data': true,
-  });
-
-  const toggleSection = (title: string) => {
-    setOpenSections((prev) => ({
-      ...prev,
-      [title]: !prev[title],
-    }));
-  };
-
-  const visibleCoreItems = CORE_ACTION_ITEMS.filter((item) => check(item.rule ?? {}));
-  const visibleSecondarySections = SECONDARY_SECTIONS.map((section) => ({
-    ...section,
-    items: section.items.filter((item) => check(item.rule ?? {})),
-  })).filter((section) => section.items.length > 0);
-
-  const activeHref = activeHrefFor(pathname, [
-    ...visibleCoreItems,
-    ...visibleSecondarySections.flatMap((section) => section.items),
-  ]);
-
   const { data: customObjects = [] } = useCustomObjects();
-  const activeCustomObjects = customObjects.filter((obj) => !obj.isArchived);
-
-  const sidebarContent = (
-    <div className="flex flex-1 flex-col overflow-y-auto px-3 py-2 scrollbar-thin">
-      {/* 2-Column Core Action Tile Grid */}
-      <div className="grid grid-cols-2 gap-2.5">
-        {visibleCoreItems.map((item) => {
-          const active = item.href === activeHref;
-          const Icon = item.icon;
-
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => setMobileOpen(false)}
-              aria-current={active ? 'page' : undefined}
-              className={cn(
-                'group flex min-h-[72px] flex-col items-start justify-between rounded-2xl p-3 transition',
-                active
-                  ? 'bg-charcoal text-on-charcoal shadow-md'
-                  : 'border border-border/50 bg-surface-muted/60 text-ink-muted hover:bg-surface-muted hover:text-ink hover:shadow-xs',
-              )}
-            >
-              <Icon
-                className={cn(
-                  'size-5 shrink-0 transition-colors',
-                  active ? 'text-on-charcoal' : 'text-ink-subtle group-hover:text-ink',
-                )}
-              />
-              <span
-                className={cn(
-                  'flex w-full items-center text-xs font-semibold tracking-tight',
-                  active ? 'text-on-charcoal' : 'text-ink-muted group-hover:text-ink',
-                )}
-              >
-                {item.label}
-                {item.badge && <NavBadge kind={item.badge} />}
-              </span>
-            </Link>
-          );
-        })}
-      </div>
-
-      {/* Custom Data Collapsible Section */}
-      {activeCustomObjects.length > 0 && (
-        <div className="mt-5 space-y-1">
-          <button
-            type="button"
-            onClick={() => toggleSection('Custom Data')}
-            className="flex w-full items-center justify-between px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-ink-subtle transition-colors hover:text-ink"
-          >
-            <span>Custom Data</span>
-            <ChevronDown
-              className={cn(
-                'size-3.5 text-ink-subtle transition-transform duration-200',
-                openSections['Custom Data'] !== false ? 'rotate-0' : '-rotate-90',
-              )}
-            />
-          </button>
-
-          {openSections['Custom Data'] !== false && (
-            <ul className="space-y-0.5">
-              {activeCustomObjects.map((obj) => {
-                const href = `/objects/${obj.slug}`;
-                const active = pathname === href || pathname.startsWith(`${href}/`);
-
-                return (
-                  <li key={obj.id || obj.slug}>
-                    <Link
-                      href={href}
-                      onClick={() => setMobileOpen(false)}
-                      aria-current={active ? 'page' : undefined}
-                      className={cn(
-                        'flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium transition',
-                        active
-                          ? 'bg-surface-muted font-semibold text-ink shadow-2xs'
-                          : 'text-ink-muted hover:bg-surface-muted/70 hover:text-ink',
-                      )}
-                    >
-                      <Database
-                        className={cn(
-                          'size-3.5 shrink-0',
-                          active ? 'text-brand' : 'text-ink-subtle',
-                        )}
-                      />
-                      <span className="truncate">{obj.name}</span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {/* Secondary Collapsible Sections */}
-      {visibleSecondarySections.length > 0 && (
-        <div className="mt-5 space-y-4">
-          {visibleSecondarySections.map((section, index) => {
-            const sectionTitle = section.title ?? `Section ${index + 1}`;
-            const isOpen = openSections[sectionTitle] !== false;
-
-            return (
-              <div key={sectionTitle} className="space-y-1">
-                {section.title && (
-                  <button
-                    type="button"
-                    onClick={() => toggleSection(sectionTitle)}
-                    className="flex w-full items-center justify-between px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-ink-subtle transition-colors hover:text-ink"
-                  >
-                    <span>{section.title}</span>
-                    <ChevronDown
-                      className={cn(
-                        'size-3.5 text-ink-subtle transition-transform duration-200',
-                        isOpen ? 'rotate-0' : '-rotate-90',
-                      )}
-                    />
-                  </button>
-                )}
-
-                {isOpen && (
-                  <ul className="space-y-0.5">
-                    {section.items.map((item) => {
-                      const active = item.href === activeHref;
-                      const Icon = item.icon;
-
-                      return (
-                        <li key={item.href}>
-                          <Link
-                            href={item.href}
-                            onClick={() => setMobileOpen(false)}
-                            aria-current={active ? 'page' : undefined}
-                            className={cn(
-                              'flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium transition',
-                              active
-                                ? 'bg-surface-muted font-semibold text-ink shadow-2xs'
-                                : 'text-ink-muted hover:bg-surface-muted/70 hover:text-ink',
-                            )}
-                          >
-                            <Icon
-                              className={cn(
-                                'size-3.5 shrink-0',
-                                active ? 'text-brand' : 'text-ink-subtle',
-                              )}
-                            />
-                            <span className="truncate">{item.label}</span>
-                            {item.badge && <NavBadge kind={item.badge} />}
-                          </Link>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
+  const closeDrawer = () => setMobileOpen(false);
 
   const canUseAssistant = check({ permission: PERMISSIONS.ASSISTANT_USE });
 
@@ -281,8 +62,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-border bg-surface lg:flex print:hidden">
         <Brand />
-        <SidebarSearch />
-        {sidebarContent}
+        <SidebarNav onNavigate={() => undefined} />
         <UserCard onLogout={logout} />
       </aside>
 
@@ -305,8 +85,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <X className="size-4" />
               </button>
             </div>
-            <SidebarSearch />
-            {sidebarContent}
+            <SidebarNav onNavigate={closeDrawer} />
             <UserCard onLogout={logout} />
           </aside>
         </div>
@@ -360,21 +139,6 @@ function Brand() {
         </span>
       </div>
     </Link>
-  );
-}
-
-function SidebarSearch() {
-  return (
-    <div className="px-3 pb-3">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-ink-subtle" />
-        <input
-          type="text"
-          placeholder="Search here"
-          className="w-full rounded-full border border-border/80 bg-surface-muted/60 py-1.5 pr-4 pl-9 text-xs text-ink placeholder:text-ink-subtle transition-colors focus:border-brand focus:bg-surface focus:outline-none"
-        />
-      </div>
-    </div>
   );
 }
 
