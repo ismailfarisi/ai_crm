@@ -385,6 +385,37 @@ avoids the gap in "Advance payments before an invoice create no tax point"
 under Tax, for online deposits only: a deposit recorded by hand against no
 invoice still has that gap.
 
+### Part invoices raised before 2026-11-24 were corrected in place — by design
+
+Until then a stage's net was worked out apart from its total and tax. On a
+fixed deposit against a discounted quote the discount was added back (net
+5,000 and tax 200 stored on an invoice for 4,200), and a percentage split
+could be a cent out (2,416.67 + 120.84 on an invoice for 2,537.50). The
+journal was right throughout: it credits sales with the total less the tax.
+The tax report, the VAT201 and the margin report read the invoice instead, so
+they disagreed with the ledger.
+
+Migration `StageInvoiceNetAndOrderLineTotals` sets the stored net of those
+stages and invoices to total less tax, scales the invoice's tax breakdown to
+it, and gives order lines that were stored at 0 the total their quantity,
+price and discount give. No total, no tax and no journal entry changes, so
+what the customer owes and what the books say are as they were. What does
+change is what the tax report and VAT201 show for the periods those invoices
+fall in: taxable sales move from the deposit's period to the balance's by the
+amount that was wrong. A return already filed from the old figures will not
+match the report any more and may need a voluntary disclosure; the report
+after the migration is the one that agrees with the ledger.
+
+### A stage's share of the discount is for showing only — by design
+
+`allocateStageAmounts` splits a quote's total and tax across its stages and
+takes each stage's net as total less tax, so net + tax is the total on every
+invoice and the stages add up to the quote. The stage's `discountAmount` is its
+share of what was taken off the quote on the way to the subtotal; nothing is
+subtracted from the stage for it. A quote line's `subtotal` is likewise never
+taken from the caller: the API works it out from quantity, unit price and
+discount on every save.
+
 ### Tenant payment keys are untested against live Stripe — open
 
 Each tenant's own Stripe secret key and webhook secret (Settings > Online
