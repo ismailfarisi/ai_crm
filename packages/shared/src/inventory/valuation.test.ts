@@ -60,6 +60,15 @@ describe('applyReceipt', () => {
     expect(result.qtyOnHand).toBe(10);
   });
 
+  it('measures the change in value from a negative balance, not from nothing', () => {
+    // -10 at 5 is carried at -50. Twenty back at the same 5 leaves 10 worth
+    // 50: the stock value rose by 100, which is what the twenty are worth.
+    const result = applyReceipt({ qtyOnHand: -10, avgUnitCost: 5 }, 20, 5);
+    expect(result.valueDelta).toBe(100);
+    // Still below zero afterwards: -5 at 5 is -25, up 25 from -50.
+    expect(applyReceipt({ qtyOnHand: -10, avgUnitCost: 5 }, 5, 5).valueDelta).toBe(25);
+  });
+
   it('refuses a zero or negative receipt', () => {
     expect(() => applyReceipt({ qtyOnHand: 0, avgUnitCost: 0 }, 0, 1)).toThrow(RangeError);
     expect(() => applyReceipt({ qtyOnHand: 0, avgUnitCost: 0 }, -5, 1)).toThrow(RangeError);
@@ -99,6 +108,15 @@ describe('applyIssue', () => {
 });
 
 describe('replayMovements', () => {
+  it('reaches the same average when a recount is stored at the standing cost', () => {
+    const position = replayMovements([
+      { type: 'RECEIPT', qtyDelta: 160, unitCost: 10.25 },
+      { type: 'ADJUSTMENT', qtyDelta: -10, unitCost: 0 },
+      { type: 'ADJUSTMENT', qtyDelta: 15, unitCost: 10.25 },
+    ]);
+    expect(position).toEqual({ qtyOnHand: 165, avgUnitCost: 10.25 });
+  });
+
   it('reproduces a position from its ledger', () => {
     // stock_items is a cached projection of stock_movements; this is what
     // proves the two agree.

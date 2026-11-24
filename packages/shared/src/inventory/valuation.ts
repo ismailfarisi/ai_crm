@@ -108,7 +108,10 @@ export function applyReceipt(
       ? roundCost(unitCost)
       : roundCost((qtyBefore * position.avgUnitCost + qtyReceived * unitCost) / qtyAfter);
 
-  const valueBefore = qtyBefore > 0 ? roundCost(qtyBefore * position.avgUnitCost) : 0;
+  // Signed: stock that has gone negative is carried at a negative value (that
+  // is what its issues posted), so coming back up from below zero has to be
+  // measured from there, not from nothing.
+  const valueBefore = roundCost(qtyBefore * position.avgUnitCost);
   const valueAfter = roundCost(qtyAfter * avgUnitCost);
 
   return {

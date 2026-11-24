@@ -16,7 +16,9 @@ import {
   replayMovements,
   roundCost,
   toBase,
+  type StockAdjustmentKind,
   type StockMovementType,
+  type StockPosition,
   type StockReferenceType,
 } from '@saas/shared';
 import {
@@ -382,11 +384,18 @@ export class InventoryService {
       locationId: string;
       type: StockMovementType;
       qtyDelta: number;
-      unitCost: number;
+      /**
+       * The price stock comes in at. `null` brings it in at the cost it
+       * already stands at (see `standingUnitCost`): a recount, not a purchase.
+       * Ignored on the way out, which always leaves at the average.
+       */
+      unitCost: number | null;
       referenceType: StockReferenceType;
       referenceId?: string | null;
       actorId?: string | null;
       note?: string | null;
+      /** Runs against the locked position, before anything is written. */
+      assertPosition?: (position: StockPosition) => void;
     },
   ): Promise<{ movement: StockMovement; valueDelta: number }> {
     const { tenantId, materialId, locationId } = params;
@@ -419,9 +428,14 @@ export class InventoryService {
       qtyOnHand: locked.qtyOnHand,
       avgUnitCost: locked.avgUnitCost,
     };
+    params.assertPosition?.(position);
+    const unitCost =
+      params.qtyDelta > 0
+        ? (params.unitCost ?? (await this.standingUnitCost(manager, locked)))
+        : 0;
     const result =
       params.qtyDelta > 0
-        ? applyReceipt(position, params.qtyDelta, params.unitCost)
+        ? applyReceipt(position, params.qtyDelta, unitCost)
         : applyIssue(position, -params.qtyDelta);
 
     const wasLow = needsReorder(locked);
@@ -467,7 +481,9 @@ export class InventoryService {
         locationId,
         type: params.type,
         qtyDelta: params.qtyDelta,
-        unitCost: params.unitCost,
+        // The resolved price, so a replay of the ledger reaches the same
+        // average the projection holds.
+        unitCost,
         avgUnitCostAfter: result.avgUnitCost,
         qtyOnHandAfter: result.qtyOnHand,
         referenceType: params.referenceType,
@@ -478,6 +494,31 @@ export class InventoryService {
     );
 
     return { movement, valueDelta: result.valueDelta };
+  }
+
+  /**
+   * What a unit of this material is carried at, for stock that comes back
+   * without a price of its own (a recount upwards).
+   *
+   * With stock on hand that is the moving average. With none there is no
+   * average to stand on, so it is the last one the position held (an issue
+   * leaves the average where it was, so a position that ran out still
+   * remembers what its stock cost), and failing that the material's cost per
+   * unit in the catalog. A material with neither comes in at zero: there is
+   * nothing to value it by, and inventing a figure would be worse.
+   */
+  private async standingUnitCost(
+    manager: EntityManager,
+    item: StockItem,
+  ): Promise<number> {
+    if (item.qtyOnHand > 0 || item.avgUnitCost > 0) {
+      return roundCost(item.avgUnitCost);
+    }
+    const material = await manager.getRepository(Material).findOne({
+      where: { id: item.materialId, tenantId: item.tenantId },
+      withDeleted: true,
+    });
+    return roundCost(Number(material?.costPerUom ?? 0));
   }
 
   /* ------------------------------------------------------------------ *
@@ -914,11 +955,26 @@ export class InventoryService {
    * ------------------------------------------------------------------ */
 
   /**
-   * Corrects a quantity after a count or a write-off.
+   * Corrects a quantity after a count or a write-off, or enters stock the
+   * business already held on the day it started here.
    *
    * A correction is another movement, never an edit to history, and it always
    * carries a note: an adjustment nobody can explain is the thing that erodes
    * trust in the whole figure.
+   *
+   * What it is worth, and where the other side of that goes:
+   *
+   * - A write-off leaves at the moving average and is expensed to cost of
+   *   sales.
+   * - A recount upwards comes back at the cost the stock already stands at
+   *   (`standingUnitCost`), out of cost of sales: the mirror of a write-off,
+   *   and it leaves the average where it was.
+   * - An opening count (`kind: 'OPENING'`) comes in at the cost the caller
+   *   states and is credited to opening balance equity. Stock the business
+   *   already owned is not income, so it must not reduce cost of sales.
+   *
+   * The caller says which it is. It is never inferred from a unit cost being
+   * present.
    */
   async adjust(
     tenantId: string,
@@ -926,6 +982,8 @@ export class InventoryService {
     input: {
       materialId: string;
       locationId?: string;
+      /** Defaults to an ordinary correction. */
+      kind?: StockAdjustmentKind;
       qtyDelta: number;
       note: string;
       /** Opening counts only; see `adjustStockSchema`. */
@@ -939,6 +997,24 @@ export class InventoryService {
     if (!input.note?.trim()) {
       throw new BadRequestException('Adjustments need a reason');
     }
+    const opening = input.kind === 'OPENING';
+    if (opening) {
+      if (!(input.qtyDelta > 0)) {
+        throw new BadRequestException(
+          'An opening count adds stock. Use a correction to write stock off.',
+        );
+      }
+      if (input.unitCost == null || !(input.unitCost >= 0)) {
+        throw new BadRequestException(
+          'An opening count needs the cost of a unit',
+        );
+      }
+    } else if (input.unitCost != null) {
+      throw new BadRequestException(
+        'A unit cost is only given for an opening count. A correction is valued at the average cost the stock already has.',
+      );
+    }
+    const note = input.note.trim();
 
     // Inside a caller's transaction (an import batch) this is a savepoint.
     const run = <T>(fn: (manager: EntityManager) => Promise<T>) =>
@@ -957,65 +1033,70 @@ export class InventoryService {
         locationId: location.id,
         type: 'ADJUSTMENT',
         qtyDelta: input.qtyDelta,
-        // An adjustment up is valued at the standing average, not a new price:
-        // it is a correction to a count, not a purchase. The exception is an
-        // opening count, where the caller says what the stock is worth —
-        // otherwise a business that already held stock would carry it at zero
-        // and report a 100% margin on everything made from it.
-        unitCost: input.qtyDelta > 0 ? (input.unitCost ?? 0) : 0,
+        // An opening count states its price. A correction never does: `null`
+        // values it at the cost the stock already stands at, because putting
+        // back a miscounted box is not a purchase.
+        unitCost: opening ? roundCost(input.unitCost as number) : null,
         referenceType: 'MANUAL',
         actorId,
-        note: input.note.trim(),
+        note,
+        assertPosition: opening
+          ? (position) => {
+              // A negative balance is a count that is already wrong. Stock
+              // "already owned" cannot sit on top of that: the opening value
+              // would be netted against the shortfall and land in equity.
+              if (position.qtyOnHand < 0) {
+                throw new BadRequestException(
+                  `This material shows ${position.qtyOnHand} on hand at ${location.name}. Correct the count first, then enter opening stock.`,
+                );
+              }
+            }
+          : undefined,
       });
 
-      // Writing stock off is a real cost and has to land somewhere.
-      if (valueDelta !== 0) {
+      // The ledger holds whole fils. The stock value moves at four places, so
+      // it is rounded here, and a movement worth less than a fil posts
+      // nothing rather than an entry of zero.
+      const amount = money(Math.abs(valueDelta));
+      if (amount > 0) {
+        const stockUp = valueDelta > 0;
+        if (opening) {
+          // Tenants whose chart predates opening balance equity have no 3100.
+          // Provisioning is idempotent: it only adds what is missing.
+          await this.ledger.provisionChartOfAccounts(tenantId, manager);
+        }
+        const inventoryLine = {
+          role: LEDGER_ROLES.INVENTORY,
+          accountName: 'Inventory',
+          debit: stockUp ? amount : 0,
+          credit: stockUp ? 0 : amount,
+          description: note,
+        };
+        const otherLine = {
+          ...(opening
+            ? {
+                role: LEDGER_ROLES.OPENING_BALANCE_EQUITY,
+                accountName: 'Opening balance equity',
+              }
+            : { role: LEDGER_ROLES.COGS, accountName: 'Stock adjustment' }),
+          debit: stockUp ? 0 : amount,
+          credit: stockUp ? amount : 0,
+          description: note,
+        };
         const lines = await this.ledger.resolveLines(
           tenantId,
-          valueDelta < 0
-            ? [
-                {
-                  role: LEDGER_ROLES.COGS,
-                  accountName: 'Stock adjustment',
-                  debit: Math.abs(valueDelta),
-                  credit: 0,
-                  description: input.note.trim(),
-                },
-                {
-                  role: LEDGER_ROLES.INVENTORY,
-                  accountName: 'Inventory',
-                  debit: 0,
-                  credit: Math.abs(valueDelta),
-                  description: input.note.trim(),
-                },
-              ]
-            : [
-                {
-                  role: LEDGER_ROLES.INVENTORY,
-                  accountName: 'Inventory',
-                  debit: valueDelta,
-                  credit: 0,
-                  description: input.note.trim(),
-                },
-                {
-                  role: LEDGER_ROLES.COGS,
-                  accountName: 'Stock adjustment',
-                  debit: 0,
-                  credit: valueDelta,
-                  description: input.note.trim(),
-                },
-              ],
+          stockUp ? [inventoryLine, otherLine] : [otherLine, inventoryLine],
           manager,
         );
 
         await manager.getRepository(JournalEntry).save(
           manager.getRepository(JournalEntry).create({
             tenantId,
-            entryNumber: `JE-ADJ-${movement.id.slice(0, 8)}`,
+            entryNumber: `JE-${opening ? 'OS' : 'ADJ'}-${movement.id.slice(0, 8)}`,
             referenceType: 'STOCK',
             referenceId: movement.id,
             entryDate: new Date(),
-            totalAmount: Math.abs(valueDelta),
+            totalAmount: amount,
             lines,
           }),
         );

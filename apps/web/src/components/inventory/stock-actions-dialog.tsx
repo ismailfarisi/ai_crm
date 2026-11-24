@@ -129,11 +129,12 @@ export function StockActionsDialog({ open, onClose, item, mode }: StockActionsDi
               await adjust.mutateAsync({
                 materialId: item.materialId,
                 locationId: item.locationId,
-                qtyDelta: delta,
-                note: note.trim(),
-                // A recount is valued at the standing average — putting back a
+                // A recount is valued at the standing average: putting back a
                 // miscounted box did not change what the stock cost. Only an
                 // opening count states a price of its own.
+                kind: 'CORRECTION',
+                qtyDelta: delta,
+                note: note.trim(),
                 unitCost: null,
               });
               close();
@@ -172,6 +173,16 @@ export function StockActionsDialog({ open, onClose, item, mode }: StockActionsDi
                 </span>{' '}
                 against cost of
                 sales.
+              </>
+            )}
+            {delta > 0 && item.avgUnitCost > 0 && (
+              <>
+                {' '}
+                — added at the average cost,{' '}
+                <span className="tabular-nums">
+                  {formatMoney(delta * item.avgUnitCost, baseCurrency)}
+                </span>{' '}
+                back out of cost of sales.
               </>
             )}
           </p>

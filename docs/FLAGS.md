@@ -253,6 +253,56 @@ journal to them would break the reconciliation with nothing to explain it. The
 same goes for 1000, which only groups the bank accounts. Corrections go through
 a credit note, a bill or a stock adjustment.
 
+### Opening stock is credited to opening balance equity — by design, accountant to confirm
+
+Stock the business already held on the day it started here is entered as an
+opening count (`kind: 'OPENING'` on `POST /inventory/adjustments`, the "Enter
+opening stock" dialog and the opening-stock import). It posts Dr 1200 Inventory
+/ Cr 3100 Opening balance equity, the account bank opening balances use,
+because stock already owned is not income and must not reduce cost of sales.
+Whether 3100 is the right account for a given business is for its accountant
+to confirm.
+
+The caller says which kind an adjustment is; the API no longer guesses from a
+unit cost being present. A correction that carries a unit cost is refused, and
+an opening count needs a cost and a quantity above zero. An opening count is
+also refused on top of a negative balance: the count is corrected first.
+
+Opening counts posted before this change credited 5000 Cost of goods sold and
+are left as they are: journals are append-only. A business that wants those
+moved needs a manual journal (Dr 5000 / Cr 3100) for the amount, which the
+journal screen allows because neither account is sub-ledger controlled.
+
+### A stock recount upwards is valued at the cost the stock stands at — by design
+
+A correction never states a price. Stock added by a recount comes in at the
+position's moving average, so the average does not move and the entry mirrors
+the write-off it undoes (Dr Inventory / Cr Cost of goods sold). The price is
+stored on the movement, so a replay reaches the same average.
+
+When there is nothing to average over, in this order:
+
+1. No stock on hand, but the position held stock before: the last average it
+   held (the position keeps it when the quantity reaches zero).
+2. The material has never been in stock at this location: the material's
+   catalog cost per unit (`costPerUom`).
+3. Neither is set: the stock is added at zero and nothing is posted. Its real
+   cost arrives with the next receipt, or with an opening count.
+
+The catalog cost is an estimating figure, not a purchase price, so case 2 is
+an approximation. It was chosen over refusing the recount because a count
+that cannot be recorded is worse than one valued at the price the business
+quotes with. Movements recorded before this change added recounts at zero
+and replay as they were stored.
+
+### Stock value is held to four places, the ledger to two — by design
+
+Unit costs and stock value are kept to four decimal places; journals are
+posted in whole fils. Each stock journal is the movement's value rounded to
+two places, and a movement worth less than half a fil posts nothing. So 1200
+Inventory can differ from quantity x average cost by under half a fil per
+movement, and only on materials whose unit cost has more than two places.
+
 ### Journals cannot move a foreign-currency bank account — open
 
 A journal states base-currency amounts; a USD account's balance is in dollars,
@@ -332,8 +382,10 @@ and the error file say which rows did not go in.
 
 ### Opening stock skips materials that already have stock — by design
 
-Each row is a stock adjustment at the unit cost given, posted to the books
-like a manual one. Updating a count would mean a second adjustment against
+Each row is an opening count at the unit cost given, posted to the books like
+one entered on the Stock screen (Dr Inventory / Cr Opening balance equity, see
+"Opening stock is credited to opening balance equity" under Keeping the
+books). Updating a count would mean a second adjustment against
 stock that may already have moved, so a material that holds stock is skipped
 and corrected with a normal adjustment instead. It goes to the default
 location; locations and lots are not imported.

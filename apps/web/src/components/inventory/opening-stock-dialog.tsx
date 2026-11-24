@@ -65,6 +65,9 @@ export function OpeningStockDialog({ open, onClose }: { open: boolean; onClose: 
     try {
       await adjust.mutateAsync({
         materialId,
+        // Said outright, so the books credit opening balance equity rather
+        // than treating stock already owned as a gain against cost of sales.
+        kind: 'OPENING',
         qtyDelta: quantity,
         unitCost: cost,
         note: note.trim(),
@@ -82,7 +85,7 @@ export function OpeningStockDialog({ open, onClose }: { open: boolean; onClose: 
       open={open}
       onClose={close}
       title="Enter opening stock"
-      description="For stock you already hold. It is added at the cost you give, so jobs made from it carry a real cost."
+      description="For stock you already hold. It is added at the cost you give, so jobs made from it carry a real cost, and recorded as stock you started with rather than as a purchase."
       size="md"
       footer={
         <>
