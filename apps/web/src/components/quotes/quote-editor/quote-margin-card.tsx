@@ -33,7 +33,7 @@ export function MarginBadge({
         className,
       )}
     >
-      {/* No figure before anything is priced, or while a line is re-costed. */}
+      {/* No figure before anything is priced, while a line has no cost, or while one is re-costed. */}
       {status.showFigure ? (
         <>
           <span className="tabular-nums">{(totals.marginPct * 100).toFixed(1)}%</span>
@@ -95,8 +95,10 @@ export function QuoteMarginCard({ totals, violations, status, currency = 'USD' }
       {!totals.hasCompleteCost && (
         <p className="flex items-start gap-2 rounded-lg bg-warning-soft px-3 py-2 text-xs leading-relaxed text-ink-muted">
           <HelpCircle className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden />
-          Some lines were typed by hand and have no cost, so this margin is an over-estimate. Add
-          them from the catalog to make it real.
+          {status.showFigure
+            ? 'Some lines were typed by hand and have no cost, so this margin is higher than it really is.'
+            : 'The margin is not known yet because some lines were typed by hand and have no cost.'}{' '}
+          Add them from the catalog, or give them a cost, to see the real margin.
         </p>
       )}
 

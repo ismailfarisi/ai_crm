@@ -17,6 +17,7 @@ import { DataTable } from '@/components/ui/data-table';
 import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
 import { Can } from '@/components/auth/can';
 import { CaptureBillFlow } from './capture-bill-flow';
+import { formatDate } from '@/lib/utils';
 
 type BadgeTone = NonNullable<ComponentProps<typeof Badge>['tone']>;
 
@@ -126,7 +127,7 @@ export function BillsView() {
         header: ({ column }) => <DataTableColumnHeader column={column} title="Due" />,
         cell: ({ row }) => (
           <span className="text-xs text-ink-muted whitespace-nowrap">
-            {row.original.dueDate ? new Date(row.original.dueDate).toLocaleDateString() : '—'}
+            {row.original.dueDate ? formatDate(row.original.dueDate) : '—'}
           </span>
         ),
       },

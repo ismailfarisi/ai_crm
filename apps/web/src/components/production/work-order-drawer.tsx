@@ -31,6 +31,7 @@ import { EmptyState } from '@/components/ui/primitives';
 import { COLUMN_COLOR_MAP } from './column-modal';
 import { WO_STATUS_LABELS } from './production-board';
 import { WorkOrderLabourPanel } from './work-order-labour-panel';
+import { formatDate } from '@/lib/utils';
 
 export interface WorkOrderDrawerProps {
   workOrderId: string | null;
@@ -167,7 +168,7 @@ export function WorkOrderDrawer({ workOrderId, onClose }: WorkOrderDrawerProps) 
                 <p className="mt-1 text-xs text-ink-muted">
                   {wo.qty} units to make
                   {wo.customerName ? ` · ${wo.customerName}` : ''}
-                  {wo.dueDate ? ` · Due ${new Date(wo.dueDate).toLocaleDateString()}` : ''}
+                  {wo.dueDate ? ` · Due ${formatDate(wo.dueDate)}` : ''}
                 </p>
 
                 {/* Stage switcher dropdown */}

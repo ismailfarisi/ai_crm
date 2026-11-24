@@ -122,8 +122,8 @@ describe('InboxWorkspace on a desk', () => {
     vi.mocked(api.channels.messages).mockResolvedValue(MESSAGES);
     renderWorkspace();
 
-    expect(await screen.findByRole('combobox', { name: 'Send through' })).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'Recipient' })).toBeInTheDocument();
+    expect(await screen.findByRole('combobox', { name: 'Send by' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /^To \(/ })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Reply' })).toBeInTheDocument();
   });
 

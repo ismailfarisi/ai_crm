@@ -5,6 +5,7 @@ import {
   type SkillOutcome,
   type SkillResolution,
   type WorkOrderQueryPayload,
+  formatDisplayDate,
 } from '@saas/shared';
 import { ProductionService } from '../../production/production.service';
 import type { ChannelSkill, SkillContext } from './skill.types';
@@ -39,7 +40,10 @@ export class WorkOrderQuerySkill implements ChannelSkill<ResolvedWorkOrderQuery>
         enum: ['ACTIVE_JOBS', 'JOB_STATUS', 'OVERDUE_JOBS'],
         description: 'Type of production query',
       },
-      workOrderNumber: { type: 'string', description: 'Work order number, e.g. "WO-2026-0003"' },
+      workOrderNumber: {
+        type: 'string',
+        description: 'Work order number, e.g. "WO-2026-0003"',
+      },
     },
     additionalProperties: false,
   };
@@ -52,11 +56,17 @@ export class WorkOrderQuerySkill implements ChannelSkill<ResolvedWorkOrderQuery>
     slots: Record<string, unknown>,
     _ctx: SkillContext,
   ): Promise<SkillResolution<ResolvedWorkOrderQuery>> {
-    const rawNumber = typeof slots.workOrderNumber === 'string' ? slots.workOrderNumber : '';
+    const rawNumber =
+      typeof slots.workOrderNumber === 'string' ? slots.workOrderNumber : '';
     const match = rawNumber.match(/WO-\d{4}-\d+/i);
-    const woNum = match ? match[0].toUpperCase() : (rawNumber.trim() ? rawNumber.trim().toUpperCase() : undefined);
+    const woNum = match
+      ? match[0].toUpperCase()
+      : rawNumber.trim()
+        ? rawNumber.trim().toUpperCase()
+        : undefined;
 
-    let queryType = (slots.queryType as ResolvedWorkOrderQuery['queryType']) || 'ACTIVE_JOBS';
+    let queryType =
+      (slots.queryType as ResolvedWorkOrderQuery['queryType']) || 'ACTIVE_JOBS';
     if (woNum) {
       queryType = 'JOB_STATUS';
     }
@@ -64,7 +74,8 @@ export class WorkOrderQuerySkill implements ChannelSkill<ResolvedWorkOrderQuery>
     if (queryType === 'JOB_STATUS' && !woNum) {
       return {
         kind: 'question',
-        question: 'Which work order would you like to check? (e.g. WO-2026-0003)',
+        question:
+          'Which work order would you like to check? (e.g. WO-2026-0003)',
         slots: { ...slots, queryType: 'JOB_STATUS' },
       };
     }
@@ -76,22 +87,35 @@ export class WorkOrderQuerySkill implements ChannelSkill<ResolvedWorkOrderQuery>
   }
 
   async preview(value: ResolvedWorkOrderQuery): Promise<string> {
-    if (value.queryType === 'JOB_STATUS') return `Check status of ${value.workOrderNumber}?`;
-    if (value.queryType === 'OVERDUE_JOBS') return `List overdue production jobs?`;
+    if (value.queryType === 'JOB_STATUS')
+      return `Check status of ${value.workOrderNumber}?`;
+    if (value.queryType === 'OVERDUE_JOBS')
+      return `List overdue production jobs?`;
     return `Check active jobs on the floor?`;
   }
 
-  async execute(value: ResolvedWorkOrderQuery, ctx: SkillContext): Promise<SkillOutcome> {
-    const jobs = await this.production.list(ctx.organizationId, {} as WorkOrderQueryPayload, false);
+  async execute(
+    value: ResolvedWorkOrderQuery,
+    ctx: SkillContext,
+  ): Promise<SkillOutcome> {
+    const jobs = await this.production.list(
+      ctx.organizationId,
+      {} as WorkOrderQueryPayload,
+      false,
+    );
 
     if (value.queryType === 'JOB_STATUS' && value.workOrderNumber) {
-      const wo = jobs.find((j) => j.woNumber.toUpperCase() === value.workOrderNumber);
+      const wo = jobs.find(
+        (j) => j.woNumber.toUpperCase() === value.workOrderNumber,
+      );
       if (!wo) {
         return { reply: `Could not find work order ${value.workOrderNumber}.` };
       }
       const doneOps = wo.operations.filter((op) => op.status === 'DONE').length;
       const runningOp = wo.operations.find((op) => op.status === 'RUNNING');
-      const dueStr = wo.dueDate ? ` · Due: ${new Date(wo.dueDate).toLocaleDateString()}` : '';
+      const dueStr = wo.dueDate
+        ? ` · Due: ${formatDisplayDate(wo.dueDate)}`
+        : '';
 
       return {
         reply: `📋 **${wo.woNumber}** (${wo.description})\nStatus: ${wo.status}${dueStr}\nProgress: ${doneOps}/${wo.operations.length} operations completed${
@@ -105,12 +129,26 @@ export class WorkOrderQuerySkill implements ChannelSkill<ResolvedWorkOrderQuery>
     if (value.queryType === 'OVERDUE_JOBS') {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const overdue = jobs.filter((j) => j.status !== 'COMPLETE' && j.status !== 'CANCELLED' && j.dueDate && new Date(j.dueDate) < today);
+      const overdue = jobs.filter(
+        (j) =>
+          j.status !== 'COMPLETE' &&
+          j.status !== 'CANCELLED' &&
+          j.dueDate &&
+          new Date(j.dueDate) < today,
+      );
       if (overdue.length === 0) {
-        return { reply: '✅ All production jobs are currently on track. No overdue work orders.' };
+        return {
+          reply:
+            '✅ All production jobs are currently on track. No overdue work orders.',
+        };
       }
-      const lines = overdue.map((j) => `• ${j.woNumber}: ${j.description} (Due ${new Date(j.dueDate!).toLocaleDateString()})`);
-      return { reply: `⚠️ **${overdue.length} Overdue Job(s):**\n${lines.join('\n')}` };
+      const lines = overdue.map(
+        (j) =>
+          `• ${j.woNumber}: ${j.description} (Due ${formatDisplayDate(j.dueDate)})`,
+      );
+      return {
+        reply: `⚠️ **${overdue.length} Overdue Job(s):**\n${lines.join('\n')}`,
+      };
     }
 
     // Default: ACTIVE_JOBS
@@ -124,10 +162,17 @@ export class WorkOrderQuerySkill implements ChannelSkill<ResolvedWorkOrderQuery>
     }
 
     if (running.length === 0) {
-      return { reply: 'ℹ️ No machine clocks or operations are currently running on the floor.' };
+      return {
+        reply:
+          'ℹ️ No machine clocks or operations are currently running on the floor.',
+      };
     }
 
-    const lines = running.map((r) => `• **${r.woNumber}**: ${r.opLabel} (running)`);
-    return { reply: `🏭 **Active Shop Floor Operations (${running.length}):**\n${lines.join('\n')}` };
+    const lines = running.map(
+      (r) => `• **${r.woNumber}**: ${r.opLabel} (running)`,
+    );
+    return {
+      reply: `🏭 **Active Shop Floor Operations (${running.length}):**\n${lines.join('\n')}`,
+    };
   }
 }

@@ -4,6 +4,7 @@ import { FileCheck2, TriangleAlert } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { QUOTE_PROOF_STATUS_LABELS } from '@saas/shared';
 import { api } from '@/lib/api/endpoints';
+import { formatDate } from '@/lib/utils';
 
 /**
  * The artwork the customer approved, so the floor builds from that file and
@@ -47,7 +48,7 @@ export function WorkOrderProofCard({ workOrderId }: { workOrderId: string }) {
         <p className="mt-1 text-sm text-ink-muted">
           {proof.filename}
           {proof.approvedByName ? ` · approved by ${proof.approvedByName}` : ''}
-          {proof.approvedAt ? ` on ${new Date(proof.approvedAt).toLocaleDateString()}` : ''}
+          {proof.approvedAt ? ` on ${formatDate(proof.approvedAt)}` : ''}
           {data.quoteNumber ? ` · ${data.quoteNumber}` : ''}
         </p>
       )}

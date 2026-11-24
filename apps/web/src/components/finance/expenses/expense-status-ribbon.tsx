@@ -13,7 +13,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import type { ExpenseClaimDto, ExpenseStatus } from '@saas/shared';
-import { cn } from '@/lib/utils';
+import { cn, formatDateTime } from '@/lib/utils';
 import { Badge } from '@/components/ui/primitives';
 
 export interface ExpenseStatusRibbonProps {
@@ -120,12 +120,7 @@ function formatStepDate(dateStr?: string | null): string | null {
   try {
     const d = new Date(dateStr);
     if (isNaN(d.getTime())) return null;
-    return d.toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return formatDateTime(d);
   } catch {
     return null;
   }

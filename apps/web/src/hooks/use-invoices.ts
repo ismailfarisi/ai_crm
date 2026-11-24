@@ -122,7 +122,7 @@ function cloneItemsForReissue(invoice: InvoiceDto): QuoteLineItem[] {
 /**
  * Replace an issued invoice: voids it (reversing payments and freeing the
  * billing stage) and clones its lines into a fresh draft quote, which the user
- * corrects and approves to raise the corrected invoice. Issued invoices are
+ * corrects and approves; accepting it raises the corrected invoice. Issued invoices are
  * never edited in place — the books keep both documents.
  */
 export function useReplaceInvoice() {

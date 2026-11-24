@@ -13,6 +13,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/field';
 import { Card, CardBody, EmptyState } from '@/components/ui/primitives';
 import { inCurrency, money, usePayrollCurrency } from './payroll-format';
+import { formatDate } from '@/lib/utils';
 
 type FormIn = z.input<typeof gratuityAdjustmentSchema>;
 type FormOut = z.output<typeof gratuityAdjustmentSchema>;
@@ -96,7 +97,7 @@ export function EmployeeGratuityTab({ employeeId }: { employeeId: string }) {
               <tbody>
                 {data.entries.map((e) => (
                   <tr key={e.id} className="border-t border-line">
-                    <td className="py-2 whitespace-nowrap">{new Date(e.asOf).toLocaleDateString()}</td>
+                    <td className="py-2 whitespace-nowrap">{formatDate(e.asOf)}</td>
                     <td className="py-2">{KIND_LABELS[e.kind]}</td>
                     <td className="py-2 text-ink-muted">{e.note ?? '—'}</td>
                     <td className="py-2 text-right tabular-nums">{money(e.amount)}</td>

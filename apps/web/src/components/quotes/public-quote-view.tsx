@@ -7,6 +7,7 @@ import { DepositPanel } from '@/components/payments/deposit-panel';
 import { API_PUBLIC_URL } from '@/lib/api/config';
 import { PublicQuoteProofs, PublicQuoteRespond } from './public-quote-responses';
 import { publicQuoteCopy } from './public-quote-copy';
+import { formatDisplayDate } from '@saas/shared';
 
 type LoadState =
   | { kind: 'loading' }
@@ -97,8 +98,7 @@ export function PublicQuoteView({ token }: { token: string }) {
   const language = quote.language ?? 'en';
   const arabic = language === 'ar';
   const t = publicQuoteCopy(language);
-  const formatDate = (iso: string) =>
-    new Date(iso).toLocaleDateString(arabic ? 'ar-AE-u-nu-latn' : undefined);
+  const formatDate = (iso: string) => formatDisplayDate(iso, { arabic });
   // Arabic values print instead of the English on Arabic quotes and under it
   // on bilingual ones; a field without Arabic keeps its English.
   const pick = (en: string, ar: string | null | undefined) =>

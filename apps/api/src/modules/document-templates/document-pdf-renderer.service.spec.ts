@@ -293,7 +293,7 @@ describe('DocumentPdfRendererService', () => {
       ...baseDoc,
       issuedAt: '2026-10-24T21:30:00.000Z',
     });
-    expect(pdfText(buffer)).toContain('Issued: Oct 25, 2026');
+    expect(pdfText(buffer)).toContain('Issued: 25 Oct 2026');
   });
 
   it('labels each tax line with its rate once', async () => {

@@ -9,6 +9,7 @@ import { useSalesOrders } from '@/hooks/use-sales-orders';
 import { Badge, EmptyState, PageHeader } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/data-table';
 import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
+import { formatDate } from '@/lib/utils';
 
 const STATUS_TONES: Record<SalesOrderStatus, 'neutral' | 'info' | 'warning' | 'success'> = {
   OPEN: 'info',
@@ -107,7 +108,7 @@ export function OrdersView() {
         header: ({ column }) => <DataTableColumnHeader column={column} title="Ordered" />,
         cell: ({ row }) => (
           <span className="text-xs text-ink-muted whitespace-nowrap">
-            {new Date(row.original.createdAt).toLocaleDateString()}
+            {formatDate(row.original.createdAt)}
           </span>
         ),
       },
@@ -152,7 +153,7 @@ export function OrdersView() {
           cardSubtitleKey="customerName"
           searchPlaceholder="Search order or customer…"
           emptyTitle="No sales orders yet"
-          emptyDescription="An order is created when a quote is approved."
+          emptyDescription="An order is raised when a customer accepts a quote."
           emptyIcon={<PackageCheck className="size-8 text-ink-muted" />}
         />
       )}

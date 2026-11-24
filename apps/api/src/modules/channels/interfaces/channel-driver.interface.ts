@@ -20,6 +20,11 @@ export interface InboundMedia {
 
 export interface ParsedWebhookMessage {
   senderIdentifier: string;
+  /**
+   * What to call the sender when a contact is made for them: their name, a
+   * handle, or the channel's word for someone anonymous. Never the bare id.
+   */
+  senderName?: string;
   /** What the inbox shows. For a file, its caption or a placeholder naming it. */
   body: string;
   externalMessageId?: string;

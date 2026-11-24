@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardBody, EmptyState } from '@/components/ui/primitives';
 import { RecordAdvanceModal } from './record-advance-modal';
 import { inCurrency, money, usePayrollCurrency } from './payroll-format';
+import { formatDate } from '@/lib/utils';
 
 export function EmployeeAdvancesTab({ employeeId }: { employeeId: string }) {
   const { data, isPending, isError, error } = useEmployeeAdvances(employeeId);
@@ -60,7 +61,7 @@ export function EmployeeAdvancesTab({ employeeId }: { employeeId: string }) {
               <tbody>
                 {data.advances.map((a) => (
                   <tr key={a.id} className="border-t border-line">
-                    <td className="py-2 whitespace-nowrap">{new Date(a.issuedAt).toLocaleDateString()}</td>
+                    <td className="py-2 whitespace-nowrap">{formatDate(a.issuedAt)}</td>
                     <td className="py-2 text-ink-muted">{a.note ?? '—'}</td>
                     <td className="py-2 text-right tabular-nums">{money(a.amount)}</td>
                   </tr>

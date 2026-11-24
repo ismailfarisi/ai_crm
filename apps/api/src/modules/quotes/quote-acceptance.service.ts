@@ -21,6 +21,7 @@ import {
   type AcceptanceRefusal,
   type PublicDepositDto,
   type PublicQuoteDto,
+  formatDisplayDate,
 } from '@saas/shared';
 import type { AppConfig } from '@/config/configuration';
 import { TenantContextService } from '@/common/context/tenant-context.service';
@@ -309,7 +310,7 @@ export class QuoteAcceptanceService {
         note ? `<p>${escapeHtml(note).replace(/\n/g, '<br>')}</p>` : '',
         `<p>Here is ${escapeHtml(reference)}${quote.title ? ` — ${escapeHtml(quote.title)}` : ''}.</p>`,
         `<p><a href="${escapeHtml(link.url)}">View and accept the quote</a></p>`,
-        `<p>The link is valid until ${new Date(link.expiresAt).toDateString()}.</p>`,
+        `<p>The link is valid until ${formatDisplayDate(link.expiresAt)}.</p>`,
         `<p>${escapeHtml(sender)}</p>`,
       ].join(''),
       text: [
@@ -317,7 +318,7 @@ export class QuoteAcceptanceService {
         note,
         `Here is ${reference}${quote.title ? ` — ${quote.title}` : ''}.`,
         `View and accept it: ${link.url}`,
-        `The link is valid until ${new Date(link.expiresAt).toDateString()}.`,
+        `The link is valid until ${formatDisplayDate(link.expiresAt)}.`,
         sender,
       ]
         .filter(Boolean)

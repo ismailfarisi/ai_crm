@@ -494,15 +494,22 @@ export class ChannelsService {
         identityMap.get(`${message.provider}:${message.sender}`) ||
         identityMap.get(`${message.provider}:${message.recipient}`);
 
-      let staffUser: { id: string; name: string; email: string; role?: string } | undefined = undefined;
+      let staffUser:
+        { id: string; name: string; email: string; role?: string } | undefined =
+        undefined;
       if (ident?.user) {
         const u = ident.user as any;
-        const name = `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email;
+        const name =
+          `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email;
         staffUser = {
           id: u.id,
           name,
           email: u.email,
-          ...(u.role ? { role: u.role } : (u.roles?.[0]?.name ? { role: u.roles[0].name } : {})),
+          ...(u.role
+            ? { role: u.role }
+            : u.roles?.[0]?.name
+              ? { role: u.roles[0].name }
+              : {}),
         };
       }
 
@@ -637,6 +644,7 @@ export class ChannelsService {
         orgId,
         parsed.senderIdentifier,
         provider,
+        parsed.senderName,
       );
 
       const externalMessageId = parsed.externalMessageId

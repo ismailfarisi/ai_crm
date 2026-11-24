@@ -182,6 +182,42 @@ provider and reports accuracy. It does nothing until `EVAL_ANTHROPIC_API_KEY` is
 set in repository secrets. The CI evals, which replay recorded answers, need
 nothing.
 
+### Date pickers still follow the browser's language — open
+
+Every date Kerf prints goes through `formatDisplayDate` in `packages/shared`
+("24 Nov 2026"). The 43 native date pickers do not: Chrome and Safari lay
+them out in the browser's own language, so a browser set to US English still
+shows mm/dd/yyyy inside the picker. The page is marked `lang="en-GB"`, which
+Firefox honours. Closing it fully means a custom date picker everywhere, which
+was more change than a wording pass should carry.
+
+### Dates are counted in UAE time on every screen — by design
+
+`formatDisplayDate` counts the day in `Asia/Dubai` unless told otherwise, the
+same zone the PDFs use, so an invoice issued at 00:30 Dubai time reads 25 Nov
+on its page and on its PDF, whatever the viewer's laptop clock says. A
+`YYYY-MM-DD` value (a due date, a delivery date) is a calendar day and never
+moves. If Kerf ever serves a business outside the Gulf this becomes an
+organisation setting.
+
+### An uncosted line hides a loss's figure too — by design
+
+When any line has no cost the badge and card show no percentage and no
+amount, including on a quote that is already at a loss: the badge then reads
+"Loss, margin not known yet: 1 line has no cost". The true loss is at least
+the shown one, so the figure would understate it.
+
+### A contact named by its chat number is renamed on the next message — by design
+
+Telegram contacts used to be created with the chat id as their first name
+("77001"). When such a sender writes again, the contact takes the name the
+channel now sends (their name, else @username, else "Telegram user"). Only a
+contact whose first name is still exactly the id and has no last name is
+touched, so a name somebody typed is never overwritten. The rename happens on
+an inbound webhook with no actor, so like the contact's creation it is not in
+the audit trail. The inbox also shows "Telegram user" for a numeric name until
+then.
+
 ---
 
 ## Money and currency

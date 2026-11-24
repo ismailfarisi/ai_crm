@@ -7,8 +7,9 @@ import { useSettlementStatement } from '@/hooks/use-payroll';
 import { Button } from '@/components/ui/button';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { SETTLEMENT_REASON_LABELS, money, serviceLabel } from './payroll-format';
+import { formatDate } from '@/lib/utils';
 
-const day = (iso: string) => new Date(iso).toLocaleDateString();
+const day = (iso: string) => formatDate(iso);
 
 /** Statuses whose statement must not pass for the final one, with what to print. */
 const NOT_FINAL: Partial<Record<SettlementStatus, { mark: string; note: string }>> = {

@@ -29,6 +29,7 @@ import { Badge, Card, CardBody, EmptyState } from '@/components/ui/primitives';
 import { useCan } from '@/lib/session-context';
 import { LEAVE_TYPE_LABELS, LeaveRecordModal } from './leave-record-modal';
 import { inCurrency, money, usePayrollCurrency } from './payroll-format';
+import { formatDate } from '@/lib/utils';
 
 const ENTRY_LABELS: Record<LeaveEntryKind, string> = {
   OPENING: 'Opening balance',
@@ -40,7 +41,7 @@ const ENTRY_LABELS: Record<LeaveEntryKind, string> = {
 };
 
 const days = (n: number) => String(Math.round(n * 100) / 100);
-const day = (d: string) => new Date(d).toLocaleDateString();
+const day = (d: string) => formatDate(d);
 const EMPTY_ADJUST: LeaveAdjustmentInput = { days: '' as unknown as number, note: '' };
 
 function AdjustDaysDialog({ employeeId, open, onClose }: { employeeId: string; open: boolean; onClose: () => void }) {

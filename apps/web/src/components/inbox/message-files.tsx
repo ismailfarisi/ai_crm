@@ -13,6 +13,35 @@ export function isFilePlaceholder(body: string, files?: ChannelMessageFileDto[])
   return !!files?.length && PLACEHOLDER.test(body.trim());
 }
 
+/**
+ * One line for the conversation list. A file arrives with a stand-in body
+ * ("[Document: plan.cdr]", "[Image]") that reads like code; say what was sent.
+ */
+export function messagePreview(body: string, files?: ChannelMessageFileDto[]): string {
+  const text = body.trim();
+  if (!PLACEHOLDER.test(text)) return body;
+  if (files && files.length > 1) return `Sent ${files.length} files`;
+  const inner = text.slice(1, -1).trim();
+  const kind = inner.toLowerCase();
+  const document = /^(?:Document|Slack file): (.+)$/.exec(inner)?.[1];
+  if (document) return `Sent a file: ${document}`;
+  const mime = files?.[0]?.mimeType ?? '';
+  if (kind === 'image' || kind === 'photo' || mime.startsWith('image/')) return 'Sent a photo';
+  if (kind === 'voice message' || (kind === 'audio' && mime === 'audio/ogg')) return 'Sent a voice message';
+  if (['video', 'audio', 'sticker'].includes(kind)) return `Sent a ${kind}`;
+  if (mime.startsWith('video/')) return 'Sent a video';
+  if (mime.startsWith('audio/')) return 'Sent an audio file';
+  if (files?.[0]?.filename) return `Sent a file: ${files[0].filename}`;
+  const count = /^(\d+) slack files$/.exec(kind)?.[1];
+  return count ? `Sent ${count} files` : 'Sent a file';
+}
+
+/** A display name that is only the sender's number on a chat app reads as noise. */
+export function senderDisplayName(name: string, provider: string): string {
+  if (provider === 'TELEGRAM' && /^-?\d+$/.test(name.trim())) return 'Telegram user';
+  return name;
+}
+
 /** The files that came with a message: pictures as previews, the rest as rows. */
 export function MessageFiles({ files }: { files: ChannelMessageFileDto[] }) {
   return (

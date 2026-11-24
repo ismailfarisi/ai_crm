@@ -211,7 +211,7 @@ export class QuoteCreateSkill implements ChannelSkill<ResolvedQuoteCreate> {
     return {
       reply:
         `Created quote ${quote.quoteNumber} for ${quote.customerName} (${Number(quote.totalAmount).toFixed(2)} ${quote.currency}).\n\n` +
-        `It is saved in DRAFT. You can view it in the CRM or reply "approve ${quote.quoteNumber}" to approve and generate an invoice.`,
+        `It is saved in DRAFT. You can view it in the CRM or reply "approve ${quote.quoteNumber}" to approve it. Its order and invoice are raised when the customer accepts it.`,
       resultType: 'QUOTE',
       resultId: quote.id,
     };

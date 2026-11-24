@@ -11,6 +11,7 @@ import { ApprovalDecision } from './approval-decision';
 import { AgentStepResult } from '../agent-step/agent-step-result';
 import { plainStepName } from '../step-wording';
 import { stepOutcome, stepStatusWord } from './step-outcome';
+import { formatDateTime } from '@/lib/utils';
 
 export function StatusChip({ status }: { status: AutomationExecutionStatus }) {
   return (
@@ -31,7 +32,7 @@ export function StatusChip({ status }: { status: AutomationExecutionStatus }) {
 }
 
 export function formatTime(value: string | null | undefined): string {
-  return value ? new Date(value).toLocaleString() : '—';
+  return value ? formatDateTime(value) : '—';
 }
 
 /** A run's length for people: "450 ms", "1.2 s", "3 min 4 s", "1 h 5 min". */

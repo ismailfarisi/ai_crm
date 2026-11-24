@@ -7,6 +7,7 @@ import { api, queryKeys, type ChannelConfigDto } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/client';
 import { Badge, Card, CardBody, CardHeader, CardTitle } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/button';
+import { formatDateTime } from '@/lib/utils';
 
 interface ChannelCardProps {
   config: ChannelConfigDto;
@@ -159,10 +160,7 @@ export function ChannelCard({ config, onConfigure }: ChannelCardProps) {
         {config.lastTestedAt && (
           <p className="text-xs text-ink-subtle">
             Last tested:{' '}
-            {new Date(config.lastTestedAt).toLocaleString(undefined, {
-              dateStyle: 'short',
-              timeStyle: 'short',
-            })}
+            {formatDateTime(config.lastTestedAt)}
           </p>
         )}
 

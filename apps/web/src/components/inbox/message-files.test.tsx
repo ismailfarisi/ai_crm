@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ChannelMessageFileDto } from '@/lib/api/endpoints';
-import { MessageFiles, isFilePlaceholder } from './message-files';
+import { MessageFiles, isFilePlaceholder, messagePreview, senderDisplayName } from './message-files';
 
 const link = vi.fn();
 const toastError = vi.fn();
@@ -103,5 +103,41 @@ describe('isFilePlaceholder', () => {
     expect(isFilePlaceholder('Artwork for the shop sign', [pdf])).toBe(false);
     expect(isFilePlaceholder('[Image]', [])).toBe(false);
     expect(isFilePlaceholder('[Media/Unsupported Content]', undefined)).toBe(false);
+  });
+});
+
+describe('messagePreview', () => {
+  const doc = { filename: 'huge-video-walkthrough.cdr', mimeType: 'application/octet-stream', status: 'saved' } as ChannelMessageFileDto;
+
+  it('says what was sent instead of the stand-in body', () => {
+    expect(messagePreview('[Document: huge-video-walkthrough.cdr]', [doc])).toBe(
+      'Sent a file: huge-video-walkthrough.cdr',
+    );
+    expect(messagePreview('[Image]')).toBe('Sent a photo');
+    expect(messagePreview('[Voice message]')).toBe('Sent a voice message');
+    expect(messagePreview('[Slack file: plan.pdf]')).toBe('Sent a file: plan.pdf');
+    expect(messagePreview('[Document: a.pdf]', [doc, doc])).toBe('Sent 2 files');
+    expect(messagePreview('[Media/Unsupported Content]')).toBe('Sent a file');
+  });
+
+  it('names a photo, voice message or video even when the saved file has a name', () => {
+    const saved = (filename: string, mimeType: string) =>
+      [{ filename, mimeType, status: 'saved' }] as ChannelMessageFileDto[];
+    expect(messagePreview('[Image]', saved('photo-1.jpg', 'image/jpeg'))).toBe('Sent a photo');
+    expect(messagePreview('[Voice message]', saved('audio-1.ogg', 'audio/ogg'))).toBe('Sent a voice message');
+    expect(messagePreview('[Video]', saved('video-1.mp4', 'video/mp4'))).toBe('Sent a video');
+    expect(messagePreview('[File]', saved('scan.pdf', 'application/pdf'))).toBe('Sent a file: scan.pdf');
+  });
+
+  it('leaves real words alone', () => {
+    expect(messagePreview('Can you quote 500 boxes?')).toBe('Can you quote 500 boxes?');
+  });
+});
+
+describe('senderDisplayName', () => {
+  it('never names a Telegram sender by their chat number', () => {
+    expect(senderDisplayName('77001', 'TELEGRAM')).toBe('Telegram user');
+    expect(senderDisplayName('@sara_a', 'TELEGRAM')).toBe('@sara_a');
+    expect(senderDisplayName('+971501234567', 'WHATSAPP_META')).toBe('+971501234567');
   });
 });

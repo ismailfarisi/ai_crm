@@ -19,7 +19,7 @@ import {
   ScanText,
 } from 'lucide-react';
 import type { ExpenseClaimDto, ScannedReceiptResult } from '@saas/shared';
-import { cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import { Badge, Card, CardBody, CardHeader, CardTitle } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -297,7 +297,7 @@ export function ReceiptPreviewCard({
                   Date
                 </div>
                 <span className="font-medium tabular-nums text-ink block">
-                  {effectiveDate ? new Date(effectiveDate).toLocaleDateString() : '—'}
+                  {effectiveDate ? formatDate(effectiveDate) : '—'}
                 </span>
               </div>
 
@@ -375,7 +375,7 @@ export function ReceiptPreviewCard({
           open={isFullscreenOpen}
           onClose={() => setIsFullscreenOpen(false)}
           title={`Receipt Preview - ${effectiveMerchant}`}
-          description={`Amount: ${formatExpenseCurrency(effectiveAmount, effectiveCurrency)} • Date: ${effectiveDate ? new Date(effectiveDate).toLocaleDateString() : 'N/A'}`}
+          description={`Amount: ${formatExpenseCurrency(effectiveAmount, effectiveCurrency)} • Date: ${effectiveDate ? formatDate(effectiveDate) : 'N/A'}`}
           size="lg"
         >
           <div className="flex flex-col items-center justify-center p-2">

@@ -31,6 +31,7 @@ import {
   EmptyState,
   Skeleton,
 } from '@/components/ui/primitives';
+import { formatDate } from '@/lib/utils';
 
 function money(amount: number, currency: string): string {
   try {
@@ -218,7 +219,7 @@ function TradingSummary({ overview }: { overview: CustomerOverviewDto }) {
       label: 'Orders placed',
       value: String(totals.ordersPlaced),
       detail: totals.lastOrderedAt
-        ? `Last on ${new Date(totals.lastOrderedAt).toLocaleDateString()}`
+        ? `Last on ${formatDate(totals.lastOrderedAt)}`
         : 'Nothing ordered yet',
     },
     {
@@ -297,7 +298,7 @@ function DocumentList({
                   ).toLowerCase()}
                 </Badge>
                 <span className="text-xs text-ink-subtle">
-                  {new Date(doc.date).toLocaleDateString()}
+                  {formatDate(doc.date)}
                 </span>
                 <span className="ml-auto font-medium tabular-nums text-ink">
                   {money(doc.amount, doc.currency)}

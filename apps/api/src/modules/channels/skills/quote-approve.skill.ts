@@ -59,7 +59,7 @@ const jsonSchema = {
 export class QuoteApproveSkill implements ChannelSkill<ResolvedQuoteApproval> {
   readonly name = CHANNEL_SKILLS.QUOTE_APPROVE;
   readonly description =
-    'Approve a quote that is already in the system, turning it into an invoice, and optionally email that invoice to the customer. Use for messages approving, signing off or accepting an existing quote.';
+    'Approve a quote that is already in the system, so it can go to the customer (the order and invoice are raised when the customer accepts it), and optionally email the invoice if there already is one. Use for messages approving, signing off or accepting an existing quote.';
   readonly examples = [
     'approve QT-2026-0004',
     'approve the Acme quote and send it',
@@ -186,13 +186,15 @@ export class QuoteApproveSkill implements ChannelSkill<ResolvedQuoteApproval> {
   // build a preview; this one already has everything resolved.
   // eslint-disable-next-line @typescript-eslint/require-await
   async preview(resolved: ResolvedQuoteApproval): Promise<string> {
+    // The order and its invoice are raised when the customer accepts, not
+    // on approval, so there is only an invoice to email if they already have.
     const sendClause = resolved.alsoSend
-      ? ' and email the invoice to the customer'
+      ? ' If there is already an invoice it will be emailed to the customer.'
       : '';
     return (
       `Approve quote ${resolved.quoteNumber} for ${resolved.customerName} ` +
       `(${resolved.totalAmount} ${resolved.currency})? ` +
-      `This will generate an invoice${sendClause}.\n\nReply YES to confirm or NO to cancel.`
+      `Its order and invoice are raised when the customer accepts it.${sendClause}\n\nReply YES to confirm or NO to cancel.`
     );
   }
 
@@ -216,7 +218,7 @@ export class QuoteApproveSkill implements ChannelSkill<ResolvedQuoteApproval> {
 
     if (!invoice) {
       return {
-        reply: `Approved quote ${quote.quoteNumber}.`,
+        reply: `Approved quote ${quote.quoteNumber}. Its order and invoice are raised when the customer accepts it.`,
         resultType: 'QUOTE',
         resultId: quote.id,
       };
@@ -226,13 +228,13 @@ export class QuoteApproveSkill implements ChannelSkill<ResolvedQuoteApproval> {
     if (resolved.alsoSend) {
       try {
         await this.invoices.sendToCustomer(ctx.organizationId, invoice.id);
-        sendNote = ' and emailed to the customer';
+        sendNote = ', now emailed to the customer';
       } catch (err: unknown) {
         // The approval already happened and must not be reported as failed —
         // say precisely which half worked.
         const msg = err instanceof Error ? err.message : String(err);
         return {
-          reply: `Quote ${quote.quoteNumber} approved and invoice ${invoice.invoiceNumber} created, but sending it failed: ${msg}`,
+          reply: `Quote ${quote.quoteNumber} approved. It already has invoice ${invoice.invoiceNumber}, but sending it failed: ${msg}`,
           resultType: 'INVOICE',
           resultId: invoice.id,
         };
@@ -240,7 +242,7 @@ export class QuoteApproveSkill implements ChannelSkill<ResolvedQuoteApproval> {
     }
 
     return {
-      reply: `Approved quote ${quote.quoteNumber}. Invoice ${invoice.invoiceNumber} for ${invoice.amount} ${invoice.currency} created${sendNote}.`,
+      reply: `Approved quote ${quote.quoteNumber}. It already has invoice ${invoice.invoiceNumber} for ${invoice.amount} ${invoice.currency}${sendNote}.`,
       resultType: 'INVOICE',
       resultId: invoice.id,
     };

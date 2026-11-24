@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/field';
 import { Badge } from '@/components/ui/primitives';
 import type { ChannelThreadDto } from '@saas/shared';
 import { HandoverBadge } from './handover';
+import { messagePreview } from './message-files';
 
 export type ProviderFilter = 'ALL' | 'WHATSAPP' | 'TELEGRAM' | 'EMAIL';
 
@@ -56,7 +57,9 @@ export function InboxThreadList({
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchesName = thread.name.toLowerCase().includes(q);
-        const matchesSnippet = thread.lastMessage.body.toLowerCase().includes(q);
+        const matchesSnippet = messagePreview(thread.lastMessage.body, thread.lastMessage.files)
+          .toLowerCase()
+          .includes(q);
         const matchesSender = thread.recipientOrSender.toLowerCase().includes(q);
         if (!matchesName && !matchesSnippet && !matchesSender) {
           return false;
@@ -178,7 +181,7 @@ export function InboxThreadList({
 
                   <p className="truncate text-xs text-ink-muted mb-1">
                     {isOutbound && <span className="text-ink-subtle font-normal">You: </span>}
-                    {lastMsg.body}
+                    {messagePreview(lastMsg.body, lastMsg.files)}
                   </p>
 
                   <div className="flex items-center gap-1.5">

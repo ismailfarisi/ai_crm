@@ -5,6 +5,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { AutomationApprovalDto, AutomationExecutionDto } from '@saas/shared';
 import { api } from '@/lib/api/endpoints';
+import { formatDateTime } from '@/lib/utils';
 import { ApiError } from '@/lib/api/client';
 import { runsRefetchInterval } from '@/hooks/use-automations';
 import { RunsDrawer } from './runs-drawer';
@@ -125,7 +126,7 @@ describe('RunsDrawer', () => {
     const rows = await screen.findAllByTestId('run-row');
     const started = screen.getAllByText('5 minutes ago');
     expect(started).toHaveLength(2);
-    expect(started[0].getAttribute('title')).toBe(new Date(startedAt).toLocaleString());
+    expect(started[0].getAttribute('title')).toBe(formatDateTime(startedAt));
     expect(rows[0].textContent).toContain('1.2 s');
     expect(rows[1].querySelector('[data-testid="run-duration"]')).toBeNull();
   });

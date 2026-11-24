@@ -7,6 +7,7 @@ import { usePayslip } from '@/hooks/use-payroll';
 import { Button } from '@/components/ui/button';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { money, periodLabel } from './payroll-format';
+import { formatDate } from '@/lib/utils';
 
 type Amount = { label: string; amount: number; testId?: string };
 
@@ -100,7 +101,7 @@ export function Payslip({ slip }: { slip: PayslipDto }) {
         </div>
         <div>
           <dt className="text-xs text-ink-subtle">Pay date</dt>
-          <dd>{new Date(run.payDate).toLocaleDateString()}</dd>
+          <dd>{formatDate(run.payDate)}</dd>
         </div>
         <div>
           <dt className="text-xs text-ink-subtle">Paid by</dt>

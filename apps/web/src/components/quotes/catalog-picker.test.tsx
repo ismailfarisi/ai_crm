@@ -192,15 +192,13 @@ describe('QuoteMarginCard', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('warns that margin is an over-estimate when a line has no cost', () => {
-    render(
-      <QuoteMarginCard
-        totals={{ ...healthy, hasCompleteCost: false }}
-        violations={[]}
-        status={marginStatus(healthy, floor20)}
-      />,
-    );
-    expect(screen.getByText(/over-estimate/)).toBeDefined();
+  /** "100.0% · Cost missing on 1 line" read like a great margin. */
+  it('says the margin is not known yet, and why, when a line has no cost', () => {
+    const uncosted = { ...healthy, costAmount: 0, marginAmount: 2000, marginPct: 1, hasCompleteCost: false };
+    render(<QuoteMarginCard totals={uncosted} violations={[]} status={marginStatus(uncosted, floor20, 1)} />);
+    expect(screen.getByText('Margin not known yet: 1 line has no cost')).toBeDefined();
+    expect(screen.getByText(/margin is not known yet because some lines were typed by hand/)).toBeDefined();
+    expect(screen.queryByText('100.0%')).toBeNull();
   });
 
   it('lists policy breaches', () => {
@@ -255,6 +253,20 @@ describe('marginStatus', () => {
     expect(marginStatus(at(0, 0), policy).showFigure).toBe(false);
     expect(marginStatus(at(0.35), policy, 0, 1)).toMatchObject({ label: 'Re-costing…', showFigure: false });
     expect(marginStatus(at(0.35), policy).showFigure).toBe(true);
+    expect(marginStatus(at(1), policy, 2)).toMatchObject({
+      tone: 'warning',
+      label: 'Margin not known yet: 2 lines have no cost',
+      showFigure: false,
+    });
+  });
+
+  /** A missing cost can only push the margin down, so a loss is still a loss. */
+  it('still calls a loss a loss when a line has no cost', () => {
+    expect(marginStatus(at(-0.05), policy, 1)).toMatchObject({
+      tone: 'danger',
+      label: 'Loss, margin not known yet: 1 line has no cost',
+      showFigure: false,
+    });
   });
 });
 

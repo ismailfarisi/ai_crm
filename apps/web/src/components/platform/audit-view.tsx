@@ -6,6 +6,7 @@ import { useAuditTrail } from '@/hooks/use-platform';
 import { ActivityRow } from './activity-timeline';
 import { Button } from '@/components/ui/button';
 import { Card, CardBody, EmptyState, PageHeader } from '@/components/ui/primitives';
+import { formatDateTime } from '@/lib/utils';
 
 const SUBJECTS = [
   'QUOTE',
@@ -167,7 +168,7 @@ export function AuditView() {
                   {selected.action} · {selected.subjectType.replace(/_/g, ' ').toLowerCase()}
                 </h3>
                 <p className="text-xs text-ink-muted">
-                  {new Date(selected.createdAt).toLocaleString()}
+                  {formatDateTime(selected.createdAt)}
                   {selected.actorName ? ` · ${selected.actorName}` : ''}
                   {selected.ip ? ` · ${selected.ip}` : ''}
                 </p>

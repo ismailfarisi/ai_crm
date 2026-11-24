@@ -16,6 +16,7 @@ import {
   localizedLabel,
   toArabicIndicDigits,
   UniversalDocumentData,
+  formatDisplayDate,
 } from '@saas/shared';
 import { hasRtl, isolateLtr } from './pdf/bidi-text';
 import { installDocumentText } from './pdf/document-text';
@@ -108,16 +109,7 @@ function formatDate(
   value: Date | string | undefined | null,
   arabic = false,
 ): string {
-  if (!value) return '—';
-  const d = typeof value === 'string' ? new Date(value) : value;
-  if (isNaN(d.getTime())) return '—';
-  // Arabic month names, Western digits unless the template asks otherwise.
-  return d.toLocaleDateString(arabic ? 'ar-AE-u-nu-latn' : 'en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    timeZone: DOCUMENT_TIME_ZONE,
-  });
+  return formatDisplayDate(value, { arabic, timeZone: DOCUMENT_TIME_ZONE });
 }
 
 function getDocumentTitle(
@@ -1752,29 +1744,8 @@ export class DocumentPdfRendererService {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
           })} ${ccy}`;
-    const MONTHS = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    const nDate = (v: Date | string | null | undefined) => {
-      if (!v) return '';
-      const d = v instanceof Date ? v : new Date(v);
-      if (isNaN(d.getTime())) return '';
-      const zoned = new Date(
-        d.toLocaleString('en-US', { timeZone: DOCUMENT_TIME_ZONE }),
-      );
-      return `${zoned.getDate()}/${MONTHS[zoned.getMonth()]}/${zoned.getFullYear()}`;
-    };
+    const nDate = (v: Date | string | null | undefined) =>
+      formatDisplayDate(v, { timeZone: DOCUMENT_TIME_ZONE }, '');
     const typeName =
       {
         INVOICE: 'Invoice',
@@ -1812,9 +1783,7 @@ export class DocumentPdfRendererService {
     const companyLines = [
       orgName,
       ...(config.header.showCompanyAddress ? orgAddrLines : []),
-      config.header.showCompanyTaxId && org.taxId
-        ? `TRN : ${org.taxId}`
-        : null,
+      config.header.showCompanyTaxId && org.taxId ? `TRN : ${org.taxId}` : null,
     ].filter(Boolean) as string[];
 
     const WAVE_TOP: Array<[number, number]> = [
@@ -1948,11 +1917,8 @@ export class DocumentPdfRendererService {
       .filter(Boolean);
     const clientLines =
       partyLines.length > 2
-          ? [
-              [partyLines[0], partyLines[1]].join(', '),
-              ...partyLines.slice(2),
-            ]
-          : partyLines;
+        ? [[partyLines[0], partyLines[1]].join(', '), ...partyLines.slice(2)]
+        : partyLines;
     for (const line of clientLines) {
       doc.text(line, 22, blockY, { width: 290, lineBreak: false });
       blockY += 13;
@@ -1982,10 +1948,15 @@ export class DocumentPdfRendererService {
     const cols = [
       { label: 'Item', x: 22, w: 107, align: 'left' as const },
       { label: 'Description', x: 146, w: 188, align: 'left' as const },
-      { label: 'Unit Cost', x: 351, w: 62, align: 'left' as const },
+      {
+        label: docData.type === 'PURCHASE_ORDER' ? 'Unit Cost' : 'Unit Price',
+        x: 351,
+        w: 62,
+        align: 'left' as const,
+      },
       { label: 'Quantity', x: 429, w: 35, align: 'left' as const },
       { label: 'Tax', x: 480, w: 24, align: 'left' as const },
-      { label: 'Line Total', x: 504.5, w: 78.5, align: 'right' as const },
+      { label: 'Amount', x: 504.5, w: 78.5, align: 'right' as const },
     ];
     const drawTableHeader = (top: number) => {
       doc.rect(LEFT, top, TABLE_W, 35).fill(HDR);
@@ -2006,12 +1977,8 @@ export class DocumentPdfRendererService {
       const name = item.code || (item.description || '').split('\n')[0];
       const desc = item.description || '';
       doc.font(regularFont).fontSize(9);
-      const descH = desc
-        ? doc.heightOfString(desc, { width: 188 })
-        : 0;
-      const nameH = name
-        ? doc.heightOfString(name, { width: 107 })
-        : 0;
+      const descH = desc ? doc.heightOfString(desc, { width: 188 }) : 0;
+      const nameH = name ? doc.heightOfString(name, { width: 107 }) : 0;
       const rowH = Math.max(descH, nameH, 11) + 16;
 
       if (y + rowH > BOTTOM_LIMIT) {

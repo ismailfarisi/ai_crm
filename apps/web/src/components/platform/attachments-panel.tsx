@@ -15,6 +15,7 @@ import {
 } from '@/hooks/use-platform';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/button';
+import { formatDate } from '@/lib/utils';
 
 interface AttachmentsPanelProps {
   ownerType: AttachmentOwnerType;
@@ -91,7 +92,7 @@ export function AttachmentsPanel({ ownerType, ownerId, canEdit = true }: Attachm
                   <p className="text-xs text-ink-muted">
                     {formatBytes(file.sizeBytes)}
                     {file.uploadedByName ? ` · ${file.uploadedByName}` : ''} ·{' '}
-                    {new Date(file.createdAt).toLocaleDateString()}
+                    {formatDate(file.createdAt)}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">

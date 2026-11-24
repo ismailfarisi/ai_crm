@@ -14,6 +14,7 @@ import { Select } from '@/components/ui/field';
 import { Alert, Badge, Card, CardBody, EmptyState, PageHeader, Skeleton } from '@/components/ui/primitives';
 import { PeopleNav } from './people-nav';
 import { SETTLEMENT_REASON_LABELS, SETTLEMENT_STATUS_LABELS, SETTLEMENT_STATUS_TONES, inCurrency, money, usePayrollCurrency } from './payroll-format';
+import { formatDate } from '@/lib/utils';
 
 export function SettlementStatusBadge({ status }: { status: SettlementStatus }) {
   return <Badge tone={SETTLEMENT_STATUS_TONES[status]}>{SETTLEMENT_STATUS_LABELS[status]}</Badge>;
@@ -157,7 +158,7 @@ export function SettlementsView() {
                       </Link>
                     </td>
                     <td className="py-2">{s.employeeName}</td>
-                    <td className="py-2 whitespace-nowrap">{new Date(s.leavingDate).toLocaleDateString()}</td>
+                    <td className="py-2 whitespace-nowrap">{formatDate(s.leavingDate)}</td>
                     <td className="py-2 text-ink-muted">{SETTLEMENT_REASON_LABELS[s.reason]}</td>
                     <td className="py-2">
                       <SettlementStatusBadge status={s.status} />

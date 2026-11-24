@@ -12,8 +12,9 @@ import { Alert, Card, CardBody, EmptyState, PageHeader, Skeleton } from '@/compo
 import { PeopleNav } from './people-nav';
 import { employeeTabHref } from './employee-tabs';
 import { inCurrency, money, usePayrollCurrency } from './payroll-format';
+import { formatDate } from '@/lib/utils';
 
-const day = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString();
+const day = (d: string) => formatDate(d);
 
 export function OpeningGratuityView() {
   const canPost = useCan({ permission: PERMISSIONS.PAYROLL_APPROVE });

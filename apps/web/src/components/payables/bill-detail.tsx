@@ -22,6 +22,7 @@ import { BillStatusPill } from './bills-view';
 import { PrepaidSchedulesPanel } from './prepaid-schedules-panel';
 import { AttachmentsPanel } from '@/components/platform/attachments-panel';
 import { ActivityTimeline } from '@/components/platform/activity-timeline';
+import { formatDate } from '@/lib/utils';
 
 const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -142,8 +143,8 @@ export function BillDetail({ id }: { id: string }) {
 
       <dl className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          ['Invoice date', new Date(bill.billDate).toLocaleDateString()],
-          ['Due', bill.dueDate ? new Date(bill.dueDate).toLocaleDateString() : '—'],
+          ['Invoice date', formatDate(bill.billDate)],
+          ['Due', bill.dueDate ? formatDate(bill.dueDate) : '—'],
           ['Paid', money(bill.paidAmount)],
           ['Outstanding', money(outstanding)],
         ].map(([label, value]) => (
@@ -186,8 +187,8 @@ export function BillDetail({ id }: { id: string }) {
                       {line.category && line.servicePeriodStart && ' · '}
                       {line.servicePeriodStart && line.servicePeriodEnd && (
                         <>
-                          Spread {new Date(line.servicePeriodStart).toLocaleDateString()} to{' '}
-                          {new Date(line.servicePeriodEnd).toLocaleDateString()}
+                          Spread {formatDate(line.servicePeriodStart)} to{' '}
+                          {formatDate(line.servicePeriodEnd)}
                         </>
                       )}
                     </p>
@@ -214,7 +215,7 @@ export function BillDetail({ id }: { id: string }) {
             {payments.map((p) => (
               <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
                 <span className={p.reversedAt ? 'text-ink-subtle line-through' : 'text-ink'}>
-                  {money(p.amount)} on {new Date(p.paidAt).toLocaleDateString()}
+                  {money(p.amount)} on {formatDate(p.paidAt)}
                   {p.reference && ` · ${p.reference}`}
                 </span>
                 {p.reversedAt ? (

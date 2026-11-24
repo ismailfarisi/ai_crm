@@ -20,7 +20,7 @@ const money = (name: string) =>
 /**
  * What the customer has committed to buy.
  *
- * Created once per quote, when the quote is approved. The quote stays the
+ * Created once per quote, when the customer accepts the approved quote. The quote stays the
  * commercial document the customer saw; the order is what production and
  * billing work from, and it does not change when someone edits a draft
  * revision of the quote afterwards.

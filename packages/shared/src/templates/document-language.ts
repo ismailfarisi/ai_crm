@@ -67,7 +67,7 @@ export const DOCUMENT_LABELS = {
   unitPrice: { en: 'Unit Price', ar: 'سعر الوحدة' },
   discountPercent: { en: 'Disc %', ar: 'الخصم %' },
   taxPercent: { en: 'Tax %', ar: 'الضريبة %' },
-  lineTotal: { en: 'Total', ar: 'المجموع' },
+  lineTotal: { en: 'Amount', ar: 'المبلغ' },
   noItems: { en: 'No line items recorded.', ar: 'لا توجد بنود.' },
   accountSummary: { en: 'ACCOUNT SUMMARY', ar: 'ملخص الحساب' },
   statementPeriod: { en: 'STATEMENT PERIOD', ar: 'فترة الكشف' },

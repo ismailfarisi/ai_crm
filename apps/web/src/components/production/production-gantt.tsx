@@ -12,6 +12,7 @@ import {
   Kanban,
 } from 'lucide-react';
 import type { WorkOrderDto, WorkOrderOperationDto } from '@saas/shared';
+import { formatDisplayDate, formatDisplayMonth } from '@saas/shared';
 
 export interface ProductionGanttProps {
   workOrders: WorkOrderDto[];
@@ -68,23 +69,14 @@ function stepTimeWindow(anchorDate: Date, scale: GanttTimeScale, direction: -1 |
 
 function formatWindowLabel(start: Date, end: Date, scale: GanttTimeScale): string {
   if (scale === 'day') {
-    return start.toLocaleDateString(undefined, {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
+    return `${start.toLocaleDateString('en-GB', { weekday: 'short' })} ${formatDisplayDate(start)}`;
   }
   if (scale === 'week') {
-    const startStr = start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    const endStr = end.toLocaleDateString(undefined, {
-      month: start.getMonth() === end.getMonth() ? undefined : 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
+    const startStr = formatDisplayDate(start, { withYear: false });
+    const endStr = formatDisplayDate(end);
     return `${startStr} – ${endStr}`;
   }
-  return start.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  return formatDisplayMonth(start);
 }
 
 function getTimelineColumns(start: Date, end: Date, scale: GanttTimeScale): TimelineColumn[] {
@@ -113,7 +105,7 @@ function getTimelineColumns(start: Date, end: Date, scale: GanttTimeScale): Time
       const isColToday = colStart.getTime() === today.getTime();
       cols.push({
         id: `d-${i}`,
-        label: colStart.toLocaleDateString(undefined, { weekday: 'short' }),
+        label: colStart.toLocaleDateString('en-GB', { weekday: 'short' }),
         subLabel: String(colStart.getDate()),
         start: colStart,
         end: colEnd,
@@ -129,7 +121,7 @@ function getTimelineColumns(start: Date, end: Date, scale: GanttTimeScale): Time
       cols.push({
         id: `m-d-${day}`,
         label: String(day),
-        subLabel: colStart.toLocaleDateString(undefined, { weekday: 'narrow' }),
+        subLabel: colStart.toLocaleDateString('en-GB', { weekday: 'narrow' }),
         start: colStart,
         end: colEnd,
         isToday: isColToday,

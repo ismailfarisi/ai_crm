@@ -52,7 +52,7 @@ export class OrdersController {
 
   @Get('quotes/:id/sales-order')
   @RequirePermissions(PERMISSIONS.SALES_ORDER_READ)
-  @ApiOperation({ summary: 'The sales order an approved quote became, if any' })
+  @ApiOperation({ summary: 'The sales order an accepted quote became, if any' })
   async byQuote(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,

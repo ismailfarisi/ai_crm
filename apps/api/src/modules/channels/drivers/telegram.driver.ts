@@ -111,6 +111,7 @@ export class TelegramDriver implements ChannelDriver {
       : undefined;
     return {
       senderIdentifier: String(msg.chat.id),
+      senderName: telegramSenderName(msg.from ?? msg.chat),
       body:
         text ||
         caption ||
@@ -169,6 +170,21 @@ export class TelegramDriver implements ChannelDriver {
       mimeType: TYPE_BY_EXTENSION[ext] ?? 'application/octet-stream',
     };
   }
+}
+
+/**
+ * A Telegram user's name as they set it, else their @username, else plain
+ * "Telegram user". The chat id is a number nobody recognises.
+ */
+export function telegramSenderName(from: any): string {
+  const name = [from?.first_name, from?.last_name]
+    .filter((part) => typeof part === 'string' && part.trim())
+    .map((part: string) => part.trim())
+    .join(' ');
+  if (name) return name;
+  const username =
+    typeof from?.username === 'string' ? from.username.trim() : '';
+  return username ? `@${username}` : 'Telegram user';
 }
 
 const TYPE_BY_EXTENSION: Record<string, string> = {

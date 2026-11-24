@@ -13,7 +13,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/field';
 import { EmptyState, PageHeader } from '@/components/ui/primitives';
-import { cn, formatMoney } from '@/lib/utils';
+import { cn, formatDate, formatMoney } from '@/lib/utils';
 import { money, OrderStatusPill } from './orders-view';
 import { OrderDeliveries } from './order-deliveries';
 
@@ -196,7 +196,7 @@ export function OrderDetail({ id }: { id: string }) {
         )}
         {order.acceptedAt ? (
           <span>
-            Accepted by {order.acceptedByName} on {new Date(order.acceptedAt).toLocaleDateString()}
+            Accepted by {order.acceptedByName} on {formatDate(order.acceptedAt)}
           </span>
         ) : (
           <span>Not accepted online by the customer</span>
@@ -220,7 +220,7 @@ export function OrderDetail({ id }: { id: string }) {
                   <p className="text-xs text-ink-subtle">
                     {stage.invoiceId
                       ? `${stage.invoiceNumber} · ${INVOICE_STATUS[stage.invoiceStatus ?? ''] ?? ''} · ${
-                          stage.invoicedAt ? new Date(stage.invoicedAt).toLocaleDateString() : ''
+                          stage.invoicedAt ? formatDate(stage.invoicedAt) : ''
                         }`
                       : stage.trigger === 'ON_APPROVAL'
                         ? 'Invoiced when accepted'

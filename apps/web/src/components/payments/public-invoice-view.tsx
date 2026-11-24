@@ -5,6 +5,8 @@ import { CheckCircle2, CircleAlert, Loader2 } from 'lucide-react';
 import type { PublicInvoiceDto } from '@saas/shared';
 import { PayButton } from './pay-button';
 import { money, publicCall } from './public-fetch';
+import { formatDate } from '@/lib/utils';
+import { formatPaymentTerms } from '@saas/shared';
 
 type LoadState =
   | { kind: 'loading' }
@@ -66,9 +68,14 @@ export function PublicInvoiceView({ token, justPaid }: { token: string; justPaid
             {invoice.stageLabel ? `${invoice.stageLabel} invoice` : 'Tax invoice'} {invoice.invoiceNumber}
           </h1>
           <p className="mt-1 text-sm text-ink-muted">
-            For {invoice.customerName} · Issued {new Date(invoice.issuedAt).toLocaleDateString()}
-            {invoice.dueDate ? ` · Due ${new Date(invoice.dueDate).toLocaleDateString()}` : ''}
+            For {invoice.customerName} · Issued {formatDate(invoice.issuedAt)}
+            {invoice.dueDate ? ` · Due ${formatDate(invoice.dueDate)}` : ''}
           </p>
+          {invoice.paymentTerms && (
+            <p className="mt-1 text-sm text-ink-muted">
+              Payment terms: {formatPaymentTerms(invoice.paymentTerms)}
+            </p>
+          )}
         </header>
 
         {invoice.items.length > 0 && (
@@ -78,7 +85,7 @@ export function PublicInvoiceView({ token, justPaid }: { token: string; justPaid
                 <tr>
                   <th className="px-6 py-2 text-start font-medium">Item</th>
                   <th className="px-3 py-2 text-end font-medium">Qty</th>
-                  <th className="px-3 py-2 text-end font-medium">Price</th>
+                  <th className="px-3 py-2 text-end font-medium">Unit price</th>
                   <th className="px-6 py-2 text-end font-medium">Amount</th>
                 </tr>
               </thead>
