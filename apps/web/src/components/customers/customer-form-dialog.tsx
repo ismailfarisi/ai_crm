@@ -27,6 +27,10 @@ interface CustomerFormDialogProps {
   onClose: () => void;
   /** Present when editing; absent when creating. */
   customer?: CustomerDto | null;
+  /** Prefills a new customer, e.g. from a contact. Keep the object stable between renders. */
+  defaults?: Partial<FormValues>;
+  /** Called with the saved customer before the dialog closes. */
+  onSaved?: (customer: CustomerDto) => void | Promise<void>;
 }
 
 /**
@@ -66,7 +70,7 @@ const VAT_STATUS_OPTIONS = [
 
 const EMIRATE_OPTIONS = EMIRATES.map((code) => ({ value: code, label: EMIRATE_NAMES[code] }));
 
-export function CustomerFormDialog({ open, onClose, customer }: CustomerFormDialogProps) {
+export function CustomerFormDialog({ open, onClose, customer, defaults, onSaved }: CustomerFormDialogProps) {
   const isEditing = Boolean(customer);
 
   const create = useCreateCustomer();
@@ -125,15 +129,17 @@ export function CustomerFormDialog({ open, onClose, customer }: CustomerFormDial
             paymentTermsDays: customer.paymentTermsDays ?? 30,
             notes: customer.notes ?? '',
           }
-        : EMPTY,
+        : { ...EMPTY, ...defaults },
     );
-  }, [open, customer, reset]);
+  }, [open, customer, defaults, reset]);
 
   const onSubmit = handleSubmit(async (values) => {
     try {
       if (orgIsUae) {
-        if (customer) await update.mutateAsync({ id: customer.id, input: values });
-        else await create.mutateAsync(values);
+        const saved = customer
+          ? await update.mutateAsync({ id: customer.id, input: values })
+          : await create.mutateAsync(values);
+        await onSaved?.(saved);
       } else {
         // Outside the UAE, or while the organisation is loading or cannot be
         // read (the fields stay hidden then): an update never sends the VAT
@@ -141,8 +147,10 @@ export function CustomerFormDialog({ open, onClose, customer }: CustomerFormDial
         // status only when the country or tax ID changes. A new customer
         // sends null and the API picks the status.
         const { vatStatus: _vatStatus, emirate: _emirate, ...rest } = values;
-        if (customer) await update.mutateAsync({ id: customer.id, input: rest });
-        else await create.mutateAsync({ ...rest, vatStatus: null, emirate: null });
+        const saved = customer
+          ? await update.mutateAsync({ id: customer.id, input: rest })
+          : await create.mutateAsync({ ...rest, vatStatus: null, emirate: null });
+        await onSaved?.(saved);
       }
       onClose();
     } catch (error) {
