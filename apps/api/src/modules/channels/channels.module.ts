@@ -42,6 +42,12 @@ import { ChannelAgentPreviewService } from './services/channel-agent-preview.ser
 import { CustomerChannelSender } from './entities/customer-channel-sender.entity';
 import { CustomerSenderService } from './services/customer-sender.service';
 import { CustomerLookupService } from './services/customer-lookup.service';
+import { WhatsAppDocumentService } from './services/whatsapp-document.service';
+import { CatalogLookupService } from './services/catalog-lookup.service';
+import { CatalogItem } from '../catalog/entities/catalog-item.entity';
+import { Material } from '../catalog/entities/material.entity';
+import { StockItem } from '../inventory/entities/stock-item.entity';
+import { WhatsAppSendController } from './whatsapp-send.controller';
 import { CustomerSendersController } from './customer-senders.controller';
 import { Customer } from '../customers/entities/customer.entity';
 import { Organization } from '../organizations/entities/organization.entity';
@@ -77,6 +83,10 @@ import { DeliveryNote } from '../credits/entities/credit-note.entity';
       Quote,
       WorkOrder,
       DeliveryNote,
+      // Read by the customer agents' price and stock answers.
+      CatalogItem,
+      Material,
+      StockItem,
     ]),
     ContactsModule,
     UsersModule,
@@ -94,6 +104,7 @@ import { DeliveryNote } from '../credits/entities/credit-note.entity';
     ChannelsController,
     ChannelsWebhookController,
     CustomerSendersController,
+    WhatsAppSendController,
   ],
   providers: [
     ChannelsService,
@@ -103,6 +114,8 @@ import { DeliveryNote } from '../credits/entities/credit-note.entity';
     ChannelAgentPreviewService,
     CustomerSenderService,
     CustomerLookupService,
+    WhatsAppDocumentService,
+    CatalogLookupService,
     { provide: CHANNEL_SENDER, useExisting: ChannelsService },
     ChannelCryptoService,
     ChannelCommandService,
@@ -121,6 +134,7 @@ import { DeliveryNote } from '../credits/entities/credit-note.entity';
     ChannelAgentService,
     CustomerSenderService,
     CustomerLookupService,
+    CatalogLookupService,
     ChannelCryptoService,
     AiAgentService,
     ProductionCheckInService,

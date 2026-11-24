@@ -41,6 +41,7 @@ import { WorkOrder } from '@/modules/production/entities/work-order.entity';
 import { PurchaseOrder } from '@/modules/purchasing/entities/purchase-order.entity';
 import { StockItem } from '@/modules/inventory/entities/stock-item.entity';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
+import { insideWhatsAppWindow } from '@/modules/channels/whatsapp-window';
 import {
   asText,
   ownerCannot,
@@ -269,6 +270,11 @@ export function createShopActions(deps: ShopActionDeps) {
       if (!last) {
         refuse(
           `"${target}" has never messaged you on ${label}, so this was not sent. A chat message can only go to a customer who has written to you on that channel first; use "Send email" for everyone else.`,
+        );
+      }
+      if (channel === 'WHATSAPP_META' && !insideWhatsAppWindow(last)) {
+        refuse(
+          `"${target}" last messaged you on WhatsApp more than 24 hours ago, so this was not sent. WhatsApp only lets a business send its own text within 24 hours of the customer's last message; use "Send email" instead.`,
         );
       }
       resolved.push({ address, contactId: last.contactId, name: target });

@@ -51,6 +51,8 @@ describe('ChannelAgentService', () => {
       'draft_quote',
       'check_order_status',
       'check_quote_status',
+      'check_price',
+      'check_stock',
     ]);
   });
 

@@ -2,6 +2,11 @@ export interface OutboundPayload {
   recipient: string;
   body: string;
   subject?: string;
+  /**
+   * Send as an approved template instead of free text (WhatsApp only), for a
+   * customer outside the 24-hour window. `body` is still what is recorded.
+   */
+  template?: { name: string; language: string; parameters: string[] };
 }
 
 /**

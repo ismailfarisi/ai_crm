@@ -2,6 +2,8 @@
  * Split out of a single 477-line module so that two feature branches adding
  * endpoints no longer edit the same two objects. */
 import type {
+  SendOnWhatsAppPayload,
+  WhatsAppSendResultDto,
   StarterInstallResultDto,
   StarterTemplatePreviewDto,
   QuoteDto,
@@ -164,6 +166,8 @@ export const salesEndpoints = {
         body: payload,
       }),
     payments: (id: string) => apiFetch<InvoicePaymentDto[]>(`/invoices/${id}/payments`),
+    sendOnWhatsApp: (id: string, body: SendOnWhatsAppPayload) =>
+      apiFetch<WhatsAppSendResultDto>(`/invoices/${id}/whatsapp`, { method: 'POST', body }),
     void: (id: string, payload: VoidInvoicePayload) =>
       apiFetch<InvoiceDto>(`/invoices/${id}/void`, { method: 'POST', body: payload }),
     send: (id: string) =>

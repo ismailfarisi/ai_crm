@@ -27,6 +27,7 @@ import { ChannelAgentRunner } from '../../agents/channel-agent-runner';
 import type { ChannelAgentService } from '../../services/channel-agent.service';
 import type { CustomerSenderService } from '../../services/customer-sender.service';
 import type { CustomerLookupService } from '../../services/customer-lookup.service';
+import type { CatalogLookupService } from '../../services/catalog-lookup.service';
 import { DEFAULT_HANDOVER_MESSAGE } from '@saas/shared';
 import type { ChannelThreadService } from '../../services/channel-thread.service';
 import type { IntentAgentConfigService } from '../../services/intent-agent-config.service';
@@ -48,6 +49,7 @@ export function createChannelAiActivities(deps: {
   channelAgents?: Pick<ChannelAgentService, 'findEnabled'>;
   customerSenders?: Pick<CustomerSenderService, 'resolve'>;
   customerLookup?: Pick<CustomerLookupService, 'orders' | 'quotes'>;
+  catalogLookup?: Pick<CatalogLookupService, 'prices' | 'stockLevels'>;
   intentAgentConfigService?: Pick<IntentAgentConfigService, 'getEffective'>;
 }) {
   const classifier = new IntentClassifierAgent(deps.aiService);
@@ -64,6 +66,7 @@ export function createChannelAiActivities(deps: {
         quotesService: deps.quotesService,
         senders: deps.customerSenders,
         lookup: deps.customerLookup,
+        catalog: deps.catalogLookup,
       })
     : null;
 

@@ -90,6 +90,7 @@ export class ChannelAgentService {
         skills: payload.skills,
         channels: payload.channels,
         isEnabled: payload.isEnabled,
+        showStockQuantity: payload.showStockQuantity,
       }),
     );
   }
@@ -120,6 +121,8 @@ export class ChannelAgentService {
     if (payload.model !== undefined) agent.model = payload.model;
     if (payload.channels !== undefined) agent.channels = payload.channels;
     if (payload.isEnabled !== undefined) agent.isEnabled = payload.isEnabled;
+    if (payload.showStockQuantity !== undefined)
+      agent.showStockQuantity = payload.showStockQuantity;
     return this.repo.save(agent);
   }
 
@@ -140,6 +143,7 @@ export class ChannelAgentService {
       skills: agent.skills,
       channels: agent.channels,
       isEnabled: agent.isEnabled,
+      showStockQuantity: agent.showStockQuantity ?? false,
       createdAt: agent.createdAt.toISOString(),
       updatedAt: agent.updatedAt.toISOString(),
     };

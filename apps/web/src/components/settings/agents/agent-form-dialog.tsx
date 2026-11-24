@@ -48,11 +48,12 @@ const EMPTY: FormValues = {
   skills: [],
   channels: ['WHATSAPP_META'],
   isEnabled: true,
+  showStockQuantity: false,
 };
 
 const KIND_HELP: Record<ChannelAgentKind, string> = {
   CUSTOMER:
-    'It writes its own replies to customers, following the instructions below. It cannot look up prices or stock, and it only answers about a customer’s own orders and quotes if you tick those tools. It passes the conversation to a person when it cannot help.',
+    'It writes its own replies to customers, following the instructions below. It only gives list prices, stock, or a customer’s own orders and quotes if you tick those tools. It passes the conversation to a person when it cannot help.',
   STAFF:
     'It takes commands and files from staff who have linked their own chat. Each person can only use the tools their role allows, and anything that changes a record waits for their YES.',
 };
@@ -123,6 +124,7 @@ function AgentForm({
           skills: agent.skills,
           channels: agent.channels as FormValues['channels'],
           isEnabled: agent.isEnabled,
+          showStockQuantity: agent.showStockQuantity ?? false,
         }
       : EMPTY,
   });
@@ -266,6 +268,32 @@ function AgentForm({
             is on exactly one customer record, or someone linked the sender to the customer in the
             Inbox. Everyone else is told nothing about any order or quote and is passed to a person.
           </p>
+        )}
+        {kind === 'CUSTOMER' && skills.some((name) => name === 'check_price' || name === 'check_stock') && (
+          <p
+            role="note"
+            className="mt-2 rounded-lg border border-border bg-surface-muted/50 px-3 py-2 text-xs text-ink-muted"
+          >
+            <span className="font-medium text-ink">Prices and stock: </span>
+            anyone who writes can get these answers. It gives only the list price of items you marked
+            “Customers may be told this price” in the catalogue, never a cost, a margin, or what another
+            customer was quoted. Stock is said as in stock, running low or out of stock.
+          </p>
+        )}
+        {kind === 'CUSTOMER' && skills.includes('check_stock') && (
+          <label className="mt-2 flex cursor-pointer items-start gap-2 px-2 text-sm text-ink">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-4 accent-[var(--color-brand)]"
+              {...register('showStockQuantity')}
+            />
+            <span>
+              Also say how many are available
+              <span className="block text-xs text-ink-muted">
+                Off: customers only hear in stock, running low or out of stock.
+              </span>
+            </span>
+          </label>
         )}
       </fieldset>
 

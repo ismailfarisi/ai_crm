@@ -55,6 +55,10 @@ export class ChannelAgent {
   @Column({ type: 'boolean', default: true })
   isEnabled: boolean;
 
+  /** The stock tool may give how many are available, not only in stock / low / out. */
+  @Column({ type: 'boolean', default: false })
+  showStockQuantity: boolean;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 

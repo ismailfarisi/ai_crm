@@ -24,6 +24,8 @@ const channelAgentFields = {
   skills: z.array(z.string().max(60)).max(50),
   channels: z.array(ChannelProviderEnum),
   isEnabled: z.boolean(),
+  /** The stock tool may say how many are available, not only in stock / low / out. */
+  showStockQuantity: z.boolean(),
 };
 
 export const createChannelAgentSchema = z.object({
@@ -31,6 +33,7 @@ export const createChannelAgentSchema = z.object({
   skills: channelAgentFields.skills.default([]),
   channels: channelAgentFields.channels.default([]),
   isEnabled: channelAgentFields.isEnabled.default(true),
+  showStockQuantity: channelAgentFields.showStockQuantity.default(false),
 });
 export type CreateChannelAgentPayload = z.infer<typeof createChannelAgentSchema>;
 
@@ -50,6 +53,7 @@ export interface ChannelAgentDto {
   skills: string[];
   channels: string[];
   isEnabled: boolean;
+  showStockQuantity: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -80,6 +84,17 @@ export const CUSTOMER_AGENT_TOOLS = [
     name: 'check_quote_status',
     description:
       "Tell a customer where their own quotes stand: being prepared, sent, accepted or expired, with the total once it is approved. Only for a sender matched to one customer; anyone else is told nothing.",
+    isMutating: false,
+  },  {
+    name: 'check_price',
+    description:
+      'Tell a customer the list price of an item in your catalogue, only for items where you ticked "Customers may be told this price". Never the cost, the margin, or a price quoted to another customer.',
+    isMutating: false,
+  },
+  {
+    name: 'check_stock',
+    description:
+      'Tell a customer whether an item or material is in stock, running low or out of stock. The number available is only given if you allow it below.',
     isMutating: false,
   },
 ] as const satisfies ReadonlyArray<ChannelAgentSkillOptionDto>;

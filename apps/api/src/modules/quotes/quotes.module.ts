@@ -76,6 +76,11 @@ import { ChannelCryptoService } from '../channels/services/channel-crypto.servic
     QuoteProofsService,
     QuoteResponsesService,
   ],
-  exports: [QuotesService, InvoicesService, QuoteAcceptanceService],
+  exports: [
+    QuotesService,
+    InvoicesService,
+    QuoteAcceptanceService,
+    QuoteProofsService,
+  ],
 })
 export class QuotesModule {}

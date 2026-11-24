@@ -142,6 +142,8 @@ export const createCatalogItemSchema = z.object({
   taxRate: z.coerce.number().min(0).max(100).default(0),
   leadTimeDays: z.coerce.number().int().min(0).max(3650).default(0),
   isActive: z.boolean().default(true),
+  /** Customer agents may tell customers this item's list price. Off until the owner ticks it. */
+  showPriceToCustomers: z.boolean().default(false),
 });
 
 export const updateCatalogItemSchema = patchOf(createCatalogItemSchema);

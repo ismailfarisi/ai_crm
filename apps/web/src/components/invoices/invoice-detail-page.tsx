@@ -40,13 +40,15 @@ import {
 } from '@/hooks/use-invoices';
 import { useFinanceAccounts } from '@/hooks/use-finance';
 import { useOrganization } from '@/hooks/use-organization';
-import { api } from '@/lib/api/endpoints';
+import { useQueryClient } from '@tanstack/react-query';
+import { api, queryKeys } from '@/lib/api/endpoints';
 import { InvoiceStatusBadge } from './invoices-table';
 import { RecordPaymentModal } from './record-payment-modal';
 import { ReplaceInvoiceModal } from './replace-invoice-modal';
 import { VoidInvoiceModal } from './void-invoice-modal';
 import { InvoiceCreditsDialog } from '@/components/credits/invoice-credits-dialog';
 import { DocumentPrintModal } from '@/components/documents/document-print-modal';
+import { SendOnWhatsAppButton } from '@/components/whatsapp/send-on-whatsapp';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -67,6 +69,7 @@ export function InvoiceDetailPage({ invoiceId }: { invoiceId: string }) {
   const router = useRouter();
   const recordPayment = useRecordInvoicePayment();
   const sendInvoice = useSendInvoice();
+  const queryClient = useQueryClient();
   const voidInvoice = useVoidInvoice();
   const replaceInvoice = useReplaceInvoice();
   const downloadPdf = useDownloadInvoicePdf();
@@ -430,6 +433,20 @@ export function InvoiceDetailPage({ invoiceId }: { invoiceId: string }) {
                   <Mail className="size-3.5" aria-hidden />
                   {sending ? 'Sending…' : 'Email to customer'}
                 </Button>
+              )}
+              {canManage && (
+                <SendOnWhatsAppButton
+                  size="sm"
+                  what={`invoice ${invoice.invoiceNumber}`}
+                  customerName={invoice.customerName}
+                  send={async (to) => {
+                    const result = await api.invoices.sendOnWhatsApp(invoice.id, { to });
+                    if (result.method === 'CHANNEL') {
+                      void queryClient.invalidateQueries({ queryKey: queryKeys.invoices });
+                    }
+                    return result;
+                  }}
+                />
               )}
               {canCredit && (
                 <Button size="sm" variant="outline" onClick={() => setCrediting(true)}>

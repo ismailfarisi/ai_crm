@@ -191,7 +191,7 @@ describe('Send message step', () => {
 
   it('sends the written text to a customer who has messaged the shop on that channel', async () => {
     const { actions, channels, audit, finds } = setup({
-      inbound: { id: 'in-1', contactId: 'contact-1' },
+      inbound: { id: 'in-1', contactId: 'contact-1', createdAt: new Date() },
     });
     const result = await actions.executeChannelMessageActivity(toCustomer, ctx);
 
@@ -234,9 +234,26 @@ describe('Send message step', () => {
     expect(channels.sendMessage).not.toHaveBeenCalled();
   });
 
+  it('refuses a customer whose last WhatsApp message is over 24 hours old', async () => {
+    const { actions, channels } = setup({
+      inbound: {
+        id: 'in-1',
+        contactId: 'contact-1',
+        createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+      },
+    });
+    await expect(
+      actions.executeChannelMessageActivity(toCustomer, ctx),
+    ).rejects.toMatchObject({
+      nonRetryable: true,
+      message: expect.stringContaining('more than 24 hours ago'),
+    });
+    expect(channels.sendMessage).not.toHaveBeenCalled();
+  });
+
   it('never sends AI-written text to a customer', async () => {
     const { actions, channels } = setup({
-      inbound: { id: 'in-1', contactId: 'contact-1' },
+      inbound: { id: 'in-1', contactId: 'contact-1', createdAt: new Date() },
     });
     await expect(
       actions.executeChannelMessageActivity(toCustomer, {
@@ -330,7 +347,7 @@ describe('Send message step', () => {
 
   it('does not send twice when the step is retried', async () => {
     const { actions, channels } = setup({
-      inbound: { id: 'in-1', contactId: 'contact-1' },
+      inbound: { id: 'in-1', contactId: 'contact-1', createdAt: new Date() },
     });
     await actions.executeChannelMessageActivity(toCustomer, ctx);
     await actions.executeChannelMessageActivity(toCustomer, ctx);
@@ -339,7 +356,7 @@ describe('Send message step', () => {
 
   it('explains a channel that is not connected, without retrying', async () => {
     const { actions, channels } = setup({
-      inbound: { id: 'in-1', contactId: 'contact-1' },
+      inbound: { id: 'in-1', contactId: 'contact-1', createdAt: new Date() },
     });
     channels.sendMessage.mockRejectedValue(
       new BadRequestException('Channel WHATSAPP_META is not configured'),

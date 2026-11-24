@@ -31,6 +31,7 @@ const EMPTY: FormValues = {
   taxRate: 0,
   leadTimeDays: 0,
   isActive: true,
+  showPriceToCustomers: false,
 };
 
 export function CatalogItemFormDialog({ open, onClose, item }: CatalogItemFormDialogProps) {
@@ -64,6 +65,7 @@ export function CatalogItemFormDialog({ open, onClose, item }: CatalogItemFormDi
             taxRate: item.taxRate,
             leadTimeDays: item.leadTimeDays,
             isActive: item.isActive,
+            showPriceToCustomers: item.showPriceToCustomers ?? false,
           }
         : EMPTY,
     );
@@ -180,6 +182,20 @@ export function CatalogItemFormDialog({ open, onClose, item }: CatalogItemFormDi
               {...register('isActive')}
             />
             Available for new quotes
+          </label>
+          <label className="flex items-start gap-2 text-sm text-ink sm:col-span-2">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-4 rounded border-border"
+              {...register('showPriceToCustomers')}
+            />
+            <span>
+              Customers may be told this price
+              <span className="block text-xs text-ink-muted">
+                A customer agent with the price tool can quote the list price above when asked. It
+                never sees or shares the cost.
+              </span>
+            </span>
           </label>
         </div>
       </form>

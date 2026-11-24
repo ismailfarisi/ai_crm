@@ -75,7 +75,7 @@ const item: CatalogItemDto = {
   standardCost: 2.22,
   taxRate: 0,
   leadTimeDays: 10,
-  isActive: true,
+  isActive: true, showPriceToCustomers: false,
   createdAt: '2026-09-16T00:00:00Z',
   updatedAt: '2026-09-16T00:00:00Z',
 };

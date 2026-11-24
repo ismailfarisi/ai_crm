@@ -508,6 +508,28 @@ export class InvoicesService {
   }
 
   /**
+   * The invoice and its customer's pay link, for sending another way than
+   * email. The link is null when online payment is off or nothing is owed.
+   */
+  async payLinkFor(
+    tenantId: string,
+    id: string,
+  ): Promise<{ invoice: Invoice; payUrl: string | null }> {
+    const invoice = await this.findById(tenantId, id);
+    return { invoice, payUrl: await this.payLinkForEmail(tenantId, invoice) };
+  }
+
+  /** Marks an invoice sent by some other route than email, as email does. */
+  async markSent(tenantId: string, id: string): Promise<void> {
+    await this.invoiceRepository.update(
+      { id, tenantId },
+      { sentAt: new Date() },
+    );
+    const saved = await this.findById(tenantId, id);
+    await this.emitInvoiceEvent(tenantId, saved, 'invoice.sent');
+  }
+
+  /**
    * The customer's pay link, when the tenant has online payment switched on
    * for invoices. Resolved lazily: online payments live in their own module,
    * which depends on this one, and a mail must go out without it.

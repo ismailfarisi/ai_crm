@@ -13,6 +13,7 @@ import { Can } from '@/components/auth/can';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/field';
+import { SendOnWhatsAppButton } from '@/components/whatsapp/send-on-whatsapp';
 import { formatCurrency } from './quote-lines-table';
 import { MarginBadge } from './quote-margin-card';
 import { formatDate } from './format';
@@ -281,6 +282,16 @@ export function QuoteCustomerPanel({
                 <Link2 className="size-4" aria-hidden />
                 {link ? 'New link' : 'Copy link'}
               </Button>
+              <SendOnWhatsAppButton
+                what={summary.quoteNumber || 'this quote'}
+                customerName={summary.customerName || null}
+                disabled={busy !== null || hasUnsavedChanges}
+                send={async (to) => {
+                  const result = await api.quoteAcceptance.sendOnWhatsApp(quoteId, { to });
+                  if (result.method === 'CHANNEL') router.refresh();
+                  return result;
+                }}
+              />
               <Button
                 type="button"
                 variant="outline"
