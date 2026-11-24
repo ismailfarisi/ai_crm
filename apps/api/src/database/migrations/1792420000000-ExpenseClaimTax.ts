@@ -11,8 +11,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * Every existing claim keeps a null code and zero VAT: it stays the claim it
  * was, and its posted journal entry is not touched.
  */
-export class ExpenseClaimTax1792410000000 implements MigrationInterface {
-  name = 'ExpenseClaimTax1792410000000';
+export class ExpenseClaimTax1792420000000 implements MigrationInterface {
+  name = 'ExpenseClaimTax1792420000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
