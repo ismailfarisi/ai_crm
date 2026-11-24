@@ -1476,6 +1476,16 @@ phone or computer with the message filled in.
 - The proof goes out as the quote link: that is where the customer sees and
   approves the proof, so a new link is made, as "Copy link" does, and an
   earlier one stops working.
+- An invoice message carries the pay link only when online payments are on
+  for invoices. Without them it gives the number, amount and due date and no
+  link; the PDF still goes by email.
+- The quote's Activity shows "Sent or opened on WhatsApp" for every press:
+  the record is written per button press, before Kerf knows whether the
+  staff member went on to press "Open WhatsApp". The Inbox shows what the
+  business number actually sent.
+- When Meta rejects a send, staff see a plain reason; Meta's own error text
+  stays in the server log and on the failed Inbox message, since it can
+  repeat back part of the credentials.
 - Automations' "send to customer" step on WhatsApp now also refuses when the
   customer's last message is over 24 hours old, instead of letting Meta reject
   it. It still has no template option.

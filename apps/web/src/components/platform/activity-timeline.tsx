@@ -33,8 +33,8 @@ export function describeAction(action: string): string {
     proofs: 'Proof uploaded',
     revise: 'Revised',
     send: 'Sent',
-    whatsapp: 'Sent on WhatsApp',
-    'proofs whatsapp': 'Proof sent on WhatsApp',
+    whatsapp: 'Sent or opened on WhatsApp',
+    'proofs whatsapp': 'Proof sent or opened on WhatsApp',
     submit: 'Submitted',
   };
   return past[verb] ?? verb.charAt(0).toUpperCase() + verb.slice(1);

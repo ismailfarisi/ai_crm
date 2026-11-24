@@ -242,7 +242,8 @@ describe('Send on WhatsApp', () => {
     });
     const result = await service.sendInvoice(user, 'inv-1');
     expect(result.method).toBe('CLICK_TO_CHAT');
-    expect(result.reason).toContain('Template not approved');
+    expect(result.reason).toContain('did not accept');
+    expect(result.reason).not.toContain('Template not approved');
     expect(invoices.markSent).not.toHaveBeenCalled();
   });
 

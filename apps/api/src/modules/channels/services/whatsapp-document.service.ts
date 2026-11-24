@@ -301,7 +301,8 @@ export class WhatsAppDocumentService {
         `WhatsApp send of ${out.kind} ${out.documentId} failed: ${msg}`,
       );
       return clickToChat(
-        `WhatsApp did not accept the message from your business number (${msg}), ${FALLBACK}`,
+        // Meta's own error text can echo credentials; it stays in the server log.
+        `WhatsApp did not accept the message from your business number, ${FALLBACK}`,
       );
     }
     return {
