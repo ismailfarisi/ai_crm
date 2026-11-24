@@ -27,7 +27,7 @@ function untrackedLines(note: { lines: { stockMaterialId: string | null }[] }): 
   return note.lines.filter((line) => line.stockMaterialId === null).length;
 }
 
-export function OrderDeliveries({ order }: { order: SalesOrderDto }) {
+export function OrderDeliveries({ order, formRequest = 0 }: { order: SalesOrderDto; formRequest?: number }) {
   const canRead = useCan({ permission: PERMISSIONS.DELIVERY_NOTE_READ });
   const canCreate = useCan({ permission: PERMISSIONS.DELIVERY_NOTE_CREATE });
   const canDispatch = useCan({ permission: PERMISSIONS.DELIVERY_NOTE_DISPATCH });
@@ -39,6 +39,8 @@ export function OrderDeliveries({ order }: { order: SalesOrderDto }) {
   const [qty, setQty] = useState<Record<string, string>>({});
   const [carrier, setCarrier] = useState('');
   const [tracking, setTracking] = useState('');
+  // Bumped by the order's "Prepare delivery" next step to open the form from outside.
+  const [seenRequest, setSeenRequest] = useState(formRequest);
 
   if (!canRead) return null;
 
@@ -60,6 +62,10 @@ export function OrderDeliveries({ order }: { order: SalesOrderDto }) {
     setTracking('');
     setOpen(true);
   };
+  if (formRequest !== seenRequest) {
+    setSeenRequest(formRequest);
+    if (canCreate && shippable && anythingLeft) openForm();
+  }
   const lines = order.lines
     .map((l) => ({ salesOrderLineId: l.id, qty: Number(qty[l.id]) || 0 }))
     .filter((l) => l.qty > 0);

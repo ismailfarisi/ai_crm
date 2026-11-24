@@ -2,10 +2,13 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Ban, CheckCircle2, Factory, FileText, Lock, ReceiptText, Wrench } from 'lucide-react';
+import { Ban, CheckCircle2, Factory, FileText, Lock, ReceiptText, Send, Truck, Wallet, Wrench } from 'lucide-react';
 import { PERMISSIONS, type SalesOrderDto, type SalesOrderStatus } from '@saas/shared';
 import { useInvoiceStage, useSalesOrder, useSalesOrderAction } from '@/hooks/use-sales-orders';
 import { usePlanWorkOrders, useWorkOrders } from '@/hooks/use-work-orders';
+import { useDeliveryNoteAction, useDeliveryNotes } from '@/hooks/use-credits';
+import { orderNextStep, type OrderStepAction } from '@/lib/next-step';
+import { NextStepCard } from '@/components/documents/next-step-card';
 import { useCan } from '@/lib/session-context';
 import { Can } from '@/components/auth/can';
 import { Button } from '@/components/ui/button';
@@ -100,6 +103,17 @@ export function OrderDetail({ id }: { id: string }) {
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState('');
   const [pending, setPending] = useState<PendingStep | null>(null);
+  const [deliveryRequest, setDeliveryRequest] = useState(0);
+  const canReadDeliveries = useCan({ permission: PERMISSIONS.DELIVERY_NOTE_READ });
+  const { data: deliveries = [] } = useDeliveryNotes(id, canReadDeliveries);
+  const deliveryAct = useDeliveryNoteAction(id);
+  const can = {
+    update: useCan({ permission: PERMISSIONS.SALES_ORDER_UPDATE }),
+    invoice: useCan({ permission: PERMISSIONS.SALES_ORDER_INVOICE }),
+    deliver: useCan({ permission: PERMISSIONS.DELIVERY_NOTE_CREATE }),
+    dispatch: useCan({ permission: PERMISSIONS.DELIVERY_NOTE_DISPATCH }),
+    readInvoices: useCan({ permission: PERMISSIONS.INVOICE_READ }),
+  };
 
   if (isPending) return <p className="text-ink-muted">Loading…</p>;
   if (isError || !order) {
@@ -119,6 +133,69 @@ export function OrderDetail({ id }: { id: string }) {
   const inCurrency = (n: number) => formatMoney(Number(n) || 0, order.currency);
   const steps = NEXT[order.status] ?? [];
 
+  const nextStep = orderNextStep(order, deliveries);
+
+  /** The one main button for the next step, or nothing if this user cannot do it. */
+  const stepButton = (action: OrderStepAction | undefined) => {
+    if (!action) return null;
+    switch (action.kind) {
+      case 'invoice':
+        return can.invoice ? (
+          <Button loading={invoiceStage.isPending} onClick={() => setPending({ ...action, kind: 'invoice' })}>
+            <ReceiptText className="size-4" aria-hidden />
+            Raise invoice
+          </Button>
+        ) : null;
+      case 'payment':
+        return can.readInvoices ? (
+          <Link
+            href={action.invoiceId ? `/invoices/${action.invoiceId}` : '/invoices'}
+            className="inline-flex h-9 items-center gap-2 rounded-full bg-brand px-4 text-sm font-semibold text-on-brand shadow-xs hover:bg-brand-hover"
+          >
+            <Wallet className="size-4" aria-hidden />
+            {action.invoiceNumber ? `Open ${action.invoiceNumber}` : 'Open invoices'}
+          </Link>
+        ) : null;
+      case 'status':
+        return can.update ? (
+          <Button
+            loading={act.isPending && act.variables?.status === action.to}
+            onClick={() => setPending({ kind: 'status', to: action.to, label: action.label })}
+          >
+            {action.to === 'IN_PRODUCTION' ? (
+              <Factory className="size-4" aria-hidden />
+            ) : action.to === 'CLOSED' ? (
+              <Lock className="size-4" aria-hidden />
+            ) : (
+              <CheckCircle2 className="size-4" aria-hidden />
+            )}
+            {action.label}
+          </Button>
+        ) : null;
+      case 'deliver':
+        return can.deliver ? (
+          <Button onClick={() => setDeliveryRequest((n) => n + 1)}>
+            <Truck className="size-4" aria-hidden />
+            Prepare delivery
+          </Button>
+        ) : null;
+      case 'dispatch':
+        return can.dispatch ? (
+          <Button loading={deliveryAct.isPending} onClick={() => deliveryAct.mutate({ kind: 'dispatch', id: action.noteId })}>
+            <Send className="size-4" aria-hidden />
+            Dispatch {action.noteNumber}
+          </Button>
+        ) : null;
+      case 'invoiceDelivery':
+        return can.invoice ? (
+          <Button loading={deliveryAct.isPending} onClick={() => deliveryAct.mutate({ kind: 'invoice', id: action.noteId })}>
+            <ReceiptText className="size-4" aria-hidden />
+            Invoice {action.noteNumber}
+          </Button>
+        ) : null;
+    }
+  };
+
   const runPending = async () => {
     if (!pending) return;
     if (pending.kind === 'status') await act.mutateAsync({ id, status: pending.to });
@@ -134,12 +211,12 @@ export function OrderDetail({ id }: { id: string }) {
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <OrderStatusPill status={order.status} />
-            {/* One amber button: the next step. The rest are there, but quieter. */}
+            {/* The next-step card holds the one main button; these stay, quieter. */}
             <Can permission={PERMISSIONS.SALES_ORDER_UPDATE}>
-              {steps.map(({ to, label, icon: Icon }, index) => (
+              {steps.map(({ to, label, icon: Icon }) => (
                 <Button
                   key={to}
-                  variant={index === 0 ? 'primary' : 'outline'}
+                  variant="outline"
                   loading={act.isPending && act.variables?.status === to}
                   disabled={act.isPending}
                   onClick={() => setPending({ kind: 'status', to, label })}
@@ -168,6 +245,8 @@ export function OrderDetail({ id }: { id: string }) {
           </div>
         }
       />
+
+      <NextStepCard className="mb-6" step={nextStep} action={stepButton(nextStep.action)} />
 
       <dl className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
@@ -273,7 +352,7 @@ export function OrderDetail({ id }: { id: string }) {
         </ol>
       </section>
 
-      <OrderDeliveries order={order} />
+      <OrderDeliveries order={order} formRequest={deliveryRequest} />
 
       {canReadWork && workOrders.length > 0 && (
         <section className="mb-6 rounded-2xl border border-border bg-surface" aria-labelledby="wo-heading">
