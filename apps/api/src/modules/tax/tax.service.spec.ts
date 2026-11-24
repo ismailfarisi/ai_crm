@@ -334,12 +334,42 @@ describe('TaxService parties in UAE VAT mode', () => {
 });
 
 describe('TaxService: expense claims in the tax report and the VAT201', () => {
-  const october = [new Date('2026-10-01T00:00:00Z'), new Date('2026-10-31T23:59:59Z')] as const;
-  const november = [new Date('2026-11-01T00:00:00Z'), new Date('2026-11-30T23:59:59Z')] as const;
+  const october = [
+    new Date('2026-10-01T00:00:00Z'),
+    new Date('2026-10-31T23:59:59Z'),
+  ] as const;
+  const november = [
+    new Date('2026-11-01T00:00:00Z'),
+    new Date('2026-11-30T23:59:59Z'),
+  ] as const;
   const purchaseCodes = [
-    { id: 'sr', tenantId, kind: 'PURCHASE', code: 'SR', rate: 5, isReverseCharge: false, treatment: 'STANDARD' },
-    { id: 'bl', tenantId, kind: 'PURCHASE', code: 'BL', rate: 5, isReverseCharge: false, treatment: 'BLOCKED' },
-    { id: 'rc', tenantId, kind: 'PURCHASE', code: 'RC', rate: 5, isReverseCharge: true, treatment: 'REVERSE_CHARGE' },
+    {
+      id: 'sr',
+      tenantId,
+      kind: 'PURCHASE',
+      code: 'SR',
+      rate: 5,
+      isReverseCharge: false,
+      treatment: 'STANDARD',
+    },
+    {
+      id: 'bl',
+      tenantId,
+      kind: 'PURCHASE',
+      code: 'BL',
+      rate: 5,
+      isReverseCharge: false,
+      treatment: 'BLOCKED',
+    },
+    {
+      id: 'rc',
+      tenantId,
+      kind: 'PURCHASE',
+      code: 'RC',
+      rate: 5,
+      isReverseCharge: true,
+      treatment: 'REVERSE_CHARGE',
+    },
   ];
   const claim = (over: Record<string, unknown>) => ({
     id: 'c',
@@ -356,22 +386,38 @@ describe('TaxService: expense claims in the tax report and the VAT201', () => {
   });
 
   /** A claims repository that answers the two period queries the way Postgres would. */
-  function service(claims: Array<ReturnType<typeof claim>>, bills: unknown[] = []) {
+  function service(
+    claims: Array<ReturnType<typeof claim>>,
+    bills: unknown[] = [],
+  ) {
     const within = (d: Date | null, op: any) =>
       !!d && d >= op._value[0] && d <= op._value[1];
     const claimRepo = {
       find: jest.fn(async ({ where }: any) =>
         claims.filter((c) =>
           where.taxReversedAt
-            ? !!c.taxPostedAt && within(c.taxReversedAt as Date | null, where.taxReversedAt)
+            ? !!c.taxPostedAt &&
+              within(c.taxReversedAt as Date | null, where.taxReversedAt)
             : within(c.taxPostedAt as Date | null, where.taxPostedAt),
         ),
       ),
     };
-    const rows = (list: unknown[]) => ({ find: jest.fn(async () => list), findOne: jest.fn(async () => null) });
+    const rows = (list: unknown[]) => ({
+      find: jest.fn(async () => list),
+      findOne: jest.fn(async () => null),
+    });
     const organizations = {
-      findOne: jest.fn(async () => ({ id: tenantId, country: 'AE', taxId: '100123456700003', baseCurrency: 'AED' })),
-      manager: { getRepository: () => ({ findOne: jest.fn(async () => ({ emirate: 'DUBAI' })) }) },
+      findOne: jest.fn(async () => ({
+        id: tenantId,
+        country: 'AE',
+        taxId: '100123456700003',
+        baseCurrency: 'AED',
+      })),
+      manager: {
+        getRepository: () => ({
+          findOne: jest.fn(async () => ({ emirate: 'DUBAI' })),
+        }),
+      },
     };
     const s = new TaxService(
       rows(purchaseCodes) as any,
@@ -387,8 +433,10 @@ describe('TaxService: expense claims in the tax report and the VAT201', () => {
     );
     return { s, claimRepo };
   }
-  const box = (vat201: { rows: Array<{ box: string; amount: number; vat: number }> }, n: string) =>
-    vat201.rows.find((r) => r.box === n)!;
+  const box = (
+    vat201: { rows: Array<{ box: string; amount: number; vat: number }> },
+    n: string,
+  ) => vat201.rows.find((r) => r.box === n)!;
 
   it('asks only for claims that carry a tax code', async () => {
     const { s, claimRepo } = service([]);
@@ -400,7 +448,14 @@ describe('TaxService: expense claims in the tax report and the VAT201', () => {
   });
 
   it('reports a claim’s recoverable VAT as input tax, beside a bill’s', async () => {
-    const bill = { id: 'b', taxCodeId: 'sr', subtotalAmount: 1000, taxAmount: 50, reverseChargeTax: 0, fxRate: 1 };
+    const bill = {
+      id: 'b',
+      taxCodeId: 'sr',
+      subtotalAmount: 1000,
+      taxAmount: 50,
+      reverseChargeTax: 0,
+      fxRate: 1,
+    };
     const { s } = service([claim({})], [bill]);
     const report = await s.report(tenantId, ...october);
     expect(report.input).toEqual([
@@ -427,7 +482,13 @@ describe('TaxService: expense claims in the tax report and the VAT201', () => {
 
   it('puts a reverse-charge claim on both sides, and in box 10', async () => {
     const { s } = service([
-      claim({ amount: 200, taxCodeId: 'rc', taxAmount: 0, recoverableTax: 0, reverseChargeTax: 10 }),
+      claim({
+        amount: 200,
+        taxCodeId: 'rc',
+        taxAmount: 0,
+        recoverableTax: 0,
+        reverseChargeTax: 10,
+      }),
     ]);
     const report = await s.report(tenantId, ...october);
     expect(report.inputTax).toBe(10);
@@ -456,7 +517,10 @@ describe('TaxService: expense claims in the tax report and the VAT201', () => {
       expect.objectContaining({ code: 'SR', net: -200, tax: -10 }),
     ]);
     expect(report.inputTax).toBe(-10);
-    expect(box(await s.vat201(tenantId, ...november), '9')).toMatchObject({ amount: -200, vat: -10 });
+    expect(box(await s.vat201(tenantId, ...november), '9')).toMatchObject({
+      amount: -200,
+      vat: -10,
+    });
   });
 
   it('nets to nothing when approval and rejection fall in the same period', async () => {
@@ -465,7 +529,10 @@ describe('TaxService: expense claims in the tax report and the VAT201', () => {
     ]);
     const report = await s.report(tenantId, ...october);
     expect(report.inputTax).toBe(0);
-    expect(box(await s.vat201(tenantId, ...october), '9')).toMatchObject({ amount: 0, vat: 0 });
+    expect(box(await s.vat201(tenantId, ...october), '9')).toMatchObject({
+      amount: 0,
+      vat: 0,
+    });
   });
 
   it('reports a foreign-currency claim at the rate it was posted at', async () => {

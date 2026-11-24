@@ -244,8 +244,7 @@ export class ExpenseFromDocumentSkill implements ChannelSkill<ResolvedExpenseFro
     if (!(amount > 0)) {
       return {
         kind: 'question',
-        question:
-          'I couldn’t read the total on that receipt. How much was it?',
+        question: 'I couldn’t read the total on that receipt. How much was it?',
         slots: keep,
       };
     }
@@ -261,7 +260,8 @@ export class ExpenseFromDocumentSkill implements ChannelSkill<ResolvedExpenseFro
       notes.push('The date could not be read, so today’s date is used.');
     }
     const category =
-      typed.category && (CATEGORIES as readonly string[]).includes(typed.category)
+      typed.category &&
+      (CATEGORIES as readonly string[]).includes(typed.category)
         ? typed.category
         : scan.category || 'General Expense';
 
@@ -392,7 +392,9 @@ export class ExpenseFromDocumentSkill implements ChannelSkill<ResolvedExpenseFro
         },
         {
           id: user.id,
-          name: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || undefined,
+          name:
+            `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() ||
+            undefined,
           email: user.email,
         },
       );

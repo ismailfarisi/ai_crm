@@ -17,8 +17,15 @@ export const scannedReceiptResultSchema = z.object({
   currency: z.string().length(3).default('USD'),
   expenseDate: z.string(),
   category: z.string(),
-  taxAmount: z.number().nonnegative().nullish().transform((v) => v ?? undefined),
-  supplierTaxId: z.string().nullish().transform((v) => v?.trim() || undefined),
+  taxAmount: z
+    .number()
+    .nonnegative()
+    .nullish()
+    .transform((v) => v ?? undefined),
+  supplierTaxId: z
+    .string()
+    .nullish()
+    .transform((v) => v?.trim() || undefined),
   confidence: z.number().min(0).max(1),
   items: z.array(expenseItemResultSchema).default([]),
 });
@@ -55,7 +62,7 @@ export const scannedReceiptJsonSchema = {
     supplierTaxId: {
       type: 'string',
       description:
-        'The seller\'s tax registration number exactly as printed, often labelled TRN, VAT No or Tax Reg No (15 digits in the UAE). Leave out when the receipt shows none; never guess one.',
+        "The seller's tax registration number exactly as printed, often labelled TRN, VAT No or Tax Reg No (15 digits in the UAE). Leave out when the receipt shows none; never guess one.",
     },
     confidence: { type: 'number', minimum: 0, maximum: 1 },
     items: {

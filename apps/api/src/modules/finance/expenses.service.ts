@@ -129,7 +129,13 @@ export class ExpensesService {
       tenantId,
       'claim_number',
     );
-    return formatTenantSequenceNumber(this.expenseRepository.manager, tenantId, 'claim_number', 'EXP', value);
+    return formatTenantSequenceNumber(
+      this.expenseRepository.manager,
+      tenantId,
+      'claim_number',
+      'EXP',
+      value,
+    );
   }
 
   async findAll(tenantId: string): Promise<ExpenseClaim[]> {
@@ -752,7 +758,8 @@ export class ExpensesService {
     const sameDay = (a: string | Date, b: Date) =>
       new Date(a).getTime() === new Date(b).getTime();
     const changes =
-      (dto.amount !== undefined && Number(dto.amount) !== Number(claim.amount)) ||
+      (dto.amount !== undefined &&
+        Number(dto.amount) !== Number(claim.amount)) ||
       (dto.currency !== undefined && dto.currency !== claim.currency) ||
       (dto.category !== undefined && dto.category !== claim.category) ||
       (dto.status !== undefined && dto.status !== claim.status) ||

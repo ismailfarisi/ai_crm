@@ -41,7 +41,10 @@ function setup(scan: Record<string, unknown> = reading()) {
     }),
     // 5% VAT inside the total, claimed back.
     previewTax: jest.fn(
-      async (_org: string, input: { amount: number; taxAmount?: number | null }) => {
+      async (
+        _org: string,
+        input: { amount: number; taxAmount?: number | null },
+      ) => {
         const tax =
           input.taxAmount ?? Math.round((input.amount * 5 * 100) / 105) / 100;
         return {
@@ -204,7 +207,9 @@ describe('ExpenseFromDocumentSkill', () => {
 
   it('refuses, rather than throws, when the file cannot be fetched', async () => {
     const { skill, downloadMedia } = setup();
-    downloadMedia.mockRejectedValue(new BadRequestException('File is too large'));
+    downloadMedia.mockRejectedValue(
+      new BadRequestException('File is too large'),
+    );
     await expect(skill.resolve({}, ctx())).resolves.toMatchObject({
       kind: 'refused',
       reason: expect.stringContaining('File is too large'),
@@ -340,7 +345,9 @@ describe('ExpenseFromDocumentSkill', () => {
       const { skill } = setup(withVat({ taxCodeId: null }));
       const value = await resolved(skill);
       expect(value.vat).toBeUndefined();
-      expect(value.notes.join(' ')).toMatch(/could not match it to one of your VAT types/);
+      expect(value.notes.join(' ')).toMatch(
+        /could not match it to one of your VAT types/,
+      );
     });
 
     it('works the VAT out again when the person typed a different total', async () => {
