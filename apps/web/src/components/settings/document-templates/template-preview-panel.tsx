@@ -496,7 +496,7 @@ export function TemplatePreviewPanel({ config, onDownloadPdf }: TemplatePreviewP
                   {config.itemsTable.showUnitPrice && <th className={`${tableDensity} font-semibold text-end w-24`}>{lbl('Unit Price', 'unitPrice')}</th>}
                   {config.itemsTable.showDiscount && <th className={`${tableDensity} font-semibold text-end w-16`}>{lbl('Disc %', 'discountPercent')}</th>}
                   {config.itemsTable.showTaxRate && <th className={`${tableDensity} font-semibold text-end w-16`}>{lbl('VAT %', 'taxPercent')}</th>}
-                  {config.itemsTable.showLineTotal && <th className={`${tableDensity} font-semibold text-end w-28`}>{lbl('Total', 'lineTotal')}</th>}
+                  {config.itemsTable.showLineTotal && <th className={`${tableDensity} font-semibold text-end w-28`}>{lbl('Amount', 'lineTotal')}</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 tabular-nums">
