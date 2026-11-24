@@ -156,7 +156,7 @@ export class WhatsAppDocumentService {
     const sender = await this.senderName(tenantId);
     const amount = `${invoice.currency} ${Number(invoice.amount).toFixed(2)}`;
     const due = invoice.dueDate
-      ? `, due ${new Date(invoice.dueDate).toDateString()}`
+      ? `, due ${new Date(invoice.dueDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })}`
       : '';
     const result = await this.deliver(user, to, {
       customerId: invoice.customerId,
@@ -270,7 +270,8 @@ export class WhatsAppDocumentService {
         name,
         language:
           String(credentials?.documentTemplateLanguage ?? '').trim() || 'en',
-        parameters: [out.label, out.url ?? out.text],
+        // A template blank cannot hold a line break.
+        parameters: [out.label, out.url ?? out.text.replace(/\s+/g, ' ')],
       };
     }
 
