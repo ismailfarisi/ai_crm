@@ -88,7 +88,7 @@ export const CUSTOMER_AGENT_TOOLS = [
   },  {
     name: 'check_price',
     description:
-      'Tell a customer the list price of an item in your catalogue, only for items where you ticked "Customer agents may tell customers this price". Never the cost, the margin, or a price quoted to another customer.',
+      'Tell a customer the list price of an item in your catalogue, only for items where you ticked "Customers may be told this price". Never the cost, the margin, or a price quoted to another customer.',
     isMutating: false,
   },
   {

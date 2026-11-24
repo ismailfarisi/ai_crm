@@ -125,7 +125,7 @@ export function SendOnWhatsAppButton({
                 {result.reason && <p className="text-ink-muted">{result.reason}</p>}
               </>
             )}
-            <div className="whitespace-pre-wrap rounded-md border border-border bg-surface-subtle p-3 text-ink-muted">
+            <div className="whitespace-pre-wrap [overflow-wrap:anywhere] rounded-md border border-border bg-surface-subtle p-3 text-ink-muted">
               {result.text}
             </div>
           </div>
