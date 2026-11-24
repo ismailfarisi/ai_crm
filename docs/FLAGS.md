@@ -1795,6 +1795,35 @@ API restart mid-download or a provider outage stays failed.
 
 ---
 
+## Finding your way (menu, overlaps, next step)
+
+- **Contacts and Customers stay two tables.** A contact is a person (lead,
+  buyer, chat sender); a customer is the company you quote and invoice. A
+  contact's page now shows the matching customer company and links to it, or
+  offers "Make a customer", which opens the normal customer form filled from
+  the contact. The match is by company name, then email, done in the browser:
+  there is no link column, so renaming either side breaks the match. A real
+  `contacts.customer_id` (with a migration) is the follow-up if this proves
+  useful. Setting a contact's status to "Customer" still does not create a
+  customer company; the page says so.
+- **Inbox, Email and Assistant stay separate pages.** Each now opens with a
+  short strip saying what it is for (shared customer chats / your mailbox /
+  private AI help) and links to the other two the user can open.
+- **The next-step card is derived, not stored.** It reads the order's status,
+  billing stages and their invoices, delivered quantities and delivery notes;
+  the quote's status, acceptance and deposit; the invoice's status, payments,
+  `sentAt` and due date. No new states. Two known gaps: a quote counts as
+  "sent" only while it has a live acceptance link (an expired link reads as
+  not sent), and production work orders are not consulted, so "Start the job"
+  is the order's status change, not a work-order check.
+- **The old header buttons stay** on the sales order (Start production, Plan
+  production, Mark fulfilled, Raise invoice, Cancel), now all outlined; the
+  amber button is the one in the next-step card.
+- **Menu search matches page names and short hints only**, not records. It
+  covers settings pages and custom objects the user can open.
+
+---
+
 ## Staging environment
 
 True of the staging box (`ssh ismail`, `~/ai_crm`), not of the code.
