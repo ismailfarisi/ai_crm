@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
+  DOCUMENT_TIME_ZONE,
   PERMISSIONS,
   type SendOnWhatsAppPayload,
   type WhatsAppSendResultDto,
@@ -156,7 +157,7 @@ export class WhatsAppDocumentService {
     const sender = await this.senderName(tenantId);
     const amount = `${invoice.currency} ${Number(invoice.amount).toFixed(2)}`;
     const due = invoice.dueDate
-      ? `, due ${new Date(invoice.dueDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })}`
+      ? `, due ${new Date(invoice.dueDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: DOCUMENT_TIME_ZONE })}`
       : '';
     const result = await this.deliver(user, to, {
       customerId: invoice.customerId,

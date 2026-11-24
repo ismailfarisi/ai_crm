@@ -8,6 +8,7 @@ const HOUR = 60 * 60 * 1000;
 
 function setup(
   opts: {
+    dueDate?: Date;
     connected?: boolean;
     lastInboundAgo?: number | null;
     template?: string;
@@ -98,7 +99,7 @@ function setup(
         customerName: 'Acme',
         amount: 1050,
         currency: 'AED',
-        dueDate: null,
+        dueDate: opts.dueDate ?? null,
         status: InvoiceStatus.ISSUED,
       },
       payUrl:
@@ -209,6 +210,15 @@ describe('Send on WhatsApp', () => {
         parameters: ['artwork proof 2 for Q-0012', 'https://app.test/q/tok'],
       },
     });
+  });
+
+  it('gives the due date as the UAE day', async () => {
+    const { service, user } = setup({
+      connected: false,
+      dueDate: new Date('2026-11-24T21:30:00Z'),
+    });
+    const result = await service.sendInvoice(user, 'inv-1');
+    expect(result.text).toContain('due 25 Nov 2026');
   });
 
   it('falls back to click-to-chat when no WhatsApp number is connected', async () => {
