@@ -111,6 +111,8 @@ export function QuoteEditorPage({
   const canApprove = check({ permission: PERMISSIONS.QUOTE_APPROVE });
   const canCreate = check({ permission: PERMISSIONS.QUOTE_CREATE });
   const canUpdate = check({ permission: PERMISSIONS.QUOTE_UPDATE });
+  const canReadOrders = check({ permission: PERMISSIONS.SALES_ORDER_READ });
+  const canReadInvoices = check({ permission: PERMISSIONS.INVOICE_READ });
 
   // Loading & Saving States
   const [isLoading, setIsLoading] = useState(!initialQuote && Boolean(quoteId));
@@ -835,14 +837,14 @@ export function QuoteEditorPage({
           <NextStepCard
             step={step}
             action={
-              action?.kind === 'openOrder' ? (
+              action?.kind === 'openOrder' && canReadOrders ? (
                 <Link
                   href={`/orders/${action.orderId}`}
                   className="inline-flex h-9 items-center gap-2 rounded-full bg-brand px-4 text-sm font-semibold text-on-brand shadow-xs hover:bg-brand-hover"
                 >
                   Open {action.orderNumber}
                 </Link>
-              ) : action?.kind === 'openInvoice' ? (
+              ) : action?.kind === 'openInvoice' && canReadInvoices ? (
                 <Link
                   href={`/invoices/${action.invoiceId}`}
                   className="inline-flex h-9 items-center gap-2 rounded-full bg-brand px-4 text-sm font-semibold text-on-brand shadow-xs hover:bg-brand-hover"

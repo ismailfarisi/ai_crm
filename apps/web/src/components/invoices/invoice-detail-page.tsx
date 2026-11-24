@@ -78,6 +78,7 @@ export function InvoiceDetailPage({ invoiceId }: { invoiceId: string }) {
 
   const canManage = useCan({ permission: PERMISSIONS.INVOICE_MANAGE });
   const canCredit = useCan({ permission: PERMISSIONS.CREDIT_NOTE_READ });
+  const canReadOrders = useCan({ permission: PERMISSIONS.SALES_ORDER_READ });
 
   const [paying, setPaying] = useState(false);
   const [printing, setPrinting] = useState(false);
@@ -127,7 +128,7 @@ export function InvoiceDetailPage({ invoiceId }: { invoiceId: string }) {
         <Wallet className="size-3.5" aria-hidden />
         Record payment
       </Button>
-    ) : stepAction?.kind === 'openOrder' ? (
+    ) : stepAction?.kind === 'openOrder' && canReadOrders ? (
       <Link
         href={`/orders/${stepAction.orderId}`}
         className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border px-3 text-xs font-medium text-ink hover:bg-surface-muted"
