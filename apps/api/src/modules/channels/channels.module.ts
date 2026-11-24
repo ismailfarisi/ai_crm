@@ -42,6 +42,8 @@ import { ChannelAgentPreviewService } from './services/channel-agent-preview.ser
 import { CustomerChannelSender } from './entities/customer-channel-sender.entity';
 import { CustomerSenderService } from './services/customer-sender.service';
 import { CustomerLookupService } from './services/customer-lookup.service';
+import { WhatsAppDocumentService } from './services/whatsapp-document.service';
+import { WhatsAppSendController } from './whatsapp-send.controller';
 import { CustomerSendersController } from './customer-senders.controller';
 import { Customer } from '../customers/entities/customer.entity';
 import { Organization } from '../organizations/entities/organization.entity';
@@ -94,6 +96,7 @@ import { DeliveryNote } from '../credits/entities/credit-note.entity';
     ChannelsController,
     ChannelsWebhookController,
     CustomerSendersController,
+    WhatsAppSendController,
   ],
   providers: [
     ChannelsService,
@@ -103,6 +106,7 @@ import { DeliveryNote } from '../credits/entities/credit-note.entity';
     ChannelAgentPreviewService,
     CustomerSenderService,
     CustomerLookupService,
+    WhatsAppDocumentService,
     { provide: CHANNEL_SENDER, useExisting: ChannelsService },
     ChannelCryptoService,
     ChannelCommandService,

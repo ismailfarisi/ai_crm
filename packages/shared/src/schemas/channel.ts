@@ -14,6 +14,13 @@ export const metaWhatsAppConfigSchema = z.object({
   businessAccountId: z.string().min(1, 'Business Account ID is required'),
   accessToken: z.string().min(1, 'Access Token is required'),
   verifyToken: z.string().min(1, 'Verify Token is required'),
+  /**
+   * An approved message template for sending a quote, proof or invoice to a
+   * customer who last wrote more than 24 hours ago. Its text takes two
+   * blanks: {{1}} what is being sent, {{2}} the link.
+   */
+  documentTemplateName: z.string().trim().max(512).optional(),
+  documentTemplateLanguage: z.string().trim().max(15).optional(),
 });
 
 export const telegramConfigSchema = z.object({

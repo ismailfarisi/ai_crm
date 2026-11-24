@@ -68,8 +68,24 @@ export class MetaWhatsAppDriver implements ChannelDriver {
         body: JSON.stringify({
           messaging_product: 'whatsapp',
           to: payload.recipient,
-          type: 'text',
-          text: { body: payload.body },
+          ...(payload.template
+            ? {
+                type: 'template',
+                template: {
+                  name: payload.template.name,
+                  language: { code: payload.template.language },
+                  components: [
+                    {
+                      type: 'body',
+                      parameters: payload.template.parameters.map((text) => ({
+                        type: 'text',
+                        text,
+                      })),
+                    },
+                  ],
+                },
+              }
+            : { type: 'text', text: { body: payload.body } }),
         }),
       },
     );

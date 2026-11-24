@@ -36,6 +36,7 @@ import {
   ChannelDriver,
   type InboundMedia,
 } from './interfaces/channel-driver.interface';
+import type { OutboundPayload } from './interfaces/channel-driver.interface';
 import { MetaWhatsAppDriver } from './drivers/meta-whatsapp.driver';
 import { TelegramDriver } from './drivers/telegram.driver';
 import { SlackDriver } from './drivers/slack.driver';
@@ -64,6 +65,9 @@ export interface SendMessageDto {
   recipient: string;
   body: string;
   subject?: string;
+  template?: OutboundPayload['template'];
+  /** Extra facts stored on the message, e.g. which document it carried. */
+  metadata?: Record<string, unknown>;
 }
 
 @Injectable()
@@ -385,6 +389,7 @@ export class ChannelsService {
         recipient: dto.recipient,
         body: dto.body,
         subject: dto.subject,
+        ...(dto.template ? { template: dto.template } : {}),
       });
 
       const message = this.messageRepo.create({
@@ -400,6 +405,8 @@ export class ChannelsService {
           rawResponse: result.rawResponse,
           actorId,
           subject: dto.subject,
+          ...(dto.template ? { template: dto.template.name } : {}),
+          ...dto.metadata,
         },
         status: MessageStatus.SENT,
       });
@@ -418,6 +425,7 @@ export class ChannelsService {
           error: err.message || String(err),
           actorId,
           subject: dto.subject,
+          ...dto.metadata,
         },
         status: MessageStatus.FAILED,
       });

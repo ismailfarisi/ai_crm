@@ -8,6 +8,7 @@ export * from './schemas/ai-provider';
 export * from './schemas/channel-thread';
 export * from './schemas/channel-agent';
 export * from './schemas/customer-sender';
+export * from './schemas/whatsapp-send';
 export * from './schemas/ai-model';
 export * from './schemas/ai-agent';
 export * from './schemas/intent-agent-config';

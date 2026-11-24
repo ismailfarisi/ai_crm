@@ -258,6 +258,17 @@ export class QuoteAcceptanceService {
     return { url: `${origin}/q/${token}`, expiresAt: expiresAt.toISOString() };
   }
 
+  /** Records a quote link sent by some other route than email, as email does. */
+  async recordSent(
+    tenantId: string,
+    quoteId: string,
+    sentTo: string,
+  ): Promise<void> {
+    await this.shopEvents?.emit('quote.sent', tenantId, quoteId, {
+      extra: { sentTo },
+    });
+  }
+
   /**
    * Issues an acceptance link and emails it to the customer.
    *
