@@ -107,6 +107,12 @@ export function validateBillingSchedule(stages: BillingStage[]): string[] {
   return problems;
 }
 
+/**
+ * A document's amounts, as `calculateQuoteTotals` defines them:
+ * `subtotalAmount` is after discount and before tax, so
+ * `subtotalAmount + taxAmount = totalAmount`. `discountAmount` is what was
+ * taken off to reach the subtotal and is not subtracted again.
+ */
 export interface QuoteAmounts {
   subtotalAmount: number;
   discountAmount: number;
@@ -121,42 +127,57 @@ const cents = (n: number) => Math.round((n + Number.EPSILON) * 100);
 /**
  * Splits a quote's amounts across its stages, to the cent.
  *
- * Each figure is split independently by share, and the last stage takes
- * whatever remains rather than its own rounded share. Rounding every stage
+ * The total and the tax are split by share, and the last stage takes whatever
+ * remains of each rather than its own rounded share. Rounding every stage
  * separately can lose or invent a cent — three thirds of 100.00 are 33.33 each,
  * which invoices 99.99 — and a customer billed a different total from the one
  * they accepted is a dispute, however small.
  *
+ * A stage's net is never rounded on its own: it is its total less its tax, so
+ * net + tax is the total on every stage invoice. Rounding all three
+ * separately can leave an invoice a cent out against itself (2,416.67 +
+ * 120.84 printed over a total of 2,537.50). The nets then add up to the
+ * quote's total less its tax, which is the quote's subtotal.
+ *
  * Works in integer cents throughout for the same reason.
  */
 export function allocateStageAmounts(amounts: QuoteAmounts, stages: BillingStage[]): StageAmounts[] {
-  const fields: (keyof QuoteAmounts)[] = ['subtotalAmount', 'discountAmount', 'taxAmount', 'totalAmount'];
-  const totals = Object.fromEntries(fields.map((f) => [f, cents(amounts[f])])) as Record<keyof QuoteAmounts, number>;
-  const allocated = Object.fromEntries(fields.map((f) => [f, 0])) as Record<keyof QuoteAmounts, number>;
+  const quote = {
+    total: cents(amounts.totalAmount),
+    tax: cents(amounts.taxAmount),
+    discount: cents(amounts.discountAmount),
+  };
+  const left = { ...quote };
+  // No stage takes more than is left for the ones after it.
+  const upTo = (value: number, remaining: number) =>
+    remaining >= 0 ? Math.min(value, remaining) : Math.max(value, remaining);
 
   return stages.map((stage, index) => {
-    const isLast = index === stages.length - 1;
-    const row = {} as StageAmounts;
-    if (!isLast && stage.amount != null && totals.totalAmount > 0) {
+    let share = left;
+    if (index < stages.length - 1) {
       // A fixed amount sets the stage's total; tax and discount follow in the
-      // same ratio, and the net is whatever keeps net - discount + tax = total.
-      const total = Math.min(cents(stage.amount), totals.totalAmount - allocated.totalAmount);
-      const ratio = total / totals.totalAmount;
-      const tax = Math.round(totals.taxAmount * ratio);
-      const discount = Math.round(totals.discountAmount * ratio);
-      const share = { totalAmount: total, taxAmount: tax, discountAmount: discount, subtotalAmount: total - tax + discount };
-      for (const f of fields) {
-        allocated[f] += share[f];
-        row[f] = share[f] / 100;
-      }
-      return row;
+      // same ratio.
+      const fixed = stage.amount != null && quote.total > 0;
+      const total = upTo(
+        fixed ? cents(stage.amount as number) : Math.round((quote.total * stage.percent) / 100),
+        left.total,
+      );
+      const ratio = fixed ? total / quote.total : stage.percent / 100;
+      share = {
+        total,
+        tax: upTo(Math.round(quote.tax * ratio), left.tax),
+        discount: upTo(Math.round(quote.discount * ratio), left.discount),
+      };
+      left.total -= share.total;
+      left.tax -= share.tax;
+      left.discount -= share.discount;
     }
-    for (const f of fields) {
-      const share = isLast ? totals[f] - allocated[f] : Math.round((totals[f] * stage.percent) / 100);
-      allocated[f] += share;
-      row[f] = share / 100;
-    }
-    return row;
+    return {
+      subtotalAmount: (share.total - share.tax) / 100,
+      discountAmount: share.discount / 100,
+      taxAmount: share.tax / 100,
+      totalAmount: share.total / 100,
+    };
   });
 }
 

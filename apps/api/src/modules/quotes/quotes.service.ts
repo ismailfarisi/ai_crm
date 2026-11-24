@@ -11,6 +11,7 @@ import { EntityManager, In, Repository } from 'typeorm';
 import { CrmEventBusService } from '@/common/events';
 import {
   calculateQuoteTotals,
+  withLineSubtotals,
   CreateQuotePayload,
   DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
   formatCustomerAddress,
@@ -135,8 +136,9 @@ export class QuotesService {
    * Re-prices every line from the catalog and checks the tenant's floors.
    *
    * Called on the way in for both create and update, so a client-supplied
-   * `cost` never reaches the database. The browser can send whatever it likes;
-   * only what the catalog says survives.
+   * `cost` or line `subtotal` never reaches the database. The browser can send
+   * whatever it likes; only what the catalog and the line's own figures say
+   * survives.
    */
   private async recost(
     tenantId: string,
@@ -163,7 +165,10 @@ export class QuotesService {
       );
     }
 
-    return { items: recosted, violations };
+    // Last, so nothing above can leave a line with a subtotal the client
+    // sent: every save, from the editor, a chat skill, an agent or the API,
+    // stores the subtotal the line's own quantity, price and discount give.
+    return { items: withLineSubtotals(recosted), violations };
   }
 
   /**

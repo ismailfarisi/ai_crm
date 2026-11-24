@@ -299,6 +299,41 @@ describe('QuotesService', () => {
       expect(result.workflowId).toBe(`quote-${quoteId}`);
     });
 
+    // The editor sends each line's subtotal; a chat skill, an agent or a
+    // script may send none, or a wrong one. The order's lines and the margin
+    // report read it, so it is worked out here and never taken on trust.
+    it('stores each line subtotal from its quantity, price and discount, whatever was sent', async () => {
+      await service.createQuote(tenantId, {
+        title: 'Lines from anywhere',
+        items: [
+          { ...sampleItems[0], id: 'none' },
+          { ...sampleItems[0], id: 'wrong', subtotal: 1 },
+          {
+            id: 'untyped',
+            description: 'No type sent',
+            quantity: 3,
+            unitPrice: 33.335,
+          } as QuoteLineItem,
+          { id: 'heading', type: 'section', description: 'Extras' },
+        ],
+      });
+
+      const stored = (quoteRepo.create as jest.Mock).mock
+        .calls[0][0] as Quote;
+      expect(
+        stored.items.map((i: QuoteLineItem) => [i.id, i.type, i.subtotal]),
+      ).toEqual([
+        ['none', 'product', 900],
+        ['wrong', 'product', 900],
+        ['untyped', 'product', 100.01],
+        ['heading', 'section', undefined],
+      ]);
+      // The lines add up to the subtotal, and subtotal + tax is the total.
+      expect(stored.subtotalAmount).toBe(1900.01);
+      expect(stored.taxAmount).toBe(360);
+      expect(stored.totalAmount).toBe(2260.01);
+    });
+
     /**
      * The editor previews the next number and posts it back; another user can
      * have taken that number in between. Document numbers come from the
@@ -440,6 +475,7 @@ describe('QuotesService', () => {
           unitPrice: 500,
           discount: 0,
           taxRate: 10, // 10% on 1000 = 100
+          subtotal: 12, // not what 2 x 500 comes to; not stored
         },
       ];
 
@@ -457,7 +493,7 @@ describe('QuotesService', () => {
       expect(quoteRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
           title: 'Updated Title',
-          items: updatedItems,
+          items: [{ ...updatedItems[0], subtotal: 1000 }],
           subtotalAmount: 1000,
           discountAmount: 0,
           taxAmount: 100,
