@@ -6,6 +6,7 @@ import {
   DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
   DocumentTemplateConfig,
   UniversalDocumentData,
+  formatDisplayDate,
 } from '@saas/shared';
 import type {
   DeliveryNote,
@@ -186,7 +187,7 @@ export class PackingSlipPdfService {
         .text(order ? `Order ${order.orderNumber}` : '', { align: 'right' })
         .text(
           note.dispatchedAt
-            ? `Dispatched ${note.dispatchedAt.toDateString()}`
+            ? `Dispatched ${formatDisplayDate(note.dispatchedAt)}`
             : 'Not yet dispatched',
           { align: 'right' },
         );

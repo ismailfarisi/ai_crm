@@ -8,7 +8,7 @@ import { Can } from '@/components/auth/can';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/field';
 import { Badge, EmptyState, PageHeader, Skeleton } from '@/components/ui/primitives';
-import { cn } from '@/lib/utils';
+import { cn, formatDateTime } from '@/lib/utils';
 import { useAiBudgetStatus, useAiUsage, useUpsertAiBudget } from '@/hooks/use-ai';
 
 export function AiBudgetView() {
@@ -242,7 +242,7 @@ export function AiBudgetView() {
                       </Badge>
                     </td>
                     <td className="py-2 text-ink-subtle">
-                      {new Date(row.createdAt).toLocaleString()}
+                      {formatDateTime(row.createdAt)}
                     </td>
                   </tr>
                 ))}

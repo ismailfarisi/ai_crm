@@ -50,7 +50,9 @@ describe('ContactsService', () => {
       computeChangedFields: vi.fn((before, after) => {
         const b = before ?? {};
         const a = after ?? {};
-        const allKeys = Array.from(new Set([...Object.keys(b), ...Object.keys(a)]));
+        const allKeys = Array.from(
+          new Set([...Object.keys(b), ...Object.keys(a)]),
+        );
         return allKeys.filter((k) => b[k] !== a[k]).sort();
       }),
     };
@@ -247,6 +249,59 @@ describe('ContactsService', () => {
 
       expect(found.id).toBe('existing');
       expect(rows).toHaveLength(1);
+    });
+
+    it('names a new contact by the name the channel sends, not its id', async () => {
+      const { repo } = makeChannelRepo();
+      const svc = new ContactsService(repo, mockEventBus);
+
+      const created = await svc.findOrCreateForChannel(
+        'tenant-1',
+        '77001',
+        'telegram',
+        '@sara_a',
+      );
+
+      expect(created).toMatchObject({ firstName: '@sara_a', phone: '77001' });
+    });
+
+    it('renames a contact still called by its id, but never one somebody named', async () => {
+      const { repo, rows } = makeChannelRepo();
+      rows.push(
+        {
+          id: 'by-id',
+          tenantId: 'tenant-1',
+          firstName: '77001',
+          lastName: '',
+          phone: '77001',
+          email: null,
+        },
+        {
+          id: 'named',
+          tenantId: 'tenant-1',
+          firstName: 'Sara',
+          lastName: 'Ali',
+          phone: '77002',
+          email: null,
+        },
+      );
+      const svc = new ContactsService(repo, mockEventBus);
+
+      const renamed = await svc.findOrCreateForChannel(
+        'tenant-1',
+        '77001',
+        'telegram',
+        'Telegram user',
+      );
+      const kept = await svc.findOrCreateForChannel(
+        'tenant-1',
+        '77002',
+        'telegram',
+        '@someone',
+      );
+
+      expect(renamed.firstName).toBe('Telegram user');
+      expect(kept.firstName).toBe('Sara');
     });
   });
 });

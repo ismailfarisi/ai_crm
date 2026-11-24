@@ -135,10 +135,61 @@ describe('Channel Drivers', () => {
         const parsed = await driver.parseWebhookPayload({}, {}, payload);
         expect(parsed).toEqual({
           senderIdentifier: '1001',
+          senderName: 'Telegram user',
           body: 'Hello bot',
           externalMessageId: '42',
           rawPayload: payload,
         });
+      });
+
+      it('names the sender by name, then @username, never by the chat id', async () => {
+        const named = await driver.parseWebhookPayload(
+          {},
+          {},
+          {
+            message: {
+              message_id: 1,
+              chat: { id: 77001 },
+              from: {
+                id: 77001,
+                first_name: 'Sara',
+                last_name: 'Ali',
+                username: 'sara_a',
+              },
+              text: 'Hi',
+            },
+          },
+        );
+        expect(named?.senderName).toBe('Sara Ali');
+
+        const handle = await driver.parseWebhookPayload(
+          {},
+          {},
+          {
+            message: {
+              message_id: 2,
+              chat: { id: 77001 },
+              from: { id: 77001, username: 'sara_a' },
+              text: 'Hi',
+            },
+          },
+        );
+        expect(handle?.senderName).toBe('@sara_a');
+
+        const anonymous = await driver.parseWebhookPayload(
+          {},
+          {},
+          {
+            message: {
+              message_id: 3,
+              chat: { id: 77001 },
+              from: { id: 77001 },
+              text: 'Hi',
+            },
+          },
+        );
+        expect(anonymous?.senderName).toBe('Telegram user');
+        expect(anonymous?.senderIdentifier).toBe('77001');
       });
 
       it('returns null for empty or non-text message', async () => {
@@ -151,9 +202,13 @@ describe('Channel Drivers', () => {
       });
 
       it('ignores a message with neither words nor a file', async () => {
-        const parsed = await driver.parseWebhookPayload({}, {}, {
-          message: { message_id: 7, chat: { id: 1001 }, location: {} },
-        });
+        const parsed = await driver.parseWebhookPayload(
+          {},
+          {},
+          {
+            message: { message_id: 7, chat: { id: 1001 }, location: {} },
+          },
+        );
         expect(parsed).toBeNull();
       });
 
@@ -172,6 +227,7 @@ describe('Channel Drivers', () => {
         const photo = { id: 'large', mimeType: 'image/jpeg' };
         expect(parsed).toEqual({
           senderIdentifier: '1001',
+          senderName: 'Telegram user',
           body: '[Image]',
           externalMessageId: '43',
           rawPayload: payload,
@@ -181,18 +237,22 @@ describe('Channel Drivers', () => {
       });
 
       it('reads a document and the words sent with it', async () => {
-        const parsed = await driver.parseWebhookPayload({}, {}, {
-          message: {
-            message_id: 44,
-            chat: { id: 1001 },
-            caption: 'Artwork for the shop sign',
-            document: {
-              file_id: 'doc-1',
-              file_name: 'sign.pdf',
-              mime_type: 'application/pdf',
+        const parsed = await driver.parseWebhookPayload(
+          {},
+          {},
+          {
+            message: {
+              message_id: 44,
+              chat: { id: 1001 },
+              caption: 'Artwork for the shop sign',
+              document: {
+                file_id: 'doc-1',
+                file_name: 'sign.pdf',
+                mime_type: 'application/pdf',
+              },
             },
           },
-        });
+        );
         const doc = {
           id: 'doc-1',
           mimeType: 'application/pdf',
@@ -205,28 +265,38 @@ describe('Channel Drivers', () => {
       });
 
       it('names a document sent without words', async () => {
-        const parsed = await driver.parseWebhookPayload({}, {}, {
-          message: {
-            message_id: 45,
-            chat: { id: 1001 },
-            document: { file_id: 'doc-2', file_name: 'logo.cdr' },
+        const parsed = await driver.parseWebhookPayload(
+          {},
+          {},
+          {
+            message: {
+              message_id: 45,
+              chat: { id: 1001 },
+              document: { file_id: 'doc-2', file_name: 'logo.cdr' },
+            },
           },
-        });
+        );
         expect(parsed?.body).toBe('[Document: logo.cdr]');
         expect(parsed?.files?.[0].mimeType).toBe('application/octet-stream');
       });
 
       it('keeps a voice message but does not offer it to chat commands', async () => {
-        const parsed = await driver.parseWebhookPayload({}, {}, {
-          message: {
-            message_id: 46,
-            chat: { id: 1001 },
-            voice: { file_id: 'voice-1', mime_type: 'audio/ogg' },
+        const parsed = await driver.parseWebhookPayload(
+          {},
+          {},
+          {
+            message: {
+              message_id: 46,
+              chat: { id: 1001 },
+              voice: { file_id: 'voice-1', mime_type: 'audio/ogg' },
+            },
           },
-        });
+        );
         expect(parsed?.body).toBe('[Voice message]');
         expect(parsed?.media).toBeUndefined();
-        expect(parsed?.files).toEqual([{ id: 'voice-1', mimeType: 'audio/ogg' }]);
+        expect(parsed?.files).toEqual([
+          { id: 'voice-1', mimeType: 'audio/ogg' },
+        ]);
       });
     });
 
@@ -498,7 +568,9 @@ describe('Channel Drivers', () => {
             changes: [
               {
                 value: {
-                  messages: [{ from: '15551234567', id: 'wamid.1', ...message }],
+                  messages: [
+                    { from: '15551234567', id: 'wamid.1', ...message },
+                  ],
                 },
               },
             ],
@@ -540,7 +612,9 @@ describe('Channel Drivers', () => {
         );
         expect(video?.body).toBe('[Video]');
         expect(video?.media).toBeUndefined();
-        expect(video?.files).toEqual([{ id: 'media-2', mimeType: 'video/mp4' }]);
+        expect(video?.files).toEqual([
+          { id: 'media-2', mimeType: 'video/mp4' },
+        ]);
 
         const voice = await driver.parseWebhookPayload(
           {},
@@ -551,7 +625,9 @@ describe('Channel Drivers', () => {
           }),
         );
         expect(voice?.body).toBe('[Voice message]');
-        expect(voice?.files).toEqual([{ id: 'media-3', mimeType: 'audio/ogg' }]);
+        expect(voice?.files).toEqual([
+          { id: 'media-3', mimeType: 'audio/ogg' },
+        ]);
       });
     });
   });
@@ -775,23 +851,39 @@ describe('Channel Drivers', () => {
       });
 
       it('lists every attachment, each tied to its email', async () => {
-        const parsed = await driver.parseWebhookPayload({}, {}, {
-          type: 'email.received',
-          data: {
-            from: 'customer@domain.com',
-            subject: 'Artwork for the banner',
-            email_id: 'email-1',
-            attachments: [
-              { id: 'att-1', filename: 'banner.pdf', content_type: 'application/pdf' },
-              { id: 'att-2', filename: 'logo.png', content_type: 'image/png; name=logo.png' },
-            ],
+        const parsed = await driver.parseWebhookPayload(
+          {},
+          {},
+          {
+            type: 'email.received',
+            data: {
+              from: 'customer@domain.com',
+              subject: 'Artwork for the banner',
+              email_id: 'email-1',
+              attachments: [
+                {
+                  id: 'att-1',
+                  filename: 'banner.pdf',
+                  content_type: 'application/pdf',
+                },
+                {
+                  id: 'att-2',
+                  filename: 'logo.png',
+                  content_type: 'image/png; name=logo.png',
+                },
+              ],
+            },
           },
-        });
+        );
         expect(parsed?.body).toBe('Artwork for the banner');
         // Nothing a chat command acts on: email is not a staff command channel.
         expect(parsed?.media).toBeUndefined();
         expect(parsed?.files).toEqual([
-          { id: 'email-1/att-1', mimeType: 'application/pdf', filename: 'banner.pdf' },
+          {
+            id: 'email-1/att-1',
+            mimeType: 'application/pdf',
+            filename: 'banner.pdf',
+          },
           { id: 'email-1/att-2', mimeType: 'image/png', filename: 'logo.png' },
         ]);
       });

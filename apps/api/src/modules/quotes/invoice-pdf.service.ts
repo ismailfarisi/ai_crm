@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
-import { formatPaymentTerms } from '@saas/shared';
+import {
+  DOCUMENT_TIME_ZONE,
+  formatDisplayDate,
+  formatPaymentTerms,
+} from '@saas/shared';
 import { Invoice, InvoiceStatus } from './entities/invoice.entity';
 
 const CURRENCY_LOCALE = undefined;
@@ -44,10 +48,18 @@ export class InvoicePdfService {
       .fontSize(10)
       .font('Helvetica')
       .text(invoice.invoiceNumber, { align: 'right' })
-      .text(`Issued: ${invoice.issuedAt.toDateString()}`, { align: 'right' })
-      .text(invoice.dueDate ? `Due: ${invoice.dueDate.toDateString()}` : '', {
-        align: 'right',
-      });
+      .text(
+        `Issued: ${formatDisplayDate(invoice.issuedAt, { timeZone: DOCUMENT_TIME_ZONE })}`,
+        { align: 'right' },
+      )
+      .text(
+        invoice.dueDate
+          ? `Due: ${formatDisplayDate(invoice.dueDate, { timeZone: DOCUMENT_TIME_ZONE })}`
+          : '',
+        {
+          align: 'right',
+        },
+      );
 
     // Status badge
     doc
@@ -134,7 +146,11 @@ export class InvoicePdfService {
     doc
       .font('Helvetica-Bold')
       .fontSize(10)
-      .text(`Payment Terms: ${formatPaymentTerms(invoice.paymentTerms)}`, 50, y);
+      .text(
+        `Payment Terms: ${formatPaymentTerms(invoice.paymentTerms)}`,
+        50,
+        y,
+      );
     if (invoice.notes) {
       y += 20;
       doc

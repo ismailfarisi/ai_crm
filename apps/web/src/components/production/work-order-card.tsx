@@ -10,6 +10,7 @@ import {
 } from '@saas/shared';
 import { useWorkOrderAction } from '@/hooks/use-work-orders';
 import { useCan } from '@/lib/session-context';
+import { formatDate } from '@/lib/utils';
 
 export interface WorkOrderCardProps {
   workOrder: WorkOrderDto;
@@ -69,7 +70,7 @@ export function WorkOrderCard({ workOrder, onSelect, onActionSuccess }: WorkOrde
     const isToday = !isFinished && dueMidnight.getTime() === today.getTime();
 
     return {
-      text: due.toLocaleDateString(),
+      text: formatDate(due),
       tone: isOverdue ? ('overdue' as const) : isToday ? ('today' as const) : ('standard' as const),
     };
   }, [workOrder.dueDate, workOrder.status, today]);

@@ -257,8 +257,7 @@ describe('QuotePrintModal', () => {
       />
     );
 
-    // Browser-locale order: "October 24, 2026" or "24 October 2026".
-    expect(screen.getAllByText(/October 24, 2026|24 October 2026/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/24 Oct 2026/).length).toBeGreaterThan(0);
     expect(screen.getByText('Tax (5%):')).toBeDefined();
   });
 });

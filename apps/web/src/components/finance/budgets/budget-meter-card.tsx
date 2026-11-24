@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils';
 import { Badge, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/button';
 import type { CategoryBudgetDto, BudgetPeriod } from '@saas/shared';
+import { formatDisplayDate } from '@saas/shared';
 
 export interface BudgetMeterCardProps {
   budget: CategoryBudgetDto;
@@ -66,8 +67,8 @@ export function formatBudgetDateRange(startDate?: string, endDate?: string): str
     const s = new Date(startDate);
     const e = new Date(endDate);
     if (isNaN(s.getTime()) || isNaN(e.getTime())) return `${startDate} – ${endDate}`;
-    const sStr = s.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const eStr = e.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const sStr = formatDisplayDate(s, { withYear: false });
+    const eStr = formatDisplayDate(e);
     return `${sStr} – ${eStr}`;
   } catch {
     return `${startDate} – ${endDate}`;

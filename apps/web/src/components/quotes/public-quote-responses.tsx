@@ -2,13 +2,7 @@
 
 import { useState } from 'react';
 import { CheckCircle2, CircleAlert, FileText, Loader2, MessageSquare, XCircle } from 'lucide-react';
-import {
-  latestProof,
-  QUOTE_PROOF_STATUS_LABELS,
-  type PublicQuoteDto,
-  type PublicQuoteProofDto,
-  type QuoteProofStatus,
-} from '@saas/shared';
+import { latestProof, QUOTE_PROOF_STATUS_LABELS, type PublicQuoteDto, type PublicQuoteProofDto, type QuoteProofStatus, formatDisplayDate } from '@saas/shared';
 import { publicQuoteCopy, type PublicQuoteCopy } from './public-quote-copy';
 
 export type PublicCall = (path: string, init?: RequestInit) => Promise<PublicQuoteDto>;
@@ -144,7 +138,7 @@ export function PublicQuoteProofs({
       {latest.status !== 'PENDING' && latest.respondedByName && (
         <p className="mt-3 text-sm text-ink-muted">
           {latest.status === 'APPROVED' ? 'Approved' : 'Changes requested'} by {latest.respondedByName}
-          {latest.respondedAt ? ` on ${new Date(latest.respondedAt).toLocaleDateString()}` : ''}.
+          {latest.respondedAt ? ` on ${formatDisplayDate(latest.respondedAt)}` : ''}.
           {latest.responseComment ? ` “${latest.responseComment}”` : ''}
         </p>
       )}
@@ -249,7 +243,7 @@ export function PublicQuoteRespond({
   onChange,
   copy = publicQuoteCopy('en'),
   customerName = quote.customerName,
-  formatDate = (iso: string) => new Date(iso).toLocaleDateString(),
+  formatDate = (iso: string) => formatDisplayDate(iso),
 }: {
   quote: PublicQuoteDto;
   token: string;
@@ -296,7 +290,7 @@ export function PublicQuoteRespond({
     return (
       <p className="flex items-center gap-2 text-sm text-ink-muted">
         <XCircle className="size-5 shrink-0" />
-        You declined this quote{response.at ? ` on ${new Date(response.at).toLocaleDateString()}` : ''}. Contact {seller}{' '}
+        You declined this quote{response.at ? ` on ${formatDisplayDate(response.at)}` : ''}. Contact {seller}{' '}
         if you change your mind.
       </p>
     );
@@ -334,7 +328,7 @@ export function PublicQuoteRespond({
       {response?.kind === 'CHANGES_REQUESTED' && (
         <p className="flex items-start gap-2 rounded-lg bg-surface-muted p-3 text-sm text-ink-muted">
           <MessageSquare className="mt-0.5 size-4 shrink-0" />
-          You asked for changes{response.at ? ` on ${new Date(response.at).toLocaleDateString()}` : ''}. {seller} will
+          You asked for changes{response.at ? ` on ${formatDate(response.at)}` : ''}. {seller} will
           send an updated quote. You can still accept this one.
         </p>
       )}

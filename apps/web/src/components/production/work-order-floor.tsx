@@ -14,7 +14,7 @@ import {
 } from '@saas/shared';
 import { useWorkOrder, useWorkOrderAction } from '@/hooks/use-work-orders';
 import { useOrganization } from '@/hooks/use-organization';
-import { formatMoney } from '@/lib/utils';
+import { formatDate, formatMoney } from '@/lib/utils';
 import { useCan } from '@/lib/session-context';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -98,7 +98,7 @@ export function WorkOrderFloor({ id }: { id: string }) {
                 </Link>
               </>
             )}
-            {wo.dueDate ? ` · due ${new Date(wo.dueDate).toLocaleDateString()}` : ''}
+            {wo.dueDate ? ` · due ${formatDate(wo.dueDate)}` : ''}
           </p>
           {wo.templateName && (
             <p className="text-sm text-ink-subtle">

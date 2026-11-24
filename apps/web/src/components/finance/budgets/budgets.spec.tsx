@@ -384,8 +384,7 @@ describe('Budget Utility Helpers', () => {
 
   it('formats date range string correctly', () => {
     const formatted = formatBudgetDateRange('2026-08-01', '2026-08-31');
-    expect(formatted).toContain('Aug 1');
-    expect(formatted).toContain('Aug 31, 2026');
+    expect(formatted).toBe('1 Aug – 31 Aug 2026');
   });
 
   it('calculates budget health status accurately', () => {

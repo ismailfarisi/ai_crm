@@ -1,13 +1,6 @@
 'use client';
 
-import {
-  DOCUMENT_TIME_ZONE,
-  formatPaymentTerms,
-  formatTaxLineLabel,
-  type DocumentTemplateConfig,
-  type UniversalDocumentData,
-  type DocumentType,
-} from '@saas/shared';
+import { DOCUMENT_TIME_ZONE, formatPaymentTerms, formatTaxLineLabel, type DocumentTemplateConfig, type UniversalDocumentData, type DocumentType, formatDisplayDate } from '@saas/shared';
 
 interface DocumentTemplateSheetProps {
   data: UniversalDocumentData;
@@ -28,12 +21,7 @@ export function formatDocCurrency(amount: number | undefined | null, currency = 
 export function formatDocDate(d: string | Date | undefined | null): string {
   if (!d) return '—';
   try {
-    return new Date(d).toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      timeZone: DOCUMENT_TIME_ZONE,
-    });
+    return formatDisplayDate(d, { timeZone: DOCUMENT_TIME_ZONE });
   } catch {
     return String(d);
   }

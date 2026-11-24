@@ -38,7 +38,7 @@ const isDepositShape = (stages: BillingStage[]) =>
   stages[1].trigger === 'MANUAL';
 
 /**
- * How the quote will be invoiced once approved.
+ * How the quote will be invoiced once the customer accepts it.
  *
  * Previews the split with the same allocation the API stores, so the amounts
  * shown here are the amounts that will be invoiced, to the cent.

@@ -1,5 +1,6 @@
 import type { PayrollRunStatus, SettlementReason, SettlementStatus } from '@saas/shared';
 import { useOrganization } from '@/hooks/use-organization';
+import { formatDisplayMonth } from '@saas/shared';
 
 /** 1234.5 → "1,234.50"; with a currency, "AED 1,234.50". */
 export const money = (n: number, currency?: string | null) => {
@@ -39,7 +40,7 @@ export const STATUS_TONES: Record<PayrollRunStatus, 'neutral' | 'info' | 'warnin
 export function periodLabel(period: string): string {
   const d = new Date(`${period}-01T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return period;
-  return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  return formatDisplayMonth(d, { timeZone: 'UTC' });
 }
 
 export function nextPeriod(period: string): string {

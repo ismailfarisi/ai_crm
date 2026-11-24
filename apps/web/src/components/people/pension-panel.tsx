@@ -11,6 +11,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { Input, Select } from '@/components/ui/field';
 import { Badge, Card, CardBody } from '@/components/ui/primitives';
 import { money, periodLabel, usePayrollCurrency } from './payroll-format';
+import { formatDate } from '@/lib/utils';
 
 function RemitModal({ period, amount, onClose }: { period: string; amount: number; onClose: () => void }) {
   const { data: accounts = [] } = useFinanceAccounts();
@@ -139,7 +140,7 @@ export function PensionPanel({ period }: { period: string }) {
           <div>
             <dt className="text-xs text-ink-subtle">Status</dt>
             <dd className="text-sm text-ink-muted" data-testid="pension-status">
-              {remitted ? `Paid ${new Date(remitted.paidAt).toLocaleDateString()}` : 'Not yet remitted'}
+              {remitted ? `Paid ${formatDate(remitted.paidAt)}` : 'Not yet remitted'}
             </dd>
           </div>
         </dl>

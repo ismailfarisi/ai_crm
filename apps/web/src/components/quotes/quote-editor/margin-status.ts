@@ -9,8 +9,8 @@ export interface MarginStatus {
   /** The floor as a fraction, or null when the organisation has not set one. */
   floor: number | null;
   /**
-   * False when the percentage would mislead: nothing is priced yet, or a line
-   * is being re-costed and the figure is about to change.
+   * False when the percentage would mislead: nothing is priced yet, a line has
+   * no cost, or a line is being re-costed and the figure is about to change.
    */
   showFigure: boolean;
 }
@@ -27,9 +27,10 @@ const pct = (fraction: number) => `${Math.round(fraction * 1000) / 10}%`;
  * configured a quote losing money read as a green, healthy margin. A loss is
  * a loss whether or not anyone has set a floor.
  *
- * A line typed by hand has a price but no cost, so it counts as pure profit
- * and the figure runs high. That is said in the badge itself, not only on the
- * card further down, because the badge is what people look at.
+ * A line typed by hand has a price but no cost, so it would count as pure
+ * profit and any figure would run high. The badge then says the margin is not
+ * known yet instead of showing a figure, because the badge is what people look
+ * at. A loss still shows: a missing cost can only make it worse.
  */
 export function marginStatus(
   totals: Pick<QuoteTotals, 'subtotalAmount' | 'marginPct'>,
@@ -46,9 +47,11 @@ export function marginStatus(
   // the margin at the old quantity's cost.
   if (linesRecosting > 0) return { tone: 'neutral', label: 'Re-costing…', floor, showFigure: false };
   if (margin < 0) return judged('danger', 'Loss');
+  // A line with a price and no cost counts as pure profit, so any figure is
+  // too high. Say the margin is not known rather than show it.
   if (linesWithoutCost > 0) {
-    const lines = linesWithoutCost === 1 ? '1 line' : `${linesWithoutCost} lines`;
-    return judged('warning', `Cost missing on ${lines}`);
+    const lines = linesWithoutCost === 1 ? '1 line has' : `${linesWithoutCost} lines have`;
+    return { tone: 'warning', label: `Margin not known yet: ${lines} no cost`, floor, showFigure: false };
   }
   if (floor === null) return judged('neutral', 'No margin floor set');
   if (margin < floor) return judged('danger', `Below ${pct(floor)} floor`);

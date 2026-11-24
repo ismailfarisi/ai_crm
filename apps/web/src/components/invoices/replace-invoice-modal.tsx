@@ -18,7 +18,7 @@ export interface ReplaceInvoiceModalProps {
 /**
  * Confirms the two-step correction: the issued invoice is voided (with an
  * audit trail) and a draft quote carrying its lines is opened for correction.
- * Approving that quote raises the replacement invoice on a new number.
+ * Accepting that quote raises the replacement invoice on a new number.
  */
 export function ReplaceInvoiceModal({
   open,
@@ -57,7 +57,7 @@ export function ReplaceInvoiceModal({
       open={open}
       onClose={onClose}
       title={`Replace Invoice ${invoice.invoiceNumber}`}
-      description="Voids this invoice and opens a draft quote with the same lines, ready to correct and approve."
+      description="Voids this invoice and opens a draft quote with the same lines, ready to correct, approve and have accepted."
       size="md"
     >
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
@@ -74,8 +74,9 @@ export function ReplaceInvoiceModal({
             reused.
           </li>
           <li>
-            A draft quote with the same customer and items opens next; correct what was wrong and
-            approve it to raise the replacement invoice.
+            A draft quote with the same customer and items opens next. Correct what was wrong and
+            approve it; the replacement invoice is raised when the customer accepts it, or when you
+            mark it as accepted.
           </li>
           <li>The replacement gets the next invoice number in sequence.</li>
         </ul>

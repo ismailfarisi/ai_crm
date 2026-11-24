@@ -14,6 +14,7 @@ import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { InboxThreadList, type ProviderFilter, type ThreadGroup } from './inbox-thread-list';
 import { InboxChatPanel } from './inbox-chat-panel';
 import { pickHandover } from './handover';
+import { senderDisplayName } from './message-files';
 
 export function InboxWorkspace() {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
@@ -71,11 +72,11 @@ export function InboxWorkspace() {
         if (msg.staffUser) {
           name = msg.staffUser.name;
         } else if (contactObj) {
-          name = contactObj.fullName;
+          name = senderDisplayName(contactObj.fullName, msg.provider);
         } else if (msg.direction === 'INBOUND') {
-          name = msg.sender;
+          name = senderDisplayName(msg.sender, msg.provider);
         } else {
-          name = msg.recipient;
+          name = senderDisplayName(msg.recipient, msg.provider);
         }
 
         existing = {
@@ -105,7 +106,7 @@ export function InboxWorkspace() {
       if (!existing.contact && contactObj) {
         existing.contact = contactObj;
         if (!existing.staffUser) {
-          existing.name = contactObj.fullName;
+          existing.name = senderDisplayName(contactObj.fullName, msg.provider);
         }
       }
     }

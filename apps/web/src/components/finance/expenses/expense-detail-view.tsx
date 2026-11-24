@@ -39,6 +39,7 @@ import {
   ReimburseClaimDialog,
   RejectClaimDialog,
 } from './claim-action-dialogs';
+import { formatDate, formatDateTime } from '@/lib/utils';
 
 export interface ExpenseDetailViewProps {
   id: string;
@@ -179,7 +180,7 @@ export function ExpenseDetailView({ id }: ExpenseDetailViewProps) {
           <p className="mt-1 text-sm text-ink-muted">
             Submitted by <span className="font-semibold text-ink">{claim.employeeName || 'Staff'}</span> on{' '}
             <span className="tabular-nums">
-              {new Date(claim.createdAt).toLocaleDateString(undefined, { dateStyle: 'medium' })}
+              {formatDate(claim.createdAt)}
             </span>
           </p>
         </div>
@@ -235,7 +236,7 @@ export function ExpenseDetailView({ id }: ExpenseDetailViewProps) {
                     <Calendar className="size-3.5 text-ink-subtle" aria-hidden />
                     <span>
                       {claim.expenseDate
-                        ? new Date(claim.expenseDate).toLocaleDateString(undefined, { dateStyle: 'medium' })
+                        ? formatDate(claim.expenseDate)
                         : 'Not given'}
                     </span>
                   </div>
@@ -315,7 +316,7 @@ export function ExpenseDetailView({ id }: ExpenseDetailViewProps) {
               <div className="flex items-center justify-between border-b border-border pb-2">
                 <span className="text-ink-muted">Submitted</span>
                 <span className="font-medium tabular-nums text-ink">
-                  {new Date(claim.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                  {formatDateTime(claim.createdAt)}
                 </span>
               </div>
 
@@ -323,7 +324,7 @@ export function ExpenseDetailView({ id }: ExpenseDetailViewProps) {
                 <div className="flex items-center justify-between border-b border-border pb-2">
                   <span className="text-ink-muted">Approved by</span>
                   <span className="font-medium tabular-nums text-ink">
-                    {claim.approvedById || 'Finance Lead'} ({new Date(claim.approvedAt).toLocaleDateString()})
+                    {claim.approvedById || 'Finance Lead'} ({formatDate(claim.approvedAt)})
                   </span>
                 </div>
               )}
@@ -332,7 +333,7 @@ export function ExpenseDetailView({ id }: ExpenseDetailViewProps) {
                 <div className="flex items-center justify-between border-b border-border pb-2">
                   <span className="text-ink-muted">Reimbursed</span>
                   <span className="font-medium tabular-nums text-success">
-                    {new Date(claim.reimbursedAt).toLocaleDateString()}
+                    {formatDate(claim.reimbursedAt)}
                   </span>
                 </div>
               )}

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import {
   formatOrganizationAddress,
+  formatPaymentTerms,
   isInvoiceOverdue,
   PERMISSIONS,
   quoteDocumentTaxes,
@@ -24,7 +25,7 @@ import {
 import { Badge, PageHeader } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/button';
 import { useCan } from '@/lib/session-context';
-import { formatMoney } from '@/lib/utils';
+import { formatMoney, formatDate } from '@/lib/utils';
 import {
   useDownloadInvoicePdf,
   useInvoice,
@@ -53,14 +54,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function fmtDate(value?: string | null) {
-  if (!value) return '—';
-  return new Date(value).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
+const fmtDate = (value?: string | null) => formatDate(value);
 
 export function InvoiceDetailPage({ invoiceId }: { invoiceId: string }) {
   const { data: invoice, isLoading, error } = useInvoice(invoiceId);
@@ -175,10 +169,10 @@ export function InvoiceDetailPage({ invoiceId }: { invoiceId: string }) {
                 <tr>
                   <th className="px-4 py-2.5 text-start font-medium">Item</th>
                   <th className="px-4 py-2.5 text-start font-medium">Description</th>
-                  <th className="px-3 py-2.5 text-end font-medium">Unit Cost</th>
+                  <th className="px-3 py-2.5 text-end font-medium">Unit price</th>
                   <th className="px-3 py-2.5 text-end font-medium">Qty</th>
                   <th className="px-3 py-2.5 text-end font-medium">Tax</th>
-                  <th className="px-4 py-2.5 text-end font-medium">Line Total</th>
+                  <th className="px-4 py-2.5 text-end font-medium">Amount</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
@@ -237,10 +231,12 @@ export function InvoiceDetailPage({ invoiceId }: { invoiceId: string }) {
 
           {(invoice.notes || invoice.paymentTerms) && (
             <section className="rounded-xl border border-line bg-surface p-4">
-              <h2 className="text-sm font-semibold text-ink">Terms</h2>
+              <h2 className="text-sm font-semibold text-ink">
+                {invoice.paymentTerms ? 'Payment terms' : 'Notes'}
+              </h2>
               {invoice.paymentTerms && (
                 <p className="mt-2 whitespace-pre-line text-sm text-ink-muted">
-                  {invoice.paymentTerms}
+                  {formatPaymentTerms(invoice.paymentTerms)}
                 </p>
               )}
               {invoice.notes && (

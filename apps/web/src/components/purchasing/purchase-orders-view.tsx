@@ -6,7 +6,7 @@ import { ColumnDef } from '@tanstack/react-table';
 import { ClipboardList, Plus } from 'lucide-react';
 import { PERMISSIONS, type PurchaseOrderDto, type PurchaseOrderStatus } from '@saas/shared';
 import { usePurchaseOrders } from '@/hooks/use-purchase-orders';
-import { formatRelative } from '@/lib/utils';
+import { formatDate, formatRelative } from '@/lib/utils';
 import { Can } from '@/components/auth/can';
 import { Button } from '@/components/ui/button';
 import { Badge, EmptyState, PageHeader } from '@/components/ui/primitives';
@@ -101,7 +101,7 @@ export function PurchaseOrdersView() {
         cell: ({ row }) => (
           <span className="text-ink-muted text-xs whitespace-nowrap">
             {row.original.expectedDate
-              ? new Date(row.original.expectedDate).toLocaleDateString()
+              ? formatDate(row.original.expectedDate)
               : '—'}
           </span>
         ),

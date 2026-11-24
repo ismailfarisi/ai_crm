@@ -5,6 +5,7 @@ import PDFDocument from 'pdfkit';
 import {
   DEFAULT_DOCUMENT_TEMPLATE_CONFIG,
   UniversalDocumentData,
+  formatDisplayDate,
 } from '@saas/shared';
 import { PurchaseOrder } from './entities/purchase-order.entity';
 import { Supplier } from './entities/supplier.entity';
@@ -23,10 +24,7 @@ function formatMoney(amount: number, currency: string): string {
 }
 
 function formatDate(value: Date | null): string {
-  if (!value) return '—';
-  return new Intl.DateTimeFormat(CURRENCY_LOCALE, {
-    dateStyle: 'medium',
-  }).format(new Date(value));
+  return formatDisplayDate(value);
 }
 
 /**

@@ -9,8 +9,9 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/field';
 import { Alert, Card, CardBody, EmptyState, PageHeader, Skeleton } from '@/components/ui/primitives';
 import { PeopleNav } from './people-nav';
+import { formatDate } from '@/lib/utils';
 
-const day = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString();
+const day = (d: string) => formatDate(d);
 // The same bounds the API enforces on a balance.
 const MIN_DAYS = -60;
 const MAX_DAYS = 400;

@@ -50,7 +50,8 @@ interface QuoteCustomerPanelProps {
 }
 
 /**
- * Everything that happens with the customer once the quote is approved:
+ * Everything that happens with the customer once the quote is approved,
+ * up to their acceptance (which raises the order and first invoice):
  * sending it, recording their acceptance — which raises the sales order — and
  * revising it if they want changes first.
  *

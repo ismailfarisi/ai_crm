@@ -12,7 +12,7 @@ import { DataTable } from '@/components/ui/data-table';
 import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
 import { RowActionMenu, type RowMenuAction } from '@/components/documents/row-action-menu';
 import { useCan } from '@/lib/session-context';
-import { formatMoney } from '@/lib/utils';
+import { formatMoney, formatDate } from '@/lib/utils';
 
 interface InvoicesTableProps {
   invoices: InvoiceDto[];
@@ -161,11 +161,7 @@ export function InvoicesTable({
         header: ({ column }) => <DataTableColumnHeader column={column} title="Issued Date" />,
         cell: ({ row }) => {
           const dateStr = row.original.issuedAt
-            ? new Date(row.original.issuedAt).toLocaleDateString(undefined, {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-              })
+            ? formatDate(row.original.issuedAt)
             : 'N/A';
           return <span className="text-ink-muted text-xs whitespace-nowrap">{dateStr}</span>;
         },
@@ -253,7 +249,7 @@ export function InvoicesTable({
       enableRowSelection
       searchPlaceholder="Search invoices..."
       emptyTitle="No invoices found"
-      emptyDescription="Invoices will automatically be generated when quotes are approved."
+      emptyDescription="An invoice is raised when a customer accepts a quote, and at each billing stage of its order after that."
     />
   );
 }

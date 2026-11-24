@@ -28,6 +28,7 @@ import { PensionPanel } from './pension-panel';
 import { downloadSif } from './download-sif';
 import { RunStatusBadge } from './payroll-runs-view';
 import { inCurrency, money, periodLabel, usePayrollCurrency } from './payroll-format';
+import { formatDate } from '@/lib/utils';
 
 function Stat({ label, value, currency, testId }: { label: string; value: number; currency?: string; testId: string }) {
   return (
@@ -147,7 +148,7 @@ export function PayrollRunDetail({ id }: { id: string }) {
     <div className="space-y-6">
       <PageHeader
         title={`${periodLabel(run.period)} payroll`}
-        description={`${run.runNumber} · pay date ${new Date(run.payDate).toLocaleDateString()}`}
+        description={`${run.runNumber} · pay date ${formatDate(run.payDate)}`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <RunStatusBadge status={run.status} />

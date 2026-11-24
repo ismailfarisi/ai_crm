@@ -226,25 +226,23 @@ export function InboxChatPanel({ thread, onMessageSent, onBack }: InboxChatPanel
 
       {/* Composer */}
       <form onSubmit={handleSend} className="border-t border-border p-4 space-y-3 bg-surface">
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Provider Selector */}
+        <div className="flex flex-wrap items-end gap-2">
           <Select
-            aria-label="Send through"
+            label="Send by"
             value={provider}
             onChange={(e) => setProvider(e.target.value as ChannelProvider)}
             containerClassName="w-full sm:w-44"
             options={[
-              { value: 'WHATSAPP_META', label: 'WhatsApp Meta' },
-              { value: 'TELEGRAM', label: 'Telegram Bot' },
+              { value: 'WHATSAPP_META', label: 'WhatsApp' },
+              { value: 'TELEGRAM', label: 'Telegram' },
               { value: 'EMAIL_SMTP', label: 'Email (SMTP)' },
               { value: 'EMAIL_RESEND', label: 'Email (Resend)' },
             ]}
           />
 
-          {/* Recipient Input */}
           <Input
-            aria-label="Recipient"
-            placeholder="Phone, email or chat ID"
+            label={recipientLabel(provider)}
+            placeholder={recipientPlaceholder(provider)}
             value={recipient}
             onChange={(e) => setRecipient(e.target.value)}
             containerClassName="min-w-[12rem] flex-1"
@@ -294,4 +292,17 @@ export function InboxChatPanel({ thread, onMessageSent, onBack }: InboxChatPanel
       </form>
     </div>
   );
+}
+
+/** Who the reply goes to, in the channel's own terms. */
+function recipientLabel(provider: ChannelProvider): string {
+  if (provider === 'TELEGRAM') return 'To (Telegram chat)';
+  if (provider === 'WHATSAPP_META') return 'To (WhatsApp number)';
+  return 'To (email address)';
+}
+
+function recipientPlaceholder(provider: ChannelProvider): string {
+  if (provider === 'TELEGRAM') return 'Chat number, filled in from the conversation';
+  if (provider === 'WHATSAPP_META') return 'e.g. +971 50 123 4567';
+  return 'name@company.com';
 }

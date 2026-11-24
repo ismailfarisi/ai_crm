@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { EXPENSE_CATEGORY_GROUPS, PERMISSIONS } from '@saas/shared';
 import type { ExpenseClaimDto, ExpenseStatus } from '@saas/shared';
-import { cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import { Card, CardBody, CardHeader, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -354,11 +354,7 @@ export function ExpenseClaimsTable({
                 <tbody className="divide-y divide-border">
                   {paginatedClaims.map((claim) => {
                     const dateStr = claim.expenseDate
-                      ? new Date(claim.expenseDate).toLocaleDateString(undefined, {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                        })
+                      ? formatDate(claim.expenseDate)
                       : '—';
 
                     return (

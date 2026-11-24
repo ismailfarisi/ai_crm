@@ -15,6 +15,7 @@ import {
   TRIAL_DAYS,
   type PlanDto,
   type SubscriptionDto,
+  formatDisplayDate,
 } from '@saas/shared';
 import type { AppConfig } from '@/config/configuration';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -247,7 +248,7 @@ export class BillingService {
           PERMISSIONS.ORG_MANAGE_BILLING,
           {
             type: 'TRIAL_ENDING',
-            title: `Your trial ends on ${new Date(row.trial_ends_at).toDateString()}`,
+            title: `Your trial ends on ${formatDisplayDate(row.trial_ends_at)}`,
             body: 'Choose a plan to keep making changes after it ends.',
             link: '/settings/billing',
             entityType: 'SUBSCRIPTION',

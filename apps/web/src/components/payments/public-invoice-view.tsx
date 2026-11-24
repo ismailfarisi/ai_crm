@@ -5,6 +5,7 @@ import { CheckCircle2, CircleAlert, Loader2 } from 'lucide-react';
 import type { PublicInvoiceDto } from '@saas/shared';
 import { PayButton } from './pay-button';
 import { money, publicCall } from './public-fetch';
+import { formatDate } from '@/lib/utils';
 
 type LoadState =
   | { kind: 'loading' }
@@ -66,8 +67,8 @@ export function PublicInvoiceView({ token, justPaid }: { token: string; justPaid
             {invoice.stageLabel ? `${invoice.stageLabel} invoice` : 'Tax invoice'} {invoice.invoiceNumber}
           </h1>
           <p className="mt-1 text-sm text-ink-muted">
-            For {invoice.customerName} · Issued {new Date(invoice.issuedAt).toLocaleDateString()}
-            {invoice.dueDate ? ` · Due ${new Date(invoice.dueDate).toLocaleDateString()}` : ''}
+            For {invoice.customerName} · Issued {formatDate(invoice.issuedAt)}
+            {invoice.dueDate ? ` · Due ${formatDate(invoice.dueDate)}` : ''}
           </p>
         </header>
 

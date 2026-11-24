@@ -4,13 +4,7 @@ import { useRef } from 'react';
 import { FileImage, MessageSquare, Upload, XCircle } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import {
-  isAllowedProofType,
-  latestProof,
-  QUOTE_PROOF_STATUS_LABELS,
-  type QuoteProofStatus,
-  type QuoteProofsSummaryDto,
-} from '@saas/shared';
+import { isAllowedProofType, latestProof, QUOTE_PROOF_STATUS_LABELS, type QuoteProofStatus, type QuoteProofsSummaryDto, formatDisplayDate } from '@saas/shared';
 import { api, queryKeys } from '@/lib/api/endpoints';
 import { useOpenAttachment } from '@/hooks/use-platform';
 import { Badge, Card, CardBody, CardHeader, CardTitle } from '@/components/ui/primitives';
@@ -27,7 +21,7 @@ const ACCEPT = 'application/pdf,image/png,image/jpeg,image/webp';
 export const quoteProofsKey = (quoteId: string) => ['quotes', quoteId, 'proofs'] as const;
 
 function formatDate(value: string | null) {
-  return value ? new Date(value).toLocaleDateString() : '';
+  return formatDisplayDate(value, {}, '');
 }
 
 /**

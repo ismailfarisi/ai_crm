@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/data-table';
 import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
 import { type Quote, useDownloadQuotePdf } from '@/hooks/use-quotes';
-import { formatMoney } from '@/lib/utils';
+import { formatMoney, formatDate } from '@/lib/utils';
 
 interface QuotesTableProps {
   quotes: Quote[];
@@ -110,11 +110,7 @@ export function QuotesTable({ quotes, isLoading = false, onDecide, onPrint }: Qu
         header: ({ column }) => <DataTableColumnHeader column={column} title="Created At" />,
         cell: ({ row }) => {
           const formattedDate = row.original.createdAt
-            ? new Date(row.original.createdAt).toLocaleDateString(undefined, {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-              })
+            ? formatDate(row.original.createdAt)
             : 'N/A';
           return <span className="text-ink-muted text-xs whitespace-nowrap">{formattedDate}</span>;
         },

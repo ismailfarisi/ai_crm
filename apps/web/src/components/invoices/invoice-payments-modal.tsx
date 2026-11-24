@@ -6,6 +6,7 @@ import type { InvoiceDto } from '@saas/shared';
 import { useInvoicePayments } from '@/hooks/use-invoices';
 import { useFinanceAccounts } from '@/hooks/use-finance';
 import { formatFinanceCurrency } from '../finance/dashboard/treasury-stat-cards';
+import { formatDate } from '@/lib/utils';
 
 export interface InvoicePaymentsModalProps {
   open: boolean;
@@ -75,7 +76,7 @@ export function InvoicePaymentsModal({ open, onClose, invoice }: InvoicePayments
                 className="grid grid-cols-12 items-center border-b border-border/20 px-3 py-2 text-xs last:border-b-0"
               >
                 <span className="col-span-3 text-ink-muted">
-                  {new Date(payment.paidAt).toLocaleDateString()}
+                  {formatDate(payment.paidAt)}
                 </span>
                 <span className="col-span-3 text-right font-mono font-semibold text-ink">
                   {formatFinanceCurrency(payment.amount, invoice.currency)}

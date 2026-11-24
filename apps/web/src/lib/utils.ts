@@ -1,3 +1,4 @@
+import { formatDisplayDate, formatDisplayDateTime } from '@saas/shared';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -28,24 +29,14 @@ export function formatMoney(
   }
 }
 
+/** "24 Nov 2026": the one way a date is written across the app. */
 export function formatDate(value: string | Date | null | undefined): string {
-  if (!value) return '—';
-  return new Intl.DateTimeFormat('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  }).format(new Date(value));
+  return formatDisplayDate(value);
 }
 
+/** "24 Nov 2026, 14:05". */
 export function formatDateTime(value: string | Date | null | undefined): string {
-  if (!value) return '—';
-  return new Intl.DateTimeFormat('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value));
+  return formatDisplayDateTime(value);
 }
 
 export function formatRelative(value: string | Date | null | undefined): string {

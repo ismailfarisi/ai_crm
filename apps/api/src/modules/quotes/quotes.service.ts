@@ -214,7 +214,13 @@ export class QuotesService {
       tenantId,
       'quote_number',
     );
-    return formatTenantSequenceNumber(this.quoteRepository.manager, tenantId, 'quote_number', 'QT', value);
+    return formatTenantSequenceNumber(
+      this.quoteRepository.manager,
+      tenantId,
+      'quote_number',
+      'QT',
+      value,
+    );
   }
 
   /** Atomically allocates the next quote number — call only when actually creating a quote. */
@@ -224,7 +230,13 @@ export class QuotesService {
       tenantId,
       'quote_number',
     );
-    return formatTenantSequenceNumber(this.quoteRepository.manager, tenantId, 'quote_number', 'QT', value);
+    return formatTenantSequenceNumber(
+      this.quoteRepository.manager,
+      tenantId,
+      'quote_number',
+      'QT',
+      value,
+    );
   }
 
   /**
@@ -391,8 +403,8 @@ export class QuotesService {
 
         const nextStatus = payload.status as QuoteStatus | undefined;
         if (nextStatus !== undefined && nextStatus !== quote.status) {
-          // Approval provisions the order and raises invoices; rejection
-          // tells the workflow. Setting either directly would skip that.
+          // Approval runs the workflow (which raises the order and invoice
+          // once the customer accepts); rejection tells it too. Setting either directly would skip that.
           if (
             nextStatus === QuoteStatus.APPROVED ||
             nextStatus === QuoteStatus.REJECTED
@@ -508,11 +520,7 @@ export class QuotesService {
         }
         if (submittedForApproval && this.approvalNotifier) {
           await this.approvalNotifier.requested(
-            await this.approvalNoticeFor(
-              tenantId,
-              saved,
-              actorUserId,
-            ),
+            await this.approvalNoticeFor(tenantId, saved, actorUserId),
             manager,
           );
         }
@@ -667,11 +675,7 @@ export class QuotesService {
         // now; the rest wait for acceptance. Same transaction, so if that
         // order cannot be created the approval rolls back with it.
         const { invoicesRaised } = quote.acceptedAt
-          ? await this.invoicesService.createFromQuote(
-              tenantId,
-              quote,
-              manager,
-            )
+          ? await this.invoicesService.createFromQuote(tenantId, quote, manager)
           : { invoicesRaised: [] as Invoice[] };
         await this.approvalNotifier?.decided(
           {
@@ -1021,10 +1025,7 @@ export class QuotesService {
       totals: {
         subtotal: Number(quote.subtotalAmount || 0),
         discounts: Number(quote.discountAmount || 0),
-        taxes: quoteDocumentTaxes(
-          quote.items,
-          Number(quote.taxAmount || 0),
-        ),
+        taxes: quoteDocumentTaxes(quote.items, Number(quote.taxAmount || 0)),
         total: Number(quote.totalAmount || 0),
       },
       notes:

@@ -35,6 +35,7 @@ import { PayRunModal } from './pay-run-modal';
 import { SettlementStatusBadge, REASON_OPTIONS } from './settlements-view';
 import { downloadSif } from './download-sif';
 import { SETTLEMENT_REASON_LABELS, inCurrency, money, serviceLabel, usePayrollCurrency } from './payroll-format';
+import { formatDate } from '@/lib/utils';
 
 const optionalNumber = (v: unknown) => (v === '' || v == null || Number.isNaN(v) ? undefined : Number(v));
 /** A cleared notice or recovery field means none, which the server only learns from an explicit 0. */
@@ -247,7 +248,7 @@ export function SettlementDetail({ id }: { id: string }) {
     <div className="space-y-6">
       <PageHeader
         title={`${s.settlementNumber} · ${s.employeeName}`}
-        description={`${SETTLEMENT_REASON_LABELS[s.reason]} · left ${new Date(s.leavingDate).toLocaleDateString()}`}
+        description={`${SETTLEMENT_REASON_LABELS[s.reason]} · left ${formatDate(s.leavingDate)}`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <SettlementStatusBadge status={s.status} />

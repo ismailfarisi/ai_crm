@@ -690,6 +690,7 @@ describe('ChannelsService', () => {
         orgId,
         '998877',
         ChannelProviderType.TELEGRAM,
+        'Telegram user',
       );
 
       expect(messages).toHaveLength(1);
@@ -733,6 +734,7 @@ describe('ChannelsService', () => {
         orgId,
         '998877',
         ChannelProviderType.TELEGRAM,
+        'Telegram user',
       );
       // Both inbound command and outbound reply are stored and linked to contact
       expect(messages).toHaveLength(2);
@@ -787,6 +789,7 @@ describe('ChannelsService', () => {
         orgId,
         '998877',
         ChannelProviderType.TELEGRAM,
+        'Telegram user',
       );
       expect(messages).toHaveLength(1);
       expect(messages[0].direction).toBe(MessageDirection.INBOUND);

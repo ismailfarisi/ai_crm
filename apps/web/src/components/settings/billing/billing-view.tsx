@@ -9,6 +9,7 @@ import { useBillingAction, usePlans, useSubscription } from '@/hooks/use-platfor
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Badge, EmptyState, PageHeader } from '@/components/ui/primitives';
+import { formatDate } from '@/lib/utils';
 
 type BadgeTone = NonNullable<ComponentProps<typeof Badge>['tone']>;
 
@@ -23,7 +24,7 @@ const STATUS: Record<SubscriptionStatus, { label: string; tone: BadgeTone }> = {
 /** A card per DESIGN.md: solid surface, 1rem corners, hairline, Whisper. */
 const CARD = 'rounded-2xl border border-border/60 bg-surface shadow-[0_2px_10px_rgba(0,0,0,0.015)]';
 
-const date = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString() : '—');
+const date = (iso: string | null) => (iso ? formatDate(iso) : '—');
 
 export function BillingView() {
   const params = useSearchParams();

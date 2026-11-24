@@ -25,8 +25,9 @@ import { EmployeeLeaveTab } from './employee-leave-tab';
 import { EmployeePensionTab } from './employee-pension-tab';
 import { inCurrency, money, usePayrollCurrency } from './payroll-format';
 import type { EmployeeTab as TabKey } from './employee-tabs';
+import { formatDate } from '@/lib/utils';
 
-const day = (d: string | null) => (d ? new Date(d).toLocaleDateString() : '—');
+const day = (d: string | null) => (d ? formatDate(d) : '—');
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

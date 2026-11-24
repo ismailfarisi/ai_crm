@@ -7,7 +7,7 @@ import { api, queryKeys, type AiConfigDto } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/client';
 import { Badge, Card, CardBody, CardHeader, CardTitle } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { cn, formatDateTime } from '@/lib/utils';
 
 interface AiProviderCardProps {
   config: AiConfigDto;
@@ -153,10 +153,7 @@ export function AiProviderCard({ config, onConfigure }: AiProviderCardProps) {
         {config.lastTestedAt && (
           <p className="text-xs text-ink-subtle">
             Last tested:{' '}
-            {new Date(config.lastTestedAt).toLocaleString(undefined, {
-              dateStyle: 'short',
-              timeStyle: 'short',
-            })}
+            {formatDateTime(config.lastTestedAt)}
           </p>
         )}
 

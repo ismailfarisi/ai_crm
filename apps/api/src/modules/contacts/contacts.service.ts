@@ -34,11 +34,14 @@ export class ContactsService {
     organizationId: string,
     senderIdentifier: string,
     provider: string,
+    /** The sender's name from the channel, used instead of the bare identifier. */
+    senderName?: string,
   ): Promise<Contact> {
     const cleanIdentifier = senderIdentifier.trim();
     const isEmail = cleanIdentifier.includes('@');
     const emailValue = isEmail ? cleanIdentifier.toLowerCase() : null;
     const lockIdentifier = emailValue ?? cleanIdentifier;
+    const name = senderName?.trim().slice(0, 100) || null;
 
     // No actor exists on an inbound webhook, so `scoped()` (which applies an
     // actor's ownership filter) does not apply; the tenant filter is explicit
@@ -67,12 +70,23 @@ export class ContactsService {
               { tenantId: organizationId, email: cleanIdentifier },
             ],
       });
-      if (existing) return existing;
+      if (existing) {
+        // A contact made before senders had names was called by its id
+        // ("77001"). Give it the name the channel now sends; never touch one
+        // somebody has named.
+        const namedById =
+          existing.firstName === cleanIdentifier && !existing.lastName;
+        if (name && namedById) {
+          existing.firstName = name;
+          return repo.save(existing);
+        }
+        return existing;
+      }
 
       return repo.save(
         repo.create({
           tenantId: organizationId,
-          firstName: cleanIdentifier || 'Channel Contact',
+          firstName: name || cleanIdentifier || 'Channel Contact',
           lastName: '',
           email: isEmail ? emailValue : null,
           phone: isEmail ? null : cleanIdentifier,

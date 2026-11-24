@@ -73,6 +73,7 @@ export * from './schemas/billing';
 export * from './payments/online-payments';
 export * from './platform/audit';
 export * from './platform/attachments';
+export * from './platform/dates';
 export * from './platform/countries';
 export * from './schemas/platform';
 export * from './templates';

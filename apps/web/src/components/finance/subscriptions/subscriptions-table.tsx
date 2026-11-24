@@ -28,7 +28,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import { Badge, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/button';
 import { Input, Select } from '@/components/ui/field';
@@ -79,11 +79,7 @@ export function formatNextBillingDate(dateStr: string) {
     const target = new Date(dateStr);
     if (isNaN(target.getTime())) return { formatted: dateStr, badgeText: 'Scheduled', tone: 'neutral' as const };
 
-    const formatted = target.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
+    const formatted = formatDate(target);
 
     const now = new Date();
     // Compare date parts

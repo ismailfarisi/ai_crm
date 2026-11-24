@@ -339,7 +339,7 @@ export function isInvoiceOverdue(
 
 /**
  * Shared by the Nest service (sync fallback) and the DI-free Temporal
- * activity that creates the invoice on quote approval, so both paths agree
+ * activity that creates the invoice when the quote is accepted, so both paths agree
  * on how a quote's paymentTerms turn into a due date.
  */
 export function calculateInvoiceDueDate(issuedAt: Date, paymentTerms: string): Date | null {

@@ -8,6 +8,7 @@ import { useCan } from '@/lib/session-context';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/field';
+import { formatDate } from '@/lib/utils';
 
 /**
  * What has shipped on an order, and a form to ship more.
@@ -89,7 +90,7 @@ export function OrderDeliveries({ order }: { order: SalesOrderDto }) {
                   <span className="text-ink-subtle">
                     {' · '}
                     {note.status === 'DISPATCHED' && note.dispatchedAt
-                      ? `dispatched ${new Date(note.dispatchedAt).toLocaleDateString()}`
+                      ? `dispatched ${formatDate(note.dispatchedAt)}`
                       : note.status.toLowerCase()}
                     {note.carrier ? ` · ${note.carrier}` : ''}
                     {note.trackingReference ? ` ${note.trackingReference}` : ''}
