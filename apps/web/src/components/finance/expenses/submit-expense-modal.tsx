@@ -763,25 +763,26 @@ export function SubmitExpenseModal({
         {/* VAT. Only when the organisation has tax codes to file it under. */}
         {taxCodes.length > 0 && (
           <div className="space-y-3" data-testid="expense-vat-section">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Select
-                ref={vatRef}
-                label="VAT on this receipt"
-                data-testid="select-tax-code"
-                value={taxCodeId}
-                error={fieldErrors.vat}
-                onChange={(e) => {
-                  setTaxCodeId(e.target.value);
-                  // The VAT typed for one rate says nothing about another.
-                  setTaxAmount('');
-                  clearFieldError('vat');
-                }}
-                options={[
-                  { value: '', label: 'No VAT' },
-                  ...taxCodes.map((c) => ({ value: c.id, label: expenseTaxCodeLabel(c) })),
-                ]}
-              />
+            {/* Full width: the option says in words whether the VAT comes back. */}
+            <Select
+              ref={vatRef}
+              label="VAT on this receipt"
+              data-testid="select-tax-code"
+              value={taxCodeId}
+              error={fieldErrors.vat}
+              onChange={(e) => {
+                setTaxCodeId(e.target.value);
+                // The VAT typed for one rate says nothing about another.
+                setTaxAmount('');
+                clearFieldError('vat');
+              }}
+              options={[
+                { value: '', label: 'No VAT' },
+                ...taxCodes.map((c) => ({ value: c.id, label: expenseTaxCodeLabel(c) })),
+              ]}
+            />
 
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {hasReceiptVat && (
                 <Input
                   label="VAT amount on the receipt"
