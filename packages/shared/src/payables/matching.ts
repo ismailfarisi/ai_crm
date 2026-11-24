@@ -302,12 +302,17 @@ export const AGING_BUCKETS: AgingBucket[] = [
 ];
 
 /** Whole days past due, by calendar date in UTC — a bill due today is current. */
-export function daysOverdue(dueDate: Date | string, asOf: Date = new Date()): number {
+/**
+ * Whole UAE days from the due day to `asOf`. A report asked about a calendar
+ * day passes that day as `YYYY-MM-DD`, so it is read as that day, not as the
+ * UAE day its end-of-day instant falls in.
+ */
+export function daysOverdue(dueDate: Date | string, asOf: Date | string = new Date()): number {
   const day = (v: Date | string) => Date.parse(`${documentDay(v)}T00:00:00Z`);
   return Math.floor((day(asOf) - day(dueDate)) / 86_400_000);
 }
 
-export function agingBucket(dueDate: Date | string | null, asOf: Date = new Date()): AgingBucket {
+export function agingBucket(dueDate: Date | string | null, asOf: Date | string = new Date()): AgingBucket {
   if (!dueDate) return 'CURRENT';
   const days = daysOverdue(dueDate, asOf);
   if (days <= 0) return 'CURRENT';

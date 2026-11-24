@@ -9,6 +9,8 @@ import {
   invoicePosition,
   lookupSampleForTest,
   needsReorder,
+  documentDay,
+  startOfDocumentDay,
   type Permission,
 } from '@saas/shared';
 import { z } from 'zod';
@@ -372,9 +374,7 @@ export function createShopActions(deps: ShopActionDeps) {
     const repo: DataSource['getRepository'] = (entity) =>
       deps.dataSource.getRepository(entity);
     const now = new Date();
-    const today = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-    );
+    const today = startOfDocumentDay(now);
     const tomorrow = new Date(today.getTime() + 86_400_000);
     const yesterday = new Date(today.getTime() - 86_400_000);
     const liveJobs = In(['PLANNED', 'RELEASED', 'IN_PROGRESS']);
@@ -483,7 +483,7 @@ export function createShopActions(deps: ShopActionDeps) {
     ].join('\n');
 
     return {
-      date: today.toISOString().slice(0, 10),
+      date: documentDay(now),
       quotesAwaitingCustomer,
       proofsAwaitingCustomer,
       ordersInProduction,

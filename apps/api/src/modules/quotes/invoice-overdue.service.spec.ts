@@ -142,7 +142,8 @@ describe('InvoiceOverdueService — claiming each invoice', () => {
 
       await service.detectOverdueInvoices();
 
-      const startOfToday = new Date('2026-11-24T00:00:00.000Z');
+      // Midnight in Dubai.
+      const startOfToday = new Date('2026-11-23T20:00:00.000Z');
       const where = (invoiceRepository.find as jest.Mock).mock.calls[0][0]
         .where;
       expect(where.dueDate.value).toEqual(startOfToday);

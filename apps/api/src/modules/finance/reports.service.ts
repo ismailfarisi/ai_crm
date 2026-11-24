@@ -15,6 +15,7 @@ import {
   type ProfitAndLossDto,
   type ReceivablesAgingDto,
   type StatementLineDto,
+  utcDay,
 } from '@saas/shared';
 import {
   SalesOrder,
@@ -246,7 +247,7 @@ export class ReportsService {
       if (cents(outstanding) === 0) continue;
       const outstandingBase = toBase(outstanding, invoice.fxRate ?? 1);
       const isCredit = outstanding < 0;
-      const bucket = isCredit ? 'CURRENT' : agingBucket(invoice.dueDate, asOf);
+      const bucket = isCredit ? 'CURRENT' : agingBucket(invoice.dueDate, utcDay(asOf));
       if (isCredit) {
         customerCredits = round2(customerCredits - outstandingBase);
       } else {
@@ -262,7 +263,7 @@ export class ReportsService {
         dueDate: invoice.dueDate?.toISOString() ?? null,
         daysOverdue:
           invoice.dueDate && !isCredit
-            ? Math.max(0, daysOverdue(invoice.dueDate, asOf))
+            ? Math.max(0, daysOverdue(invoice.dueDate, utcDay(asOf)))
             : 0,
         bucket,
       });

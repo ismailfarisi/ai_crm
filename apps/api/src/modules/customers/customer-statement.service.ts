@@ -18,6 +18,7 @@ import {
   invoiceBalanceAsOf,
   type AgingBucket,
   type UniversalDocumentData,
+  utcDay,
 } from '@saas/shared';
 import {
   CreditNote,
@@ -301,7 +302,7 @@ export class CustomerStatementService {
         toDate,
       );
       if (outstanding > 0) {
-        const key = column[agingBucket(inv.dueDate, toDate)];
+        const key = column[agingBucket(inv.dueDate, utcDay(toDate))];
         aging[key] = round2(aging[key] + outstanding);
       }
     }

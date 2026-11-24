@@ -40,6 +40,7 @@ import {
   type Permission,
   type RecordBillPaymentPayload,
   toBase,
+  utcDay,
 } from '@saas/shared';
 import {
   allocateNextSequenceValue,
@@ -1064,7 +1065,7 @@ export class PayablesService {
       const outstandingBase = toBase(outstanding, bill.fxRate ?? 1);
       // Paid ahead of the bill: nothing is late, the supplier holds our money.
       const bucket =
-        outstanding < 0 ? 'CURRENT' : agingBucket(bill.dueDate, asOf);
+        outstanding < 0 ? 'CURRENT' : agingBucket(bill.dueDate, utcDay(asOf));
       buckets[bucket] = money(buckets[bucket] + outstandingBase);
       rows.push({
         id: bill.id,
