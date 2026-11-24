@@ -706,6 +706,570 @@ describe('ExpensesService', () => {
     });
   });
 
+  describe('VAT on a claim', () => {
+    const TRN = '100123456700003';
+    const SR = {
+      id: 'code-sr',
+      tenantId,
+      kind: 'PURCHASE',
+      code: 'SR',
+      name: 'Standard rated 5%',
+      rate: 5,
+      isReverseCharge: false,
+      treatment: 'STANDARD',
+      isActive: true,
+    };
+    const BL = { ...SR, id: 'code-bl', code: 'BL', treatment: 'BLOCKED' };
+    const RC = {
+      ...SR,
+      id: 'code-rc',
+      code: 'RC',
+      isReverseCharge: true,
+      treatment: 'REVERSE_CHARGE',
+    };
+    const uaeOrg = {
+      id: tenantId,
+      baseCurrency: 'AED',
+      country: 'AE',
+      taxId: '100999888700003',
+    };
+    let codes: Array<typeof SR>;
+    let organization: Record<string, unknown>;
+
+    const lookups = (entity: { name: string }) => {
+      if (entity.name === 'TaxCode') {
+        return {
+          findOne: jest.fn(
+            async ({ where }: { where: { id: string } }) =>
+              codes.find((c) => c.id === where.id) ?? null,
+          ),
+          find: jest.fn(async () => codes.filter((c) => c.isActive)),
+        };
+      }
+      if (entity.name === 'Organization') {
+        return { findOne: jest.fn().mockResolvedValue(organization) };
+      }
+      return undefined;
+    };
+
+    const claimOf = (over: Partial<ExpenseClaim> = {}) =>
+      ({
+        id: expenseId,
+        tenantId,
+        amount: 210,
+        currency: 'AED',
+        category: 'Travel',
+        claimNumber: 'EXP-2026-0007',
+        status: 'SUBMITTED',
+        expenseDate: new Date('2026-10-15T00:00:00Z'),
+        temporalWorkflowId: `expense-${expenseId}`,
+        taxCodeId: null,
+        taxAmount: 0,
+        supplierTaxId: null,
+        recoverableTax: 0,
+        reverseChargeTax: 0,
+        taxPostedAt: null,
+        taxReversedAt: null,
+        ...over,
+      }) as ExpenseClaim;
+
+    const postedLines = () =>
+      (journalRepo.save as jest.Mock).mock.calls.map(
+        ([entry]) => entry as JournalEntry,
+      );
+    const line = (entry: JournalEntry, role: string) =>
+      (entry.lines as any[]).filter((l) => l.role === role);
+
+    beforeEach(() => {
+      codes = [SR, BL, RC];
+      organization = uaeOrg;
+      const plain = (expenseRepo.manager as any).getRepository;
+      (expenseRepo.manager as any).getRepository = jest.fn(
+        (entity: { name: string }) => lookups(entity) ?? plain(entity),
+      );
+      const inTx = txManager.getRepository.getMockImplementation()!;
+      txManager.getRepository.mockImplementation(
+        (entity: { name: string }) => lookups(entity) ?? inTx(entity),
+      );
+    });
+
+    describe('recording it', () => {
+      const dto = (over: Partial<CreateExpenseClaimDto> = {}) =>
+        ({
+          category: 'Travel',
+          amount: 210,
+          currency: 'AED',
+          ...over,
+        }) as CreateExpenseClaimDto;
+
+      it('stores no VAT by default, as every claim did before', async () => {
+        const claim = await service.create(tenantId, dto());
+        expect(claim.taxCodeId).toBeNull();
+        expect(claim.taxAmount).toBe(0);
+      });
+
+      it('ignores a VAT amount sent without a VAT type', async () => {
+        const claim = await service.create(tenantId, dto({ taxAmount: 10 }));
+        expect(claim.taxCodeId).toBeNull();
+        expect(claim.taxAmount).toBe(0);
+      });
+
+      it('stores the code, the VAT and the supplier tax number', async () => {
+        const claim = await service.create(
+          tenantId,
+          dto({
+            taxCodeId: SR.id,
+            taxAmount: 10,
+            supplierTaxId: '100-1234-5670-0003',
+          }),
+        );
+        expect(claim).toMatchObject({
+          taxCodeId: SR.id,
+          taxAmount: 10,
+          supplierTaxId: TRN,
+        });
+      });
+
+      it('works the VAT out from the rate when none is given', async () => {
+        const claim = await service.create(
+          tenantId,
+          dto({ taxCodeId: SR.id, supplierTaxId: TRN }),
+        );
+        expect(claim.taxAmount).toBe(10);
+      });
+
+      it('refuses recoverable VAT in the UAE without the supplier tax number', async () => {
+        await expect(
+          service.create(tenantId, dto({ taxCodeId: SR.id, taxAmount: 10 })),
+        ).rejects.toThrow(/tax number \(TRN\)/);
+        expect(expenseRepo.save).not.toHaveBeenCalled();
+      });
+
+      it('does not ask for the tax number outside UAE VAT mode', async () => {
+        organization = { id: tenantId, baseCurrency: 'USD', country: 'GB' };
+        const claim = await service.create(
+          tenantId,
+          dto({ taxCodeId: SR.id, taxAmount: 10 }),
+        );
+        expect(claim.taxAmount).toBe(10);
+      });
+
+      it('accepts blocked VAT without a tax number', async () => {
+        const claim = await service.create(
+          tenantId,
+          dto({ taxCodeId: BL.id, taxAmount: 10 }),
+        );
+        expect(claim).toMatchObject({ taxCodeId: BL.id, taxAmount: 10 });
+      });
+
+      it('refuses more VAT than the rate allows on the total', async () => {
+        await expect(
+          service.create(
+            tenantId,
+            dto({ taxCodeId: SR.id, taxAmount: 50, supplierTaxId: TRN }),
+          ),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      });
+
+      it('refuses a code that is not one of the organisation’s, or is switched off', async () => {
+        await expect(
+          service.create(tenantId, dto({ taxCodeId: 'someone-elses' })),
+        ).rejects.toThrow(/VAT type is not available/);
+        codes = [{ ...SR, isActive: false }];
+        await expect(
+          service.create(
+            tenantId,
+            dto({ taxCodeId: SR.id, supplierTaxId: TRN }),
+          ),
+        ).rejects.toThrow(/VAT type is not available/);
+      });
+
+      it('recalculates the VAT when the amount of a claim changes', async () => {
+        expenseRepo.findOne = jest
+          .fn()
+          .mockResolvedValue(
+            claimOf({ taxCodeId: SR.id, taxAmount: 10, supplierTaxId: TRN }),
+          );
+        const claim = await service.update(tenantId, expenseId, {
+          amount: 420,
+        });
+        expect(claim.taxAmount).toBe(20);
+      });
+
+      it('clears the VAT when the claim is set back to No VAT', async () => {
+        expenseRepo.findOne = jest
+          .fn()
+          .mockResolvedValue(
+            claimOf({ taxCodeId: SR.id, taxAmount: 10, supplierTaxId: TRN }),
+          );
+        const claim = await service.update(tenantId, expenseId, {
+          taxCodeId: null,
+        });
+        expect(claim.taxCodeId).toBeNull();
+        expect(claim.taxAmount).toBe(0);
+      });
+
+      it('lists the purchase codes for the claim form', async () => {
+        const options = await service.taxOptions(tenantId);
+        expect(options.supplierTaxIdRequired).toBe(true);
+        expect(options.codes.map((c) => c.code)).toEqual(['SR', 'BL', 'RC']);
+      });
+    });
+
+    describe('approval', () => {
+      const approve = () =>
+        service.sendSignal(tenantId, expenseId, {
+          action: 'APPROVE',
+          approvedBy: 'manager-1',
+        });
+
+      // The reproduced defect: Dr 6500 Travel 210 / Cr 2100 210, the VAT lost.
+      it('posts recoverable VAT to the tax account, the net to the cost, and still owes the gross', async () => {
+        expenseRepo.findOne = jest
+          .fn()
+          .mockResolvedValue(
+            claimOf({ taxCodeId: SR.id, taxAmount: 10, supplierTaxId: TRN }),
+          );
+        const claim = await approve();
+
+        const [entry] = postedLines();
+        expect(entry.totalAmount).toBe(210);
+        expect(line(entry, 'TRAVEL')).toEqual([
+          expect.objectContaining({ debit: 200, credit: 0 }),
+        ]);
+        expect(line(entry, 'TAX_PAYABLE')).toEqual([
+          expect.objectContaining({
+            accountName: 'Input tax',
+            debit: 10,
+            credit: 0,
+          }),
+        ]);
+        expect(line(entry, 'ACCOUNTS_PAYABLE')).toEqual([
+          expect.objectContaining({ debit: 0, credit: 210 }),
+        ]);
+        expect(claim).toMatchObject({
+          status: 'APPROVED',
+          taxAmount: 10,
+          recoverableTax: 10,
+          reverseChargeTax: 0,
+          taxReversedAt: null,
+        });
+        expect(claim.taxPostedAt).toBeInstanceOf(Date);
+      });
+
+      it('posts a claim without VAT exactly as before', async () => {
+        expenseRepo.findOne = jest.fn().mockResolvedValue(claimOf());
+        const claim = await approve();
+        const [entry] = postedLines();
+        expect(entry.lines).toEqual([
+          expect.objectContaining({ role: 'TRAVEL', debit: 210, credit: 0 }),
+          expect.objectContaining({
+            role: 'ACCOUNTS_PAYABLE',
+            debit: 0,
+            credit: 210,
+          }),
+        ]);
+        expect(claim.recoverableTax).toBe(0);
+      });
+
+      it('keeps blocked VAT in the cost and off the tax account', async () => {
+        expenseRepo.findOne = jest
+          .fn()
+          .mockResolvedValue(claimOf({ taxCodeId: BL.id, taxAmount: 10 }));
+        const claim = await approve();
+        const [entry] = postedLines();
+        expect(line(entry, 'TAX_PAYABLE')).toHaveLength(0);
+        expect(line(entry, 'TRAVEL')[0].debit).toBe(210);
+        expect(line(entry, 'ACCOUNTS_PAYABLE')[0].credit).toBe(210);
+        expect(claim).toMatchObject({ taxAmount: 10, recoverableTax: 0 });
+      });
+
+      it('self-assesses a reverse-charge claim on both sides of the tax account', async () => {
+        expenseRepo.findOne = jest
+          .fn()
+          .mockResolvedValue(claimOf({ amount: 200, taxCodeId: RC.id }));
+        const claim = await approve();
+        const [entry] = postedLines();
+        expect(
+          line(entry, 'TAX_PAYABLE').map((l) => [l.debit, l.credit]),
+        ).toEqual([
+          [10, 0],
+          [0, 10],
+        ]);
+        expect(line(entry, 'ACCOUNTS_PAYABLE')[0].credit).toBe(200);
+        expect(claim).toMatchObject({
+          recoverableTax: 0,
+          reverseChargeTax: 10,
+        });
+      });
+
+      it('refuses to approve when the VAT can no longer be claimed, and posts nothing', async () => {
+        // Filed before the organisation entered UAE VAT mode, with no TRN.
+        expenseRepo.findOne = jest
+          .fn()
+          .mockResolvedValue(
+            claimOf({ taxCodeId: SR.id, taxAmount: 10, supplierTaxId: null }),
+          );
+        await expect(approve()).rejects.toThrow(
+          /EXP-2026-0007 cannot be approved yet/,
+        );
+        expect(journalRepo.save).not.toHaveBeenCalled();
+        expect(expenseRepo.save).not.toHaveBeenCalled();
+      });
+
+      it('refuses to approve a claim whose VAT type was deleted', async () => {
+        codes = [];
+        expenseRepo.findOne = jest
+          .fn()
+          .mockResolvedValue(
+            claimOf({ taxCodeId: SR.id, taxAmount: 10, supplierTaxId: TRN }),
+          );
+        await expect(approve()).rejects.toThrow(/VAT type no longer exists/);
+        expect(journalRepo.save).not.toHaveBeenCalled();
+      });
+
+      it('leaves reimbursement as it was: the gross leaves the account', async () => {
+        expenseRepo.findOne = jest.fn().mockResolvedValue(
+          claimOf({
+            status: 'APPROVED',
+            taxCodeId: SR.id,
+            taxAmount: 10,
+            recoverableTax: 10,
+            supplierTaxId: TRN,
+          }),
+        );
+        await service.sendSignal(tenantId, expenseId, {
+          action: 'REIMBURSE',
+          accountId: 'acc-1',
+        });
+        const entry = postedLines().find(
+          (e) => e.referenceId === `${expenseId}:reimbursement`,
+        )!;
+        expect(entry.totalAmount).toBe(210);
+        expect(line(entry, 'ACCOUNTS_PAYABLE')[0].debit).toBe(210);
+        expect(line(entry, 'TAX_PAYABLE')).toHaveLength(0);
+      });
+    });
+
+    describe('rejection', () => {
+      const reject = () =>
+        service.sendSignal(tenantId, expenseId, {
+          action: 'REJECT',
+          rejectedBy: 'manager-1',
+          reason: 'Personal purchase',
+        });
+      const accrual = {
+        id: 'je-accrual',
+        tenantId,
+        referenceType: 'EXPENSE',
+        referenceId: expenseId,
+        totalAmount: 210,
+        currency: 'AED',
+        fxRate: 1,
+        lines: [
+          {
+            ledgerAccountId: 'a-6500',
+            accountName: 'Travel',
+            debit: 200,
+            credit: 0,
+            description: 'Expense claim EXP-2026-0007 — Travel',
+          },
+          {
+            ledgerAccountId: 'a-2200',
+            accountName: 'Input tax',
+            debit: 10,
+            credit: 0,
+            description: 'Input tax',
+          },
+          {
+            ledgerAccountId: 'a-2100',
+            accountName: 'Accounts payable',
+            debit: 0,
+            credit: 210,
+            description: 'Payable',
+          },
+        ],
+      };
+
+      it('posts nothing for a claim rejected before it was approved', async () => {
+        expenseRepo.findOne = jest
+          .fn()
+          .mockResolvedValue(
+            claimOf({ taxCodeId: SR.id, taxAmount: 10, supplierTaxId: TRN }),
+          );
+        const claim = await reject();
+        expect(journalRepo.save).not.toHaveBeenCalled();
+        expect(claim).toMatchObject({
+          status: 'REJECTED',
+          recoverableTax: 0,
+          taxPostedAt: null,
+          taxReversedAt: null,
+        });
+      });
+
+      it('reverses the cost, the payable and the VAT of a claim rejected after approval', async () => {
+        expenseRepo.findOne = jest.fn().mockResolvedValue(
+          claimOf({
+            status: 'APPROVED',
+            taxCodeId: SR.id,
+            taxAmount: 10,
+            recoverableTax: 10,
+            supplierTaxId: TRN,
+            taxPostedAt: new Date('2026-10-16T00:00:00Z'),
+          }),
+        );
+        journalRepo.findOne = jest.fn(async ({ where }: any) =>
+          where.referenceId === expenseId ? accrual : null,
+        ) as any;
+
+        const claim = await reject();
+
+        const [entry] = postedLines();
+        expect(entry).toMatchObject({
+          referenceType: 'EXPENSE',
+          referenceId: `${expenseId}:reversal`,
+          reversesEntryId: 'je-accrual',
+          totalAmount: 210,
+        });
+        // The mirror image, account for account: nothing is left behind.
+        expect(
+          (entry.lines as any[]).map((l) => [
+            l.ledgerAccountId,
+            l.debit,
+            l.credit,
+          ]),
+        ).toEqual([
+          ['a-6500', 0, 200],
+          ['a-2200', 0, 10],
+          ['a-2100', 210, 0],
+        ]);
+        // The accrual itself is never edited.
+        expect(accrual.lines[0]).toMatchObject({ debit: 200, credit: 0 });
+        expect(claim.status).toBe('REJECTED');
+        expect(claim.taxReversedAt).toBeInstanceOf(Date);
+      });
+
+      it('does not reverse twice', async () => {
+        expenseRepo.findOne = jest.fn().mockResolvedValue(
+          claimOf({
+            status: 'APPROVED',
+            taxCodeId: SR.id,
+            recoverableTax: 10,
+          }),
+        );
+        journalRepo.findOne = jest.fn(async ({ where }: any) =>
+          where.reversesEntryId ? { id: 'je-rev' } : accrual,
+        ) as any;
+        await reject();
+        expect(journalRepo.save).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('scanning a receipt', () => {
+      const scan = async (read: Record<string, unknown>) => {
+        (aiService.generateStructured as jest.Mock).mockResolvedValue({
+          data: {
+            merchantName: 'ENOC',
+            amount: 210,
+            currency: 'AED',
+            expenseDate: '2026-10-15',
+            category: 'Travel',
+            confidence: 0.9,
+            items: [],
+            ...read,
+          },
+          usage: { inputTokens: 1, outputTokens: 1 },
+          model: 'm',
+        });
+        return service.scanReceipt(
+          { rawText: 'ENOC TRN 100123456700003' },
+          actor,
+        );
+      };
+
+      it('suggests the standard code when the receipt shows VAT and the supplier tax number', async () => {
+        const result = await scan({
+          taxAmount: 10,
+          supplierTaxId: 'TRN 100123456700003'.slice(4),
+        });
+        expect(result).toMatchObject({
+          taxAmount: 10,
+          supplierTaxId: TRN,
+          taxCodeId: SR.id,
+        });
+      });
+
+      it('suggests no code when the tax number is missing, so no VAT is claimed by default', async () => {
+        const result = await scan({ taxAmount: 10 });
+        expect(result.taxCodeId).toBeNull();
+        expect(result.supplierTaxId).toBeNull();
+      });
+
+      it('starts an entertainment receipt on the blocked code', async () => {
+        const result = await scan({
+          taxAmount: 10,
+          supplierTaxId: TRN,
+          category: 'Meals & Entertainment',
+        });
+        expect(result.taxCodeId).toBe(BL.id);
+      });
+
+      it('says nothing about VAT for a receipt that shows none', async () => {
+        const result = await scan({});
+        expect(result).not.toHaveProperty('taxCodeId');
+      });
+
+      it('tells the model to read the VAT and the tax number, never to guess them', async () => {
+        await scan({});
+        const [, request] = (aiService.generateStructured as jest.Mock).mock
+          .calls[0];
+        expect(JSON.stringify(request)).toMatch(/supplierTaxId/);
+        expect(JSON.stringify(request)).toMatch(/never guess/);
+      });
+    });
+
+    describe('a claim already in the books', () => {
+      const posted = () =>
+        claimOf({
+          status: 'APPROVED',
+          taxCodeId: SR.id,
+          taxAmount: 10,
+          recoverableTax: 10,
+          supplierTaxId: TRN,
+          taxPostedAt: new Date('2026-10-16T00:00:00Z'),
+        });
+
+      beforeEach(() => {
+        expenseRepo.findOne = jest.fn().mockResolvedValue(posted());
+        journalRepo.findOne = jest.fn().mockResolvedValue({ id: 'je-accrual' });
+      });
+
+      // Otherwise the claim would say one thing and the ledger another, and a
+      // status moved back by hand could be approved again with nothing posted.
+      it.each([
+        ['amount', { amount: 500 }],
+        ['VAT type', { taxCodeId: null }],
+        ['VAT amount', { taxAmount: 5 }],
+        ['supplier tax number', { supplierTaxId: '100999999900003' }],
+        ['category', { category: 'Consumables' }],
+        ['status', { status: 'SUBMITTED' as const }],
+      ])('cannot have its %s changed', async (_what, change) => {
+        await expect(
+          service.update(tenantId, expenseId, change as UpdateExpenseClaimDto),
+        ).rejects.toBeInstanceOf(ConflictException);
+        expect(expenseRepo.save).not.toHaveBeenCalled();
+      });
+
+      it('can still have its notes and receipt changed', async () => {
+        const claim = await service.update(tenantId, expenseId, {
+          notes: 'Receipt re-photographed',
+          amount: 210,
+        });
+        expect(claim.notes).toBe('Receipt re-photographed');
+      });
+    });
+  });
+
   describe('scanReceipt (AI OCR)', () => {
     const validAiResult = {
       merchantName: 'Starbucks Store #1042',

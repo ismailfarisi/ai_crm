@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   BILL_CAPTURE_MAX_BYTES,
   CHANNEL_SKILLS,
+  describeExpenseClaimTax,
   isBillCaptureContentType,
   isReceiptContentType,
   PERMISSIONS,
@@ -79,6 +80,12 @@ interface ReceiptScan {
   expenseDate: string | null;
   category: string;
   confidence: number;
+  /** The VAT printed on the receipt, when it shows one. */
+  taxAmount?: number | null;
+  /** The supplier's tax number (TRN) printed on the receipt. */
+  supplierTaxId?: string | null;
+  /** The purchase tax code the scan suggests for that VAT. */
+  taxCodeId?: string | null;
 }
 
 export interface ResolvedExpenseFromDocument {
@@ -92,6 +99,17 @@ export interface ResolvedExpenseFromDocument {
   note: string | null;
   /** What the person should check, in their words. */
   notes: string[];
+  /**
+   * The VAT on the receipt, when it can be recorded on the claim. Absent, the
+   * claim carries no VAT, as a claim typed in without any would.
+   */
+  vat?: {
+    taxCodeId: string;
+    taxAmount: number;
+    supplierTaxId: string | null;
+    /** What happens to it, in plain words, for the preview. */
+    summary: string;
+  };
   media: InboundMedia;
   /** Set once the claim exists, so a retried YES attaches rather than claims twice. */
   claimId?: string;
@@ -131,7 +149,7 @@ export class ExpenseFromDocumentSkill implements ChannelSkill<ResolvedExpenseFro
   readonly requiredPermissions = [PERMISSIONS.EXPENSE_SUBMIT];
   readonly jsonSchema = jsonSchema as unknown as Record<string, unknown>;
   readonly slotSchema = slotSchema;
-  readonly promptVersion = 'expense-from-doc/1';
+  readonly promptVersion = 'expense-from-doc/2';
   readonly isMutating = true;
   readonly attachment = 'required' as const;
   // Files only arrive on a messaging channel; the assistant takes text.
@@ -197,6 +215,9 @@ export class ExpenseFromDocumentSkill implements ChannelSkill<ResolvedExpenseFro
           expenseDate: unread ? null : read.expenseDate,
           category: read.category,
           confidence: read.confidence,
+          taxAmount: unread ? null : (read.taxAmount ?? null),
+          supplierTaxId: unread ? null : (read.supplierTaxId ?? null),
+          taxCodeId: unread ? null : (read.taxCodeId ?? null),
         };
       } catch (err) {
         // Refused, never thrown: a thrown error fails the webhook, and the
@@ -223,8 +244,7 @@ export class ExpenseFromDocumentSkill implements ChannelSkill<ResolvedExpenseFro
     if (!(amount > 0)) {
       return {
         kind: 'question',
-        question:
-          'I couldn’t read the total on that receipt. How much was it?',
+        question: 'I couldn’t read the total on that receipt. How much was it?',
         slots: keep,
       };
     }
@@ -240,23 +260,84 @@ export class ExpenseFromDocumentSkill implements ChannelSkill<ResolvedExpenseFro
       notes.push('The date could not be read, so today’s date is used.');
     }
     const category =
-      typed.category && (CATEGORIES as readonly string[]).includes(typed.category)
+      typed.category &&
+      (CATEGORIES as readonly string[]).includes(typed.category)
         ? typed.category
         : scan.category || 'General Expense';
+
+    const currency = (typed.currency ?? scan.currency)?.toUpperCase() ?? null;
+    const vat = await this.receiptVat(ctx, scan, amount, currency, notes);
 
     return {
       kind: 'resolved',
       value: {
         merchantName: typed.merchantName?.trim() || scan.merchantName || null,
         amount,
-        currency: (typed.currency ?? scan.currency)?.toUpperCase() ?? null,
+        currency,
         expenseDate,
         category,
         note: typed.note?.trim() || null,
         notes,
+        ...(vat ? { vat } : {}),
         media: media!,
       },
     };
+  }
+
+  /**
+   * The VAT to record on the claim, when the receipt shows VAT the
+   * organisation's tax codes can take. Otherwise nothing, with a note saying
+   * why when the receipt did print VAT, so the person knows it was seen.
+   */
+  private async receiptVat(
+    ctx: SkillContext,
+    scan: ReceiptScan,
+    amount: number,
+    currency: string | null,
+    notes: string[],
+  ): Promise<ResolvedExpenseFromDocument['vat']> {
+    const printed = Number(scan.taxAmount) || 0;
+    if (!(printed > 0)) return undefined;
+    const unclaimed = (why: string) => {
+      notes.push(
+        `The receipt shows ${money(printed)} of VAT, but ${why}, so no VAT is claimed back. You can add it on the claim in Kerf.`,
+      );
+      return undefined;
+    };
+    if (!scan.taxCodeId) {
+      return unclaimed(
+        scan.supplierTaxId
+          ? 'I could not match it to one of your VAT types'
+          : 'I could not read the supplier’s tax number (TRN) on it',
+      );
+    }
+    // A total the person typed over the receipt's leaves the printed VAT
+    // describing a different amount: work it out from the rate instead.
+    const taxAmount = amount === scan.amount ? printed : null;
+    try {
+      const { split, problem } = await this.expenses.previewTax(
+        ctx.organizationId,
+        {
+          amount,
+          taxCodeId: scan.taxCodeId,
+          taxAmount,
+          supplierTaxId: scan.supplierTaxId,
+        },
+      );
+      if (problem || !(split.tax > 0)) {
+        return unclaimed('it does not fit the total on the receipt');
+      }
+      const show = (n: number) =>
+        `${money(n)}${currency ? ` ${currency}` : ''}`;
+      return {
+        taxCodeId: scan.taxCodeId,
+        taxAmount: split.tax,
+        supplierTaxId: scan.supplierTaxId ?? null,
+        summary: describeExpenseClaimTax(split, show),
+      };
+    } catch {
+      return unclaimed('I could not check it against your VAT types');
+    }
   }
 
   // eslint-disable-next-line @typescript-eslint/require-await
@@ -270,6 +351,12 @@ export class ExpenseFromDocumentSkill implements ChannelSkill<ResolvedExpenseFro
       `${money(resolved.amount)}${resolved.currency ? ` ${resolved.currency}` : ''}` +
       `${resolved.expenseDate ? `, dated ${resolved.expenseDate}` : ''}.` +
       (resolved.note ? `\nFor: ${resolved.note}` : '') +
+      (resolved.vat
+        ? `\n${resolved.vat.summary}` +
+          (resolved.vat.supplierTaxId
+            ? ` Supplier tax number (TRN): ${resolved.vat.supplierTaxId}.`
+            : '')
+        : '') +
       check +
       `\n\nIt goes to your approver in Kerf. Nothing is paid until it is approved.` +
       `\n\nReply YES to submit it or NO to cancel.`
@@ -295,10 +382,19 @@ export class ExpenseFromDocumentSkill implements ChannelSkill<ResolvedExpenseFro
           notes:
             resolved.note ??
             `Read from ${resolved.media.filename ?? 'a photo'} sent on chat.`,
+          ...(resolved.vat
+            ? {
+                taxCodeId: resolved.vat.taxCodeId,
+                taxAmount: resolved.vat.taxAmount,
+                supplierTaxId: resolved.vat.supplierTaxId,
+              }
+            : {}),
         },
         {
           id: user.id,
-          name: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || undefined,
+          name:
+            `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() ||
+            undefined,
           email: user.email,
         },
       );

@@ -129,7 +129,7 @@ export function TaxView({ initialRange }: { initialRange?: TaxRange } = {}) {
         {report.data ? (
           <div className="grid gap-4 p-4 lg:grid-cols-2">
             <ReportTable title="Output tax (sales, less credit notes)" rows={report.data.output} total={report.data.outputTax} />
-            <ReportTable title="Input tax (approved supplier bills)" rows={report.data.input} total={report.data.inputTax} />
+            <ReportTable title="Input tax (approved supplier bills and expense claims)" rows={report.data.input} total={report.data.inputTax} />
             <div className="rounded-xl bg-surface-sunk px-4 py-3 lg:col-span-2">
               <p className="text-sm text-ink-muted">
                 {report.data.netPayable >= 0 ? 'Owed to the tax authority' : 'Reclaimable from the tax authority'}

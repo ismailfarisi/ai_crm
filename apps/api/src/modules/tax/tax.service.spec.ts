@@ -77,6 +77,7 @@ function makeService(
     repo([]) as any,
     repo([]) as any,
     repo([]) as any,
+    repo([]) as any,
   );
   return service;
 }
@@ -153,7 +154,7 @@ describe('TaxService.purchaseTaxFor', () => {
   function service(code: Record<string, unknown> | null, supplierCode: unknown = null) {
     const codes = { findOne: jest.fn(async () => code), find: jest.fn(async () => []) };
     const none = { find: jest.fn(async () => []), findOne: jest.fn(async () => null) };
-    const s = new TaxService(codes as any, none as any, none as any, none as any, none as any, none as any, none as any, none as any, none as any);
+    const s = new TaxService(codes as any, none as any, none as any, none as any, none as any, none as any, none as any, none as any, none as any, none as any);
     jest.spyOn(s, 'purchaseCodeForSupplier').mockResolvedValue(supplierCode as any);
     return s;
   }
@@ -183,7 +184,7 @@ describe('TaxService codes in UAE VAT mode', () => {
     };
     const none = { find: jest.fn(async () => []), findOne: jest.fn(async () => null) };
     const organizations = { findOne: jest.fn(async () => ({ id: tenantId, ...org })) };
-    const s = new TaxService(codes as any, none as any, none as any, none as any, none as any, none as any, none as any, none as any, organizations as any);
+    const s = new TaxService(codes as any, none as any, none as any, none as any, none as any, none as any, none as any, none as any, organizations as any, none as any);
     return { s, codes };
   }
   const uae = { country: 'AE', taxId: '100123456700003', baseCurrency: 'AED' };
@@ -304,6 +305,7 @@ describe('TaxService parties in UAE VAT mode', () => {
       rows([]) as any,
       rows([]) as any,
       organizations as any,
+      rows([]) as any,
     );
   }
 
@@ -328,5 +330,220 @@ describe('TaxService parties in UAE VAT mode', () => {
       { ...uae, baseCurrency: 'USD' },
     ).applyToLines(tenantId, [line()], 'c1');
     expect(out).toEqual(expect.objectContaining({ taxCode: 'ZR' }));
+  });
+});
+
+describe('TaxService: expense claims in the tax report and the VAT201', () => {
+  const october = [
+    new Date('2026-10-01T00:00:00Z'),
+    new Date('2026-10-31T23:59:59Z'),
+  ] as const;
+  const november = [
+    new Date('2026-11-01T00:00:00Z'),
+    new Date('2026-11-30T23:59:59Z'),
+  ] as const;
+  const purchaseCodes = [
+    {
+      id: 'sr',
+      tenantId,
+      kind: 'PURCHASE',
+      code: 'SR',
+      rate: 5,
+      isReverseCharge: false,
+      treatment: 'STANDARD',
+    },
+    {
+      id: 'bl',
+      tenantId,
+      kind: 'PURCHASE',
+      code: 'BL',
+      rate: 5,
+      isReverseCharge: false,
+      treatment: 'BLOCKED',
+    },
+    {
+      id: 'rc',
+      tenantId,
+      kind: 'PURCHASE',
+      code: 'RC',
+      rate: 5,
+      isReverseCharge: true,
+      treatment: 'REVERSE_CHARGE',
+    },
+  ];
+  const claim = (over: Record<string, unknown>) => ({
+    id: 'c',
+    tenantId,
+    amount: 210,
+    taxCodeId: 'sr',
+    taxAmount: 10,
+    recoverableTax: 10,
+    reverseChargeTax: 0,
+    fxRate: 1,
+    taxPostedAt: new Date('2026-10-16T09:00:00Z'),
+    taxReversedAt: null,
+    ...over,
+  });
+
+  /** A claims repository that answers the two period queries the way Postgres would. */
+  function service(
+    claims: Array<ReturnType<typeof claim>>,
+    bills: unknown[] = [],
+  ) {
+    const within = (d: Date | null, op: any) =>
+      !!d && d >= op._value[0] && d <= op._value[1];
+    const claimRepo = {
+      find: jest.fn(async ({ where }: any) =>
+        claims.filter((c) =>
+          where.taxReversedAt
+            ? !!c.taxPostedAt &&
+              within(c.taxReversedAt as Date | null, where.taxReversedAt)
+            : within(c.taxPostedAt as Date | null, where.taxPostedAt),
+        ),
+      ),
+    };
+    const rows = (list: unknown[]) => ({
+      find: jest.fn(async () => list),
+      findOne: jest.fn(async () => null),
+    });
+    const organizations = {
+      findOne: jest.fn(async () => ({
+        id: tenantId,
+        country: 'AE',
+        taxId: '100123456700003',
+        baseCurrency: 'AED',
+      })),
+      manager: {
+        getRepository: () => ({
+          findOne: jest.fn(async () => ({ emirate: 'DUBAI' })),
+        }),
+      },
+    };
+    const s = new TaxService(
+      rows(purchaseCodes) as any,
+      rows([]) as any,
+      rows([]) as any,
+      rows([]) as any,
+      rows([]) as any,
+      rows([]) as any,
+      rows([]) as any,
+      rows(bills) as any,
+      organizations as any,
+      claimRepo as any,
+    );
+    return { s, claimRepo };
+  }
+  const box = (
+    vat201: { rows: Array<{ box: string; amount: number; vat: number }> },
+    n: string,
+  ) => vat201.rows.find((r) => r.box === n)!;
+
+  it('asks only for claims that carry a tax code', async () => {
+    const { s, claimRepo } = service([]);
+    await s.report(tenantId, ...october);
+    for (const [{ where }] of claimRepo.find.mock.calls as any[]) {
+      expect(where.tenantId).toBe(tenantId);
+      expect(where.taxCodeId).toBeDefined();
+    }
+  });
+
+  it('reports a claim’s recoverable VAT as input tax, beside a bill’s', async () => {
+    const bill = {
+      id: 'b',
+      taxCodeId: 'sr',
+      subtotalAmount: 1000,
+      taxAmount: 50,
+      reverseChargeTax: 0,
+      fxRate: 1,
+    };
+    const { s } = service([claim({})], [bill]);
+    const report = await s.report(tenantId, ...october);
+    expect(report.input).toEqual([
+      expect.objectContaining({ code: 'SR', net: 1200, tax: 60 }),
+    ]);
+    expect(report.inputTax).toBe(60);
+    expect(report.netPayable).toBe(-60);
+
+    const vat201 = await s.vat201(tenantId, ...october);
+    expect(box(vat201, '9')).toMatchObject({ amount: 1200, vat: 60 });
+    expect(box(vat201, '10')).toMatchObject({ amount: 0, vat: 0 });
+  });
+
+  it('shows blocked VAT as paid but not recoverable, and keeps it out of box 9', async () => {
+    const { s } = service([claim({ taxCodeId: 'bl', recoverableTax: 0 })]);
+    const report = await s.report(tenantId, ...october);
+    expect(report.input).toEqual([
+      expect.objectContaining({ code: 'BL', net: 200, tax: 0 }),
+    ]);
+    expect(report.inputTax).toBe(0);
+    const vat201 = await s.vat201(tenantId, ...october);
+    expect(box(vat201, '9')).toMatchObject({ amount: 0, vat: 0 });
+  });
+
+  it('puts a reverse-charge claim on both sides, and in box 10', async () => {
+    const { s } = service([
+      claim({
+        amount: 200,
+        taxCodeId: 'rc',
+        taxAmount: 0,
+        recoverableTax: 0,
+        reverseChargeTax: 10,
+      }),
+    ]);
+    const report = await s.report(tenantId, ...october);
+    expect(report.inputTax).toBe(10);
+    expect(report.outputTax).toBe(10);
+    expect(report.netPayable).toBe(0);
+    const vat201 = await s.vat201(tenantId, ...october);
+    expect(box(vat201, '10')).toMatchObject({ amount: 200, vat: 10 });
+    expect(box(vat201, '3')).toMatchObject({ amount: 200, vat: 10 });
+  });
+
+  it('counts the claim in the period it was approved in, not the one after', async () => {
+    const { s } = service([claim({})]);
+    expect((await s.report(tenantId, ...november)).inputTax).toBe(0);
+    expect(box(await s.vat201(tenantId, ...november), '9').vat).toBe(0);
+  });
+
+  it('takes a claim rejected after approval back out in the period it was rejected in', async () => {
+    const { s } = service([
+      claim({ taxReversedAt: new Date('2026-11-03T09:00:00Z') }),
+    ]);
+    // October's return, already filed, is not changed…
+    expect((await s.report(tenantId, ...october)).inputTax).toBe(10);
+    // …November gives the VAT back.
+    const report = await s.report(tenantId, ...november);
+    expect(report.input).toEqual([
+      expect.objectContaining({ code: 'SR', net: -200, tax: -10 }),
+    ]);
+    expect(report.inputTax).toBe(-10);
+    expect(box(await s.vat201(tenantId, ...november), '9')).toMatchObject({
+      amount: -200,
+      vat: -10,
+    });
+  });
+
+  it('nets to nothing when approval and rejection fall in the same period', async () => {
+    const { s } = service([
+      claim({ taxReversedAt: new Date('2026-10-20T09:00:00Z') }),
+    ]);
+    const report = await s.report(tenantId, ...october);
+    expect(report.inputTax).toBe(0);
+    expect(box(await s.vat201(tenantId, ...october), '9')).toMatchObject({
+      amount: 0,
+      vat: 0,
+    });
+  });
+
+  it('reports a foreign-currency claim at the rate it was posted at', async () => {
+    const { s } = service([claim({ fxRate: 3.6725 })]);
+    const report = await s.report(tenantId, ...october);
+    expect(report.inputTax).toBe(36.73);
+    expect(box(await s.vat201(tenantId, ...october), '9').vat).toBe(36.73);
+  });
+
+  it('uses what was posted at approval, even if the code was changed since', async () => {
+    const { s } = service([claim({ taxCodeId: 'bl', recoverableTax: 10 })]);
+    expect((await s.report(tenantId, ...october)).inputTax).toBe(10);
   });
 });

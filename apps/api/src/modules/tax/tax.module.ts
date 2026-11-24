@@ -6,6 +6,7 @@ import { CreditNote } from '../credits/entities/credit-note.entity';
 import { Branch } from '../organizations/entities/branch.entity';
 import { Organization } from '../organizations/entities/organization.entity';
 import { SupplierBill } from '../payables/entities/supplier-bill.entity';
+import { ExpenseClaim } from '../finance/entities/expense-claim.entity';
 import { Supplier } from '../purchasing/entities/supplier.entity';
 import { Invoice } from '../quotes/entities/invoice.entity';
 import { TaxCode, TaxRule } from './entities/tax.entity';
@@ -31,6 +32,7 @@ import { UaeVatService } from './uae-vat.service';
       Invoice,
       CreditNote,
       SupplierBill,
+      ExpenseClaim,
       Organization,
       Branch,
     ]),

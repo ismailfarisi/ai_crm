@@ -5,7 +5,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Between, In, Not, QueryFailedError, Repository } from 'typeorm';
+import {
+  Between,
+  In,
+  IsNull,
+  Not,
+  QueryFailedError,
+  Repository,
+} from 'typeorm';
 import {
   buildVat201,
   expectedUaeRate,
@@ -37,6 +44,7 @@ import { CreditNote } from '../credits/entities/credit-note.entity';
 import { Organization } from '../organizations/entities/organization.entity';
 import { Branch } from '../organizations/entities/branch.entity';
 import { SupplierBill } from '../payables/entities/supplier-bill.entity';
+import { ExpenseClaim } from '../finance/entities/expense-claim.entity';
 import { Supplier } from '../purchasing/entities/supplier.entity';
 import { Invoice, InvoiceStatus } from '../quotes/entities/invoice.entity';
 import { TaxCode, TaxRule } from './entities/tax.entity';
@@ -107,6 +115,8 @@ export class TaxService {
     private readonly bills: Repository<SupplierBill>,
     @InjectRepository(Organization)
     private readonly organizations: Repository<Organization>,
+    @InjectRepository(ExpenseClaim)
+    private readonly claims: Repository<ExpenseClaim>,
   ) {}
 
   /* ------------------------------------------------------------------ *
@@ -361,7 +371,11 @@ export class TaxService {
    */
   private async taxParty(
     tenantId: string,
-    party: { country: string | null; taxId: string | null; vatStatus: VatStatus },
+    party: {
+      country: string | null;
+      taxId: string | null;
+      vatStatus: VatStatus;
+    },
   ): Promise<TaxParty> {
     if (party.vatStatus !== 'OUTSIDE_UAE') {
       const organization = await this.organizations.findOne({
@@ -385,9 +399,13 @@ export class TaxService {
    * period — a credit in March for a January sale reduces March's output tax,
    * which is how a return is filed. Purchases are counted when the bill is
    * approved, the point at which it becomes a liability in these books.
+   *
+   * An expense claim with a tax code is a purchase too: counted when it is
+   * approved, and taken back out in the period it is rejected in if that
+   * happens afterwards.
    */
   async report(tenantId: string, from: Date, to: Date): Promise<TaxReportDto> {
-    const { invoices, credits, bills, purchaseCodes } =
+    const { invoices, credits, bills, claims, purchaseCodes } =
       await this.periodDocuments(tenantId, from, to);
 
     const output = new Accumulator();
@@ -437,6 +455,28 @@ export class TaxService {
       }
     }
 
+    for (const { claim, sign } of claims) {
+      const code = purchaseById.get(claim.taxCodeId ?? '');
+      const line = {
+        taxCodeId: code?.id ?? null,
+        code: code?.code ?? 'Uncoded',
+        rate: code ? Number(code.rate) : 0,
+        reverseCharge: code?.isReverseCharge ?? false,
+        // The value before VAT; blocked VAT is not part of it either.
+        net: Number(claim.amount) - Number(claim.taxAmount),
+      };
+      const rc = Number(claim.reverseChargeTax) || 0;
+      // What was posted to the tax account at approval, not the code today.
+      input.add(
+        [{ ...line, tax: Number(claim.recoverableTax) + rc }],
+        sign,
+        claim.fxRate || 1,
+      );
+      if (rc > 0) {
+        selfAssessed.add([{ ...line, tax: rc }], sign, claim.fxRate || 1);
+      }
+    }
+
     const salesRows = output.rows();
     const outputRows = [...salesRows, ...selfAssessed.rows()];
     const inputRows = input.rows();
@@ -472,7 +512,7 @@ export class TaxService {
         'The VAT201 is available once the organization is in UAE VAT mode: country UAE, a valid TRN and AED as the base currency.',
       );
     }
-    const { invoices, credits, bills, purchaseCodes } =
+    const { invoices, credits, bills, claims, purchaseCodes } =
       await this.periodDocuments(tenantId, from, to);
     const salesCodes = await this.codes.find({
       where: { tenantId, kind: 'SALES' },
@@ -483,7 +523,7 @@ export class TaxService {
       .getRepository(Branch)
       .findOne({ where: { tenantId, isHeadOffice: true } });
 
-    const aed = (n: number, rate: number) => (cents(n * rate) / 100);
+    const aed = (n: number, rate: number) => cents(n * rate) / 100;
     const sales: Vat201SaleInput[] = [];
     const addSales = (
       lines: TaxBreakdownLine[],
@@ -509,7 +549,9 @@ export class TaxService {
       addSales(credit.taxBreakdown ?? [], credit.fxRate ?? 1, true);
 
     const purchases: Vat201PurchaseInput[] = bills.map((bill) => {
-      const code = bill.taxCodeId ? purchaseById.get(bill.taxCodeId) : undefined;
+      const code = bill.taxCodeId
+        ? purchaseById.get(bill.taxCodeId)
+        : undefined;
       const rate = bill.fxRate ?? 1;
       return {
         treatment: code?.treatment ?? null,
@@ -519,6 +561,20 @@ export class TaxService {
         selfAssessed: aed(Number(bill.reverseChargeTax) || 0, rate),
       };
     });
+
+    // Staff-paid purchases sit in the same boxes as bills. One rejected after
+    // approval comes back out, negative, in the period it was rejected in.
+    for (const { claim, sign } of claims) {
+      const code = purchaseById.get(claim.taxCodeId ?? '');
+      const rate = claim.fxRate || 1;
+      purchases.push({
+        treatment: code?.treatment ?? null,
+        rate: code ? Number(code.rate) : 0,
+        net: sign * aed(Number(claim.amount) - Number(claim.taxAmount), rate),
+        tax: sign * aed(Number(claim.recoverableTax), rate),
+        selfAssessed: sign * aed(Number(claim.reverseChargeTax) || 0, rate),
+      });
+    }
 
     return buildVat201({
       from: from.toISOString().slice(0, 10),
@@ -535,27 +591,49 @@ export class TaxService {
       throw new BadRequestException(
         'The end of the period must be after the start',
       );
-    const [invoices, credits, bills, purchaseCodes] = await Promise.all([
-      this.invoices.find({
-        where: {
-          tenantId,
-          issuedAt: Between(from, to),
-          status: Not(InvoiceStatus.CANCELLED),
-        },
-      }),
-      this.creditNotes.find({
-        where: { tenantId, status: 'ISSUED', issuedAt: Between(from, to) },
-      }),
-      this.bills.find({
-        where: {
-          tenantId,
-          approvedAt: Between(from, to),
-          status: In(['APPROVED', 'PARTIALLY_PAID', 'PAID']),
-        },
-      }),
-      this.codes.find({ where: { tenantId, kind: 'PURCHASE' } }),
-    ]);
-    return { invoices, credits, bills, purchaseCodes };
+    const [invoices, credits, bills, posted, reversed, purchaseCodes] =
+      await Promise.all([
+        this.invoices.find({
+          where: {
+            tenantId,
+            issuedAt: Between(from, to),
+            status: Not(InvoiceStatus.CANCELLED),
+          },
+        }),
+        this.creditNotes.find({
+          where: { tenantId, status: 'ISSUED', issuedAt: Between(from, to) },
+        }),
+        this.bills.find({
+          where: {
+            tenantId,
+            approvedAt: Between(from, to),
+            status: In(['APPROVED', 'PARTIALLY_PAID', 'PAID']),
+          },
+        }),
+        // Claims with a tax code only: one without carries no VAT and stays
+        // out of the return, as every claim did before claims had codes.
+        this.claims.find({
+          where: {
+            tenantId,
+            taxCodeId: Not(IsNull()),
+            taxPostedAt: Between(from, to),
+          },
+        }),
+        this.claims.find({
+          where: {
+            tenantId,
+            taxCodeId: Not(IsNull()),
+            taxPostedAt: Not(IsNull()),
+            taxReversedAt: Between(from, to),
+          },
+        }),
+        this.codes.find({ where: { tenantId, kind: 'PURCHASE' } }),
+      ]);
+    const claims = [
+      ...posted.map((claim) => ({ claim, sign: 1 as const })),
+      ...reversed.map((claim) => ({ claim, sign: -1 as const })),
+    ];
+    return { invoices, credits, bills, claims, purchaseCodes };
   }
 
   /**

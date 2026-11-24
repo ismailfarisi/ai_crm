@@ -4,6 +4,7 @@
 import type {
   FinanceAccountDto,
   ExpenseClaimDto,
+  ExpenseTaxOptionsDto,
   CategoryBudgetDto,
   RecurringExpenseDto,
   JournalEntryDto,
@@ -65,6 +66,8 @@ export const financeEndpoints = {
     list: (params: ExpenseListParams = {}) =>
       apiFetch<ExpenseClaimDto[]>('/finance/expenses', { query: params }),
     get: (id: string) => apiFetch<ExpenseClaimDto>(`/finance/expenses/${id}`),
+    /** The VAT types a claim can be filed under. */
+    taxOptions: () => apiFetch<ExpenseTaxOptionsDto>('/finance/expenses/tax-options'),
     create: (payload: CreateExpenseClaimPayload) =>
       apiFetch<ExpenseClaimDto>('/finance/expenses', { method: 'POST', body: payload }),
     update: (id: string, payload: UpdateExpenseClaimPayload) =>
@@ -95,4 +98,6 @@ export const financeKeys = {
   financeCashForecast: (months: number) => ['finance', 'cash-forecast', months] as const,
   prepaidSchedules: (billId: string) => ['finance', 'prepaid-schedules', billId] as const,
    financeJournalEntries: ['finance', 'journal-entries'] as const,  // Expenses
-  expenses: (params: ExpenseListParams = {}) => ['finance', 'expenses', params] as const,  expense: (id: string) => ['finance', 'expenses', id] as const,};
+  expenses: (params: ExpenseListParams = {}) => ['finance', 'expenses', params] as const,  expense: (id: string) => ['finance', 'expenses', id] as const,
+  expenseTaxOptions: ['finance', 'expense-tax-options'] as const,
+};

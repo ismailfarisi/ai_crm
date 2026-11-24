@@ -6,3 +6,4 @@ export * from './expenses-view';
 export * from './expense-detail-view';
 export * from './expense-summary';
 export * from './claim-action-dialogs';
+export * from './claim-vat-summary';

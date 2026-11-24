@@ -1,5 +1,6 @@
 export type { JournalLineDto } from './ledger';
 import type { JournalLineDto, JournalReferenceType } from './ledger';
+import type { VatTreatment } from '../tax/uae';
 import type { RecurringInterval } from './recurring';
 
 export const FINANCE_PERMISSIONS = {
@@ -56,8 +57,44 @@ export interface ExpenseClaimDto {
   reimbursedAt?: string | null;
   temporalWorkflowId?: string | null;
   items: ExpenseItemDto[];
+  /** The purchase tax code for the VAT on the receipt. Null means no VAT. */
+  taxCodeId?: string | null;
+  /** The VAT inside `amount`, as the receipt shows it. */
+  taxAmount?: number;
+  /** The supplier's tax number (TRN) printed on the receipt. */
+  supplierTaxId?: string | null;
+  /** The VAT claimed back, fixed when the claim was approved. */
+  recoverableTax?: number;
+  /** VAT self-assessed on a reverse-charge claim, fixed at approval. */
+  reverseChargeTax?: number;
+  /** When the claim reached the books, which is the tax period it falls in. */
+  taxPostedAt?: string | null;
+  /** When an approved claim was rejected and its posting reversed. */
+  taxReversedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** A purchase tax code as the claim form offers it. */
+export interface ExpenseTaxOptionDto {
+  id: string;
+  code: string;
+  name: string;
+  rate: number;
+  isReverseCharge: boolean;
+  /** UAE VAT treatment; null outside UAE VAT mode. */
+  treatment: VatTreatment | null;
+  /** False for a code switched off since: shown on old claims, not offered. */
+  isActive: boolean;
+}
+
+export interface ExpenseTaxOptionsDto {
+  codes: ExpenseTaxOptionDto[];
+  /**
+   * True in UAE VAT mode, where VAT can only be claimed back with the
+   * supplier's 15-digit tax number (TRN) from the receipt.
+   */
+  supplierTaxIdRequired: boolean;
 }
 
 export interface CategoryBudgetDto {
@@ -243,6 +280,11 @@ export interface CreateExpenseClaimPayload {
   receiptUrl?: string | null;
   notes?: string | null;
   items?: ExpenseItemDto[];
+  /** A purchase tax code; null or left out means no VAT. */
+  taxCodeId?: string | null;
+  /** The VAT inside `amount`. Left out, it is worked out from the code's rate. */
+  taxAmount?: number | null;
+  supplierTaxId?: string | null;
   status?: ExpenseStatus;
 }
 
@@ -258,6 +300,11 @@ export interface UpdateExpenseClaimPayload {
   notes?: string | null;
   rejectionReason?: string | null;
   items?: ExpenseItemDto[];
+  /** A purchase tax code; null or left out means no VAT. */
+  taxCodeId?: string | null;
+  /** The VAT inside `amount`. Left out, it is worked out from the code's rate. */
+  taxAmount?: number | null;
+  supplierTaxId?: string | null;
   status?: ExpenseStatus;
 }
 
@@ -275,6 +322,13 @@ export interface ScannedReceiptResult {
   expenseDate: string;
   category: string;
   taxAmount?: number;
+  /** The supplier's tax number (TRN) as printed on the receipt. */
+  supplierTaxId?: string | null;
+  /**
+   * The purchase tax code the VAT on the receipt can be claimed under, when
+   * the receipt shows both VAT and the supplier's tax number.
+   */
+  taxCodeId?: string | null;
   confidence: number;
   items: ExpenseItemDto[];
   rawText?: string;

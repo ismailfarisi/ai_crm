@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils';
 import type {
   CreateExpenseClaimPayload,
   ExpenseItemDto,
+  ExpenseTaxOptionsDto,
   ScannedReceiptResult,
 } from '@saas/shared';
 import {
@@ -30,10 +31,15 @@ import {
   EXPENSE_CATEGORY_GROUPS,
   EXPENSE_NOTES_MAX_LENGTH,
   currencyLabel,
+  describeExpenseClaimTax,
+  expenseClaimTax,
+  expenseClaimTaxProblem,
+  expenseTaxCodeLabel,
   isBillCaptureContentType,
   normaliseExpenseCategory,
+  vatIncludedIn,
 } from '@saas/shared';
-import { useScanReceipt } from '@/hooks/use-expenses';
+import { useExpenseTaxOptions, useScanReceipt } from '@/hooks/use-expenses';
 import { useOrganization } from '@/hooks/use-organization';
 import { receiptScanInput, type ReceiptScanInput } from '@/lib/receipt-scan-input';
 import { formatExpenseCurrency } from './expense-money';
@@ -49,6 +55,11 @@ export interface SubmitExpenseModalProps {
   onScanReceipt?: (input: ReceiptScanInput) => Promise<ScannedReceiptResult>;
   initialData?: Partial<CreateExpenseClaimPayload>;
   isLoading?: boolean;
+  /**
+   * The VAT types the claim can be filed under. Left out, they are loaded
+   * from the API; an organisation with none is asked nothing about VAT.
+   */
+  taxOptions?: ExpenseTaxOptionsDto;
 }
 
 /**
@@ -71,11 +82,11 @@ interface FormLineItem extends ExpenseItemDto {
   id: string;
 }
 
-type FieldName = 'merchantName' | 'category' | 'expenseDate' | 'amount';
+type FieldName = 'merchantName' | 'category' | 'expenseDate' | 'amount' | 'vat';
 type FieldErrors = Partial<Record<FieldName, string>>;
 
 /** In the order the fields appear, so focus goes to the first one wrong. */
-const FIELD_ORDER: FieldName[] = ['merchantName', 'category', 'expenseDate', 'amount'];
+const FIELD_ORDER: FieldName[] = ['merchantName', 'category', 'expenseDate', 'amount', 'vat'];
 
 const COARSE_POINTER = '(pointer: coarse)';
 
@@ -105,8 +116,13 @@ export function SubmitExpenseModal({
   onScanReceipt,
   initialData,
   isLoading = false,
+  taxOptions: givenTaxOptions,
 }: SubmitExpenseModalProps) {
   const scanReceiptMutation = useScanReceipt();
+  const loadedTaxOptions = useExpenseTaxOptions(open && !givenTaxOptions).data;
+  const taxOptions = givenTaxOptions ?? loadedTaxOptions;
+  // Codes switched off are not offered on a new claim.
+  const taxCodes = (taxOptions?.codes ?? []).filter((c) => c.isActive);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const isTouch = useCoarsePointer();
@@ -115,6 +131,7 @@ export function SubmitExpenseModal({
   const categoryRef = useRef<HTMLSelectElement>(null);
   const dateRef = useRef<HTMLInputElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
+  const vatRef = useRef<HTMLSelectElement>(null);
   const categoryId = useId();
 
   // Form State
@@ -135,6 +152,13 @@ export function SubmitExpenseModal({
     initialData?.amount !== undefined ? String(initialData.amount) : '',
   );
   const [notes, setNotes] = useState(initialData?.notes || '');
+
+  // VAT. No code is "No VAT", the default, and the claim it always was.
+  const [taxCodeId, setTaxCodeId] = useState(initialData?.taxCodeId || '');
+  const [taxAmount, setTaxAmount] = useState<string>(
+    initialData?.taxAmount != null ? String(initialData.taxAmount) : '',
+  );
+  const [supplierTaxId, setSupplierTaxId] = useState(initialData?.supplierTaxId || '');
 
   // Receipt File State
   const [receiptUrl, setReceiptUrl] = useState<string | null>(initialData?.receiptUrl || null);
@@ -172,6 +196,9 @@ export function SubmitExpenseModal({
     currencyTouched.current = Boolean(initialData?.currency);
     setAmount(initialData?.amount !== undefined ? String(initialData.amount) : '');
     setNotes(initialData?.notes || '');
+    setTaxCodeId(initialData?.taxCodeId || '');
+    setTaxAmount(initialData?.taxAmount != null ? String(initialData.taxAmount) : '');
+    setSupplierTaxId(initialData?.supplierTaxId || '');
     setReceiptUrl(initialData?.receiptUrl || null);
     setReceiptFileName(null);
     setReceiptFile(null);
@@ -322,6 +349,13 @@ export function SubmitExpenseModal({
         );
         setCategory(matched ? matched.value : suggested);
       }
+      // The VAT and the supplier's tax number, when the receipt shows them.
+      // The scan only suggests a VAT type when the VAT can be recorded under
+      // it; otherwise the claim stays on "No VAT" for the claimant to change.
+      const suggestedCode = taxCodes.find((c) => c.id === result.taxCodeId);
+      setTaxCodeId(suggestedCode?.id ?? '');
+      setTaxAmount(suggestedCode && result.taxAmount ? String(result.taxAmount) : '');
+      setSupplierTaxId(result.supplierTaxId || '');
       setFieldErrors({});
 
       if (result.items && result.items.length > 0) {
@@ -346,6 +380,14 @@ export function SubmitExpenseModal({
     }
   };
 
+  const taxCode = taxCodes.find((c) => c.id === taxCodeId) ?? null;
+  // A code with VAT printed on the receipt; the others have none to enter.
+  const hasReceiptVat = Boolean(taxCode && taxCode.rate > 0 && !taxCode.isReverseCharge);
+  const statedTax = hasReceiptVat && taxAmount.trim() !== '' ? Number(taxAmount) : null;
+  const grossForTax = parseFloat(amount) > 0 ? parseFloat(amount) : 0;
+  const taxSplit = expenseClaimTax(grossForTax, statedTax, taxCode);
+  const showMoney = (n: number) => formatExpenseCurrency(n, currency);
+
   const validate = (status: 'DRAFT' | 'SUBMITTED'): FieldErrors => {
     const errors: FieldErrors = {};
     if (!merchantName.trim() && items.every((i) => !i.description.trim())) {
@@ -361,6 +403,12 @@ export function SubmitExpenseModal({
     const numericAmount = parseFloat(amount);
     if (isNaN(numericAmount) || numericAmount <= 0) {
       errors.amount = 'Enter an amount above zero.';
+    } else if (taxCode) {
+      const problem = expenseClaimTaxProblem(numericAmount, statedTax, taxCode, {
+        uae: Boolean(taxOptions?.supplierTaxIdRequired),
+        supplierTaxId,
+      });
+      if (problem) errors.vat = problem;
     }
     return errors;
   };
@@ -378,6 +426,7 @@ export function SubmitExpenseModal({
         category: categoryRef,
         expenseDate: dateRef,
         amount: amountRef,
+        vat: vatRef,
       }[firstWrong];
       field.current?.focus();
       return;
@@ -398,6 +447,15 @@ export function SubmitExpenseModal({
       amount: parseFloat(amount),
       receiptUrl: receiptFile ? null : keptReceiptUrl,
       notes: notes.trim() || null,
+      // Sent only when a VAT type is chosen, so a claim without one is the
+      // same request it was before claims carried VAT.
+      ...(taxCode
+        ? {
+            taxCodeId: taxCode.id,
+            taxAmount: statedTax,
+            supplierTaxId: supplierTaxId.trim() || null,
+          }
+        : {}),
       status,
       items: items
         .filter((it) => it.description.trim() || it.amount > 0)
@@ -701,6 +759,86 @@ export function SubmitExpenseModal({
             }}
           />
         </div>
+
+        {/* VAT. Only when the organisation has tax codes to file it under. */}
+        {taxCodes.length > 0 && (
+          <div className="space-y-3" data-testid="expense-vat-section">
+            {/* Full width: the option says in words whether the VAT comes back. */}
+            <Select
+              ref={vatRef}
+              label="VAT on this receipt"
+              data-testid="select-tax-code"
+              value={taxCodeId}
+              error={fieldErrors.vat}
+              onChange={(e) => {
+                setTaxCodeId(e.target.value);
+                // The VAT typed for one rate says nothing about another.
+                setTaxAmount('');
+                clearFieldError('vat');
+              }}
+              options={[
+                { value: '', label: 'No VAT' },
+                ...taxCodes.map((c) => ({ value: c.id, label: expenseTaxCodeLabel(c) })),
+              ]}
+            />
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {hasReceiptVat && (
+                <Input
+                  label="VAT amount on the receipt"
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min="0"
+                  data-testid="input-tax-amount"
+                  className="tabular-nums"
+                  placeholder={
+                    grossForTax > 0 ? vatIncludedIn(grossForTax, taxCode!.rate).toFixed(2) : '0.00'
+                  }
+                  hint="Already inside the total. Leave blank to work it out from the rate."
+                  value={taxAmount}
+                  onChange={(e) => {
+                    setTaxAmount(e.target.value);
+                    clearFieldError('vat');
+                  }}
+                />
+              )}
+
+              {taxCode && (
+                <Input
+                  label="Supplier's tax number (TRN)"
+                  data-testid="input-supplier-tax-id"
+                  inputMode="numeric"
+                  placeholder="15 digits, printed on the receipt"
+                  hint={
+                    taxOptions?.supplierTaxIdRequired && taxSplit.recoverable > 0
+                      ? 'Needed to claim the VAT back. If the receipt has none, choose "No VAT".'
+                      : 'Optional.'
+                  }
+                  value={supplierTaxId}
+                  onChange={(e) => {
+                    setSupplierTaxId(e.target.value);
+                    clearFieldError('vat');
+                  }}
+                />
+              )}
+            </div>
+
+            {taxCode && grossForTax > 0 && (
+              <p data-testid="expense-vat-summary" className="text-xs text-ink-muted">
+                {describeExpenseClaimTax(taxSplit, showMoney)} You are paid back the full{' '}
+                {showMoney(grossForTax)}.
+              </p>
+            )}
+            {scanResult && !taxCode && Number(scanResult.taxAmount) > 0 && (
+              <p data-testid="expense-vat-scan-note" className="text-xs text-ink-muted">
+                The receipt shows {showMoney(Number(scanResult.taxAmount))} of VAT
+                {scanResult.supplierTaxId ? '' : ', but no supplier tax number (TRN) was found'}. Choose a
+                VAT type above if it should be claimed back.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Line items */}
         <div className="space-y-2.5">

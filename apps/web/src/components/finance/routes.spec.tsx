@@ -278,6 +278,8 @@ vi.mock('@/hooks/use-suppliers', () => ({
 }));
 
 vi.mock('@/hooks/use-expenses', () => ({
+  // No tax codes: the claim form and detail say nothing about VAT.
+  useExpenseTaxOptions: () => ({ data: undefined }),
   useReceiptSource: (url?: string | null) => ({ src: url ?? null, isPdf: /\.pdf$/i.test(url ?? ''), isLoading: false }),
   useExpenses: () => ({
     claims: mockClaims,

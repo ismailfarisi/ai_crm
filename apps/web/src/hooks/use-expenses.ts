@@ -59,6 +59,19 @@ export function useInvalidateExpenses() {
   };
 }
 
+/**
+ * The VAT types a claim can be filed under. An organisation with no tax codes
+ * gets an empty list, and the claim form then asks nothing about VAT.
+ */
+export function useExpenseTaxOptions(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.expenseTaxOptions,
+    queryFn: () => api.expenses.taxOptions(),
+    enabled,
+    staleTime: 60_000,
+  });
+}
+
 export function useCreateExpenseClaim() {
   const { invalidateAll } = useInvalidateExpenses();
 
