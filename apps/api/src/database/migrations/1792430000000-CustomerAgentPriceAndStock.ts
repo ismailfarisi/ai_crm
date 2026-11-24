@@ -8,9 +8,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * `channel_agents.showStockQuantity` lets an agent give how many are in stock
  * rather than only in stock / low / out; every existing agent starts without.
  */
-export class CustomerAgentPriceAndStock1792430000000
-  implements MigrationInterface
-{
+export class CustomerAgentPriceAndStock1792430000000 implements MigrationInterface {
   name = 'CustomerAgentPriceAndStock1792430000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

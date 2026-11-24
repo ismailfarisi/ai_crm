@@ -596,7 +596,8 @@ function toolsFor(
         properties: {
           item: {
             type: 'string',
-            description: 'The item as the customer named it, e.g. "A5 flyers" or "acrylic sheet".',
+            description:
+              'The item as the customer named it, e.g. "A5 flyers" or "acrylic sheet".',
           },
         },
         required: ['item'],

@@ -520,7 +520,10 @@ export class InvoicesService {
 
   /** Marks an invoice sent by some other route than email, as email does. */
   async markSent(tenantId: string, id: string): Promise<void> {
-    await this.invoiceRepository.update({ id, tenantId }, { sentAt: new Date() });
+    await this.invoiceRepository.update(
+      { id, tenantId },
+      { sentAt: new Date() },
+    );
     const saved = await this.findById(tenantId, id);
     await this.emitInvoiceEvent(tenantId, saved, 'invoice.sent');
   }

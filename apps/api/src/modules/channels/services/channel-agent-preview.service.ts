@@ -55,7 +55,12 @@ export class ChannelAgentPreviewService {
     lookup: CustomerLookupService,
     catalog: CatalogLookupService,
   ) {
-    this.runner = new ChannelAgentRunner({ aiService, agents, lookup, catalog });
+    this.runner = new ChannelAgentRunner({
+      aiService,
+      agents,
+      lookup,
+      catalog,
+    });
   }
 
   async preview(

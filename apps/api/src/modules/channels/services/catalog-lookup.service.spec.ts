@@ -26,7 +26,9 @@ const FLYERS = {
   stockMaterialId: 'mat-1',
 };
 
-function setup(opts: { items?: unknown[]; materials?: unknown[]; stock?: unknown[] } = {}) {
+function setup(
+  opts: { items?: unknown[]; materials?: unknown[]; stock?: unknown[] } = {},
+) {
   const items = qb(opts.items ?? [FLYERS]);
   const materials = qb(opts.materials ?? []);
   const stock = { find: jest.fn().mockResolvedValue(opts.stock ?? []) };
@@ -86,7 +88,9 @@ describe('CatalogLookupService', () => {
     const { service, stock } = setup({ stock: [shelf] });
     const hidden = await service.stockLevels('org', 'flyers', false);
     expect(stock.find.mock.calls[0][0].where.tenantId).toBe('org');
-    expect(hidden.records).toEqual([{ name: 'A5 flyers', unit: 'Pack', level: 'LOW' }]);
+    expect(hidden.records).toEqual([
+      { name: 'A5 flyers', unit: 'Pack', level: 'LOW' },
+    ]);
     expect(JSON.stringify(hidden)).not.toMatch(/9\.99/);
 
     const shown = await service.stockLevels('org', 'flyers', true);
@@ -99,8 +103,11 @@ describe('CatalogLookupService', () => {
   });
 
   it('reads levels as in stock, low, out, or not tracked', () => {
-    const row = (onHand: number, reserved = 0, reorderPoint: number | null = 5) =>
-      ({ qtyOnHand: onHand, qtyReserved: reserved, reorderPoint }) as never;
+    const row = (
+      onHand: number,
+      reserved = 0,
+      reorderPoint: number | null = 5,
+    ) => ({ qtyOnHand: onHand, qtyReserved: reserved, reorderPoint }) as never;
     expect(stockLevel([])).toBe('NOT_TRACKED');
     expect(stockLevel([row(0)])).toBe('OUT_OF_STOCK');
     expect(stockLevel([row(6, 6)])).toBe('OUT_OF_STOCK');

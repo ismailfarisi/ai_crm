@@ -6,15 +6,17 @@ import { WhatsAppDocumentService } from './whatsapp-document.service';
 const TENANT = 'tenant-1';
 const HOUR = 60 * 60 * 1000;
 
-function setup(opts: {
-  connected?: boolean;
-  lastInboundAgo?: number | null;
-  template?: string;
-  permissions?: string[];
-  phone?: string | null;
-  sendFails?: boolean;
-  payUrl?: string | null;
-} = {}) {
+function setup(
+  opts: {
+    connected?: boolean;
+    lastInboundAgo?: number | null;
+    template?: string;
+    permissions?: string[];
+    phone?: string | null;
+    sendFails?: boolean;
+    payUrl?: string | null;
+  } = {},
+) {
   const user = {
     id: 'user-1',
     organizationId: TENANT,
@@ -25,11 +27,13 @@ function setup(opts: {
     ],
   } as never;
   const configs = {
-    findOne: jest.fn().mockResolvedValue(
-      opts.connected === false
-        ? null
-        : { isEnabled: true, encryptedCredentials: 'enc' },
-    ),
+    findOne: jest
+      .fn()
+      .mockResolvedValue(
+        opts.connected === false
+          ? null
+          : { isEnabled: true, encryptedCredentials: 'enc' },
+      ),
   };
   const messages = {
     findOne: jest.fn().mockResolvedValue(
@@ -49,7 +53,9 @@ function setup(opts: {
     }),
   };
   const organizations = {
-    findOne: jest.fn().mockResolvedValue({ name: 'Northwind Print', country: 'AE' }),
+    findOne: jest
+      .fn()
+      .mockResolvedValue({ name: 'Northwind Print', country: 'AE' }),
   };
   const quote = {
     id: 'quote-1',
@@ -95,7 +101,8 @@ function setup(opts: {
         dueDate: null,
         status: InvoiceStatus.ISSUED,
       },
-      payUrl: opts.payUrl === undefined ? 'https://app.test/pay/tok' : opts.payUrl,
+      payUrl:
+        opts.payUrl === undefined ? 'https://app.test/pay/tok' : opts.payUrl,
     }),
     markSent: jest.fn(),
   };
@@ -112,12 +119,23 @@ function setup(opts: {
     proofs as never,
     invoices as never,
   );
-  return { service, user, channels, contacts, acceptance, invoices, messages, proofs };
+  return {
+    service,
+    user,
+    channels,
+    contacts,
+    acceptance,
+    invoices,
+    messages,
+    proofs,
+  };
 }
 
 describe('Send on WhatsApp', () => {
   it('sends free text from the business number inside 24 hours and records it in the customer thread', async () => {
-    const { service, user, channels, acceptance } = setup({ lastInboundAgo: 2 * HOUR });
+    const { service, user, channels, acceptance } = setup({
+      lastInboundAgo: 2 * HOUR,
+    });
     const result = await service.sendQuote(user, 'quote-1');
 
     expect(result).toMatchObject({
@@ -153,7 +171,9 @@ describe('Send on WhatsApp', () => {
   });
 
   it('falls back to click-to-chat outside 24 hours with no template', async () => {
-    const { service, user, channels, acceptance } = setup({ lastInboundAgo: 30 * HOUR });
+    const { service, user, channels, acceptance } = setup({
+      lastInboundAgo: 30 * HOUR,
+    });
     const result = await service.sendQuote(user, 'quote-1');
 
     expect(channels.sendMessage).not.toHaveBeenCalled();
@@ -167,7 +187,9 @@ describe('Send on WhatsApp', () => {
   });
 
   it('falls back to click-to-chat for a customer who never wrote and no template', async () => {
-    const { service, user, channels, contacts } = setup({ lastInboundAgo: null });
+    const { service, user, channels, contacts } = setup({
+      lastInboundAgo: null,
+    });
     const result = await service.sendProof(user, 'quote-1');
     expect(result.method).toBe('CLICK_TO_CHAT');
     expect(channels.sendMessage).not.toHaveBeenCalled();
@@ -183,14 +205,22 @@ describe('Send on WhatsApp', () => {
     expect(channels.sendMessage.mock.calls[0][2]).toMatchObject({
       contactId: 'contact-new',
       metadata: { document: { kind: 'proof', id: 'proof-1' } },
-      template: { parameters: ['artwork proof 2 for Q-0012', 'https://app.test/q/tok'] },
+      template: {
+        parameters: ['artwork proof 2 for Q-0012', 'https://app.test/q/tok'],
+      },
     });
   });
 
   it('falls back to click-to-chat when no WhatsApp number is connected', async () => {
-    const { service, user, messages } = setup({ connected: false, lastInboundAgo: HOUR });
+    const { service, user, messages } = setup({
+      connected: false,
+      lastInboundAgo: HOUR,
+    });
     const result = await service.sendInvoice(user, 'inv-1');
-    expect(result).toMatchObject({ method: 'CLICK_TO_CHAT', url: 'https://app.test/pay/tok' });
+    expect(result).toMatchObject({
+      method: 'CLICK_TO_CHAT',
+      url: 'https://app.test/pay/tok',
+    });
     expect(result.reason).toContain('not connected');
     expect(messages.findOne).not.toHaveBeenCalled();
   });
@@ -206,7 +236,10 @@ describe('Send on WhatsApp', () => {
   });
 
   it('falls back to click-to-chat when WhatsApp refuses the message', async () => {
-    const { service, user, invoices } = setup({ lastInboundAgo: HOUR, sendFails: true });
+    const { service, user, invoices } = setup({
+      lastInboundAgo: HOUR,
+      sendFails: true,
+    });
     const result = await service.sendInvoice(user, 'inv-1');
     expect(result.method).toBe('CLICK_TO_CHAT');
     expect(result.reason).toContain('Template not approved');
@@ -214,7 +247,10 @@ describe('Send on WhatsApp', () => {
   });
 
   it('marks the invoice sent when the business number sends it', async () => {
-    const { service, user, invoices } = setup({ lastInboundAgo: HOUR, payUrl: null });
+    const { service, user, invoices } = setup({
+      lastInboundAgo: HOUR,
+      payUrl: null,
+    });
     const result = await service.sendInvoice(user, 'inv-1');
     expect(result.method).toBe('CHANNEL');
     expect(result.text).toContain('INV-0007');
@@ -224,7 +260,9 @@ describe('Send on WhatsApp', () => {
 
   it('uses a typed number instead of the one on the customer', async () => {
     const { service, user } = setup({ connected: false, phone: null });
-    const result = await service.sendQuote(user, 'quote-1', { to: '+44 7700 900123' });
+    const result = await service.sendQuote(user, 'quote-1', {
+      to: '+44 7700 900123',
+    });
     expect(result.to).toBe('447700900123');
   });
 

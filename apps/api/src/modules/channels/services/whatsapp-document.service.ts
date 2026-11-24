@@ -181,7 +181,8 @@ export class WhatsAppDocumentService {
     const quote = await this.quotes.findOne({
       where: { id: quoteId, tenantId },
     });
-    if (!quote) throw new NotFoundException(`Quote with ID ${quoteId} not found`);
+    if (!quote)
+      throw new NotFoundException(`Quote with ID ${quoteId} not found`);
     return quote;
   }
 
@@ -255,7 +256,8 @@ export class WhatsAppDocumentService {
     }
 
     const last = await lastWhatsAppMessageFrom(this.messages, tenantId, to);
-    let template: { name: string; language: string; parameters: string[] } | undefined;
+    let template:
+      { name: string; language: string; parameters: string[] } | undefined;
     if (!insideWhatsAppWindow(last)) {
       const credentials = this.crypto.decrypt(config.encryptedCredentials);
       const name = String(credentials?.documentTemplateName ?? '').trim();
@@ -294,7 +296,9 @@ export class WhatsAppDocumentService {
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`WhatsApp send of ${out.kind} ${out.documentId} failed: ${msg}`);
+      this.logger.warn(
+        `WhatsApp send of ${out.kind} ${out.documentId} failed: ${msg}`,
+      );
       return clickToChat(
         `WhatsApp did not accept the message from your business number (${msg}), ${FALLBACK}`,
       );

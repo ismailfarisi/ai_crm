@@ -33,5 +33,7 @@ export function insideWhatsAppWindow(
   now: Date = new Date(),
 ): boolean {
   if (!last) return false;
-  return now.getTime() - new Date(last.createdAt).getTime() < WHATSAPP_WINDOW_MS;
+  return (
+    now.getTime() - new Date(last.createdAt).getTime() < WHATSAPP_WINDOW_MS
+  );
 }

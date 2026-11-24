@@ -23,7 +23,10 @@ export class WhatsAppSendController {
 
   @Post('quotes/:id/whatsapp')
   @RequirePermissions(PERMISSIONS.QUOTE_UPDATE)
-  @ApiOperation({ summary: 'Send the quote link on WhatsApp', description: DESCRIPTION })
+  @ApiOperation({
+    summary: 'Send the quote link on WhatsApp',
+    description: DESCRIPTION,
+  })
   sendQuote(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -34,7 +37,10 @@ export class WhatsAppSendController {
 
   @Post('quotes/:id/proofs/whatsapp')
   @RequirePermissions(PERMISSIONS.QUOTE_UPDATE)
-  @ApiOperation({ summary: 'Send the artwork proof link on WhatsApp', description: DESCRIPTION })
+  @ApiOperation({
+    summary: 'Send the artwork proof link on WhatsApp',
+    description: DESCRIPTION,
+  })
   sendProof(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -45,7 +51,10 @@ export class WhatsAppSendController {
 
   @Post('invoices/:id/whatsapp')
   @RequirePermissions(PERMISSIONS.INVOICE_MANAGE)
-  @ApiOperation({ summary: 'Send the invoice and pay link on WhatsApp', description: DESCRIPTION })
+  @ApiOperation({
+    summary: 'Send the invoice and pay link on WhatsApp',
+    description: DESCRIPTION,
+  })
   sendInvoice(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
