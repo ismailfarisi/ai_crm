@@ -5,12 +5,14 @@ import {
   calculateInvoiceDueDate,
   DEFAULT_BILLING_SCHEDULE,
   LEDGER_ROLES,
+  quoteLineSubtotal,
   REVERSE_CHARGE_NOTICE,
   scaleBreakdown,
   stripLineCosts,
   taxBreakdown,
   type TaxBreakdownLine,
   validateBillingSchedule,
+  withLineSubtotals,
   type JournalLineInput,
   type QuoteLineItem,
 } from '@saas/shared';
@@ -166,7 +168,10 @@ export async function provisionOrderForQuoteInTransaction(
           uom: item.uom?.slice(0, 40) ?? null,
           qtyOrdered: Number(item.quantity) || 1,
           unitPrice: Number(item.unitPrice) || 0,
-          lineTotal: round2(Number(item.subtotal) || 0),
+          // Derived, not read from the line: a quote saved before lines
+          // were given their subtotal on the way in may carry none, or a
+          // wrong one, and the quote's totals never depended on it.
+          lineTotal: quoteLineSubtotal(item),
         }),
       ),
     );
@@ -297,18 +302,24 @@ async function raiseStageInvoiceInTransaction(
     .getRepository(BillingScheduleLine)
     .count({ where: { salesOrderId: order.id } });
 
+  // The net an invoice states is its total less its tax, which is also what
+  // the journal credits to sales. New stages are stored that way; one stored
+  // by an older split can be out (by the discount on a fixed deposit, or by a
+  // cent), and is put right here rather than printed as it was stored.
+  const net = round2(Number(stage.totalAmount) - Number(stage.taxAmount));
+
   const invoice = await issueInvoice(manager, ledger, tenantId, {
     order,
     items:
       stageCount > 1
-        ? stageInvoiceItems(stage, order.quoteNumber)
-        : stripLineCosts(quote.items ?? []),
-    subtotalAmount: stage.subtotalAmount,
+        ? stageInvoiceItems(stage, net, order.quoteNumber)
+        : withLineSubtotals(stripLineCosts(quote.items ?? [])),
+    subtotalAmount: net,
     discountAmount: stage.discountAmount,
     taxAmount: stage.taxAmount,
     totalAmount: stage.totalAmount,
     taxBreakdown: scaleBreakdown(breakdownForItems(quote.items ?? []), {
-      net: stage.subtotalAmount,
+      net,
       tax: stage.taxAmount,
     }),
     billingScheduleLineId: stage.id,
@@ -317,6 +328,7 @@ async function raiseStageInvoiceInTransaction(
     notes: quote.notes,
   });
 
+  stage.subtotalAmount = net;
   stage.invoiceId = invoice.id;
   stage.invoicedAt = invoice.issuedAt ?? new Date();
   await manager.getRepository(BillingScheduleLine).save(stage);
@@ -330,7 +342,7 @@ export function breakdownForItems(items: QuoteLineItem[]): TaxBreakdownLine[] {
     items
       .filter((item) => (item.type ?? 'product') === 'product')
       .map((item) => ({
-        net: Number(item.subtotal) || 0,
+        net: quoteLineSubtotal(item),
         rate: Number(item.taxRate) || 0,
         taxCodeId: item.taxCodeId ?? null,
         code: item.taxCode ?? null,
@@ -553,9 +565,9 @@ export async function invoicesForOrder(
 /** A part invoice bills a share of the job, not a share of every line. */
 function stageInvoiceItems(
   stage: BillingScheduleLine,
+  subtotal: number,
   quoteNumber: string | null,
 ): QuoteLineItem[] {
-  const subtotal = Number(stage.subtotalAmount);
   const tax = Number(stage.taxAmount);
   return [
     {

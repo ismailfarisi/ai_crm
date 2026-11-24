@@ -229,11 +229,8 @@ describe('provisionOrderForQuote', () => {
     const [deposit] = w.tables.Invoice;
     expect(deposit.amount).toBe(500);
     expect(deposit.taxAmount).toBeCloseTo(83.33, 2);
-    expect(
-      deposit.subtotalAmount +
-        deposit.taxAmount -
-        (deposit.discountAmount ?? 0),
-    ).toBeCloseTo(500, 2);
+    expect(deposit.subtotalAmount).toBe(416.67);
+    expect(deposit.subtotalAmount + deposit.taxAmount).toBeCloseTo(500, 9);
 
     const { invoice: final } = await raiseStageInvoice(
       w.dataSource,
@@ -243,6 +240,184 @@ describe('provisionOrderForQuote', () => {
     );
     expect(final.amount).toBe(700);
     expect(deposit.taxAmount + final.taxAmount).toBeCloseTo(200, 2);
+  });
+
+  /**
+   * Every stage invoice has to agree with itself and with the books: its net
+   * plus its VAT is its total, the net is what the journal credits to sales,
+   * and the tax breakdown the VAT return reads carries the same net and tax.
+   */
+  const expectInvoiceAgrees = (
+    w: ReturnType<typeof makeWorld>,
+    invoice: any,
+  ) => {
+    const c = (n: number) => Math.round(n * 100);
+    expect(c(invoice.subtotalAmount) + c(invoice.taxAmount)).toBe(
+      c(invoice.amount),
+    );
+    const sum = (key: 'net' | 'tax') =>
+      invoice.taxBreakdown.reduce((s: number, b: any) => s + c(b[key]), 0);
+    expect(sum('net')).toBe(c(invoice.subtotalAmount));
+    expect(sum('tax')).toBe(c(invoice.taxAmount));
+    const entry = w.tables.JournalEntry.find(
+      (e) => e.referenceId === invoice.id,
+    );
+    expect(entry.lines.map((l: any) => [l.role, l.debit, l.credit])).toEqual([
+      ['ACCOUNTS_RECEIVABLE', invoice.amount, 0],
+      ['SALES', 0, invoice.subtotalAmount],
+      ['TAX_PAYABLE', 0, invoice.taxAmount],
+    ]);
+  };
+
+  const DISCOUNTED = {
+    items: [
+      {
+        id: 'l1',
+        type: 'product',
+        description: 'Fascia sign',
+        quantity: 10,
+        unitPrice: 1000,
+        discount: 20,
+        taxRate: 5,
+        subtotal: 8000,
+      },
+    ] as QuoteLineItem[],
+    subtotalAmount: 8000,
+    discountAmount: 2000,
+    taxAmount: 400,
+    totalAmount: 8400,
+  };
+  const fixedDeposit: BillingStage[] = [
+    {
+      kind: 'DEPOSIT',
+      label: 'Deposit',
+      percent: 50,
+      amount: 4200,
+      trigger: 'ON_APPROVAL',
+    },
+    { kind: 'FINAL', label: 'Balance', percent: 50, trigger: 'MANUAL' },
+  ];
+
+  // A quote's subtotal is already after its discount. Adding the discount
+  // back gave this deposit a net of 5,000 against the 4,000 the journal put
+  // to sales, and the VAT return read the 5,000.
+  it('gives a fixed deposit on a discounted quote the net its total and tax leave', async () => {
+    const w = makeWorld({ ...DISCOUNTED, billingSchedule: fixedDeposit });
+
+    await provisionOrderForQuote(w.dataSource, w.ledger, tenantId, 'q1');
+    const [deposit] = w.tables.Invoice;
+    expect([
+      deposit.subtotalAmount,
+      deposit.discountAmount,
+      deposit.taxAmount,
+      deposit.amount,
+    ]).toEqual([4000, 1000, 200, 4200]);
+    expect(deposit.items[0]).toEqual(
+      expect.objectContaining({ unitPrice: 4000, subtotal: 4000, taxRate: 5 }),
+    );
+    expectInvoiceAgrees(w, deposit);
+
+    const { invoice: final } = await raiseStageInvoice(
+      w.dataSource,
+      w.ledger,
+      tenantId,
+      w.tables.BillingScheduleLine[1].id,
+    );
+    expect([
+      final.subtotalAmount,
+      final.discountAmount,
+      final.taxAmount,
+      final.amount,
+    ]).toEqual([4000, 1000, 200, 4200]);
+    expectInvoiceAgrees(w, final);
+  });
+
+  // 2,416.67 + 120.84 was printed over a total of 2,537.50.
+  it('keeps net + VAT equal to the total on each half of an odd amount', async () => {
+    const w = makeWorld({
+      items: [{ ...ITEMS[0], quantity: 1, unitPrice: 4833.33, taxRate: 5 }],
+      subtotalAmount: 4833.33,
+      taxAmount: 241.67,
+      totalAmount: 5075,
+      billingSchedule: [
+        { kind: 'DEPOSIT', label: '50%', percent: 50, trigger: 'ON_APPROVAL' },
+        { kind: 'FINAL', label: 'Balance', percent: 50, trigger: 'MANUAL' },
+      ],
+    });
+
+    await provisionOrderForQuote(w.dataSource, w.ledger, tenantId, 'q1');
+    const { invoice: final } = await raiseStageInvoice(
+      w.dataSource,
+      w.ledger,
+      tenantId,
+      w.tables.BillingScheduleLine[1].id,
+    );
+    const [deposit] = w.tables.Invoice;
+
+    expect([deposit.subtotalAmount, deposit.taxAmount, deposit.amount]).toEqual(
+      [2416.66, 120.84, 2537.5],
+    );
+    expect([final.subtotalAmount, final.taxAmount, final.amount]).toEqual([
+      2416.67, 120.83, 2537.5,
+    ]);
+    expectInvoiceAgrees(w, deposit);
+    expectInvoiceAgrees(w, final);
+  });
+
+  // An order accepted before the split was put right still has its unbilled
+  // stages stored the old way. Its invoice is raised right all the same.
+  it('bills a stage stored by the old split with the net its total and tax leave', async () => {
+    const w = makeWorld({ ...DISCOUNTED, billingSchedule: fixedDeposit });
+    await provisionOrderForQuote(w.dataSource, w.ledger, tenantId, 'q1');
+    const balance = w.tables.BillingScheduleLine[1];
+    balance.subtotalAmount = 3000;
+
+    const { invoice } = await raiseStageInvoice(
+      w.dataSource,
+      w.ledger,
+      tenantId,
+      balance.id,
+    );
+
+    expect(invoice.subtotalAmount).toBe(4000);
+    expect(invoice.items[0]).toEqual(
+      expect.objectContaining({ unitPrice: 4000, subtotal: 4000 }),
+    );
+    expect(balance.subtotalAmount).toBe(4000);
+    expectInvoiceAgrees(w, invoice);
+  });
+
+  // The margin report shares an order's revenue across its lines by line
+  // total. A quote saved without line subtotals gave lines worth nothing.
+  it('works out each order line total itself, whatever subtotal the quote line carries', async () => {
+    const line = (id: string, subtotal?: number): QuoteLineItem => ({
+      id,
+      type: 'product',
+      description: 'Lightbox',
+      quantity: 4,
+      unitPrice: 250,
+      discount: 10,
+      taxRate: 5,
+      ...(subtotal === undefined ? {} : { subtotal }),
+    });
+    const w = makeWorld({
+      items: [line('none'), line('wrong', 1), line('right', 900)],
+      subtotalAmount: 2700,
+      discountAmount: 300,
+      taxAmount: 135,
+      totalAmount: 2835,
+    });
+
+    await provisionOrderForQuote(w.dataSource, w.ledger, tenantId, 'q1');
+
+    expect(w.tables.SalesOrderLine.map((l) => l.lineTotal)).toEqual([
+      900, 900, 900,
+    ]);
+    const [invoice] = w.tables.Invoice;
+    expect(invoice.items.map((i: QuoteLineItem) => i.subtotal)).toEqual([
+      900, 900, 900,
+    ]);
+    expectInvoiceAgrees(w, invoice);
   });
 
   it('raises nothing when every stage waits for a milestone', async () => {

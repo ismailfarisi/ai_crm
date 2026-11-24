@@ -97,10 +97,14 @@ export function PublicInvoiceView({ token, justPaid }: { token: string; justPaid
         )}
 
         <dl className="ms-auto max-w-xs space-y-1 p-6 text-sm">
-          <Row label="Subtotal" value={money(invoice.subtotalAmount, invoice.currency)} />
+          {/* The subtotal is already net of discount: the discount comes off above it. */}
           {invoice.discountAmount > 0 && (
-            <Row label="Discount" value={`−${money(invoice.discountAmount, invoice.currency)}`} />
+            <>
+              <Row label="Lines" value={money(invoice.subtotalAmount + invoice.discountAmount, invoice.currency)} />
+              <Row label="Discount" value={`−${money(invoice.discountAmount, invoice.currency)}`} />
+            </>
           )}
+          <Row label="Subtotal" value={money(invoice.subtotalAmount, invoice.currency)} />
           {invoice.taxAmount > 0 && <Row label="VAT" value={money(invoice.taxAmount, invoice.currency)} />}
           <div className="flex justify-between border-t border-line pt-2 font-semibold text-ink">
             <dt>Total</dt>

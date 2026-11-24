@@ -91,6 +91,49 @@ export interface QuoteTotals {
   hasCompleteCost: boolean;
 }
 
+const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
+
+/** A line that carries a price. A line saved without a type is a product line. */
+export const isPricedQuoteLine = (item: Pick<QuoteLineItem, 'type'>): boolean =>
+  (item.type ?? 'product') === 'product';
+
+/**
+ * A line's untaxed amount after its discount, to the cent, from its quantity,
+ * unit price and discount. Never read from the line's own `subtotal`: that
+ * field is what this produces.
+ */
+export function quoteLineSubtotal(
+  item: Pick<QuoteLineItem, 'quantity' | 'unitPrice' | 'discount'>,
+): number {
+  const qty = Number(item.quantity) || 0;
+  const price = Number(item.unitPrice) || 0;
+  const discountPercent = Math.min(100, Math.max(0, Number(item.discount) || 0));
+  const grossLine = qty * price;
+  return round2(grossLine - grossLine * (discountPercent / 100));
+}
+
+/**
+ * The lines as they are stored: every priced line carries the subtotal its own
+ * figures give, whatever the caller sent, and a line sent without a type is a
+ * product line, which is how everything downstream already reads it.
+ */
+export function withLineSubtotals(items: QuoteLineItem[] | null | undefined): QuoteLineItem[] {
+  return (items || []).map((item) =>
+    isPricedQuoteLine(item)
+      ? { ...item, type: 'product', subtotal: quoteLineSubtotal(item) }
+      : item,
+  );
+}
+
+/**
+ * A document's totals from its lines.
+ *
+ * `subtotalAmount` is after discount and before tax, and it is the sum of the
+ * line subtotals as they print, each to the cent; `totalAmount` is that plus
+ * the tax. So the lines add up to the subtotal and subtotal + tax is the
+ * total, exactly. `discountAmount` is what came off on the way, for showing,
+ * and is not subtracted again.
+ */
 export function calculateQuoteTotals(items: QuoteLineItem[]): QuoteTotals {
   let subtotalAmount = 0;
   let discountAmount = 0;
@@ -99,19 +142,18 @@ export function calculateQuoteTotals(items: QuoteLineItem[]): QuoteTotals {
   let hasCompleteCost = true;
 
   for (const item of items || []) {
-    if (item.type === 'product') {
+    if (isPricedQuoteLine(item)) {
       const qty = Number(item.quantity) || 0;
       const price = Number(item.unitPrice) || 0;
       const discountPercent = Math.min(100, Math.max(0, Number(item.discount) || 0));
       const taxPercent = Math.max(0, Number(item.taxRate) || 0);
 
       const grossLine = qty * price;
-      const discountVal = grossLine * (discountPercent / 100);
-      const lineSubtotal = grossLine - discountVal;
+      const lineSubtotal = quoteLineSubtotal(item);
       const lineTax = lineSubtotal * (taxPercent / 100);
 
       subtotalAmount += lineSubtotal;
-      discountAmount += discountVal;
+      discountAmount += grossLine * (discountPercent / 100);
       taxAmount += lineTax;
 
       if (item.cost && Number.isFinite(Number(item.cost.totalCost))) {
@@ -123,15 +165,18 @@ export function calculateQuoteTotals(items: QuoteLineItem[]): QuoteTotals {
     }
   }
 
+  subtotalAmount = round2(subtotalAmount);
+  taxAmount = round2(taxAmount);
+
   // Margin is against the post-discount, pre-tax subtotal. Tax is collected on
   // behalf of the state and is never margin.
   const marginAmount = subtotalAmount - costAmount;
 
   return {
-    subtotalAmount: Number(subtotalAmount.toFixed(2)),
-    discountAmount: Number(discountAmount.toFixed(2)),
-    taxAmount: Number(taxAmount.toFixed(2)),
-    totalAmount: Number((subtotalAmount + taxAmount).toFixed(2)),
+    subtotalAmount,
+    discountAmount: round2(discountAmount),
+    taxAmount,
+    totalAmount: round2(subtotalAmount + taxAmount),
     costAmount: Number(costAmount.toFixed(2)),
     marginAmount: Number(marginAmount.toFixed(2)),
     marginPct: subtotalAmount > 0 ? Number((marginAmount / subtotalAmount).toFixed(4)) : 0,

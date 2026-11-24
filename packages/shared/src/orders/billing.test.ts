@@ -62,11 +62,62 @@ describe('allocateStageAmounts', () => {
       stage(41.67, { kind: 'DEPOSIT', amount: 500 }),
       stage(58.33, { kind: 'FINAL' }),
     ]);
-    expect(deposit.totalAmount).toBe(500);
-    expect(deposit.taxAmount).toBeCloseTo(83.33, 2);
-    expect(deposit.subtotalAmount - deposit.discountAmount + deposit.taxAmount).toBeCloseTo(500, 2);
-    expect(balance.totalAmount).toBe(700);
-    expect(deposit.taxAmount + balance.taxAmount).toBeCloseTo(200, 2);
+    expect(deposit).toEqual({ subtotalAmount: 416.67, discountAmount: 0, taxAmount: 83.33, totalAmount: 500 });
+    expect(balance).toEqual({ subtotalAmount: 583.33, discountAmount: 0, taxAmount: 116.67, totalAmount: 700 });
+  });
+
+  it('keeps the discount out of a fixed deposit\'s net', () => {
+    // 10 x 1,000 less 20%, 5% VAT. The subtotal is already after the discount,
+    // so adding the discount back made the deposit's net 5,000 on 4,200.
+    const discounted = { subtotalAmount: 8000, discountAmount: 2000, taxAmount: 400, totalAmount: 8400 };
+    const [deposit, balance] = allocateStageAmounts(discounted, [
+      stage(50, { kind: 'DEPOSIT', amount: 4200 }),
+      stage(50, { kind: 'FINAL' }),
+    ]);
+    expect(deposit).toEqual({ subtotalAmount: 4000, discountAmount: 1000, taxAmount: 200, totalAmount: 4200 });
+    expect(balance).toEqual({ subtotalAmount: 4000, discountAmount: 1000, taxAmount: 200, totalAmount: 4200 });
+  });
+
+  it('makes net + tax the total on every stage, where separate rounding is a cent out', () => {
+    // Halves rounded one figure at a time: 2,416.67 + 120.84 = 2,537.51 on an
+    // invoice for 2,537.50.
+    const odd = { subtotalAmount: 4833.33, discountAmount: 0, taxAmount: 241.67, totalAmount: 5075 };
+    const [deposit, balance] = allocateStageAmounts(odd, BILLING_PRESETS[3].stages);
+    expect(deposit).toEqual({ subtotalAmount: 2416.66, discountAmount: 0, taxAmount: 120.84, totalAmount: 2537.5 });
+    expect(balance).toEqual({ subtotalAmount: 2416.67, discountAmount: 0, taxAmount: 120.83, totalAmount: 2537.5 });
+  });
+
+  it('holds net + tax = total and the quote\'s sums for any split', () => {
+    const c = (n: number) => Math.round(n * 100);
+    const schedules = [
+      BILLING_PRESETS[1].stages,
+      BILLING_PRESETS[3].stages,
+      [stage(33.333), stage(33.333), stage(33.334, { kind: 'FINAL' })],
+      [stage(10), stage(15), stage(20), stage(25), stage(30, { kind: 'FINAL' })],
+      [stage(20, { kind: 'DEPOSIT', amount: 777.77 }), stage(30), stage(50, { kind: 'FINAL' })],
+    ];
+    for (let i = 1; i <= 400; i++) {
+      // Awkward nets at 5% VAT, with and without a discount.
+      const net = c(i * 37.91 + (i % 7) * 0.13);
+      const tax = Math.round(net * 0.05);
+      const quoted = {
+        subtotalAmount: net / 100,
+        discountAmount: i % 3 ? 0 : Math.round(net * 0.25) / 100,
+        taxAmount: tax / 100,
+        totalAmount: (net + tax) / 100,
+      };
+      for (const stages of schedules) {
+        const rows = allocateStageAmounts(quoted, stages);
+        for (const row of rows) {
+          expect(c(row.subtotalAmount) + c(row.taxAmount)).toBe(c(row.totalAmount));
+          expect(c(row.totalAmount)).toBeGreaterThanOrEqual(0);
+          expect(c(row.taxAmount)).toBeGreaterThanOrEqual(0);
+        }
+        for (const f of ['subtotalAmount', 'discountAmount', 'taxAmount', 'totalAmount'] as const) {
+          expect(rows.reduce((s, r) => s + c(r[f]), 0)).toBe(c(quoted[f]));
+        }
+      }
+    }
   });
 
   it('never lets a fixed deposit bill more than the quote', () => {
@@ -74,8 +125,8 @@ describe('allocateStageAmounts', () => {
       stage(50, { kind: 'DEPOSIT', amount: 5000 }),
       stage(50, { kind: 'FINAL' }),
     ]);
-    expect(deposit.totalAmount).toBe(1200);
-    expect(balance.totalAmount).toBe(0);
+    expect(deposit).toEqual(quote);
+    expect(balance).toEqual({ subtotalAmount: 0, discountAmount: 0, taxAmount: 0, totalAmount: 0 });
   });
 
   it('splits a 30/70 deposit', () => {
@@ -107,9 +158,13 @@ describe('allocateStageAmounts', () => {
   });
 
   it('is exact on a large order', () => {
-    const big = { subtotalAmount: 987654.32, discountAmount: 1234.56, taxAmount: 197283.95, totalAmount: 1183703.71 };
+    const big = { subtotalAmount: 986419.76, discountAmount: 1234.56, taxAmount: 197283.95, totalAmount: 1183703.71 };
     const rows = allocateStageAmounts(big, BILLING_PRESETS[1].stages);
     expect(Math.round((rows[0].totalAmount + rows[1].totalAmount) * 100)).toBe(118370371);
+    expect(Math.round((rows[0].subtotalAmount + rows[1].subtotalAmount) * 100)).toBe(98641976);
+    for (const row of rows) {
+      expect(Math.round((row.subtotalAmount + row.taxAmount) * 100)).toBe(Math.round(row.totalAmount * 100));
+    }
   });
 });
 

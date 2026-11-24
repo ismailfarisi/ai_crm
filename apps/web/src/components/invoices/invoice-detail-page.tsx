@@ -289,20 +289,36 @@ export function InvoiceDetailPage({ invoiceId }: { invoiceId: string }) {
           <section className="rounded-xl border border-line bg-surface p-4">
             <h2 className="text-sm font-semibold text-ink">Totals</h2>
             <dl className="mt-1 space-y-1 text-sm">
+              {/*
+                The subtotal is already net of discount, so the discount is
+                shown coming off the lines' own total, above it. Each row is
+                then the sum so far, as on the quote.
+              */}
+              {Number(invoice.discountAmount) > 0 && (
+                <>
+                  <div className="flex justify-between text-ink-muted">
+                    <dt>Lines</dt>
+                    <dd className="tabular-nums">
+                      {formatMoney(
+                        (Number(invoice.subtotalAmount) || 0) + Number(invoice.discountAmount),
+                        currency,
+                      )}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between text-ink-muted">
+                    <dt>Discount</dt>
+                    <dd className="tabular-nums">
+                      −{formatMoney(Number(invoice.discountAmount), currency)}
+                    </dd>
+                  </div>
+                </>
+              )}
               <div className="flex justify-between text-ink-muted">
                 <dt>Subtotal</dt>
                 <dd className="tabular-nums">
                   {formatMoney(Number(invoice.subtotalAmount) || 0, currency)}
                 </dd>
               </div>
-              {Number(invoice.discountAmount) > 0 && (
-                <div className="flex justify-between text-ink-muted">
-                  <dt>Discount</dt>
-                  <dd className="tabular-nums">
-                    −{formatMoney(Number(invoice.discountAmount), currency)}
-                  </dd>
-                </div>
-              )}
               {taxLines.map((line, i) => (
                 <div key={i} className="flex justify-between text-ink-muted">
                   <dt>{line.label}</dt>

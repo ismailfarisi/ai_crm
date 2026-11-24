@@ -2,7 +2,7 @@
 
 import { Plus, Trash2, Layers, FileText, Package, PackagePlus, Hash } from 'lucide-react';
 import type { QuoteLineItem, QuoteLineItemType } from '@saas/shared';
-import { DEFAULT_UNIT, UNIT_GROUPS } from '@saas/shared';
+import { DEFAULT_UNIT, UNIT_GROUPS, quoteLineSubtotal } from '@saas/shared';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { lineMargin } from './margin-status';
@@ -172,12 +172,8 @@ export function QuoteLinesTable({
       const updated = { ...item, [field]: value };
 
       if (updated.type === 'product') {
-        const qty = Number(updated.quantity) || 0;
-        const price = Number(updated.unitPrice) || 0;
-        const discount = Math.min(100, Math.max(0, Number(updated.discount) || 0));
-        const lineGross = qty * price;
-        const lineDiscount = lineGross * (discount / 100);
-        updated.subtotal = Number((lineGross - lineDiscount).toFixed(2));
+        // The same sum the API stores, so the line does not change on save.
+        updated.subtotal = quoteLineSubtotal(updated);
       }
 
       return updated;

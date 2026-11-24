@@ -12,6 +12,7 @@ import {
   LEDGER_ROLES,
   remainingToDeliver,
   scaleBreakdown,
+  withLineSubtotals,
   type CreateDeliveryNotePayload,
   type DeliveryNoteDto,
   type QuoteLineItem,
@@ -406,28 +407,30 @@ export class DeliveryNotesService {
           ? quoteItems.get(orderLine.quoteLineId)
           : undefined;
         const discount = Number(quoted?.discount) || 0;
-        const net = round2(
-          line.qty * orderLine.unitPrice * (1 - discount / 100),
-        );
-        return {
-          id: `dn-${line.id}`,
-          type: 'product',
-          description: line.description,
-          quantity: line.qty,
-          uom: line.uom ?? undefined,
-          unitPrice: orderLine.unitPrice,
-          discount,
-          taxRate: Number(quoted?.taxRate) || 0,
-          taxCodeId: quoted?.taxCodeId ?? null,
-          taxCode: quoted?.taxCode ?? null,
-          taxReverseCharge: quoted?.taxReverseCharge ?? false,
-          subtotal: net,
-        };
+        return withLineSubtotals([
+          {
+            id: `dn-${line.id}`,
+            type: 'product',
+            description: line.description,
+            quantity: line.qty,
+            uom: line.uom ?? undefined,
+            unitPrice: orderLine.unitPrice,
+            discount,
+            taxRate: Number(quoted?.taxRate) || 0,
+            taxCodeId: quoted?.taxCodeId ?? null,
+            taxCode: quoted?.taxCode ?? null,
+            taxReverseCharge: quoted?.taxReverseCharge ?? false,
+          },
+        ])[0];
       });
 
       let totals = calculateQuoteTotals(items);
+      // What earlier invoices put to sales is their total less their tax,
+      // which is what the ledger holds; a stored subtotal can be a cent out
+      // on an invoice raised before the three were made to agree.
       const invoicedNet =
-        earlier.reduce((s, i) => s + cents(i.subtotalAmount), 0) / 100;
+        earlier.reduce((s, i) => s + cents(i.amount) - cents(i.taxAmount), 0) /
+        100;
       const invoicedTax =
         earlier.reduce((s, i) => s + cents(i.taxAmount), 0) / 100;
       const remainingNet = round2(order.subtotalAmount - invoicedNet);
