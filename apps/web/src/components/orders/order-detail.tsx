@@ -315,13 +315,17 @@ export function OrderDetail({ id }: { id: string }) {
                     {money(stage.totalAmount)}
                   </span>
                   {stage.invoiceId ? (
-                    <Link
-                      href="/invoices"
-                      className="inline-flex items-center gap-1 text-sm font-medium text-ink underline-offset-2 hover:underline"
-                    >
-                      <ReceiptText className="size-3.5" aria-hidden />
-                      View invoice
-                    </Link>
+                    can.readInvoices ? (
+                      <Link
+                        href={`/invoices/${stage.invoiceId}`}
+                        className="inline-flex items-center gap-1 text-sm font-medium text-ink underline-offset-2 hover:underline"
+                      >
+                        <ReceiptText className="size-3.5" aria-hidden />
+                        View invoice
+                      </Link>
+                    ) : (
+                      <span className="text-sm text-ink-muted">Invoiced</span>
+                    )
                   ) : (
                     order.status !== 'CANCELLED' &&
                     stage.trigger !== 'ON_DELIVERY' && (
