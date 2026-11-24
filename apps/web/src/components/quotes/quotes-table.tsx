@@ -9,8 +9,16 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/data-table';
 import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
+import { quoteDisplayStatus, type QuoteDisplayStatus } from '@saas/shared';
 import { type Quote, useDownloadQuotePdf } from '@/hooks/use-quotes';
 import { formatMoney } from '@/lib/utils';
+
+/**
+ * A quote as the table shows it: `status` is the state a person sees, so an
+ * approved quote the customer accepted reads ACCEPTED in the badge, search,
+ * sorting, cards and the CSV or JSON export alike.
+ */
+type QuoteRow = Omit<Quote, 'status'> & { status: QuoteDisplayStatus };
 
 interface QuotesTableProps {
   quotes: Quote[];
@@ -26,7 +34,13 @@ interface QuotesTableProps {
 export function QuotesTable({ quotes, isLoading = false, onDecide, onPrint }: QuotesTableProps) {
   const downloadPdf = useDownloadQuotePdf();
 
-  const columns = useMemo<ColumnDef<Quote, any>[]>(
+  const rows = useMemo<QuoteRow[]>(
+    () => quotes.map((quote) => ({ ...quote, status: quoteDisplayStatus(quote) })),
+    [quotes],
+  );
+  const byId = useMemo(() => new Map(quotes.map((quote) => [quote.id, quote])), [quotes]);
+
+  const columns = useMemo<ColumnDef<QuoteRow, any>[]>(
     () => [
       {
         accessorKey: 'title',
@@ -122,7 +136,8 @@ export function QuotesTable({ quotes, isLoading = false, onDecide, onPrint }: Qu
       {
         id: 'actions',
         cell: ({ row }) => {
-          const quote = row.original;
+          const quote = byId.get(row.original.id);
+          if (!quote) return null;
           const label = quote.quoteNumber || quote.title || 'quote';
 
           return (
@@ -178,13 +193,13 @@ export function QuotesTable({ quotes, isLoading = false, onDecide, onPrint }: Qu
         },
       },
     ],
-    [onDecide, downloadPdf, onPrint]
+    [onDecide, downloadPdf, onPrint, byId]
   );
 
   return (
     <DataTable
       columns={columns}
-      data={quotes}
+      data={rows}
       isLoading={isLoading}
       getRowId={(row) => row.id}
       cardTitleKey="title"

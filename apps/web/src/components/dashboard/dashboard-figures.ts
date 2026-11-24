@@ -1,4 +1,9 @@
-import { isInvoiceOverdue, type InvoiceStatus, type QuoteStatus } from '@saas/shared';
+import {
+  invoiceBalanceDue,
+  isInvoiceOverdue,
+  type InvoiceStatus,
+  type QuoteStatus,
+} from '@saas/shared';
 
 /**
  * The dashboard's figures, worked out from the same lists the rest of the app
@@ -25,6 +30,8 @@ export interface DashboardQuote {
 export interface DashboardInvoice {
   amount: number | string;
   paidAmount?: number | string | null;
+  creditedAmount?: number | string | null;
+  refundedAmount?: number | string | null;
   currency?: string;
   status: InvoiceStatus;
   dueDate?: string | null;
@@ -87,7 +94,7 @@ export function overdueInvoices(
   for (const inv of invoices) {
     if (!isInvoiceOverdue({ dueDate: inv.dueDate ?? null, status: inv.status }, now)) continue;
     count += 1;
-    const owed = Math.max(0, (Number(inv.amount) || 0) - (Number(inv.paidAmount) || 0));
+    const owed = invoiceBalanceDue(inv);
     if (inBase(inv.currency, base)) amount += owed;
     else otherCurrencies += 1;
   }

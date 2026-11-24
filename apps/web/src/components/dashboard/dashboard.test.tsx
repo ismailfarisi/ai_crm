@@ -70,6 +70,33 @@ describe('dashboard figures', () => {
     expect(figure).toEqual({ count: 3, amount: 1000, otherCurrencies: 1 });
   });
 
+  it('does not count an invoice due today as overdue, even one due on receipt', () => {
+    const issuedThisMorning = new Date(NOW.getTime() - 60_000).toISOString();
+    const figure = overdueInvoices(
+      [invoice({ amount: 900, issuedAt: issuedThisMorning, dueDate: issuedThisMorning })],
+      'AED',
+      NOW,
+    );
+    expect(figure).toEqual({ count: 0, amount: 0, otherCurrencies: 0 });
+  });
+
+  it('takes credit notes and refunds off what is owed on an overdue invoice', () => {
+    const figure = overdueInvoices(
+      [
+        invoice({
+          amount: 10000,
+          paidAmount: 180,
+          creditedAmount: 105,
+          refundedAmount: 50,
+          dueDate: '2026-10-10T00:00:00Z',
+        }),
+      ],
+      'AED',
+      NOW,
+    );
+    expect(figure).toEqual({ count: 1, amount: 9765, otherCurrencies: 0 });
+  });
+
   it('counts released and running jobs, and the ones past their due date', () => {
     expect(
       jobsOnTheFloor(

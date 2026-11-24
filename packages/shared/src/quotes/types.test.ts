@@ -2,10 +2,15 @@ import { describe, it, expect } from 'vitest';
 import {
   calculateQuoteTotals,
   formatPaymentTerms,
+  invoiceOverdueCutoff,
+  isInvoiceOverdue,
+  QUOTE_STATUS_LABELS,
+  quoteDisplayStatus,
   QuoteLineItem,
   quoteLineSubtotal,
   withLineSubtotals,
 } from './types';
+import { agingBucket } from '../payables/matching';
 
 describe('calculateQuoteTotals', () => {
   it('correctly calculates untaxed subtotal, discounts, taxes, and total amount', () => {
@@ -167,5 +172,51 @@ describe('formatPaymentTerms', () => {
 
   it('prints free text as it was typed', () => {
     expect(formatPaymentTerms('50% advance, balance on delivery')).toBe('50% advance, balance on delivery');
+  });
+});
+
+describe('isInvoiceOverdue', () => {
+  const open = (dueDate: string | null) => ({ dueDate, status: 'ISSUED' as const });
+
+  it('is not overdue on its due day, even when due on receipt', () => {
+    const issued = '2026-11-24T09:15:00.000Z';
+    expect(isInvoiceOverdue(open(issued), new Date('2026-11-24T09:16:00.000Z'))).toBe(false);
+    expect(isInvoiceOverdue(open(issued), new Date('2026-11-24T23:59:59.000Z'))).toBe(false);
+  });
+
+  it('is overdue once the due day has ended', () => {
+    expect(isInvoiceOverdue(open('2026-11-24T09:15:00.000Z'), new Date('2026-11-25T00:00:00.000Z'))).toBe(true);
+  });
+
+  it('agrees with the ageing buckets on every hour around midnight', () => {
+    const due = '2026-11-24T22:30:00.000Z';
+    for (const now of ['2026-11-24T23:00:00Z', '2026-11-25T00:00:00Z', '2026-11-25T01:00:00Z']) {
+      const asOf = new Date(now);
+      expect(isInvoiceOverdue(open(due), asOf)).toBe(agingBucket(due, asOf) !== 'CURRENT');
+    }
+  });
+
+  it('is never overdue when paid, voided or without a due date', () => {
+    const later = new Date('2027-01-01T00:00:00Z');
+    expect(isInvoiceOverdue({ dueDate: '2026-11-01', status: 'PAID' }, later)).toBe(false);
+    expect(isInvoiceOverdue({ dueDate: '2026-11-01', status: 'CANCELLED' }, later)).toBe(false);
+    expect(isInvoiceOverdue(open(null), later)).toBe(false);
+  });
+
+  it('cuts off at the start of the UTC day', () => {
+    expect(invoiceOverdueCutoff(new Date('2026-11-25T19:59:00Z')).toISOString()).toBe('2026-11-25T00:00:00.000Z');
+  });
+});
+
+describe('quoteDisplayStatus', () => {
+  it('shows an approved quote the customer accepted as accepted', () => {
+    expect(quoteDisplayStatus({ status: 'APPROVED', acceptedAt: '2026-11-24T10:00:00Z' })).toBe('ACCEPTED');
+    expect(QUOTE_STATUS_LABELS[quoteDisplayStatus({ status: 'APPROVED', acceptedAt: new Date() })]).toBe('Accepted');
+  });
+
+  it('leaves every other quote at its own status', () => {
+    expect(quoteDisplayStatus({ status: 'APPROVED', acceptedAt: null })).toBe('APPROVED');
+    expect(quoteDisplayStatus({ status: 'DRAFT' })).toBe('DRAFT');
+    expect(quoteDisplayStatus({ status: 'REJECTED', acceptedAt: null })).toBe('REJECTED');
   });
 });

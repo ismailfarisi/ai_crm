@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import {
   formatOrganizationAddress,
+  invoiceBalanceDue,
   isInvoiceOverdue,
   PERMISSIONS,
   quoteDocumentTaxes,
@@ -105,7 +106,7 @@ export function InvoiceDetailPage({ invoiceId }: { invoiceId: string }) {
 
   const currency = invoice.currency || orgProfile?.baseCurrency || 'AED';
   const paid = Number(invoice.paidAmount ?? 0);
-  const balanceDue = Math.max(0, Number(invoice.amount || 0) - paid);
+  const balanceDue = invoiceBalanceDue(invoice);
   const isFinal = invoice.status === 'PAID' || invoice.status === 'CANCELLED';
   const taxLines = quoteDocumentTaxes(invoice.items, Number(invoice.taxAmount || 0)) ?? [];
   const orgAddress = orgProfile
@@ -351,9 +352,9 @@ export function InvoiceDetailPage({ invoiceId }: { invoiceId: string }) {
               )}
               {Number(invoice.refundedAmount) > 0 && (
                 <div className="flex justify-between text-ink-muted">
-                  <dt>Refunded</dt>
+                  <dt>Refunded to the customer</dt>
                   <dd className="tabular-nums">
-                    −{formatMoney(Number(invoice.refundedAmount), currency)}
+                    +{formatMoney(Number(invoice.refundedAmount), currency)}
                   </dd>
                 </div>
               )}

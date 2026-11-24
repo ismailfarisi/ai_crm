@@ -115,7 +115,8 @@ export function OrderDetail({ id }: { id: string }) {
   const hasLiveInvoice = order.billingSchedule.some(
     (s) => s.invoiceId && s.invoiceStatus !== 'CANCELLED',
   );
-  const outstanding = Math.round((order.invoicedAmount - order.paidAmount) * 100) / 100;
+  const outstanding =
+    order.outstandingAmount ?? Math.round((order.invoicedAmount - order.paidAmount) * 100) / 100;
   const inCurrency = (n: number) => formatMoney(Number(n) || 0, order.currency);
   const steps = NEXT[order.status] ?? [];
 

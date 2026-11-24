@@ -12,6 +12,8 @@ import {
   type PaginatedResult,
   type UpdateCustomerInput,
   assertUaeTrn,
+  invoicePosition,
+  quoteDisplayStatus,
   resolveVatStatus,
 } from '@saas/shared';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
@@ -112,21 +114,31 @@ export class CustomersService {
     const invoicedTotal = round2(
       live.reduce((sum, invoice) => sum + Number(invoice.amount ?? 0), 0),
     );
+    // What is owed counts credit notes and refunds the way the receivables
+    // ageing does: a negative balance is money owed back to the customer and
+    // nets off what they owe on other invoices.
+    const owedOn = (invoice: Invoice) =>
+      invoice.status === 'CANCELLED' || invoice.voidedAt
+        ? 0
+        : invoicePosition({
+            amount: Number(invoice.amount ?? 0),
+            paidAmount: Number(invoice.paidAmount ?? 0),
+            creditedAmount: Number(invoice.creditedAmount ?? 0),
+            refundedAmount: Number(invoice.refundedAmount ?? 0),
+          }).balance;
     const outstandingTotal = round2(
-      live.reduce(
-        (sum, invoice) =>
-          sum + Number(invoice.amount ?? 0) - Number(invoice.paidAmount ?? 0),
-        0,
-      ),
+      live.reduce((sum, invoice) => sum + owedOn(invoice), 0),
     );
 
     return {
       customerId: customer.id,
-      currency: customer.currency ?? (await baseCurrencyFor(this.customers.manager, tenantId)),
+      currency:
+        customer.currency ??
+        (await baseCurrencyFor(this.customers.manager, tenantId)),
       quotes: quotes.map((quote) => ({
         id: quote.id,
         number: quote.quoteNumber,
-        status: quote.status,
+        status: quoteDisplayStatus(quote),
         currency: quote.currency,
         amount: Number(quote.totalAmount ?? 0),
         date: quote.createdAt.toISOString(),
@@ -145,9 +157,7 @@ export class CustomersService {
         status: invoice.status,
         currency: invoice.currency,
         amount: Number(invoice.amount ?? 0),
-        outstanding: round2(
-          Number(invoice.amount ?? 0) - Number(invoice.paidAmount ?? 0),
-        ),
+        outstanding: owedOn(invoice),
         date: invoice.issuedAt.toISOString(),
       })),
       totals: {

@@ -2,7 +2,7 @@
 
 import { Receipt } from 'lucide-react';
 import { Dialog } from '@/components/ui/dialog';
-import type { InvoiceDto } from '@saas/shared';
+import { invoiceBalanceDue, type InvoiceDto } from '@saas/shared';
 import { useInvoicePayments } from '@/hooks/use-invoices';
 import { useFinanceAccounts } from '@/hooks/use-finance';
 import { formatFinanceCurrency } from '../finance/dashboard/treasury-stat-cards';
@@ -22,7 +22,7 @@ export function InvoicePaymentsModal({ open, onClose, invoice }: InvoicePayments
   const accountName = (accountId?: string | null) =>
     accounts.find((a) => a.id === accountId)?.name ?? '—';
 
-  const remaining = invoice.amount - (invoice.paidAmount ?? 0);
+  const remaining = invoiceBalanceDue(invoice);
 
   return (
     <Dialog

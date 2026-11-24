@@ -13,7 +13,16 @@ import { Organization } from '../organizations/entities/organization.entity';
 import { DocumentLocalizationService } from '../document-templates/document-localization.service';
 import { DocumentPdfRendererService } from '../document-templates/document-pdf-renderer.service';
 import { DocumentTemplatesService } from '../document-templates/document-templates.service';
-import type { UniversalDocumentData } from '@saas/shared';
+import {
+  agingBucket,
+  invoiceBalanceAsOf,
+  type AgingBucket,
+  type UniversalDocumentData,
+} from '@saas/shared';
+import {
+  CreditNote,
+  CreditNoteRefund,
+} from '../credits/entities/credit-note.entity';
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -40,17 +49,6 @@ function normalizeStatementDate(
     throw new BadRequestException(`Invalid "${paramName}" date`);
   }
   return d;
-}
-
-function calculateDaysOverdue(dueDate: Date | string, asOf: Date): number {
-  const due = new Date(dueDate);
-  const a = Date.UTC(
-    asOf.getUTCFullYear(),
-    asOf.getUTCMonth(),
-    asOf.getUTCDate(),
-  );
-  const d = Date.UTC(due.getUTCFullYear(), due.getUTCMonth(), due.getUTCDate());
-  return Math.floor((a - d) / 86_400_000);
 }
 
 function getPaymentDate(payment: InvoicePayment): Date {
@@ -125,110 +123,145 @@ export class CustomerStatementService {
           })
         : [];
 
+    const live = invoices.filter(
+      (inv) => inv.status !== InvoiceStatus.CANCELLED,
+    );
+    const liveIds = live.map((inv) => inv.id);
+    const manager = this.invoiceRepo.manager;
+    const [creditNotes, refunds] =
+      liveIds.length > 0
+        ? await Promise.all([
+            manager.getRepository(CreditNote).find({
+              where: { tenantId, invoiceId: In(liveIds), status: 'ISSUED' },
+            }),
+            manager.getRepository(CreditNoteRefund).find({
+              where: { tenantId, invoiceId: In(liveIds) },
+            }),
+          ])
+        : [[], []];
+
     const fromTime = fromDate.getTime();
     const toTime = toDate.getTime();
 
-    // 1. Opening balance from transactions strictly prior to 'from' date
-    const priorInvoices = invoices.filter((inv) => {
-      if (inv.status === InvoiceStatus.CANCELLED) return false;
-      return getInvoiceDate(inv).getTime() < fromTime;
-    });
-
-    const priorPayments = payments.filter((p) => {
-      return getPaymentDate(p).getTime() < fromTime;
-    });
-
-    const priorInvoicedAmount = priorInvoices.reduce(
-      (sum, inv) => sum + Number(inv.amount || 0),
-      0,
-    );
-    const priorPaidAmount = priorPayments.reduce(
-      (sum, p) => sum + Number(p.amount || 0),
-      0,
-    );
-    const openingBalance = round2(priorInvoicedAmount - priorPaidAmount);
-
-    // 2. Period transactions between 'from' and 'to' (inclusive)
-    const periodInvoices = invoices.filter((inv) => {
-      if (inv.status === InvoiceStatus.CANCELLED) return false;
-      const t = getInvoiceDate(inv).getTime();
-      return t >= fromTime && t <= toTime;
-    });
-
-    const periodPayments = payments.filter((p) => {
-      const t = getPaymentDate(p).getTime();
-      return t >= fromTime && t <= toTime;
-    });
-
-    const periodInvoicedAmount = periodInvoices.reduce(
-      (sum, inv) => sum + Number(inv.amount || 0),
-      0,
-    );
-    const periodPaidAmount = periodPayments.reduce(
-      (sum, p) => sum + Number(p.amount || 0),
-      0,
-    );
-    const closingBalance = round2(
-      openingBalance + periodInvoicedAmount - periodPaidAmount,
-    );
-
-    // 3. Ledger items
-    interface LedgerItem {
+    // Every dated change to what the customer owes: the same events the
+    // receivables ageing and the ledger count, so the balances agree with them.
+    // A voided invoice is left out with its payments, as if it was never sent.
+    type Kind = 'invoice' | 'payment' | 'credit' | 'refund';
+    interface StatementEvent {
       date: Date;
-      isInvoice: boolean;
-      item: {
-        code?: string;
-        description: string;
-        descriptionAr?: string;
-        quantity: number;
-        unitPrice: number;
-        amount: number;
-      };
+      kind: Kind;
+      amount: number;
+      code: string;
+      description: string;
+      descriptionAr: string;
     }
-
-    const ledgerItems: LedgerItem[] = [];
-
-    for (const inv of periodInvoices) {
-      ledgerItems.push({
+    const events: StatementEvent[] = [];
+    const liveSet = new Set(liveIds);
+    for (const inv of live) {
+      events.push({
         date: getInvoiceDate(inv),
-        isInvoice: true,
-        item: {
-          code: inv.invoiceNumber,
-          description: `Invoice ${inv.invoiceNumber}`,
-          descriptionAr: `فاتورة ${inv.invoiceNumber}`,
-          quantity: 1,
-          unitPrice: round2(Number(inv.amount)),
-          amount: round2(Number(inv.amount)),
-        },
+        kind: 'invoice',
+        amount: Number(inv.amount || 0),
+        code: inv.invoiceNumber,
+        description: `Invoice ${inv.invoiceNumber}`,
+        descriptionAr: `فاتورة ${inv.invoiceNumber}`,
       });
+      // Invoices paid before payments were kept as rows carry a total and no rows.
+      const rows = payments.filter((p) => p.invoiceId === inv.id);
+      const unexplained = round2(
+        Number(inv.paidAmount || 0) -
+          rows.reduce((sum, p) => sum + Number(p.amount || 0), 0),
+      );
+      if (unexplained > 0) {
+        events.push({
+          date: inv.paidAt ? new Date(inv.paidAt) : getInvoiceDate(inv),
+          kind: 'payment',
+          amount: -unexplained,
+          code: 'PAYMENT',
+          description: 'Payment Received',
+          descriptionAr: 'دفعة مستلمة',
+        });
+      }
     }
-
-    for (const pay of periodPayments) {
+    for (const pay of payments) {
+      if (!liveSet.has(pay.invoiceId)) continue;
       const ref = (pay as any).reference || pay.notes || 'Payment';
       const code = (pay as any).reference || pay.notes || 'PAYMENT';
-      ledgerItems.push({
+      events.push({
         date: getPaymentDate(pay),
-        isInvoice: false,
-        item: {
-          code,
-          description: `Payment ${ref !== 'Payment' ? `(${ref})` : 'Received'}`,
-          descriptionAr: ref !== 'Payment' ? `دفعة (${ref})` : 'دفعة مستلمة',
-          quantity: 1,
-          unitPrice: -round2(Number(pay.amount)),
-          amount: -round2(Number(pay.amount)),
-        },
+        kind: 'payment',
+        amount: -Number(pay.amount || 0),
+        code,
+        description: `Payment ${ref !== 'Payment' ? `(${ref})` : 'Received'}`,
+        descriptionAr: ref !== 'Payment' ? `دفعة (${ref})` : 'دفعة مستلمة',
+      });
+    }
+    for (const note of creditNotes) {
+      if (!note.issuedAt) continue;
+      const number = note.creditNoteNumber ?? 'Credit note';
+      events.push({
+        date: new Date(note.issuedAt),
+        kind: 'credit',
+        amount: -Number(note.totalAmount || 0),
+        code: number,
+        description: `Credit note ${number}`,
+        descriptionAr: `إشعار دائن ${number}`,
+      });
+    }
+    for (const refund of refunds) {
+      events.push({
+        date: new Date(refund.refundedAt),
+        kind: 'refund',
+        amount: Number(refund.amount || 0),
+        code: 'REFUND',
+        description: 'Refund paid to you',
+        descriptionAr: 'مبلغ مسترد',
       });
     }
 
-    ledgerItems.sort((a, b) => {
-      const diff = a.date.getTime() - b.date.getTime();
-      if (diff !== 0) return diff;
-      return a.isInvoice ? -1 : 1;
+    const sum = (rows: StatementEvent[]) =>
+      round2(rows.reduce((total, e) => total + e.amount, 0));
+
+    // 1. Opening balance from everything strictly before the 'from' date
+    const openingBalance = sum(
+      events.filter((e) => e.date.getTime() < fromTime),
+    );
+
+    // 2. Period events between 'from' and 'to' (inclusive)
+    const period = events.filter((e) => {
+      const t = e.date.getTime();
+      return t >= fromTime && t <= toTime;
     });
+    const periodInvoicedAmount = sum(
+      period.filter((e) => e.kind === 'invoice'),
+    );
+    const periodPaidAmount = -sum(period.filter((e) => e.kind === 'payment'));
+    const closingBalance = round2(openingBalance + sum(period));
 
-    const items = ledgerItems.map((li) => li.item);
+    // 3. Ledger items, invoices first on a day
+    const order: Record<Kind, number> = {
+      invoice: 0,
+      credit: 1,
+      payment: 2,
+      refund: 3,
+    };
+    const items = [...period]
+      .sort((a, b) => {
+        const diff = a.date.getTime() - b.date.getTime();
+        return diff !== 0 ? diff : order[a.kind] - order[b.kind];
+      })
+      .map((e) => ({
+        code: e.code,
+        description: e.description,
+        descriptionAr: e.descriptionAr,
+        quantity: 1,
+        unitPrice: round2(e.amount),
+        amount: round2(e.amount),
+      }));
 
-    // 4. Aging calculation for open invoices as of 'to' date
+    // 4. Ageing of what was owed at the 'to' date, worked out exactly as the
+    // receivables ageing does. Money owed back to the customer is in the
+    // closing balance but not in an overdue column: a credit is not a late debt.
     const aging = {
       current: 0,
       days30: 0,
@@ -236,42 +269,29 @@ export class CustomerStatementService {
       days90: 0,
       days90Plus: 0,
     };
-
-    const invoicesToAge = invoices.filter((inv) => {
-      if (inv.status === InvoiceStatus.CANCELLED) return false;
-      return getInvoiceDate(inv).getTime() <= toTime;
-    });
-
-    for (const inv of invoicesToAge) {
-      const paymentsOnInv = payments.filter(
-        (p) => p.invoiceId === inv.id && getPaymentDate(p).getTime() <= toTime,
+    const column: Record<AgingBucket, keyof typeof aging> = {
+      CURRENT: 'current',
+      DAYS_1_30: 'days30',
+      DAYS_31_60: 'days60',
+      DAYS_61_90: 'days90',
+      DAYS_OVER_90: 'days90Plus',
+    };
+    for (const inv of live) {
+      if (getInvoiceDate(inv).getTime() > toTime) continue;
+      const outstanding = invoiceBalanceAsOf(
+        inv,
+        {
+          payments: payments.filter((p) => p.invoiceId === inv.id),
+          credits: creditNotes
+            .filter((c) => c.invoiceId === inv.id)
+            .map((c) => ({ totalAmount: c.totalAmount, issuedAt: c.issuedAt })),
+          refunds: refunds.filter((r) => r.invoiceId === inv.id),
+        },
+        toDate,
       );
-      const paidOnInv = paymentsOnInv.reduce(
-        (sum, p) => sum + Number(p.amount || 0),
-        0,
-      );
-      const totalPaid = paidOnInv;
-      const credited = Number(inv.creditedAmount || 0);
-      const refunded = Number(inv.refundedAmount || 0);
-      const outstanding = round2(
-        Number(inv.amount) - totalPaid - credited + refunded,
-      );
-
       if (outstanding > 0) {
-        const days = inv.dueDate
-          ? calculateDaysOverdue(inv.dueDate, toDate)
-          : 0;
-        if (days <= 0) {
-          aging.current = round2(aging.current + outstanding);
-        } else if (days <= 30) {
-          aging.days30 = round2(aging.days30 + outstanding);
-        } else if (days <= 60) {
-          aging.days60 = round2(aging.days60 + outstanding);
-        } else if (days <= 90) {
-          aging.days90 = round2(aging.days90 + outstanding);
-        } else {
-          aging.days90Plus = round2(aging.days90Plus + outstanding);
-        }
+        const key = column[agingBucket(inv.dueDate, toDate)];
+        aging[key] = round2(aging[key] + outstanding);
       }
     }
 

@@ -3,7 +3,14 @@
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Plus, PenLine } from 'lucide-react';
-import { formatOrganizationAddress, PERMISSIONS, quoteDocumentTaxes } from '@saas/shared';
+import {
+  formatOrganizationAddress,
+  PERMISSIONS,
+  QUOTE_STATUS_LABELS,
+  quoteDisplayStatus,
+  quoteDocumentTaxes,
+  type QuoteDisplayStatus,
+} from '@saas/shared';
 import { useQuotes, type Quote } from '@/hooks/use-quotes';
 import { useCostingPolicy } from '@/hooks/use-catalog';
 import { useSession } from '@/lib/session-context';
@@ -117,21 +124,17 @@ export function QuotesView() {
   const openValue = sumInBaseCurrency(filteredQuotes.filter(isOpenQuote), baseCurrency);
 
   const QUOTE_STAGES: KanbanColumnDef[] = useMemo(() => {
-    const calcTotal = (status: string) => {
+    const calcTotal = (status: QuoteDisplayStatus) => {
       const { total, otherCurrencies } = sumInBaseCurrency(
-        filteredQuotes.filter((q) => q.status === status),
+        filteredQuotes.filter((q) => quoteDisplayStatus(q) === status),
         baseCurrency,
       );
       const sum = `Total ${formatMoney(total, baseCurrency, { decimals: 0 })}`;
       return otherCurrencies > 0 ? `${sum}, plus ${otherCurrencies} in other currencies` : sum;
     };
 
-    return [
-      { key: 'DRAFT', label: 'Draft', summaryTotal: calcTotal('DRAFT') },
-      { key: 'AWAITING_APPROVAL', label: 'Awaiting approval', summaryTotal: calcTotal('AWAITING_APPROVAL') },
-      { key: 'APPROVED', label: 'Approved', summaryTotal: calcTotal('APPROVED') },
-      { key: 'REJECTED', label: 'Rejected', summaryTotal: calcTotal('REJECTED') },
-    ];
+    const stages: QuoteDisplayStatus[] = ['DRAFT', 'AWAITING_APPROVAL', 'APPROVED', 'ACCEPTED', 'REJECTED'];
+    return stages.map((key) => ({ key, label: QUOTE_STATUS_LABELS[key], summaryTotal: calcTotal(key) }));
   }, [filteredQuotes, baseCurrency]);
 
   const nameOf = (quote: Quote) => quote.quoteNumber || quote.title || 'This quote';
@@ -165,7 +168,17 @@ export function QuotesView() {
   const handleKanbanMoveStage = async (quoteId: string, nextStageKey: string) => {
     const quote = quotes.find((q) => q.id === quoteId);
     if (!quote) return;
-    if (quote.status === nextStageKey) return;
+    const current = quoteDisplayStatus(quote);
+    if (current === nextStageKey) return;
+
+    if (current === 'ACCEPTED') {
+      toast.error(`${nameOf(quote)} was accepted by the customer. Open it to see its order.`);
+      return;
+    }
+    if (nextStageKey === 'ACCEPTED') {
+      toast.error(`Only the customer can accept ${nameOf(quote)}. Send them the quote to accept.`);
+      return;
+    }
 
     if (nextStageKey === 'APPROVED' || nextStageKey === 'REJECTED') {
       if (!canApprove) {
@@ -245,7 +258,7 @@ export function QuotesView() {
               columns={QUOTE_STAGES}
               items={filteredQuotes}
               getItemId={(q) => q.id}
-              getStageKey={(q) => q.status}
+              getStageKey={(q) => quoteDisplayStatus(q)}
               onMoveStage={handleKanbanMoveStage}
               renderCard={(q) => (
                 <div className="flex flex-col gap-1.5">

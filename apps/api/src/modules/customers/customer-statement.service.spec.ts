@@ -15,6 +15,8 @@ describe('CustomerStatementService', () => {
   let mockInvoiceRepo: Partial<Repository<Invoice>>;
   let mockPaymentRepo: Partial<Repository<InvoicePayment>>;
   let mockOrgRepo: Partial<Repository<Organization>>;
+  let mockCreditNotes: unknown[];
+  let mockRefunds: unknown[];
   let mockRenderer: Partial<DocumentPdfRendererService>;
   let mockTemplatesService: Partial<DocumentTemplatesService>;
 
@@ -41,7 +43,18 @@ describe('CustomerStatementService', () => {
         country: 'US',
       }),
     };
+    mockCreditNotes = [];
+    mockRefunds = [];
     mockInvoiceRepo = {
+      manager: {
+        getRepository: (entity: { name: string }) => ({
+          find: jest
+            .fn()
+            .mockImplementation(async () =>
+              entity.name === 'CreditNote' ? mockCreditNotes : mockRefunds,
+            ),
+        }),
+      } as any,
       find: jest.fn().mockResolvedValue([
         {
           id: 'inv-1',
@@ -260,6 +273,58 @@ describe('CustomerStatementService', () => {
       const aging = data.statementSummary?.aging;
       expect(aging?.current).toBe(1000);
       expect(data.totals.balanceDue).toBe(1000);
+    });
+
+    it('counts credit notes and refunds the way the receivables ageing does', async () => {
+      mockInvoiceRepo.find = jest.fn().mockResolvedValue([
+        {
+          id: 'inv-1',
+          invoiceNumber: 'INV-2026-0001',
+          amount: 10000,
+          paidAmount: 0,
+          creditedAmount: 105,
+          refundedAmount: 50,
+          currency: 'AED',
+          status: 'ISSUED',
+          issuedAt: new Date('2026-08-01'),
+          dueDate: new Date('2026-08-31'),
+        },
+      ]);
+      mockPaymentRepo.find = jest.fn().mockResolvedValue([
+        {
+          id: 'p',
+          invoiceId: 'inv-1',
+          amount: 180,
+          paidAt: new Date('2026-08-05'),
+        },
+      ]);
+      mockCreditNotes = [
+        {
+          invoiceId: 'inv-1',
+          creditNoteNumber: 'CN-2026-0001',
+          totalAmount: 105,
+          issuedAt: new Date('2026-09-05'),
+        },
+      ];
+      mockRefunds = [
+        { invoiceId: 'inv-1', amount: 50, refundedAt: new Date('2026-09-06') },
+      ];
+
+      const data = await service.generateStatementData(
+        'org-1',
+        'cust-1',
+        new Date('2026-09-01'),
+        new Date('2026-09-30'),
+      );
+
+      // 10,000 − 180 paid − 105 credited + 50 refunded
+      expect(data.statementSummary?.openingBalance).toBe(9820);
+      expect(data.statementSummary?.closingBalance).toBe(9765);
+      expect(data.statementSummary?.aging?.days30).toBe(9765);
+      expect(data.items.map((l) => [l.code, l.amount])).toEqual([
+        ['CN-2026-0001', -105],
+        ['REFUND', 50],
+      ]);
     });
 
     it('should support payment without notes or reference (defaults to PAYMENT / Payment Received)', async () => {

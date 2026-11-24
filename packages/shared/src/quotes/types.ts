@@ -4,6 +4,38 @@ import { documentTaxLines, type DocumentTaxLine } from '../tax/tax';
 export type QuoteLineItemType = 'product' | 'section' | 'note';
 
 export type QuoteStatus = 'DRAFT' | 'AWAITING_APPROVAL' | 'APPROVED' | 'REJECTED';
+
+/**
+ * The state a person sees. A quote the customer has accepted keeps
+ * `status = 'APPROVED'` (the quote workflow, acceptance links and order
+ * creation all read that), so "accepted" is worked out from `acceptedAt`.
+ * Every screen, filter and export shows this rather than the raw status.
+ */
+export type QuoteDisplayStatus = QuoteStatus | 'ACCEPTED';
+
+export const QUOTE_DISPLAY_STATUSES: readonly QuoteDisplayStatus[] = [
+  'DRAFT',
+  'AWAITING_APPROVAL',
+  'APPROVED',
+  'ACCEPTED',
+  'REJECTED',
+];
+
+export const QUOTE_STATUS_LABELS: Record<QuoteDisplayStatus, string> = {
+  DRAFT: 'Draft',
+  AWAITING_APPROVAL: 'Awaiting approval',
+  APPROVED: 'Approved',
+  ACCEPTED: 'Accepted',
+  REJECTED: 'Rejected',
+};
+
+export function quoteDisplayStatus(quote: {
+  /** A `QuoteStatus`; typed loosely so the API's enum can be passed as it is. */
+  status: string;
+  acceptedAt?: string | Date | null;
+}): QuoteDisplayStatus {
+  return quote.status === 'APPROVED' && quote.acceptedAt ? 'ACCEPTED' : (quote.status as QuoteStatus);
+}
 export type QuoteCreatedBy = 'AI' | 'HUMAN';
 
 /**
@@ -327,14 +359,30 @@ export interface VoidInvoicePayload {
   reason?: string;
 }
 
+/**
+ * The moment an invoice due before it counts as overdue: the start of today,
+ * by calendar date in UTC. An invoice is overdue once its whole due day has
+ * passed, so one due today (including "Due on receipt", whose due date is the
+ * moment it was issued) is not overdue yet. UTC is the day the receivables
+ * ageing, the period lock and the ledger all count in.
+ */
+export function invoiceOverdueCutoff(now: Date = new Date()): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
+
+/** True when `dueDate` fell on a day that has already ended, by the same day as {@link invoiceOverdueCutoff}. */
+export function isPastDueDay(dueDate: Date | string | null | undefined, now: Date = new Date()): boolean {
+  if (!dueDate) return false;
+  return new Date(dueDate).getTime() < invoiceOverdueCutoff(now).getTime();
+}
+
 /** Derived, not stored — "overdue" is a view of (dueDate, status), never its own status value. */
 export function isInvoiceOverdue(
   invoice: Pick<InvoiceDto, 'dueDate' | 'status'>,
   now: Date = new Date(),
 ): boolean {
-  if (!invoice.dueDate) return false;
   if (invoice.status !== 'ISSUED' && invoice.status !== 'PARTIALLY_PAID') return false;
-  return new Date(invoice.dueDate).getTime() < now.getTime();
+  return isPastDueDay(invoice.dueDate, now);
 }
 
 /**

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import {
   countryName,
+  QUOTE_STATUS_LABELS,
   type CustomerDocumentDto,
   type CustomerDto,
   type CustomerOverviewDto,
@@ -226,9 +227,14 @@ function TradingSummary({ overview }: { overview: CustomerOverviewDto }) {
       detail: 'Excludes cancelled and voided invoices',
     },
     {
-      label: 'Currently owed',
-      value: money(totals.outstandingTotal, currency),
-      detail: totals.outstandingTotal > 0 ? 'Invoiced less paid' : 'Nothing outstanding',
+      label: totals.outstandingTotal < 0 ? 'In credit' : 'Currently owed',
+      value: money(Math.abs(totals.outstandingTotal), currency),
+      detail:
+        totals.outstandingTotal > 0
+          ? 'Invoiced less payments, credit notes and refunds'
+          : totals.outstandingTotal < 0
+            ? 'You owe them this back'
+            : 'Nothing outstanding',
     },
   ];
 
@@ -285,7 +291,10 @@ function DocumentList({
                   {doc.number ?? 'Not yet numbered'}
                 </Link>
                 <Badge className="text-[11px]">
-                  {doc.status.replace(/_/g, ' ').toLowerCase()}
+                  {(
+                    QUOTE_STATUS_LABELS[doc.status as keyof typeof QUOTE_STATUS_LABELS] ??
+                    doc.status.replace(/_/g, ' ')
+                  ).toLowerCase()}
                 </Badge>
                 <span className="text-xs text-ink-subtle">
                   {new Date(doc.date).toLocaleDateString()}

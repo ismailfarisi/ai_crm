@@ -262,6 +262,8 @@ export interface SalesOrderDto {
   /** Live invoices only; a voided invoice bills nothing. */
   invoicedAmount: number;
   paidAmount: number;
+  /** Still owed on its live invoices after payments, credit notes and refunds. */
+  outstandingAmount?: number;
   acceptedAt: string | null;
   acceptedByName: string | null;
   lines: SalesOrderLineDto[];

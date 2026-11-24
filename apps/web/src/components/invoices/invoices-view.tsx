@@ -4,7 +4,12 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Receipt, Banknote, CheckCircle, type LucideIcon } from 'lucide-react';
-import { formatOrganizationAddress, quoteDocumentTaxes, type InvoiceDto } from '@saas/shared';
+import {
+  formatOrganizationAddress,
+  invoiceBalanceDue,
+  quoteDocumentTaxes,
+  type InvoiceDto,
+} from '@saas/shared';
 import {
   useDownloadInvoicePdf,
   useInvoices,
@@ -268,10 +273,7 @@ export function InvoicesView() {
               ),
               total: Number(printingInvoice.amount || 0),
               amountPaid: Number(printingInvoice.paidAmount || 0),
-              balanceDue: Math.max(
-                0,
-                Number(printingInvoice.amount || 0) - Number(printingInvoice.paidAmount || 0),
-              ),
+              balanceDue: invoiceBalanceDue(printingInvoice),
             },
             paymentTerms: printingInvoice.paymentTerms || undefined,
             notes: printingInvoice.notes || undefined,

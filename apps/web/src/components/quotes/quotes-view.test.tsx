@@ -86,6 +86,21 @@ describe('QuotesTable', () => {
   });
 });
 
+describe('QuotesTable status', () => {
+  it('shows a quote the customer accepted as Accepted, not Approved', () => {
+    render(
+      <QuotesTable
+        quotes={[
+          quote({ status: 'APPROVED', acceptedAt: '2026-10-10T00:00:00Z' }),
+          quote({ status: 'APPROVED' }),
+        ]}
+      />,
+    );
+    expect(screen.getAllByText('Accepted')).toHaveLength(1);
+    expect(screen.getAllByText('Approved')).toHaveLength(1);
+  });
+});
+
 describe('QuotesView', () => {
   it('counts only open quotes in base currency as open value, and names the rest', () => {
     mockUseQuotes.mockReturnValue({

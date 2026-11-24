@@ -6,7 +6,7 @@ import { AlertCircle, ArrowRight } from 'lucide-react';
 import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input, Select } from '@/components/ui/field';
-import { paymentDateProblem, utcDay } from '@saas/shared';
+import { invoiceBalanceDue, paymentDateProblem, utcDay } from '@saas/shared';
 import type { FinanceAccountDto, InvoiceDto, RecordInvoicePaymentPayload } from '@saas/shared';
 import { formatFinanceCurrency } from '../finance/dashboard/treasury-stat-cards';
 import { formatAccountNumber } from '../finance/dashboard/account-balance-grid';
@@ -33,7 +33,8 @@ export function RecordPaymentModal({
   const [paidAt, setPaidAt] = useState<string>(new Date().toISOString().split('T')[0]);
   const [error, setError] = useState<string | null>(null);
 
-  const remaining = invoice ? invoice.amount - (invoice.paidAmount ?? 0) : 0;
+  // The same balance the API checks a payment against.
+  const remaining = invoice ? invoiceBalanceDue(invoice) : 0;
 
   // Resets the form fields each time the modal opens for a (possibly
   // different) invoice, mirroring `TransferFundsModal`'s reset-on-open effect.
@@ -41,7 +42,7 @@ export function RecordPaymentModal({
     if (open && invoice) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setAccountId(accounts[0]?.id || '');
-      setAmount(String(invoice.amount - (invoice.paidAmount ?? 0)));
+      setAmount(String(invoiceBalanceDue(invoice)));
       setPaidAt(new Date().toISOString().split('T')[0]);
       setError(null);
     }

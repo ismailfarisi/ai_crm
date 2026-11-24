@@ -127,3 +127,25 @@ export function remainingToDeliver(line: {
 }): number {
   return Math.max(0, Math.round((line.qtyOrdered - line.qtyFulfilled - line.qtyInDraft) * 10000) / 10000);
 }
+
+/**
+ * What the customer still owes on one invoice right now, from the loose
+ * numbers an API payload carries: amount less paid, less credit notes, plus
+ * refunds. Never below zero; money owed back is `invoicePosition().refundable`.
+ */
+export function invoiceBalanceDue(invoice: {
+  amount: number | string | null | undefined;
+  paidAmount?: number | string | null;
+  creditedAmount?: number | string | null;
+  refundedAmount?: number | string | null;
+}): number {
+  return Math.max(
+    0,
+    invoicePosition({
+      amount: Number(invoice.amount) || 0,
+      paidAmount: Number(invoice.paidAmount) || 0,
+      creditedAmount: Number(invoice.creditedAmount) || 0,
+      refundedAmount: Number(invoice.refundedAmount) || 0,
+    }).balance,
+  );
+}

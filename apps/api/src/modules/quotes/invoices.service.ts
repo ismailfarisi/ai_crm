@@ -18,6 +18,7 @@ import {
   RecordInvoicePaymentPayload,
   UniversalDocumentData,
   VoidInvoicePayload,
+  invoiceBalanceDue,
 } from '@saas/shared';
 import { Invoice, InvoiceStatus } from './entities/invoice.entity';
 import { InvoicePayment } from './entities/invoice-payment.entity';
@@ -608,10 +609,7 @@ export class InvoicesService {
         ),
         total: Number(invoice.amount || 0),
         amountPaid: Number(invoice.paidAmount || 0),
-        balanceDue: Math.max(
-          0,
-          Number(invoice.amount || 0) - Number(invoice.paidAmount || 0),
-        ),
+        balanceDue: invoiceBalanceDue(invoice),
       },
       notes: invoice.notes || undefined,
       paymentTerms: invoice.paymentTerms || undefined,

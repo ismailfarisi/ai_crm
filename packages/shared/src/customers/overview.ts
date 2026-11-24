@@ -14,10 +14,14 @@ export interface CustomerDocumentDto {
   id: string;
   /** `QT-2026-0001`, or null on a draft that has not been numbered yet. */
   number: string | null;
+  /** The document's own status; for a quote, `quoteDisplayStatus` (so `ACCEPTED` once the customer accepts). */
   status: string;
   currency: string;
   amount: number;
-  /** Outstanding on an invoice; absent on documents that cannot be paid. */
+  /**
+   * Still owed on an invoice after payments, credit notes and refunds; negative
+   * when money is owed back to the customer. Absent on documents that cannot be paid.
+   */
   outstanding?: number;
   date: string;
 }
@@ -36,7 +40,10 @@ export interface CustomerOverviewDto {
     ordersPlaced: number;
     /** Everything invoiced, ever — not the open balance. */
     invoicedTotal: number;
-    /** Invoiced less paid: what they owe right now. */
+    /**
+     * What they owe right now: invoiced less paid, credited and refunded, the
+     * same as the receivables ageing. Negative when they are in credit.
+     */
     outstandingTotal: number;
     /** Null until something has been ordered. */
     lastOrderedAt: string | null;

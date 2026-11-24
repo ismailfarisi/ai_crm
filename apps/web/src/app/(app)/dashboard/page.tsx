@@ -12,6 +12,7 @@ import {
   type ContactStatsDto,
   type OrganizationProfileDto,
   type SessionDto,
+  quoteDisplayStatus,
 } from '@saas/shared';
 import { serverFetchOrNull } from '@/lib/api/server';
 import { can } from '@/lib/access';
@@ -56,10 +57,9 @@ function summariseWinRate(quotes: DashboardQuote[]): {
   won: number;
   decided: number;
 } {
-  const won = quotes.filter((q) => q.acceptedAt !== null).length;
-  const lost = quotes.filter(
-    (q) => q.status === 'REJECTED' && q.acceptedAt === null,
-  ).length;
+  // Won and lost are the Accepted and Rejected the quotes list shows.
+  const won = quotes.filter((q) => quoteDisplayStatus(q) === 'ACCEPTED').length;
+  const lost = quotes.filter((q) => quoteDisplayStatus(q) === 'REJECTED').length;
   const decided = won + lost;
 
   return {

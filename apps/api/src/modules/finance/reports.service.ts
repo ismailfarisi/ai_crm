@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Between, In, LessThanOrEqual, Not, Repository } from 'typeorm';
 import {
   agingBucket,
+  daysOverdue,
   AGING_BUCKETS,
   invoiceBalanceAsOf,
   LEDGER_ROLES,
@@ -79,29 +80,32 @@ export class ReportsService {
         );
       }
     }
-    const lines = accounts
-      .map((account): StatementLineDto => {
-        const debitMinusCredit = (totals.get(account.id) ?? 0) / 100;
-        return {
-          ledgerAccountId: account.id,
-          code: account.code,
-          name: account.name,
-          type: account.type,
-          parentId: account.parentId ?? null,
-          amount: round2(
-            NORMAL_BALANCE[account.type] === 'DEBIT'
-              ? debitMinusCredit
-              : -debitMinusCredit,
-          ),
-        };
-      });
+    const lines = accounts.map((account): StatementLineDto => {
+      const debitMinusCredit = (totals.get(account.id) ?? 0) / 100;
+      return {
+        ledgerAccountId: account.id,
+        code: account.code,
+        name: account.name,
+        type: account.type,
+        parentId: account.parentId ?? null,
+        amount: round2(
+          NORMAL_BALANCE[account.type] === 'DEBIT'
+            ? debitMinusCredit
+            : -debitMinusCredit,
+        ),
+      };
+    });
     // A parent that nets to zero stays when a child has a balance, so the
     // P&L can still show the group header the child is nested under.
     const parentsWithActivity = new Set(
-      lines.filter((l) => l.parentId && cents(l.amount) !== 0).map((l) => l.parentId),
+      lines
+        .filter((l) => l.parentId && cents(l.amount) !== 0)
+        .map((l) => l.parentId),
     );
     return lines.filter(
-      (line) => cents(line.amount) !== 0 || parentsWithActivity.has(line.ledgerAccountId),
+      (line) =>
+        cents(line.amount) !== 0 ||
+        parentsWithActivity.has(line.ledgerAccountId),
     );
   }
 
@@ -258,12 +262,7 @@ export class ReportsService {
         dueDate: invoice.dueDate?.toISOString() ?? null,
         daysOverdue:
           invoice.dueDate && !isCredit
-            ? Math.max(
-                0,
-                Math.floor(
-                  (asOf.getTime() - invoice.dueDate.getTime()) / 86_400_000,
-                ),
-              )
+            ? Math.max(0, daysOverdue(invoice.dueDate, asOf))
             : 0,
         bucket,
       });

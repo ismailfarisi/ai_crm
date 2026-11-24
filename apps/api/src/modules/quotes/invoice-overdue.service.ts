@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, LessThan, Repository } from 'typeorm';
+import { invoiceOverdueCutoff } from '@saas/shared';
 import { Invoice, InvoiceStatus } from './entities/invoice.entity';
 import { AutomationEventBridgeService } from '../automations/services/automation-event-bridge.service';
 import { TenantContextService } from '@/common/context/tenant-context.service';
@@ -23,8 +24,8 @@ interface ClaimedRow {
 
 /**
  * Daily sweep that fires an `invoice.overdue` automation event exactly once
- * per invoice, the moment its due date passes while unpaid or partially
- * paid. Reminder emails are then just an automation workflow built in the
+ * per invoice, once its due day has ended while unpaid or partially paid
+ * (the same day `isInvoiceOverdue` and the ageing report count by). Reminder emails are then just an automation workflow built in the
  * existing studio — no bespoke email-sending code needed here.
  *
  * Each invoice is *claimed* with a conditional UPDATE before its event fires:
@@ -51,7 +52,7 @@ export class InvoiceOverdueService {
       this.invoiceRepository.find({
         where: {
           status: In(OVERDUE_STATUSES),
-          dueDate: LessThan(new Date()),
+          dueDate: LessThan(invoiceOverdueCutoff()),
           overdueNotifiedAt: IsNull(),
         },
       }),
@@ -80,7 +81,7 @@ export class InvoiceOverdueService {
       .where('id = :id', { id: candidate.id })
       .andWhere('tenant_id = :tenantId', { tenantId: candidate.tenantId })
       .andWhere('status IN (:...statuses)', { statuses: OVERDUE_STATUSES })
-      .andWhere('due_date < :now', { now })
+      .andWhere('due_date < :cutoff', { cutoff: invoiceOverdueCutoff(now) })
       .andWhere('overdue_notified_at IS NULL')
       .returning('*')
       .execute();
@@ -107,7 +108,11 @@ export class InvoiceOverdueService {
     } catch (err) {
       // Release only our own claim, so tomorrow's run retries it.
       await this.invoiceRepository.update(
-        { id: candidate.id, tenantId: candidate.tenantId, overdueNotifiedAt: now },
+        {
+          id: candidate.id,
+          tenantId: candidate.tenantId,
+          overdueNotifiedAt: now,
+        },
         { overdueNotifiedAt: null },
       );
       throw err;

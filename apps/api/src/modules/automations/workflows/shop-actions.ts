@@ -5,6 +5,7 @@ import {
   AUTOMATION_MESSAGE_CHANNELS,
   PERMISSIONS,
   findNotifyGroup,
+  invoiceOverdueCutoff,
   invoicePosition,
   lookupSampleForTest,
   needsReorder,
@@ -421,7 +422,7 @@ export function createShopActions(deps: ShopActionDeps) {
           where: {
             tenantId,
             status: In([InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID]),
-            dueDate: LessThan(now),
+            dueDate: LessThan(invoiceOverdueCutoff(now)),
           },
         })
       : [];

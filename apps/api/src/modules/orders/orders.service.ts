@@ -7,10 +7,11 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
-import type {
-  BillingScheduleLineDto,
-  SalesOrderDto,
-  SalesOrderStatus,
+import {
+  invoiceBalanceDue,
+  type BillingScheduleLineDto,
+  type SalesOrderDto,
+  type SalesOrderStatus,
 } from '@saas/shared';
 import { LedgerService } from '../finance/ledger.service';
 import { AutomationEventBridgeService } from '../automations/services/automation-event-bridge.service';
@@ -215,8 +216,7 @@ export class OrdersService {
         // A per-delivery order has no stage invoice; it is billed once the
         // delivery that completed it has been invoiced.
         const unbilled = stages.filter(
-          (s) =>
-            !s.invoiceId && !(s.trigger === 'ON_DELIVERY' && s.invoicedAt),
+          (s) => !s.invoiceId && !(s.trigger === 'ON_DELIVERY' && s.invoicedAt),
         );
         if (unbilled.length) {
           throw new BadRequestException(
@@ -449,6 +449,9 @@ export class OrdersService {
       Math.round(
         live.reduce((sum, i) => sum + Number(i.paidAmount ?? 0) * 100, 0),
       ) / 100;
+    const outstandingAmount =
+      Math.round(live.reduce((sum, i) => sum + invoiceBalanceDue(i) * 100, 0)) /
+      100;
     const byId = new Map(invoices.map((i) => [i.id, i]));
 
     return {
@@ -466,6 +469,7 @@ export class OrdersService {
       totalAmount: order.totalAmount,
       invoicedAmount,
       paidAmount,
+      outstandingAmount,
       acceptedAt: quote?.acceptedAt ? quote.acceptedAt.toISOString() : null,
       acceptedByName: quote?.acceptedByName ?? null,
       lines: lines.map((line) => ({

@@ -256,6 +256,40 @@ read from the payables lines of the claim's own journal entries, since the
 claim row keeps neither the posting date nor the rate. They are not aged into
 the overdue buckets: a claim has no due date.
 
+### An invoice is overdue the day after it falls due, counted in UTC — by design
+
+`isInvoiceOverdue`, the ageing buckets, the overdue-reminder sweep and the
+daily summary all ask the same question: did the due date fall on a UTC day
+that has already ended (`invoiceOverdueCutoff`)? So an invoice on "Due on
+receipt" terms, whose due date is the moment it was issued, is current for the
+rest of that day and overdue from midnight. UTC is the day the ageing, the
+period lock and the ledger count in; for a UAE shop that means an invoice due
+today turns overdue at 4am Dubai time, not midnight. Counting in each
+organisation's own timezone would need a timezone setting the app does not have.
+
+### What a customer owes is one number everywhere — by design
+
+The customer page, the customer statement, the dashboard, invoice and order
+pages and the record-payment form all count what is owed as invoiced less
+paid, less credit notes, plus refunds (`invoicePosition`), the definition the
+receivables ageing and the ledger use. On the customer page a customer whose
+credits exceed what they owe is shown "In credit" rather than a negative
+"Currently owed", and the statement carries credit notes and refunds as their
+own lines. Single-invoice figures never go below zero; the money owed back is
+the invoice's refundable amount.
+
+### "Accepted" is shown, not stored — by design
+
+A quote the customer accepts keeps `status = APPROVED` with `acceptedAt` set,
+because the quote workflow, acceptance links, order creation and automations
+all read `APPROVED`. Every screen works the state out with `quoteDisplayStatus`
+instead: the quotes list, pipeline board (which now has an Accepted column),
+customer page, dashboard win rate, table search and the CSV/JSON export all say
+Accepted. The API's own quote list and automation record lookups still return
+the stored status plus `acceptedAt`/`accepted`, so a workflow built on
+`APPROVED` keeps working; storing a separate status would mean migrating every
+one of those readers.
+
 ### Base currency cannot change once anything is posted — by design
 
 Every ledger entry is denominated in it. `PUT /finance/currencies/base` refuses

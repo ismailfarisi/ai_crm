@@ -57,10 +57,11 @@ describe('InvoiceOverdueService', () => {
       'tenant-id',
       expect.any(Function),
     );
-    expect(
-      automationEventBridgeService.handleCrmEvent,
-    ).toHaveBeenCalledWith(
-      expect.objectContaining({ tenantId: 'tenant-id', eventType: 'invoice.overdue' }),
+    expect(automationEventBridgeService.handleCrmEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-id',
+        eventType: 'invoice.overdue',
+      }),
     );
     expect(invoiceRepository.save).not.toHaveBeenCalled();
   });
@@ -132,6 +133,25 @@ describe('InvoiceOverdueService — claiming each invoice', () => {
         expect.stringMatching(/status IN/),
       ]),
     );
+  });
+
+  it('only counts an invoice once its due day has ended, not the moment it is due', async () => {
+    jest.useFakeTimers({ now: new Date('2026-11-24T15:30:00.000Z') });
+    try {
+      const { qb, invoiceRepository, service } = build(true);
+
+      await service.detectOverdueInvoices();
+
+      const startOfToday = new Date('2026-11-24T00:00:00.000Z');
+      const where = (invoiceRepository.find as jest.Mock).mock.calls[0][0]
+        .where;
+      expect(where.dueDate.value).toEqual(startOfToday);
+      expect(qb.andWhere).toHaveBeenCalledWith('due_date < :cutoff', {
+        cutoff: startOfToday,
+      });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('emits the event with the row as it is now, not as the sweep found it', async () => {

@@ -2,6 +2,8 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { Customer } from './entities/customer.entity';
 import { CustomersService } from './customers.service';
+import { Invoice } from '../quotes/entities/invoice.entity';
+import { Quote } from '../quotes/entities/quote.entity';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 
 const actor: AuthenticatedUser = {
@@ -71,12 +73,9 @@ describe('CustomersService', () => {
       });
 
       const qb = (repo.createQueryBuilder as jest.Mock).mock.results[0].value;
-      expect(qb.where).toHaveBeenCalledWith(
-        'customer.tenantId = :tenantId',
-        {
-          tenantId: actor.organizationId,
-        },
-      );
+      expect(qb.where).toHaveBeenCalledWith('customer.tenantId = :tenantId', {
+        tenantId: actor.organizationId,
+      });
     });
 
     it('returns paginated results', async () => {
@@ -166,7 +165,11 @@ describe('CustomersService', () => {
           expect.objectContaining({ vatStatus: 'REGISTERED' }),
         );
       } finally {
-        Object.assign(customer, { country: null, taxId: null, vatStatus: undefined });
+        Object.assign(customer, {
+          country: null,
+          taxId: null,
+          vatStatus: undefined,
+        });
       }
     });
 
@@ -178,12 +181,18 @@ describe('CustomersService', () => {
         vatStatus: 'NOT_REGISTERED',
       });
       try {
-        await service.update(actor, customer.id, { phone: '04 555 0100' } as never);
+        await service.update(actor, customer.id, {
+          phone: '04 555 0100',
+        } as never);
         expect(repo.save).toHaveBeenCalledWith(
           expect.objectContaining({ taxId: 'TRN pending' }),
         );
       } finally {
-        Object.assign(customer, { country: null, taxId: null, vatStatus: undefined });
+        Object.assign(customer, {
+          country: null,
+          taxId: null,
+          vatStatus: undefined,
+        });
       }
     });
 
@@ -204,7 +213,11 @@ describe('CustomersService', () => {
           }),
         );
       } finally {
-        Object.assign(customer, { country: null, taxId: null, vatStatus: undefined });
+        Object.assign(customer, {
+          country: null,
+          taxId: null,
+          vatStatus: undefined,
+        });
       }
     });
   });
@@ -214,6 +227,87 @@ describe('CustomersService', () => {
       const { service, repo } = makeService();
       await service.remove(actor, customer.id);
       expect(repo.softRemove).toHaveBeenCalledWith(customer);
+    });
+  });
+
+  describe('overview', () => {
+    it('owes what the receivables ageing owes, and shows an accepted quote as accepted', async () => {
+      const quotes = [
+        {
+          id: 'q1',
+          quoteNumber: 'QT-1',
+          status: 'APPROVED',
+          acceptedAt: new Date(),
+          currency: 'AED',
+          totalAmount: 100,
+          createdAt: new Date(),
+        },
+        {
+          id: 'q2',
+          quoteNumber: 'QT-2',
+          status: 'APPROVED',
+          acceptedAt: null,
+          currency: 'AED',
+          totalAmount: 100,
+          createdAt: new Date(),
+        },
+      ];
+      const invoices = [
+        {
+          id: 'i1',
+          invoiceNumber: 'INV-1',
+          status: 'ISSUED',
+          currency: 'AED',
+          amount: 10000,
+          paidAmount: 180,
+          creditedAmount: 105,
+          refundedAmount: 50,
+          dueDate: new Date('2026-11-24'),
+          issuedAt: new Date('2026-11-24'),
+          voidedAt: null,
+        },
+        {
+          id: 'i2',
+          invoiceNumber: 'INV-2',
+          status: 'CANCELLED',
+          currency: 'AED',
+          amount: 500,
+          paidAmount: 0,
+          creditedAmount: 0,
+          refundedAmount: 0,
+          dueDate: null,
+          issuedAt: new Date('2026-11-24'),
+          voidedAt: null,
+        },
+      ];
+      const manager = {
+        getRepository: (entity: unknown) => ({
+          find: jest
+            .fn()
+            .mockResolvedValue(
+              entity === Quote ? quotes : entity === Invoice ? invoices : [],
+            ),
+        }),
+      };
+      const repo = {
+        manager,
+        findOne: jest.fn().mockResolvedValue({ ...customer, currency: 'AED' }),
+        createQueryBuilder: jest.fn(() => ({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue({ ...customer, currency: 'AED' }),
+        })),
+      };
+      const { service } = makeService({ repo });
+
+      const overview = await service.overview(actor, customer.id);
+
+      expect(overview.totals.outstandingTotal).toBe(9765);
+      expect(overview.invoices.map((i) => i.outstanding)).toEqual([9765, 0]);
+      expect(overview.quotes.map((q) => q.status)).toEqual([
+        'ACCEPTED',
+        'APPROVED',
+      ]);
     });
   });
 });
