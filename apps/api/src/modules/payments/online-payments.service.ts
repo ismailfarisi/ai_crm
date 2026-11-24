@@ -590,6 +590,7 @@ export class OnlinePaymentsService implements InvoicePayLinkIssuer {
       currency: invoice.currency,
       issuedAt: invoice.issuedAt.toISOString(),
       dueDate: invoice.dueDate ? new Date(invoice.dueDate).toISOString() : null,
+      paymentTerms: invoice.paymentTerms || null,
       items: (invoice.items ?? [])
         .filter((item) => (item.type ?? 'product') === 'product')
         .map((item) => ({

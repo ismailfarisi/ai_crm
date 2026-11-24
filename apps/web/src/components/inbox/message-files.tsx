@@ -22,11 +22,16 @@ export function messagePreview(body: string, files?: ChannelMessageFileDto[]): s
   if (!PLACEHOLDER.test(text)) return body;
   if (files && files.length > 1) return `Sent ${files.length} files`;
   const inner = text.slice(1, -1).trim();
-  const named = /^(?:Document|Slack file): (.+)$/.exec(inner)?.[1] ?? files?.[0]?.filename;
-  if (named) return `Sent a file: ${named}`;
   const kind = inner.toLowerCase();
-  if (kind === 'image' || kind === 'photo') return 'Sent a photo';
-  if (['video', 'audio', 'voice message', 'sticker'].includes(kind)) return `Sent a ${kind}`;
+  const document = /^(?:Document|Slack file): (.+)$/.exec(inner)?.[1];
+  if (document) return `Sent a file: ${document}`;
+  const mime = files?.[0]?.mimeType ?? '';
+  if (kind === 'image' || kind === 'photo' || mime.startsWith('image/')) return 'Sent a photo';
+  if (kind === 'voice message' || (kind === 'audio' && mime === 'audio/ogg')) return 'Sent a voice message';
+  if (['video', 'audio', 'sticker'].includes(kind)) return `Sent a ${kind}`;
+  if (mime.startsWith('video/')) return 'Sent a video';
+  if (mime.startsWith('audio/')) return 'Sent an audio file';
+  if (files?.[0]?.filename) return `Sent a file: ${files[0].filename}`;
   const count = /^(\d+) slack files$/.exec(kind)?.[1];
   return count ? `Sent ${count} files` : 'Sent a file';
 }

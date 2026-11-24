@@ -4,10 +4,15 @@
  * so 01/11 and 11/01 can never be mistaken for each other.
  */
 
+import { DOCUMENT_TIME_ZONE } from '../templates/document-template.schema';
+
 export type DateValue = string | number | Date | null | undefined;
 
 export interface DisplayDateOptions {
-  /** Where the day is counted. Unset means the viewer's own time zone. */
+  /**
+   * Where the day is counted. Unset means UAE time, the same as documents, so
+   * a screen and its PDF never disagree about the day.
+   */
   timeZone?: string;
   /** Leave the year off, for the first half of a range ("1 Nov – 30 Nov 2026"). */
   withYear?: boolean;
@@ -43,7 +48,7 @@ export function formatDisplayDate(
     day: 'numeric',
     month: 'short',
     ...(options.withYear === false ? {} : { year: 'numeric' }),
-    timeZone: parsed.dateOnly ? 'UTC' : options.timeZone,
+    timeZone: parsed.dateOnly ? 'UTC' : (options.timeZone ?? DOCUMENT_TIME_ZONE),
   }).format(parsed.date);
 }
 
@@ -61,7 +66,7 @@ export function formatDisplayDateTime(
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-    timeZone: options.timeZone,
+    timeZone: options.timeZone ?? DOCUMENT_TIME_ZONE,
   }).format(parsed.date);
 }
 
@@ -76,6 +81,6 @@ export function formatDisplayMonth(
   return new Intl.DateTimeFormat('en-GB', {
     month: options.short ? 'short' : 'long',
     year: 'numeric',
-    timeZone: parsed.dateOnly ? 'UTC' : options.timeZone,
+    timeZone: parsed.dateOnly ? 'UTC' : (options.timeZone ?? DOCUMENT_TIME_ZONE),
   }).format(parsed.date);
 }

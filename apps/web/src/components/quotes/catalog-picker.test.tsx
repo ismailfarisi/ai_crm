@@ -262,7 +262,11 @@ describe('marginStatus', () => {
 
   /** A missing cost can only push the margin down, so a loss is still a loss. */
   it('still calls a loss a loss when a line has no cost', () => {
-    expect(marginStatus(at(-0.05), policy, 1)).toMatchObject({ label: 'Loss', showFigure: true });
+    expect(marginStatus(at(-0.05), policy, 1)).toMatchObject({
+      tone: 'danger',
+      label: 'Loss, margin not known yet: 1 line has no cost',
+      showFigure: false,
+    });
   });
 });
 

@@ -191,6 +191,22 @@ shows mm/dd/yyyy inside the picker. The page is marked `lang="en-GB"`, which
 Firefox honours. Closing it fully means a custom date picker everywhere, which
 was more change than a wording pass should carry.
 
+### Dates are counted in UAE time on every screen — by design
+
+`formatDisplayDate` counts the day in `Asia/Dubai` unless told otherwise, the
+same zone the PDFs use, so an invoice issued at 00:30 Dubai time reads 25 Nov
+on its page and on its PDF, whatever the viewer's laptop clock says. A
+`YYYY-MM-DD` value (a due date, a delivery date) is a calendar day and never
+moves. If Kerf ever serves a business outside the Gulf this becomes an
+organisation setting.
+
+### An uncosted line hides a loss's figure too — by design
+
+When any line has no cost the badge and card show no percentage and no
+amount, including on a quote that is already at a loss: the badge then reads
+"Loss, margin not known yet: 1 line has no cost". The true loss is at least
+the shown one, so the figure would understate it.
+
 ### A contact named by its chat number is renamed on the next message — by design
 
 Telegram contacts used to be created with the chat id as their first name

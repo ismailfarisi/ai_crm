@@ -234,7 +234,7 @@ export class QuoteApproveSkill implements ChannelSkill<ResolvedQuoteApproval> {
         // say precisely which half worked.
         const msg = err instanceof Error ? err.message : String(err);
         return {
-          reply: `Approved quote ${quote.quoteNumber}. It already has invoice ${invoice.invoiceNumber}, but sending it failed: ${msg}`,
+          reply: `Quote ${quote.quoteNumber} approved. It already has invoice ${invoice.invoiceNumber}, but sending it failed: ${msg}`,
           resultType: 'INVOICE',
           resultId: invoice.id,
         };

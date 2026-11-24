@@ -15,6 +15,7 @@ const invoice = (overrides: Partial<PublicInvoiceDto> = {}): PublicInvoiceDto =>
   currency: 'AED',
   issuedAt: '2026-11-01T00:00:00Z',
   dueDate: null,
+  paymentTerms: null,
   status: 'ISSUED',
   items: [{ description: 'Gift boxes', quantity: 500, unitPrice: 4, subtotal: 2000 }],
   subtotalAmount: 2000,

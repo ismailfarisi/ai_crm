@@ -121,6 +121,8 @@ export interface PublicInvoiceDto {
   currency: string;
   issuedAt: string;
   dueDate: string | null;
+  /** As stored, e.g. `immediate`; shown through `formatPaymentTerms`. */
+  paymentTerms: string | null;
   items: { description: string; quantity: number; unitPrice: number; subtotal: number }[];
   subtotalAmount: number;
   discountAmount: number;

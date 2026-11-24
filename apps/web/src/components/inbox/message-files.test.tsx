@@ -120,6 +120,15 @@ describe('messagePreview', () => {
     expect(messagePreview('[Media/Unsupported Content]')).toBe('Sent a file');
   });
 
+  it('names a photo, voice message or video even when the saved file has a name', () => {
+    const saved = (filename: string, mimeType: string) =>
+      [{ filename, mimeType, status: 'saved' }] as ChannelMessageFileDto[];
+    expect(messagePreview('[Image]', saved('photo-1.jpg', 'image/jpeg'))).toBe('Sent a photo');
+    expect(messagePreview('[Voice message]', saved('audio-1.ogg', 'audio/ogg'))).toBe('Sent a voice message');
+    expect(messagePreview('[Video]', saved('video-1.mp4', 'video/mp4'))).toBe('Sent a video');
+    expect(messagePreview('[File]', saved('scan.pdf', 'application/pdf'))).toBe('Sent a file: scan.pdf');
+  });
+
   it('leaves real words alone', () => {
     expect(messagePreview('Can you quote 500 boxes?')).toBe('Can you quote 500 boxes?');
   });
