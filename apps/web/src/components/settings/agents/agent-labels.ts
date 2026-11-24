@@ -28,6 +28,8 @@ export const CUSTOMER_LOOKUP_TOOL_NAMES: readonly string[] = CUSTOMER_LOOKUP_TOO
 const TOOL_LABELS: Record<string, string> = {
   check_order_status: 'Answer "where is my order"',
   check_quote_status: 'Answer "what is the status of my quote"',
+  check_price: 'Answer "how much is it"',
+  check_stock: 'Answer "do you have it in stock"',
 };
 
 /** `quote.create` → "Quote create", for tools that have no nicer name. */

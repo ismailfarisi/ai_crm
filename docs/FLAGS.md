@@ -888,9 +888,10 @@ customer agent's reply goes to the customer as written by the model, with
 nobody approving it first. That was the product owner's choice when agents
 were added.
 
-What bounds it: a customer agent cannot look up prices or stock, and its
-fixed guardrails (`channel-agent-runner.ts`) tell it never to state one that
-is not in its instructions or the conversation. Its tools are passing the
+What bounds it: a customer agent can only look up a price or stock with the
+opt-in tools below, and its fixed guardrails (`channel-agent-runner.ts`) tell
+it never to state one that is not in its instructions, the conversation or a
+tool result. Its tools are passing the
 conversation to another agent, handing it to a person, `draft_quote`, which
 raises an AI-mode draft that staff approve as before, and the two lookups
 below. An organisation with no agents behaves exactly as it did.
@@ -905,6 +906,30 @@ routing and workflow branch are covered by unit tests with a mocked AI
 service. The lookups were also run locally through the webhook, Temporal and
 the worker against a real database, with a scripted stand-in for the model
 and for Meta's send API.
+
+### Customer agents answer list prices and stock for anyone — by design
+
+`check_price` and `check_stock` are opt-in per agent, like the lookups below,
+but they do not need a verified sender: they read only the business's own
+public facts, never a quote, an order or a customer. `CatalogLookupService`
+returns, for active items in the organisation:
+
+- prices: name, SKU, unit, list price, VAT rate and lead time, and only for
+  catalogue items the owner ticked "Customers may be told this price"
+  (`catalog_items.show_price_to_customers`, off for every existing item).
+  Never the standard cost, a margin, a recipe price or a customer's quoted price.
+- stock: in stock, running low or out of stock, from the stock records of the
+  material (or of the material a catalogue item is drawn from), summed over
+  locations as on hand minus reserved. "Running low" means at or under the
+  summed reorder point; an item with no reorder point is in stock until it is
+  out. A number only when the agent's "Also say how many are available" is on
+  (`channel_agents.showStockQuantity`, off by default). Nothing with no stock
+  record is answered: the tool says "not tracked" and the agent hands over.
+
+The match is a plain word search on name and SKU, at most five results. A
+price for a size or quantity the catalogue does not list (most made-to-order
+work) is not worked out: the guardrails send that to a person or a quote.
+Only covered by unit tests with a scripted model; not run against a live model.
 
 ### Customer agents answer order and quote questions for a verified sender only — by design
 
@@ -1429,6 +1454,34 @@ blank drawing for the RSC carton (it would need a second net kind).
   and drives inventory movements, but can only be set directly in the database.
 
 ---
+
+## WhatsApp sends from documents
+
+### "Send on WhatsApp" falls back to the staff member's own WhatsApp — by design
+
+Quotes, artwork proofs and invoices have "Send on WhatsApp" next to the email
+action, with the same permission (`quote:update`, `invoice:manage`); sending
+through the business number also needs `channel:send`. The business number
+sends when it can: free text if the customer wrote to it in the last 24 hours,
+otherwise the approved template named in the WhatsApp channel settings (two
+body blanks: what is being sent, then the link). With no channel, no template
+outside the window, no `channel:send`, or Meta refusing the send, the screen
+says so and offers a wa.me link that opens WhatsApp on the staff member's own
+phone or computer with the message filled in.
+
+- A business-number send, sent or failed, is a message in the customer's Inbox
+  thread; a template send to someone who never wrote starts the thread. A
+  click-to-chat message goes from a personal number Kerf cannot see, so it is
+  not in the Inbox and the quote or invoice is not marked sent.
+- The proof goes out as the quote link: that is where the customer sees and
+  approves the proof, so a new link is made, as "Copy link" does, and an
+  earlier one stops working.
+- Automations' "send to customer" step on WhatsApp now also refuses when the
+  customer's last message is over 24 hours old, instead of letting Meta reject
+  it. It still has no template option.
+- The template is one per channel and its name is not checked against Meta
+  until the first send; a wrong name shows as a refused send and the
+  click-to-chat fallback.
 
 ## Automations
 

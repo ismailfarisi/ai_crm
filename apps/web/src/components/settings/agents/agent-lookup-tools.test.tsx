@@ -44,7 +44,7 @@ const support: ChannelAgentDto = {
   model: null,
   skills: [],
   channels: ['WHATSAPP_META'],
-  isEnabled: true,
+  isEnabled: true, showStockQuantity: false,
   createdAt: '2026-11-20T10:00:00.000Z',
   updatedAt: '2026-11-20T10:00:00.000Z',
 };

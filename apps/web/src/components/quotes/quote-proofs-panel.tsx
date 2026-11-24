@@ -15,6 +15,7 @@ import { api, queryKeys } from '@/lib/api/endpoints';
 import { useOpenAttachment } from '@/hooks/use-platform';
 import { Badge, Card, CardBody, CardHeader, CardTitle } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/button';
+import { SendOnWhatsAppButton } from '@/components/whatsapp/send-on-whatsapp';
 
 const TONE: Record<QuoteProofStatus, 'warning' | 'success' | 'danger'> = {
   PENDING: 'warning',
@@ -39,10 +40,12 @@ export function QuoteProofsPanel({
   quoteId,
   canEdit,
   accepted,
+  customerName = null,
 }: {
   quoteId: string;
   canEdit: boolean;
   accepted: boolean;
+  customerName?: string | null;
 }) {
   const picker = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -104,6 +107,14 @@ export function QuoteProofsPanel({
               <Upload className="size-4" />
               {latest ? `Upload v${latest.version + 1}` : 'Upload proof'}
             </Button>
+            {latest && !accepted && (
+              <SendOnWhatsAppButton
+                size="sm"
+                what={`artwork proof v${latest.version}`}
+                customerName={customerName}
+                send={(to) => api.quoteAcceptance.sendProofOnWhatsApp(quoteId, { to })}
+              />
+            )}
           </>
         )}
       </CardHeader>

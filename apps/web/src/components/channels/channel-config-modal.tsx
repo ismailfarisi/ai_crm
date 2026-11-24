@@ -248,6 +248,19 @@ export function ChannelConfigModal({ open, onClose, config }: ChannelConfigModal
               hint="Must match the verification token configured in Meta App Dashboard."
               required
             />
+            <Input
+              label="Template for sending quotes and invoices (optional)"
+              placeholder="e.g. document_link"
+              value={formData.documentTemplateName || ''}
+              onChange={(e) => updateField('documentTemplateName', e.target.value)}
+              hint="An approved Meta template with two blanks: what is being sent, then its link. Without it, a customer who has not written in the last 24 hours gets the message from your own WhatsApp instead."
+            />
+            <Input
+              label="Template language"
+              placeholder="en"
+              value={formData.documentTemplateLanguage || ''}
+              onChange={(e) => updateField('documentTemplateLanguage', e.target.value)}
+            />
           </div>
         )}
 

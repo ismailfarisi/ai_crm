@@ -45,7 +45,7 @@ const sales: ChannelAgentDto = {
   model: null,
   skills: ['draft_quote'],
   channels: ['WHATSAPP_META'],
-  isEnabled: true,
+  isEnabled: true, showStockQuantity: false,
   createdAt: '2026-11-20T10:00:00.000Z',
   updatedAt: '2026-11-20T10:00:00.000Z',
 };
@@ -120,6 +120,7 @@ describe('AgentsView', () => {
         skills: ['expense.from_document'],
         channels: ['SLACK'],
         isEnabled: true,
+        showStockQuantity: false,
       }),
     );
   });

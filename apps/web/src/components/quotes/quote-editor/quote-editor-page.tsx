@@ -915,6 +915,7 @@ export function QuoteEditorPage({
           quoteId={id}
           canEdit={canUpdate && !acceptance.supersededAt}
           accepted={Boolean(acceptance.acceptedAt)}
+          customerName={headerData.customerName || null}
         />
       )}
 

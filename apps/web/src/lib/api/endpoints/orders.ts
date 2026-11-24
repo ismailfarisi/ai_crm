@@ -1,5 +1,7 @@
 /* One slice of the browser's API surface. Composed in ./index.ts. */
 import type {
+  SendOnWhatsAppPayload,
+  WhatsAppSendResultDto,
   QuoteDto,
   QuoteProofsSummaryDto,
   SendQuoteInput,
@@ -45,6 +47,11 @@ export const ordersEndpoints = {
     /** For a customer who said yes some other way; raises the order like accepting the link does. */
     markAccepted: (quoteId: string, body: { name: string }) =>
       apiFetch<QuoteDto>(`/quotes/${quoteId}/mark-accepted`, { method: 'POST', body }),
+    /** Through the business WhatsApp when it can send, otherwise a ready click-to-chat link. */
+    sendOnWhatsApp: (quoteId: string, body: SendOnWhatsAppPayload) =>
+      apiFetch<WhatsAppSendResultDto>(`/quotes/${quoteId}/whatsapp`, { method: 'POST', body }),
+    sendProofOnWhatsApp: (quoteId: string, body: SendOnWhatsAppPayload) =>
+      apiFetch<WhatsAppSendResultDto>(`/quotes/${quoteId}/proofs/whatsapp`, { method: 'POST', body }),
     proofs: (quoteId: string) => apiFetch<QuoteProofsSummaryDto>(`/quotes/${quoteId}/proofs`),
     uploadProof: (quoteId: string, file: File) =>
       apiUpload<QuoteProofsSummaryDto>(`/quotes/${quoteId}/proofs`, file),
