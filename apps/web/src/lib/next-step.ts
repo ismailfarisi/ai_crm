@@ -123,9 +123,7 @@ export function orderNextStep(order: SalesOrderDto, deliveries: DeliveryNoteDto[
     return {
       ...base,
       title: 'Start the job',
-      detail: upfront.length
-        ? `${isDeposit ? 'The deposit is' : 'It is'} paid. Mark the order as in production, then plan work orders if you track the shop floor.`
-        : 'Mark the order as in production, then plan work orders if you track the shop floor.',
+      detail: `${upfront.length ? `${isDeposit ? 'The deposit is' : 'It is'} paid. ` : ''}Starting production turns the catalog products on this order into work orders. If nothing here is made from a catalog product, skip this and prepare the delivery.`,
       action: { kind: 'status', to: 'IN_PRODUCTION', label: 'Start production' },
     };
   }

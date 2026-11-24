@@ -1814,8 +1814,10 @@ API restart mid-download or a provider outage stays failed.
   the quote's status, acceptance and deposit; the invoice's status, payments,
   `sentAt` and due date. No new states. Two known gaps: a quote counts as
   "sent" only while it has a live acceptance link (an expired link reads as
-  not sent), and production work orders are not consulted, so "Start the job"
-  is the order's status change, not a work-order check.
+  not sent), and the card cannot tell in advance whether a line was priced
+  from a catalog product. Starting production refuses an order with no such
+  line, so for one-off work the card's "Start the job" says to skip to the
+  delivery, and the refusal explains why.
 - **The old header buttons stay** on the sales order (Start production, Plan
   production, Mark fulfilled, Raise invoice, Cancel), now all outlined; the
   amber button is the one in the next-step card.
