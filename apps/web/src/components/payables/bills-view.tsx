@@ -61,7 +61,14 @@ export function BillsView() {
   const { data, isPending, isError, error } = useBills({ page: 1, limit: 100, ...(status ? { status } : {}) });
   // Empty means today. A past date shows what was owed on that day.
   const [asOf, setAsOf] = useState('');
-  const { data: aging } = useBillAging(asOf || undefined);
+  // A date typed by hand passes through years like 0002 on the way to 2026.
+  // The report waits for a real one rather than loading each of those.
+  const [reportDate, setReportDate] = useState('');
+  const { data: aging } = useBillAging(reportDate || undefined);
+  const pickAsOf = (value: string) => {
+    setAsOf(value);
+    if (value === '' || Number(value.slice(0, 4)) >= 1900) setReportDate(value);
+  };
 
   const columns = useMemo<ColumnDef<SupplierBillDto, unknown>[]>(
     () => [
@@ -154,7 +161,7 @@ export function BillsView() {
         }
       />
 
-      {aging && (aging.total !== 0 || (aging.staffClaimsTotal ?? 0) !== 0 || aging.difference !== 0 || asOf) && (
+      {aging && (aging.total !== 0 || (aging.staffClaimsTotal ?? 0) !== 0 || aging.difference !== 0 || asOf || reportDate) && (
         <section className="mb-6 rounded border border-line bg-surface p-4" aria-label="What is owed">
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="text-sm font-medium text-ink">Owed to suppliers</h2>
@@ -166,7 +173,7 @@ export function BillsView() {
                   aria-label="As of date"
                   value={asOf}
                   max={new Date().toISOString().slice(0, 10)}
-                  onChange={(e) => setAsOf(e.target.value)}
+                  onChange={(e) => pickAsOf(e.target.value)}
                   className="h-8 rounded border border-line bg-surface px-2 text-sm text-ink"
                 />
               </label>
@@ -187,6 +194,36 @@ export function BillsView() {
               </div>
             ))}
           </dl>
+          {reportDate && (
+            // The list further down is each bill as it stands today. For a
+            // past date the bills owed on that day are these, at that day's balance.
+            <div className="mt-3" data-testid="bills-owed-on-date">
+              <h3 className="mb-1 text-xs font-medium text-ink-subtle">Bills owed on {reportDate}</h3>
+              {aging.bills.length === 0 ? (
+                <p className="text-sm text-ink-muted">No bill was owed on that day.</p>
+              ) : (
+                <ul className="divide-y divide-line text-sm">
+                  {aging.bills.map((bill) => (
+                    <li key={bill.id} className="flex flex-wrap items-baseline justify-between gap-2 py-1.5">
+                      <span className="text-ink">
+                        {bill.billNumber} <span className="text-ink-muted">{bill.supplierName}</span>
+                      </span>
+                      <span className="flex items-baseline gap-3">
+                        <span className="text-xs text-ink-subtle">{BUCKET_LABELS[bill.bucket]}</span>
+                        <span className="tabular-nums font-medium text-ink">
+                          {money(bill.outstanding)}
+                          {bill.currency ? ` ${bill.currency}` : ''}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="mt-2 text-xs text-ink-subtle">
+                The list below shows each bill as it stands today, not on {reportDate}.
+              </p>
+            </div>
+          )}
           {(aging.staffClaimsTotal ?? 0) !== 0 && (
             // Approved claims sit in the same payables account as supplier
             // bills until they are reimbursed, so the account is the two together.

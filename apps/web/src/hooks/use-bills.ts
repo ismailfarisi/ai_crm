@@ -43,6 +43,8 @@ export function useBillAging(asOf?: string) {
   return useQuery({
     queryKey: asOf ? [...queryKeys.billAging, asOf] : queryKeys.billAging,
     queryFn: () => api.bills.aging(asOf),
+    // Keep the last report on screen while another date loads.
+    placeholderData: (previous) => previous,
   });
 }
 

@@ -92,4 +92,40 @@ describe('BillsView: what is owed', () => {
     fireEvent.change(screen.getByLabelText('As of date'), { target: { value: '2026-11-01' } });
     expect(aging.asOf.at(-1)).toBe('2026-11-01');
   });
+
+  it('waits for a whole year while a date is typed by hand', () => {
+    aging.data = report({});
+    render(<BillsView />);
+    const input = screen.getByLabelText('As of date');
+    fireEvent.change(input, { target: { value: '0002-11-23' } });
+    expect(aging.asOf.at(-1)).toBeUndefined();
+    expect(input).toHaveValue('0002-11-23');
+    fireEvent.change(input, { target: { value: '2026-11-23' } });
+    expect(aging.asOf.at(-1)).toBe('2026-11-23');
+  });
+
+  it('lists each bill at its balance on a past date, apart from the list of bills as they stand today', () => {
+    aging.data = report({
+      total: 120000,
+      ledgerBalance: 120000,
+      bills: [
+        {
+          id: 'bill-1',
+          billNumber: 'BILL-2026-0001',
+          supplierName: 'Steel Co',
+          dueDate: null,
+          outstanding: 120000,
+          bucket: 'CURRENT',
+        },
+      ],
+    });
+    render(<BillsView />);
+    expect(screen.queryByTestId('bills-owed-on-date')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('As of date'), { target: { value: '2026-11-22' } });
+    const owed = screen.getByTestId('bills-owed-on-date');
+    expect(owed).toHaveTextContent('Bills owed on 2026-11-22');
+    expect(owed).toHaveTextContent('BILL-2026-0001');
+    expect(owed).toHaveTextContent('120,000.00');
+    expect(owed).toHaveTextContent('as it stands today, not on 2026-11-22');
+  });
 });
