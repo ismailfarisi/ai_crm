@@ -18,6 +18,8 @@ import { RecurringExpense } from '../finance/entities/recurring-expense.entity';
 import { PrepaidSchedule } from '../payables/entities/prepaid-schedule.entity';
 import { StockItem } from '../inventory/entities/stock-item.entity';
 import { ProductTemplate } from '../catalog/entities/product-template.entity';
+import { Material } from '../catalog/entities/material.entity';
+import { CatalogItem } from '../catalog/entities/catalog-item.entity';
 import { User } from '../users/entities/user.entity';
 import { Employee } from '../payroll/entities/employee.entity';
 import { PayrollRun } from '../payroll/entities/payroll-run.entity';
@@ -76,6 +78,10 @@ export const AUDIT_SUBJECTS: Record<string, AuditSubject> = {
   users: { subject: 'USER', entity: User },
   roles: { subject: 'ROLE', entity: Role },
   'stock-items': { subject: 'STOCK_ITEM', entity: StockItem },
+  // Catalog cost edits, including a cost brought up to what the shop pays,
+  // keep the figure before and after.
+  'catalog/materials': { subject: 'MATERIAL', entity: Material },
+  'catalog/items': { subject: 'CATALOG_ITEM', entity: CatalogItem },
   // The installed template, so the trail shows what a starter created.
   'catalog/starter-templates': {
     subject: 'PRODUCT_TEMPLATE',

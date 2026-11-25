@@ -10,6 +10,7 @@ import { InvoicesService } from './invoices.service';
 import { InvoicePdfService } from './invoice-pdf.service';
 import { InvoiceOverdueService } from './invoice-overdue.service';
 import { QuotesController } from './quotes.controller';
+import { QuoteCostCheckService } from './quote-cost-check.service';
 import { PublicQuotesController } from './public-quotes.controller';
 import { QuoteAcceptanceService } from './quote-acceptance.service';
 import { QuoteProofsController } from './quote-proofs.controller';
@@ -75,6 +76,7 @@ import { ChannelCryptoService } from '../channels/services/channel-crypto.servic
     QuoteAcceptanceService,
     QuoteProofsService,
     QuoteResponsesService,
+    QuoteCostCheckService,
   ],
   exports: [
     QuotesService,

@@ -78,6 +78,8 @@ describe('QuotesService — margin guardrails', () => {
           totals: calculateQuoteTotals(recosted),
           violations,
           staleLineIds: [],
+          movedLineIds: [],
+          templatePrices: {},
         };
       });
   };

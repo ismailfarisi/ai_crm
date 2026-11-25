@@ -16,6 +16,8 @@ import {
   CreateQuotePayload,
   MarkInvoicePaidPayload,
   PERMISSIONS,
+  type QuoteCostCheck,
+  type QuoteRecostMode,
   QuoteCreatedBy as SharedQuoteCreatedBy,
   QuoteLineItem,
   QuoteStatus as SharedQuoteStatus,
@@ -28,6 +30,8 @@ import {
   VoidInvoicePayload,
 } from '@saas/shared';
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
+import { z } from 'zod';
+import { QuoteCostCheckService } from './quote-cost-check.service';
 import { zodBody } from '@/common/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
 import { QuotesService } from './quotes.service';
@@ -103,6 +107,10 @@ export class VoidInvoiceDto implements VoidInvoicePayload {
   reason?: string;
 }
 
+const recostSchema = z.object({
+  mode: z.enum(['COSTS', 'COSTS_AND_PRICES']),
+});
+
 @ApiTags('quotes')
 @Controller()
 export class QuotesController {
@@ -110,7 +118,46 @@ export class QuotesController {
     private readonly quotesService: QuotesService,
     private readonly invoicesService: InvoicesService,
     private readonly acceptance: QuoteAcceptanceService,
+    private readonly costChecks: QuoteCostCheckService,
   ) {}
+
+  @Get('quotes/cost-changes')
+  @RequirePermissions(PERMISSIONS.QUOTE_READ, PERMISSIONS.QUOTE_VIEW_COST)
+  @ApiOperation({
+    summary: 'Open quotes priced on costs that have since moved',
+    description:
+      'Compares each open quote (not accepted, not replaced) with what its lines cost at today’s catalog. Changes nothing.',
+  })
+  costChanges(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<QuoteCostCheck[]> {
+    return this.costChecks.openQuotesWithMovedCosts(user.organizationId);
+  }
+
+  @Get('quotes/:id/cost-check')
+  @RequirePermissions(PERMISSIONS.QUOTE_READ, PERMISSIONS.QUOTE_VIEW_COST)
+  @ApiOperation({ summary: 'How far a quote’s costs are from today’s catalog' })
+  costCheck(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<QuoteCostCheck> {
+    return this.costChecks.check(user.organizationId, id);
+  }
+
+  @Post('quotes/:id/recost')
+  @RequirePermissions(PERMISSIONS.QUOTE_UPDATE, PERMISSIONS.QUOTE_VIEW_COST)
+  @ApiOperation({
+    summary: 'Re-cost an open quote at today’s catalog',
+    description:
+      'COSTS updates only the cost behind each line. COSTS_AND_PRICES also re-prices template lines; not allowed on an approved quote. Accepted quotes keep their costs.',
+  })
+  recost(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(zodBody(recostSchema)) body: { mode: QuoteRecostMode },
+  ): Promise<Quote> {
+    return this.costChecks.recost(user.organizationId, id, body.mode, user.id);
+  }
 
   @Get('quotes/next-number')
   @RequirePermissions(PERMISSIONS.QUOTE_READ)

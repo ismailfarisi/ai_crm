@@ -5,6 +5,9 @@ import { toast } from 'sonner';
 import type {
   CatalogItemDto,
   CostingProposal,
+  MaterialCostRow,
+  MaterialCostBasis,
+  QuoteRecostMode,
   CreateCatalogItemPayload,
   UpdateCatalogItemPayload,
   MaterialDto,
@@ -320,5 +323,68 @@ export function useApplyCostingProposal() {
       toast.success(`${proposal.target.name} updated. New quotes use it from now on.`);
     },
     onError: (error) => toast.error(describe(error, 'Could not apply the change')),
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Catalog costs against what the shop pays
+ * ------------------------------------------------------------------ */
+
+export function useMaterialCosts(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.materialCosts,
+    queryFn: () => api.catalog.materialCosts(),
+    enabled,
+  });
+}
+
+/** Open quotes priced on costs that have since moved. */
+export function useQuoteCostChanges(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.quoteCostChanges,
+    queryFn: () => api.quotes.costChanges(),
+    enabled,
+  });
+}
+
+export function useQuoteCostCheck(id: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.quoteCostCheck(id ?? ''),
+    queryFn: () => api.quotes.costCheck(id!),
+    enabled: Boolean(id) && enabled,
+  });
+}
+
+/**
+ * Sets one catalog cost to the figure picked. Only the choice is sent; the
+ * server works out the amount and saves it as an ordinary, audited edit.
+ */
+export function useApplyMaterialCost() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ row, basis }: { row: MaterialCostRow; basis: MaterialCostBasis }): Promise<MaterialDto | CatalogItemDto> =>
+      row.target.type === 'MATERIAL'
+        ? api.catalog.updateMaterialCost(row.target.id, basis)
+        : api.catalog.updateItemCost(row.target.id, basis),
+    onSuccess: async (_saved, { row }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['catalog'] }),
+        queryClient.invalidateQueries({ queryKey: ['quotes'] }),
+      ]);
+      toast.success(`${row.target.name} updated. New quotes use it from now on.`);
+    },
+    onError: (error) => toast.error(describe(error, 'Could not update the cost')),
+  });
+}
+
+export function useRecostQuote() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, mode }: { id: string; mode: QuoteRecostMode }) => api.quotes.recost(id, mode),
+    onSuccess: async (quote) => {
+      await queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      toast.success(`${quote.quoteNumber ?? 'Quote'} re-costed at today's catalog.`);
+    },
+    onError: (error) => toast.error(describe(error, 'Could not re-cost the quote')),
   });
 }

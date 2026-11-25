@@ -53,6 +53,7 @@ import { QuoteAiDrawer, type GeneratedQuoteDraft } from './quote-ai-drawer';
 import { QuotePrintModal } from './quote-print-modal';
 import { AddLineFlow } from './add-line-flow';
 import { MarginBadge, QuoteMarginCard } from './quote-margin-card';
+import { QuoteCostChangeBanner } from './quote-cost-change-banner';
 import { QuoteBillingCard } from './quote-billing-card';
 import { QuoteActionMenu, type QuoteMenuAction } from './quote-action-menu';
 import { lineMargin, linesWithoutCost, marginStatus } from './margin-status';
@@ -927,6 +928,18 @@ export function QuoteEditorPage({
           catalogShortcut={shortcut}
         />
       </div>
+
+      {id && canSeeCost && !acceptance.acceptedAt && !acceptance.supersededAt && (
+        <QuoteCostChangeBanner
+          quoteId={id}
+          hasUnsavedChanges={hasUnsavedChanges}
+          onRecosted={(q) => {
+            const recosted = q.items ?? [];
+            setItems(recosted);
+            markSaved({ items: recosted });
+          }}
+        />
+      )}
 
       {/* Section 3: Totals, with margin and policy checks alongside */}
       <div className="grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">

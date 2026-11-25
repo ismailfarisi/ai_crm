@@ -30,6 +30,9 @@ vi.mock('@/hooks/use-catalog-admin', () => ({
 }));
 
 // Prices are shown in the company's base currency.
+// Cost figures are gated on quote:view_cost; the cost panel has its own tests.
+vi.mock('@/lib/session-context', () => ({ useCan: () => false }));
+
 vi.mock('@/hooks/use-organization', () => ({
   useOrganization: () => ({ data: { baseCurrency: 'AED' } }),
 }));

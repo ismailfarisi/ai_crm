@@ -149,6 +149,8 @@ describe('QuotesService', () => {
         totals: calculateQuoteTotals(items),
         violations: [],
         staleLineIds: [],
+          movedLineIds: [],
+          templatePrices: {},
       })),
     };
     rbacService = {
@@ -998,6 +1000,8 @@ describe('QuotesService', () => {
                 },
               ],
               staleLineIds: [],
+          movedLineIds: [],
+          templatePrices: {},
             }),
           );
           (rbacService.resolveAccess as jest.Mock).mockResolvedValue({

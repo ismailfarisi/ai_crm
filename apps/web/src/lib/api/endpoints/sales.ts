@@ -26,6 +26,10 @@ import type {
   ProductTemplateDto,
   CostingPolicy,
   CostingReviewDto,
+  MaterialCostBasis,
+  MaterialCostReview,
+  QuoteCostCheck,
+  QuoteRecostMode,
   UpdateCostingPolicyPayload,
   ResolveLinesPayload,
   ResolvedLinesDto,
@@ -52,6 +56,12 @@ export const salesEndpoints = {
     signal: (id: string, payload: { action: 'APPROVE' | 'REJECT' | 'OVERRIDE'; payload?: unknown }) =>
       apiFetch<QuoteDto>(`/quotes/${id}/signal`, { method: 'POST', body: payload }),
     guardrails: (id: string) => apiFetch<QuoteGuardrailsDto>(`/quotes/${id}/guardrails`),
+    /** Open quotes priced on costs that have since moved. Needs the cost permission. */
+    costChanges: () => apiFetch<QuoteCostCheck[]>('/quotes/cost-changes'),
+    costCheck: (id: string) => apiFetch<QuoteCostCheck>(`/quotes/${id}/cost-check`),
+    /** Costs (and, if asked, template prices) are worked out on the server. */
+    recost: (id: string, mode: QuoteRecostMode) =>
+      apiFetch<QuoteDto>(`/quotes/${id}/recost`, { method: 'POST', body: { mode } }),
     downloadPdf: (id: string) => apiFetchBlob(`/quotes/${id}/pdf`),
     pdfUrl: (id: string) => `${API_PUBLIC_URL}/quotes/${id}/pdf`,
   },
@@ -104,6 +114,14 @@ export const salesEndpoints = {
     /** What completed jobs say about the catalog's rates. Reads only. */
     costingReview: (days: number) =>
       apiFetch<CostingReviewDto>('/catalog/costing-review', { query: { days } }),
+
+    /** Catalog costs against what the shop pays. Reads only. */
+    materialCosts: () => apiFetch<MaterialCostReview>('/catalog/material-costs'),
+    /** Sends only which figure; the server works out the amount. */
+    updateMaterialCost: (id: string, basis: MaterialCostBasis) =>
+      apiFetch<MaterialDto>(`/catalog/materials/${id}/update-cost`, { method: 'POST', body: { basis } }),
+    updateItemCost: (id: string, basis: MaterialCostBasis) =>
+      apiFetch<CatalogItemDto>(`/catalog/items/${id}/update-cost`, { method: 'POST', body: { basis } }),
 
     listTooling: (includeInactive = true) =>
       apiFetch<ToolingDto[]>('/catalog/tooling', {
@@ -181,6 +199,9 @@ export const salesEndpoints = {
 export const salesKeys = {
   quotes: ['quotes'] as const,  quote: (id: string) => ['quotes', id] as const,  invoices: ['invoices'] as const,  invoice: (id: string) => ['invoices', id] as const,  invoicePayments: (id: string) => ['invoices', id, 'payments'] as const,  catalogItems: (q?: string) => ['catalog', 'items', q ?? ''] as const,  catalogItemsAll: ['catalog', 'items', 'all'] as const,
   catalogMaterials: ['catalog', 'materials'] as const,
+  materialCosts: ['catalog', 'material-costs'] as const,
+  quoteCostChanges: ['quotes', 'cost-changes'] as const,
+  quoteCostCheck: (id: string) => ['quotes', id, 'cost-check'] as const,
   catalogWorkCenters: ['catalog', 'work-centers'] as const,
   catalogTooling: ['catalog', 'tooling'] as const,
   catalogTemplates: ['catalog', 'templates'] as const,  catalogTemplate: (id: string) => ['catalog', 'templates', id] as const,  catalogStarterTemplates: ['catalog', 'starter-templates'] as const,  costingPolicy: ['catalog', 'policy'] as const,  quoteGuardrails: (id: string) => ['quotes', id, 'guardrails'] as const,};

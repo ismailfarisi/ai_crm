@@ -30,6 +30,7 @@ import {
   type ResolveLinesPayload,
   type Tooling as ToolingSpec,
   type WorkCenter as WorkCenterSpec,
+  costMoved,
 } from '@saas/shared';
 import { CatalogItem } from './entities/catalog-item.entity';
 import { CostingPolicy } from './entities/costing-policy.entity';
@@ -66,6 +67,13 @@ export interface RecostedLines {
   violations: GuardrailViolation[];
   /** Lines whose template or catalog item has since been changed or removed. */
   staleLineIds: string[];
+  /**
+   * Lines that still cost, but whose cost today differs from the one they
+   * were saved with: a material or rate in the catalog has moved since.
+   */
+  movedLineIds: string[];
+  /** For template lines: the unit price the template gives at today's costs. */
+  templatePrices: Record<string, number>;
 }
 
 export interface TemplatePriceBreaks {
@@ -313,7 +321,15 @@ export class CostingService {
   ): Promise<RecostedLines> {
     const catalog = await this.loadCostingCatalog(tenantId);
     const staleLineIds: string[] = [];
+    const movedLineIds: string[] = [];
+    const templatePrices: Record<string, number> = {};
     const recosted: QuoteLineItem[] = [];
+    const noteMove = (item: QuoteLineItem, totalCost: number) => {
+      const saved = item.cost?.totalCost;
+      if (saved != null && costMoved(Number(saved), totalCost)) {
+        movedLineIds.push(item.id);
+      }
+    };
 
     for (const item of items ?? []) {
       if (item.type !== 'product') {
@@ -342,6 +358,8 @@ export class CostingService {
             Math.max(1, Math.round(Number(item.quantity) || 1)),
             {},
           );
+          noteMove(item, breakdown.totalCost);
+          templatePrices[item.id] = breakdown.price.unitPrice;
           recosted.push({
             ...item,
             cost: {
@@ -376,6 +394,7 @@ export class CostingService {
         }
 
         const quantity = Number(item.quantity) || 0;
+        noteMove(item, round2(catalogItem.standardCost * quantity));
         recosted.push({
           ...item,
           cost: {
@@ -401,6 +420,8 @@ export class CostingService {
         await this.getPolicy(tenantId),
       ),
       staleLineIds,
+      movedLineIds,
+      templatePrices,
     };
   }
 

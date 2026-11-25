@@ -1462,6 +1462,35 @@ accuracy" tab shows them. Built on `reviewCosting` in `@saas/shared`.
   to 100%) and say when they were. Sheet materials are planned in whole
   sheets, so their measured waste reads a little low.
 
+### Catalog costs against what the shop pays
+
+`GET /catalog/material-costs` compares each material's `costPerUom` (and each
+stock-linked catalog item's `standardCost`) with three figures: the last goods
+receipt, the moving average across stock locations, and the preferred (else
+cheapest) supplier price. Only gaps of 2% or more are listed. Choosing one is
+`POST /catalog/{materials|items}/:id/update-cost` with just the basis; the
+server works the figure out again and saves it with the ordinary catalog update
+(audited with before/after, `catalog:manage` and `quote:view_cost`). Nothing is
+updated automatically.
+
+- **Units.** A receipt is only used when its purchase-order line was in the
+  material's own unit. Lines bought in another unit (a roll for a material kept
+  in metres) are left out and counted in a note: the catalog has no pack size
+  to convert with. Supplier prices are assumed to be per material unit.
+- **Currency.** Receipts are converted at the rate they were received at;
+  supplier prices at today's rate, and left out when there is none.
+- **Window.** Receipts from the last 730 days, newest 5,000 lines.
+- **Open quotes.** `GET /quotes/cost-changes` re-costs every open quote (draft,
+  awaiting approval or approved; not accepted, not replaced; newest 200) and
+  lists those with a line whose cost moved 0.5% and at least 0.01.
+  `POST /quotes/:id/recost` goes through the ordinary quote update. "Keep
+  prices" changes only costs, so a customer link stays valid. "Costs and
+  prices" re-prices template lines from the template's markup and is refused
+  on an approved quote. Catalog-item and hand-typed lines keep their price.
+  Accepted quotes and their orders and jobs are never re-costed.
+- **Checked on read.** Moved costs are found by re-costing on each request, not
+  stored, so a busy pipeline costs one costing pass per open quote per view.
+
 ### Partial updates wrote schema defaults over saved values — resolved for the catalog, open elsewhere
 
 Found while building costing accuracy. In zod 4 a field with `.default()`

@@ -48,6 +48,7 @@ describe('QuotesController', () => {
       quotesService as QuotesService,
       invoicesService as InvoicesService,
       acceptanceService as QuoteAcceptanceService,
+      {} as never,
     );
   });
 

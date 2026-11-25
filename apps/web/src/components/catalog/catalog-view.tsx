@@ -39,6 +39,7 @@ import {
 import { useOrganization } from '@/hooks/use-organization';
 import { cn, formatMoney } from '@/lib/utils';
 import { Can } from '@/components/auth/can';
+import { useCan } from '@/lib/session-context';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { EmptyState, PageHeader } from '@/components/ui/primitives';
@@ -50,6 +51,7 @@ import { MaterialFormDialog } from './material-form-dialog';
 import { WorkCenterFormDialog } from './work-center-form-dialog';
 import { ToolingFormDialog } from './tooling-form-dialog';
 import { CostingReviewPanel } from './costing-review-panel';
+import { MaterialCostPanel } from './material-cost-panel';
 import { StarterTemplatePicker } from './starter-template-picker';
 
 type Tab = 'products' | 'templates' | 'materials' | 'work-centers' | 'tooling' | 'accuracy';
@@ -101,6 +103,7 @@ function NameCell({ name, sub, isActive }: { name: string; sub?: string | null; 
  */
 export function CatalogView() {
   const [tab, setTab] = useState<Tab>('products');
+  const canSeeCost = useCan({ permission: PERMISSIONS.QUOTE_VIEW_COST });
 
   const items = useCatalogItems();
   const materials = useMaterials();
@@ -524,7 +527,10 @@ export function CatalogView() {
       </div>
 
       {tab === 'accuracy' ? (
-        <CostingReviewPanel currency={currency} />
+        <div className="space-y-10">
+          {canSeeCost && <MaterialCostPanel currency={currency} />}
+          <CostingReviewPanel currency={currency} />
+        </div>
       ) : query.isError ? (
         <EmptyState
           title={`Couldn't load ${active.label.toLowerCase()}`}
