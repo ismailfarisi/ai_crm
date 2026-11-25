@@ -19,6 +19,7 @@ import { EmptyState, PageHeader } from '@/components/ui/primitives';
 import { cn, formatDate, formatMoney } from '@/lib/utils';
 import { money, OrderStatusPill } from './orders-view';
 import { OrderDeliveries } from './order-deliveries';
+import { JobCostCard } from './job-cost-card';
 
 const NEXT: Partial<Record<SalesOrderStatus, { to: SalesOrderStatus; label: string; icon: typeof Factory }[]>> = {
   OPEN: [
@@ -113,6 +114,7 @@ export function OrderDetail({ id }: { id: string }) {
     deliver: useCan({ permission: PERMISSIONS.DELIVERY_NOTE_CREATE }),
     dispatch: useCan({ permission: PERMISSIONS.DELIVERY_NOTE_DISPATCH }),
     readInvoices: useCan({ permission: PERMISSIONS.INVOICE_READ }),
+    viewCost: useCan({ permission: PERMISSIONS.QUOTE_VIEW_COST }),
   };
 
   if (isPending) return <p className="text-ink-muted">Loading…</p>;
@@ -248,6 +250,10 @@ export function OrderDetail({ id }: { id: string }) {
       />
 
       <NextStepCard className="mb-6" step={nextStep} action={stepButton(nextStep.action)} />
+
+      {can.viewCost && order.status !== 'CANCELLED' && (
+        <JobCostCard className="mb-6" orderId={order.id} />
+      )}
 
       <dl className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[

@@ -17,6 +17,7 @@ import { formatMoney } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Input, Select, Textarea } from '@/components/ui/field';
+import { JobPicker } from '@/components/orders/job-picker';
 
 interface PurchaseOrderFormDialogProps {
   open: boolean;
@@ -40,6 +41,7 @@ const EMPTY: FormValues = {
   notes: '',
   lines: [{ ...EMPTY_LINE }],
   sourceQuoteId: null,
+  salesOrderId: null,
 };
 
 const UOM_OPTIONS = [
@@ -230,6 +232,14 @@ export function PurchaseOrderFormDialog({ open, onClose }: PurchaseOrderFormDial
             type="date"
             error={errors.expectedDate?.message}
             {...register('expectedDate', {
+              setValueAs: (value) => (value === '' ? null : value),
+            })}
+          />
+          <JobPicker
+            containerClassName="sm:col-span-2"
+            hint="For outsourced work or anything bought for one customer order. Stock lines count when they are issued to the job."
+            error={errors.salesOrderId?.message}
+            {...register('salesOrderId', {
               setValueAs: (value) => (value === '' ? null : value),
             })}
           />

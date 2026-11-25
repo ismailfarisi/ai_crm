@@ -36,6 +36,8 @@ import { MailService } from '../mail/mail.service';
 import { PurchaseOrderPdfService } from './purchase-order-pdf.service';
 import { PurchaseOrderLifecycleService } from './purchase-order-lifecycle.service';
 import { baseCurrencyFor } from '../finance/fx';
+import { resolveJobOrder } from '../orders/job-link';
+import { SupplierBill } from '../payables/entities/supplier-bill.entity';
 
 /** Minimal escaping for the values interpolated into the supplier email. */
 function escapeHtml(value: string): string {
@@ -701,6 +703,11 @@ ${from}`,
     const supplier = await this.findSupplierById(tenantId, input.supplierId);
 
     return this.purchaseOrders.manager.transaction(async (manager) => {
+      const salesOrderId = await resolveJobOrder(
+        manager,
+        tenantId,
+        input.salesOrderId,
+      );
       const sequenceValue = await allocateNextSequenceValue(
         manager,
         tenantId,
@@ -744,6 +751,7 @@ ${from}`,
         subtotalAmount: subtotal,
         totalAmount: subtotal,
         notes: input.notes ?? null,
+        salesOrderId,
         origin: origin.origin,
         originChannel: origin.originChannel ?? null,
         originMessageId: origin.originMessageId ?? null,
@@ -754,6 +762,40 @@ ${from}`,
       });
 
       return manager.save(PurchaseOrder, po);
+    });
+  }
+
+  /**
+   * Marks which customer order a purchase is for, at any point in its life.
+   * Its bills follow it, so the cost is never on two jobs at once.
+   */
+  async setJob(
+    tenantId: string,
+    id: string,
+    salesOrderId: string | null,
+  ): Promise<PurchaseOrder> {
+    return this.purchaseOrders.manager.transaction(async (manager) => {
+      const po = await manager.getRepository(PurchaseOrder).findOne({
+        where: { id, tenantId, deletedAt: IsNull() },
+      });
+      if (!po) throw new NotFoundException('Purchase order not found');
+      if (po.status === 'CANCELLED') {
+        throw new BadRequestException(`${po.poNumber} is cancelled`);
+      }
+      po.salesOrderId = await resolveJobOrder(manager, tenantId, salesOrderId);
+      await manager
+        .getRepository(PurchaseOrder)
+        .update({ id, tenantId }, { salesOrderId: po.salesOrderId });
+      await manager
+        .getRepository(SupplierBill)
+        .update(
+          { tenantId, purchaseOrderId: id },
+          { salesOrderId: po.salesOrderId },
+        );
+      return manager.getRepository(PurchaseOrder).findOneOrFail({
+        where: { id, tenantId },
+        relations: { lines: true },
+      });
     });
   }
 }

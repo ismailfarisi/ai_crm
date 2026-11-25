@@ -56,6 +56,7 @@ export * from './purchasing/types';
 export * from './purchasing/guardrails';
 export * from './channels/skills';
 export * from './orders/billing';
+export * from './orders/job-cost';
 export * from './schemas/sales-order';
 export * from './production/work-orders';
 export * from './production/board-columns';

@@ -201,6 +201,20 @@ export const SHOP_EVENTS: readonly ShopEventDefinition[] = [
     group: 'Orders',
     sample: { ...order, status: 'CANCELLED', cancelReason: 'Customer changed the event date' },
   },
+  {
+    value: 'sales_order.over_budget',
+    label: 'Order went over budget',
+    when: "an order's actual cost passes its quoted cost by more than the costing policy allows",
+    group: 'Orders',
+    sample: {
+      ...order,
+      status: 'IN_PRODUCTION',
+      quotedCost: 11200,
+      actualCost: 12880,
+      overByPct: 15,
+      alertPct: 10,
+    },
+  },
   // --- Production ---------------------------------------------------------
   {
     value: 'work_order.released',

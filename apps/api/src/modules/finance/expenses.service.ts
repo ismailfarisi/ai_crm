@@ -63,6 +63,7 @@ import {
   formatTenantSequenceNumber,
 } from '../../database/tenant-sequence.util';
 import { ShopEventsService } from '@/common/events';
+import { resolveJobOrder } from '../orders/job-link';
 
 const POSTGRES_UNIQUE_VIOLATION = '23505';
 
@@ -194,6 +195,11 @@ export class ExpensesService {
       receiptUrl: dto.receiptUrl || null,
       notes: cleanNotes(dto.notes),
       items,
+      salesOrderId: await resolveJobOrder(
+        this.expenseRepository.manager,
+        tenantId,
+        dto.salesOrderId,
+      ),
       ...tax,
     });
 
@@ -290,6 +296,13 @@ export class ExpensesService {
     if (dto.status !== undefined) claim.status = dto.status;
     if (dto.employeeId !== undefined) claim.employeeId = dto.employeeId;
     if (dto.employeeName !== undefined) claim.employeeName = dto.employeeName;
+    if (dto.salesOrderId !== undefined) {
+      claim.salesOrderId = await resolveJobOrder(
+        this.expenseRepository.manager,
+        tenantId,
+        dto.salesOrderId,
+      );
+    }
 
     return this.expenseRepository.save(claim);
   }

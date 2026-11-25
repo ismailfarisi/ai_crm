@@ -85,6 +85,12 @@ export const purchasingEndpoints = {
     list: (params: PurchaseOrderListParams = {}) =>
       apiFetch<PaginatedResult<PurchaseOrderDto>>('/purchase-orders', { query: params }),
     get: (id: string) => apiFetch<PurchaseOrderDto>(`/purchase-orders/${id}`),
+    /** Which customer order the purchase is for; null unlinks it. */
+    setJob: (id: string, salesOrderId: string | null) =>
+      apiFetch<PurchaseOrderDto>(`/purchase-orders/${id}/job`, {
+        method: 'POST',
+        body: { salesOrderId },
+      }),
     guardrails: (id: string) =>
       apiFetch<PurchaseGuardrailViolation[]>(`/purchase-orders/${id}/guardrails`),
     create: (input: CreatePurchaseOrderPayload) =>

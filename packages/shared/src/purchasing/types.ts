@@ -114,6 +114,8 @@ export interface PurchaseOrderDto {
   subtotalAmount: number;
   totalAmount: number;
   notes: string | null;
+  /** The customer order this purchase is for, if any. */
+  salesOrderId?: string | null;
   lines: PurchaseOrderLineDto[];
   origin: RecordOrigin;
   createdById: string | null;
@@ -133,5 +135,7 @@ export interface CreatePurchaseOrderInput {
   expectedDate?: Date | null;
   notes?: string | null;
   lines: CreatePurchaseOrderLineInput[];
+  /** The customer order this purchase is for. */
+  salesOrderId?: string | null;
   originMetadata?: OriginMetadata;
 }

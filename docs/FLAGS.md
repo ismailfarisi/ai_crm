@@ -1960,6 +1960,36 @@ API restart mid-download or a provider outage stays failed.
 
 ---
 
+## Job cost on orders (quoted vs actual, "For job")
+
+- **"For job" is per document, not per line.** A purchase order, a bill with
+  no purchase order, or an expense claim goes on one customer order. A mixed
+  PO for two jobs has to be split. A bill against a purchase order always
+  takes the order's job and cannot pick another.
+- **Stock is counted when it is used, not when it is bought.** A PO line for a
+  stock material never counts as bought-in, even with a job on the PO; it
+  counts when it is issued to the job's work orders or dispatched on its
+  delivery, at moving average. Only free-text PO lines (outsourced print, an
+  installer) are bought-in.
+- **PO → goods receipt → bill counts once.** Billed quantity at the bill's
+  price; received-but-not-billed at the received value; ordered-but-not-
+  received is shown as "on order" and is not cost.
+- **VAT:** bills count net, plus VAT only where the tax code is blocked; claims
+  count amount less recoverable VAT. Nothing posts differently: the link is
+  management costing only, ledger postings are unchanged.
+- **Only approved/paid bills and claims count.** Drafts and claims still
+  waiting for approval do not show on the card.
+- **One currency: the organisation's base.** The order price and quoted cost
+  are converted at the rate on the order's date; costs arrive in base already.
+  With no rate, the price is shown unconverted with a warning.
+- **The over-budget alert is checked when the card opens and every 30 minutes**
+  (`OrderCostService.sweep`, open and in-production orders, newest 2,000), not
+  on every cost change. It fires once per overrun (`sales_orders.over_budget_alerted_at`)
+  and re-arms when the job drops back under, e.g. after the threshold is raised.
+  It needs a quoted cost: a job made only of typed lines with no cost never warns.
+- **Quoted cost is the quote's line costs as snapshotted**, so lines typed with
+  no cost make it low (the card says so) until improvement 1 lands.
+
 ## Staging environment
 
 True of the staging box (`ssh ismail`, `~/ai_crm`), not of the code.

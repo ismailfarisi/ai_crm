@@ -9,6 +9,10 @@ const mutate = vi.fn();
 let order: PurchaseOrderDto;
 let supplier: { companyName: string; contactName: string | null; email: string | null } | undefined;
 
+vi.mock('@/hooks/use-sales-orders', () => ({
+  useSalesOrders: () => ({ data: [], isLoading: false }),
+  useSetJobLink: () => ({ mutate: vi.fn(), isPending: false }),
+}));
 vi.mock('@/lib/session-context', () => ({
   useSession: () => ({ check: () => true }),
   useCan: () => true,

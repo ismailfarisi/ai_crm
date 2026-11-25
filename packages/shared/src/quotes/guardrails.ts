@@ -18,6 +18,11 @@ export interface CostingPolicy {
    */
   requireKnownCost: boolean;
   enforce: boolean;
+  /**
+   * How far a job's actual cost may pass its quoted cost before the order is
+   * flagged as over budget, as a fraction: 0.1 warns at 10% over.
+   */
+  overBudgetAlertPct?: number;
 }
 
 export const DEFAULT_COSTING_POLICY: CostingPolicy = {
@@ -25,6 +30,7 @@ export const DEFAULT_COSTING_POLICY: CostingPolicy = {
   maxDiscountPct: 20,
   requireKnownCost: false,
   enforce: false,
+  overBudgetAlertPct: 0.1,
 };
 
 export type GuardrailCode = 'MARGIN_BELOW_FLOOR' | 'DISCOUNT_ABOVE_CAP' | 'COST_UNKNOWN';

@@ -22,6 +22,15 @@ export function useSalesOrder(id: string | null) {
   });
 }
 
+/** Quoted against actual cost; only asked for by people who can see cost. */
+export function useSalesOrderCosts(id: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.salesOrderCosts(id ?? ''),
+    queryFn: () => api.salesOrders.costs(id as string),
+    enabled: Boolean(id) && enabled,
+  });
+}
+
 export function useQuoteSalesOrder(quoteId: string | undefined, enabled: boolean) {
   return useQuery({
     queryKey: queryKeys.quoteSalesOrder(quoteId ?? ''),
@@ -85,4 +94,27 @@ export function useSalesOrderAction() {
 
 function describe(error: unknown, fallback: string): string {
   return error instanceof ApiError && error.message ? error.message : fallback;
+}
+
+/**
+ * Marks which customer order a purchase order or a bill is for. The job's
+ * cost card reads it, so that is refreshed too.
+ */
+export function useSetJobLink(kind: 'purchaseOrder' | 'bill') {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, salesOrderId }: { id: string; salesOrderId: string | null }) => {
+      if (kind === 'purchaseOrder') await api.purchaseOrders.setJob(id, salesOrderId);
+      else await api.bills.setJob(id, salesOrderId);
+    },
+    onSuccess: (_data, { salesOrderId }) => {
+      toast.success(salesOrderId ? 'Cost now counts against that order' : 'Taken off the order');
+      void queryClient.invalidateQueries({
+        queryKey: [kind === 'purchaseOrder' ? 'purchase-orders' : 'bills'],
+      });
+      void queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
+    },
+    onError: (error) =>
+      toast.error(error instanceof ApiError ? error.message : 'Could not change the order'),
+  });
 }

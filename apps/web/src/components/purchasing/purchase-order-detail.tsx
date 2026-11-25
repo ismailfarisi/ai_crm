@@ -19,6 +19,8 @@ import {
 } from '@/hooks/use-purchase-orders';
 import { useSupplier } from '@/hooks/use-suppliers';
 import { Can } from '@/components/auth/can';
+import { JobLinkControl } from '@/components/orders/job-link-control';
+import { useCan } from '@/lib/session-context';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog } from '@/components/ui/dialog';
@@ -35,6 +37,7 @@ const money = (amount: number, currency: string) =>
 
 export function PurchaseOrderDetail({ id }: { id: string }) {
   const { data: order, isPending, isError, error } = usePurchaseOrder(id);
+  const canSetJob = useCan({ permission: PERMISSIONS.PURCHASE_ORDER_CREATE });
   const { data: violations = [] } = usePurchaseOrderGuardrails(id);
   const act = usePurchaseOrderAction();
   const [cancelling, setCancelling] = useState(false);
@@ -182,6 +185,13 @@ export function PurchaseOrderDetail({ id }: { id: string }) {
           </ul>
         </div>
       )}
+
+      <JobLinkControl
+        kind="purchaseOrder"
+        id={order.id}
+        salesOrderId={order.salesOrderId}
+        canEdit={canSetJob && order.status !== 'CANCELLED'}
+      />
 
       <div className="overflow-x-auto rounded border border-line bg-surface">
         <table className="w-full min-w-[520px] text-sm">

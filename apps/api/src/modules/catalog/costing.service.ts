@@ -111,6 +111,7 @@ export class CostingService {
       maxDiscountPct: row.maxDiscountPct,
       requireKnownCost: row.requireKnownCost,
       enforce: row.enforce,
+      overBudgetAlertPct: row.overBudgetAlertPct,
     };
   }
 
@@ -130,6 +131,7 @@ export class CostingService {
       maxDiscountPct: saved.maxDiscountPct,
       requireKnownCost: saved.requireKnownCost,
       enforce: saved.enforce,
+      overBudgetAlertPct: saved.overBudgetAlertPct,
     };
   }
 

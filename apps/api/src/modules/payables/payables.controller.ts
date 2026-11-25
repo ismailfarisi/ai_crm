@@ -27,6 +27,8 @@ import {
   type PaginatedResult,
   type RecordBillPaymentPayload,
   type StatementQueryPayload,
+  setJobLinkSchema,
+  type SetJobLinkPayload,
 } from '@saas/shared';
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
 import { zodBody, zodQuery } from '@/common/pipes/zod-validation.pipe';
@@ -149,6 +151,21 @@ export class PayablesController {
       mimeType: file.mimetype,
       filename: file.originalname,
     });
+  }
+
+  @Post('bills/:id/job')
+  @RequirePermissions(PERMISSIONS.BILL_CREATE)
+  @ApiOperation({
+    summary: 'Mark which customer order a bill is for',
+    description:
+      'Only for a bill with no purchase order; one against an order follows the order’s job. Management costing only: the posting is untouched.',
+  })
+  async setJob(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(zodBody(setJobLinkSchema)) body: SetJobLinkPayload,
+  ): Promise<SupplierBill> {
+    return this.payables.setJob(user.organizationId, id, body.salesOrderId);
   }
 
   @Post('bills/:id/approve')

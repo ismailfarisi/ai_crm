@@ -117,6 +117,8 @@ export function EnterBillDialog({ open, onClose, order, prefill, onCreated }: En
                 // Left to the purchase tax rules for this supplier.
                 taxCodeId: null,
                 notes: null,
+                // A bill against an order goes on the order's job.
+                salesOrderId: null,
                 lines: [
                   ...included.map((r) => ({
                     purchaseOrderLineId: r.line.purchaseOrderLineId,

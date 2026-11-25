@@ -106,6 +106,7 @@ export type NotificationType =
   | 'TRIAL_ENDING'
   | 'RECURRING_EXPENSE_FAILED'
   | 'CONVERSATION_HANDOVER'
+  | 'JOB_OVER_BUDGET'
   | 'AUTOMATION';
 
 export interface NotificationDto {

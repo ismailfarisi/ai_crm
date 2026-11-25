@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
+import { JobPicker } from '@/components/orders/job-picker';
 import {
   Upload,
   Plus,
@@ -152,6 +153,7 @@ export function SubmitExpenseModal({
     initialData?.amount !== undefined ? String(initialData.amount) : '',
   );
   const [notes, setNotes] = useState(initialData?.notes || '');
+  const [salesOrderId, setSalesOrderId] = useState(initialData?.salesOrderId || '');
 
   // VAT. No code is "No VAT", the default, and the claim it always was.
   const [taxCodeId, setTaxCodeId] = useState(initialData?.taxCodeId || '');
@@ -190,6 +192,7 @@ export function SubmitExpenseModal({
   const resetForm = () => {
     setEmployeeName(initialData?.employeeName || '');
     setMerchantName(initialData?.merchantName || '');
+    setSalesOrderId(initialData?.salesOrderId || '');
     setCategory(initialData?.category || '');
     setExpenseDate(initialData?.expenseDate || today());
     setCurrency(initialData?.currency || baseCurrency || '');
@@ -447,6 +450,7 @@ export function SubmitExpenseModal({
       amount: parseFloat(amount),
       receiptUrl: receiptFile ? null : keptReceiptUrl,
       notes: notes.trim() || null,
+      salesOrderId: salesOrderId || null,
       // Sent only when a VAT type is chosen, so a claim without one is the
       // same request it was before claims carried VAT.
       ...(taxCode
@@ -650,6 +654,12 @@ export function SubmitExpenseModal({
 
         {/* Claim details */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <JobPicker
+            hint="A taxi to site, crane hire or parking for one customer order? Pick it so the cost counts against that order."
+            currentId={initialData?.salesOrderId}
+            value={salesOrderId}
+            onChange={(e) => setSalesOrderId(e.target.value)}
+          />
           <Input
             label="Employee / Submitter"
             data-testid="input-employee-name"

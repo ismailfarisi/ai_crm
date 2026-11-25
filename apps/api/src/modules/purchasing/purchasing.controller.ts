@@ -34,6 +34,8 @@ import {
   type ReplaceSupplierMaterialsPayload,
   type SupplierQueryPayload,
   type UpdateSupplierPayload,
+  setJobLinkSchema,
+  type SetJobLinkPayload,
 } from '@saas/shared';
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
 import { zodBody, zodQuery } from '@/common/pipes/zod-validation.pipe';
@@ -308,6 +310,21 @@ export class PurchasingController {
       { userId: user.id, permissions: user.permissions },
       body.reason ?? null,
     );
+  }
+
+  @Post('purchase-orders/:id/job')
+  @RequirePermissions(PERMISSIONS.PURCHASE_ORDER_CREATE)
+  @ApiOperation({
+    summary: 'Mark which customer order this purchase is for',
+    description:
+      'Its cost then counts against that job; null unlinks it. Its bills follow. Management costing only: nothing posts differently.',
+  })
+  async setJob(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(zodBody(setJobLinkSchema)) body: SetJobLinkPayload,
+  ): Promise<PurchaseOrder> {
+    return this.purchasing.setJob(user.organizationId, id, body.salesOrderId);
   }
 
   @Post('purchase-orders/:id/cancel')

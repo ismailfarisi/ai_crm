@@ -23,6 +23,9 @@ import {
   DeliveryNoteLine,
 } from '../credits/entities/credit-note.entity';
 import { DocumentTemplatesModule } from '../document-templates/document-templates.module';
+import { JobCostingModule } from '../job-costing/job-costing.module';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { OrderCostService } from './order-cost.service';
 
 /**
  * Deliberately does not import `QuotesModule`: quotes create orders (through
@@ -47,9 +50,16 @@ import { DocumentTemplatesModule } from '../document-templates/document-template
     // Moving an order to IN_PRODUCTION raises the work orders it claims exist.
     ProductionModule,
     DocumentTemplatesModule,
+    JobCostingModule,
+    NotificationsModule,
   ],
   controllers: [OrdersController, DeliveryNotesController],
-  providers: [OrdersService, DeliveryNotesService, PackingSlipPdfService],
-  exports: [OrdersService, DeliveryNotesService],
+  providers: [
+    OrdersService,
+    DeliveryNotesService,
+    PackingSlipPdfService,
+    OrderCostService,
+  ],
+  exports: [OrdersService, DeliveryNotesService, OrderCostService],
 })
 export class OrdersModule {}

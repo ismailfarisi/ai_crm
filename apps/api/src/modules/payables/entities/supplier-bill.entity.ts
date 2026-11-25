@@ -22,6 +22,7 @@ import { nullableNumericTransformer } from '../../catalog/entities/numeric.trans
 @Entity('supplier_bills')
 @Index('idx_supplier_bills_tenant', ['tenantId'])
 @Index('idx_supplier_bills_po', ['purchaseOrderId'])
+@Index('idx_supplier_bills_sales_order', ['salesOrderId'])
 @Index('uq_supplier_bills_tenant_number', ['tenantId', 'billNumber'], {
   unique: true,
   where: '"deletedAt" IS NULL',
@@ -52,6 +53,13 @@ export class SupplierBill extends SoftDeletableEntity {
 
   @Column({ name: 'purchase_order_id', type: 'uuid', nullable: true })
   purchaseOrderId: string | null;
+
+  /**
+   * The customer order this bill is for, when it has no purchase order. A bill
+   * against a purchase order takes the order's job instead.
+   */
+  @Column({ name: 'sales_order_id', type: 'uuid', nullable: true })
+  salesOrderId: string | null;
 
   @Column({ type: 'varchar', length: 20, default: 'DRAFT' })
   status: BillStatus;

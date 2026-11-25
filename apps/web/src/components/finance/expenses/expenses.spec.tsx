@@ -43,6 +43,10 @@ beforeEach(() => {
 });
 
 // The modal defaults a claim's currency to the company's base currency.
+vi.mock('@/hooks/use-sales-orders', () => ({
+  useSalesOrders: () => ({ data: [], isLoading: false }),
+  useSetJobLink: () => ({ mutate: vi.fn(), isPending: false }),
+}));
 vi.mock('@/hooks/use-organization', () => ({
   useOrganization: () => ({ data: { baseCurrency: mocks.baseCurrency } }),
 }));
