@@ -1,6 +1,6 @@
 'use client';
 
-import { Plus, Trash2, Layers, FileText, Package, PackagePlus, Hash } from 'lucide-react';
+import { Plus, Trash2, Layers, FileText, Package, PackagePlus, Hash, Calculator } from 'lucide-react';
 import type { QuoteLineItem, QuoteLineItemType } from '@saas/shared';
 import { DEFAULT_UNIT, UNIT_GROUPS, quoteLineSubtotal } from '@saas/shared';
 import { Button } from '@/components/ui/button';
@@ -22,6 +22,8 @@ export interface QuoteLinesTableProps {
   onAddFromCatalog?: () => void;
   /** Opens the catalog picker to replace one typed line with a costed one. */
   onFindInCatalog?: (lineId: string) => void;
+  /** Opens the quick costing for a typed line. Only given with `quote:view_cost`. */
+  onQuickCost?: (lineId: string) => void;
   /** The shortcut that opens the picker, shown on its button. */
   catalogShortcut?: string;
   /** Removes a line; the page offers an undo. Without it the line simply goes. */
@@ -35,6 +37,9 @@ export interface QuoteLinesTableProps {
   /** Lines whose cost is being worked out again after a quantity change. */
   recostingIds?: ReadonlySet<string>;
 }
+
+const LINE_ACTION =
+  'mt-1 inline-flex min-h-8 items-center gap-1 rounded text-xs font-medium text-ink-muted underline-offset-2 hover:text-ink hover:underline';
 
 const formatPct = (fraction: number) => `${(fraction * 100).toFixed(1).replace('-', '−')}%`;
 
@@ -138,6 +143,7 @@ export function QuoteLinesTable({
   taxCodes = [],
   onAddFromCatalog,
   onFindInCatalog,
+  onQuickCost,
   catalogShortcut,
   onRemoveLine,
   onAddTypedLine,
@@ -379,16 +385,42 @@ export function QuoteLinesTable({
                           className={cn(CONTROL, 'mt-1 h-8 w-full px-2.5 text-xs placeholder:text-ink-subtle')}
                         />
                       )}
-                      {/* A typed line has a price but no cost, so the margin counts it as pure profit. */}
-                      {!readOnly && onFindInCatalog && !item.cost && (item.description.trim() || price > 0) && (
+                      {/* A typed line has a price but no cost, so the margin cannot be known. */}
+                      {!readOnly && !item.cost && !item.quickCost && (item.description.trim() || price > 0) && (
+                        <span className="mt-1 flex flex-wrap items-center gap-x-3">
+                          {onQuickCost && (
+                            <button
+                              type="button"
+                              onClick={() => onQuickCost(item.id)}
+                              className={LINE_ACTION}
+                              aria-label={`Line ${lineNo} has no cost. Work out its cost from materials and hours`}
+                            >
+                              <Calculator className="size-3.5" aria-hidden />
+                              No cost. Work it out
+                            </button>
+                          )}
+                          {onFindInCatalog && (
+                            <button
+                              type="button"
+                              onClick={() => onFindInCatalog(item.id)}
+                              className={LINE_ACTION}
+                              aria-label={`Line ${lineNo} has no cost. Replace it with a catalog item`}
+                            >
+                              <PackagePlus className="size-3.5" aria-hidden />
+                              {onQuickCost ? 'Find in catalog' : 'No cost. Find in catalog'}
+                            </button>
+                          )}
+                        </span>
+                      )}
+                      {!readOnly && onQuickCost && item.quickCost && !item.templateId && !item.catalogItemId && (
                         <button
                           type="button"
-                          onClick={() => onFindInCatalog(item.id)}
-                          className="mt-1 inline-flex min-h-8 items-center gap-1 rounded text-xs font-medium text-ink-muted underline-offset-2 hover:text-ink hover:underline"
-                          aria-label={`Line ${lineNo} has no cost. Replace it with a catalog item`}
+                          onClick={() => onQuickCost(item.id)}
+                          className={cn(LINE_ACTION, !item.cost && 'text-warning')}
+                          aria-label={`Line ${lineNo}: change how its cost is worked out`}
                         >
-                          <PackagePlus className="size-3.5" aria-hidden />
-                          No cost. Find in catalog
+                          <Calculator className="size-3.5" aria-hidden />
+                          {item.cost ? 'Costed from materials and hours. Change' : 'Costing needs checking'}
                         </button>
                       )}
                     </td>

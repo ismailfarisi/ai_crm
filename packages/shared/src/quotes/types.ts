@@ -1,6 +1,7 @@
 import type { BillingStage } from '../orders/billing';
 import { documentTaxLines, type DocumentTaxLine } from '../tax/tax';
 import { startOfDocumentDay } from '../platform/dates';
+import type { QuickCostInput } from '../costing/quick';
 
 export type QuoteLineItemType = 'product' | 'section' | 'note';
 
@@ -43,9 +44,11 @@ export type QuoteCreatedBy = 'AI' | 'HUMAN';
  * Where a line's cost came from.
  * - `STANDARD` — copied from a catalog item's standing cost.
  * - `COMPUTED` — produced by the costing engine from a product template.
+ * - `QUICK`    — a typed line's quick costing: materials and hours at catalog
+ *                rates, plus bought-in amounts a person typed.
  * - `MANUAL`   — typed by hand. Unverified, and margin reporting says so.
  */
-export type QuoteLineCostSource = 'STANDARD' | 'COMPUTED' | 'MANUAL';
+export type QuoteLineCostSource = 'STANDARD' | 'COMPUTED' | 'QUICK' | 'MANUAL';
 
 /**
  * Cost snapshot for one line, taken when the line was added.
@@ -63,6 +66,8 @@ export interface QuoteLineCostSnapshot {
   laborCost?: number;
   toolingCost?: number;
   overheadCost?: number;
+  /** Quick costing only: what is bought in for the job, as typed. */
+  boughtInCost?: number;
 }
 
 export interface QuoteLineItem {
@@ -100,6 +105,13 @@ export interface QuoteLineItem {
   parameters?: Record<string, string | number | boolean> | null;
 
   cost?: QuoteLineCostSnapshot | null;
+
+  /**
+   * What a typed line is made of, so the server can cost it at catalog rates
+   * (see `costQuickLine`). Reveals cost, so it travels with `cost` and is
+   * stripped with it.
+   */
+  quickCost?: QuickCostInput | null;
 
   /** Drives the delivery estimate, not the price. */
   effortMinutes?: number;
@@ -223,7 +235,7 @@ export function calculateQuoteTotals(items: QuoteLineItem[]): QuoteTotals {
  * must not put it on the wire in the first place.
  */
 export function stripLineCosts(items: QuoteLineItem[]): QuoteLineItem[] {
-  return (items || []).map(({ cost: _cost, ...rest }) => rest);
+  return (items || []).map(({ cost: _cost, quickCost: _quickCost, ...rest }) => rest);
 }
 
 /**

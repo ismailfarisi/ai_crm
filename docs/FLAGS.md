@@ -1510,6 +1510,46 @@ blank drawing for the RSC carton (it would need a second net kind).
 
 ---
 
+## Quick costing on typed lines
+
+A typed, one-off line can be costed without a template: materials from the
+catalog, hours on each machine or work centre, bought-in items and an
+overhead %. The cost is stored on the quote line as source `QUICK`, with the
+inputs in `quickCost`.
+
+- **Materials and hours are costed on the server, at catalog rates, every
+  save — by design.** The browser sends ids, amounts and hours; a material
+  that is later removed leaves the line uncosted ("Costing needs checking"),
+  with the inputs kept. The rate used is today's catalog rate, so re-saving an
+  old quote re-costs it at current rates, as template lines already do.
+- **Bought-in amounts are taken as typed — by design.** They are the one cost
+  figure a person enters. They can only add cost, so they make the margin
+  floor harder to clear, never easier.
+- **Amounts are for the whole line and scale with its quantity.** Doubling the
+  quantity doubles material, hours and bought-in, which overstates a one-off
+  setup. The editor says so when a costing is reopened at a new quantity.
+  Fixed versus per-piece hours is not modelled — open.
+- **Overhead starts at 0% — open.** There is no shop-wide overhead rate on
+  master yet. When there is, return it from
+  `CostingService.quickCostDefaultOverheadPct`; the editor pre-fills it.
+- **The suggested price aims for the costing policy's margin floor
+  (`minMarginPct`), even when enforcement is off.** There is no separate
+  target margin setting.
+- **A quick-costed line still cannot go into production — by design for now.**
+  It has no template, so no routing and no work order. The hours per work
+  centre are enough to create work orders later (one operation per hours
+  row, planned minutes = hours × 60), which would also give actual-versus-
+  quoted per line. Not built.
+- **In the margins report by template, quick-costed lines share one row,
+  "One-off jobs (quick costing)".** Typed lines with no costing are still left
+  out of that view, as before.
+- **The quote API still returns line costs to anyone with `quote:read` —
+  pre-existing, not changed here.** The quick costing endpoints need
+  `quote:view_cost`, and the editor only shows costs with it, but `GET
+  /quotes/:id` does not strip `cost` or `quickCost`.
+
+---
+
 ## Smaller things found on the way
 
 - **A malformed quote body returns 500, not 400.** `POST /quotes` with a badly

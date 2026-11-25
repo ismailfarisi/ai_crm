@@ -2,6 +2,9 @@
  * Split out of a single 477-line module so that two feature branches adding
  * endpoints no longer edit the same two objects. */
 import type {
+  QuickCostOptionsDto,
+  QuickCostPreviewDto,
+  QuickCostPreviewPayload,
   SendOnWhatsAppPayload,
   WhatsAppSendResultDto,
   StarterInstallResultDto,
@@ -153,6 +156,10 @@ export const salesEndpoints = {
         method: 'POST',
         body: payload,
       }),
+    /** Quick costing on a typed line: the server costs the inputs at catalog rates. */
+    quickCostOptions: () => apiFetch<QuickCostOptionsDto>('/catalog/quick-cost/options'),
+    quickCost: (payload: QuickCostPreviewPayload) =>
+      apiFetch<QuickCostPreviewDto>('/catalog/quick-cost', { method: 'POST', body: payload }),
     getPolicy: () => apiFetch<CostingPolicy>('/catalog/policy'),
     updatePolicy: (payload: UpdateCostingPolicyPayload) =>
       apiFetch<CostingPolicy>('/catalog/policy', { method: 'PATCH', body: payload }),
@@ -183,4 +190,4 @@ export const salesKeys = {
   catalogMaterials: ['catalog', 'materials'] as const,
   catalogWorkCenters: ['catalog', 'work-centers'] as const,
   catalogTooling: ['catalog', 'tooling'] as const,
-  catalogTemplates: ['catalog', 'templates'] as const,  catalogTemplate: (id: string) => ['catalog', 'templates', id] as const,  catalogStarterTemplates: ['catalog', 'starter-templates'] as const,  costingPolicy: ['catalog', 'policy'] as const,  quoteGuardrails: (id: string) => ['quotes', id, 'guardrails'] as const,};
+  catalogTemplates: ['catalog', 'templates'] as const,  catalogTemplate: (id: string) => ['catalog', 'templates', id] as const,  catalogStarterTemplates: ['catalog', 'starter-templates'] as const,  costingPolicy: ['catalog', 'policy'] as const,  quickCostOptions: ['catalog', 'quick-cost', 'options'] as const,  quoteGuardrails: (id: string) => ['quotes', id, 'guardrails'] as const,};

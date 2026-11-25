@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { toast } from 'sonner';
-import type { QuoteLineItem } from '@saas/shared';
+import { quickCostSnapshot, type QuoteLineItem } from '@saas/shared';
 import { api } from '@/lib/api/endpoints';
 
 /** How long a quantity has to sit still before a template line is re-costed. */
@@ -82,6 +82,31 @@ export function useLiveRecost(setItems: Dispatch<SetStateAction<QuoteLineItem[]>
     [setItems, settle],
   );
 
+  const recostQuick = useCallback(
+    async (line: QuoteLineItem, quantity: number) => {
+      try {
+        const preview = await api.catalog.quickCost({
+          quickCost: line.quickCost!,
+          quantity,
+          unitPrice: Number(line.unitPrice) || 0,
+          discount: Number(line.discount) || 0,
+        });
+        if (requested.current.get(line.id) !== quantity) return;
+        const cost = quickCostSnapshot(preview.breakdown);
+        setItems((prev) =>
+          prev.map((item) => (item.id === line.id && Number(item.quantity) === quantity ? { ...item, cost } : item)),
+        );
+        settle(line.id);
+      } catch {
+        if (requested.current.get(line.id) !== quantity) return;
+        setItems((prev) => prev.map((item) => (item.id === line.id ? { ...item, cost: null } : item)));
+        settle(line.id);
+        toast.warning(`Could not re-cost "${line.description || 'a line'}". It is re-costed when you save.`);
+      }
+    },
+    [setItems, settle],
+  );
+
   /** Takes the lines before and after an edit and returns them with costs that match. */
   const apply = useCallback(
     (prev: QuoteLineItem[], next: QuoteLineItem[]): QuoteLineItem[] =>
@@ -103,10 +128,22 @@ export function useLiveRecost(setItems: Dispatch<SetStateAction<QuoteLineItem[]>
           return item;
         }
 
+        // A quick costing scales with the quantity, worked out on the server.
+        if (item.quickCost && !item.catalogItemId && quantity > 0) {
+          requested.current.set(item.id, quantity);
+          setRecosting((current) => (current.has(item.id) ? current : new Set(current).add(item.id)));
+          clearTimeout(timers.current.get(item.id));
+          timers.current.set(
+            item.id,
+            setTimeout(() => void recostQuick(item, quantity), SETTLE_MS),
+          );
+          return item;
+        }
+
         // Linear: the standing unit cost times the quantity, as the server does it.
         return { ...item, cost: { ...item.cost, totalCost: round2(Number(item.cost.unitCost) * quantity) } };
       }),
-    [recostTemplate],
+    [recostTemplate, recostQuick],
   );
 
   /** A line that went away has nothing left to re-cost. */

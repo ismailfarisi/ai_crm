@@ -6,3 +6,4 @@ export * from './dto';
 export * from './review';
 export * from './templates/rigid-box';
 export * from './templates/starters';
+export * from './quick';

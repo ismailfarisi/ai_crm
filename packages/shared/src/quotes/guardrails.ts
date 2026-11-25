@@ -78,7 +78,7 @@ export function evaluateGuardrails(
       violations.push({
         code: 'COST_UNKNOWN',
         message:
-          'Some lines have no cost, so the margin on this quote cannot be verified. Add them from the catalog or a product template.',
+          'Some lines have no cost, so the margin on this quote cannot be verified. Add them from the catalog, or work out their cost on the line.',
         actual: 0,
         limit: 0,
       });

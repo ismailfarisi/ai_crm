@@ -79,7 +79,11 @@ describe('ReportsService.margins provisionalLabourShare', () => {
         actualCost: { total: 200 },
         labourSplit: { actual: 0, provisional: 100, unlinked: 0 },
       },
-      { salesOrderLineId: 'l-2', actualCost: { total: 100 }, labourSplit: null },
+      {
+        salesOrderLineId: 'l-2',
+        actualCost: { total: 100 },
+        labourSplit: null,
+      },
     ]);
     const [row] = (await service.margins('t1', ...range, 'customer')).rows;
     expect(row.provisionalLabourShare).toBe(0.333); // 100 / 300
@@ -94,5 +98,35 @@ describe('ReportsService.margins provisionalLabourShare', () => {
     const [row] = (await service.margins('t1', ...range, 'customer')).rows;
     expect(row.cost).toBe(0);
     expect(row.provisionalLabourShare).toBe(0);
+  });
+});
+
+describe('ReportsService.margins for quick-costed one-off lines', () => {
+  const range = [new Date('2026-01-01'), new Date('2026-12-31')] as const;
+
+  it('reads the quick costing and groups one-offs in one template row', async () => {
+    const service = build([]);
+    const svc = service as unknown as { quotes: { find: jest.Mock } };
+    svc.quotes.find.mockResolvedValue([
+      {
+        id: 'q-1',
+        items: [
+          { id: 'qi-1', cost: { totalCost: 600, source: 'QUICK' } },
+          // Typed with no costing: still left out of the template report.
+          { id: 'qi-2', description: 'Delivery' },
+        ],
+      },
+    ]);
+    const byCustomer = (await service.margins('t1', ...range, 'customer')).rows;
+    expect(byCustomer[0].cost).toBe(600);
+
+    const byTemplate = (await service.margins('t1', ...range, 'template')).rows;
+    expect(byTemplate).toHaveLength(1);
+    expect(byTemplate[0]).toMatchObject({
+      key: 'one-off',
+      label: 'One-off jobs (quick costing)',
+      revenue: 1000,
+      cost: 600,
+    });
   });
 });

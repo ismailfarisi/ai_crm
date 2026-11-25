@@ -288,6 +288,49 @@ export const priceBreaksSchema = z.object({
   toolingAlreadyOwned: z.array(z.uuid()).max(50).default([]),
 });
 
+/* ------------------------------------------------------------------ *
+ * Quick costing on a typed line
+ * ------------------------------------------------------------------ */
+
+export const quickCostInputSchema = z.object({
+  materials: z
+    .array(
+      z.object({
+        materialId: z.uuid(),
+        quantity: z.coerce.number().positive('Enter how much of the material the job uses').max(10_000_000),
+      }),
+    )
+    .max(50)
+    .default([]),
+  hours: z
+    .array(
+      z.object({
+        workCenterId: z.uuid(),
+        hours: z.coerce.number().positive('Enter the hours').max(100_000),
+      }),
+    )
+    .max(50)
+    .default([]),
+  boughtIn: z
+    .array(
+      z.object({
+        description: z.string().trim().min(1, 'Say what is bought in').max(200),
+        amount: z.coerce.number().positive('Enter what it costs you').max(100_000_000),
+      }),
+    )
+    .max(50)
+    .default([]),
+  overheadPct: fraction.default(0),
+  costedForQuantity: z.coerce.number().positive().max(10_000_000).default(1),
+});
+
+export const quickCostPreviewSchema = z.object({
+  quickCost: quickCostInputSchema,
+  quantity: z.coerce.number().positive().max(10_000_000),
+  unitPrice: z.coerce.number().min(0).max(1_000_000_000).default(0),
+  discount: z.coerce.number().min(0).max(100).default(0),
+});
+
 export const updateCostingPolicySchema = z.object({
   minMarginPct: fraction.optional(),
   maxDiscountPct: z.coerce.number().min(0).max(100).optional(),
@@ -320,3 +363,5 @@ export type ResolveLinesPayload = z.output<typeof resolveLinesSchema>;
 export type PriceBreaksPayload = z.output<typeof priceBreaksSchema>;
 export type CatalogSearchPayload = z.output<typeof catalogSearchSchema>;
 export type UpdateCostingPolicyPayload = z.output<typeof updateCostingPolicySchema>;
+export type QuickCostInputPayload = z.output<typeof quickCostInputSchema>;
+export type QuickCostPreviewPayload = z.output<typeof quickCostPreviewSchema>;
