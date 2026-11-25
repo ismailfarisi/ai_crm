@@ -76,7 +76,10 @@ export interface MaterialCostReviewInput {
 
 const round4 = (n: number) => Math.round(n * 10_000) / 10_000;
 const pctText = (n: number) => `${Math.round(Math.abs(n) * 1000) / 10}%`;
-const fmt = (n: number) => String(round4(n));
+const fmt = (n: number) => {
+  const r = round4(n);
+  return Math.round(r * 100) === r * 100 ? r.toFixed(2) : String(r);
+};
 const SUGGEST_ORDER: MaterialCostBasis[] = ['LAST_PURCHASE', 'AVERAGE', 'SUPPLIER'];
 
 export function reviewMaterialCosts(input: MaterialCostReviewInput): MaterialCostReview {
@@ -114,7 +117,7 @@ export function reviewMaterialCosts(input: MaterialCostReviewInput): MaterialCos
         basis: 'AVERAGE',
         unitCost: avg,
         gapPct: gap(avg),
-        detail: `The ${round4(s.qty)} ${uom} in stock cost ${fmt(avg)} each on average.`,
+        detail: `Stock on hand (${round4(s.qty)} ${uom}) cost ${fmt(avg)} per ${uom} on average.`,
       });
     }
     const sp = suppliers.get(materialId);

@@ -24,7 +24,7 @@ describe('reviewMaterialCosts', () => {
     const row = review.rows[0];
     expect(row).toMatchObject({ target: { id: 'm1' }, field: 'costPerUom', suggested: 'LAST_PURCHASE', current: 6.79 });
     expect(row.figures.find((f) => f.basis === 'AVERAGE')?.unitCost).toBe(7.05);
-    expect(row.reason).toBe('Quotes use 6.79 per sheet; the last price paid is 7.2, 6% more.');
+    expect(row.reason).toBe('Quotes use 6.79 per sheet; the last price paid is 7.20, 6% more.');
   });
 
   it('falls back to the average, then the supplier price, and flags a material with no cost', () => {
