@@ -14,6 +14,7 @@ import {
   salesOrderQuerySchema,
   setSalesOrderStatusSchema,
   type CancelSalesOrderPayload,
+  type OrderJobCostDto,
   type SalesOrderDto,
   type SalesOrderQueryPayload,
   type SetSalesOrderStatusPayload,
@@ -21,12 +22,16 @@ import {
 import { CurrentUser, RequirePermissions } from '@/common/decorators';
 import { zodBody, zodQuery } from '@/common/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@/common/types/authenticated-user';
+import { OrderCostService } from './order-cost.service';
 import { OrdersService } from './orders.service';
 
 @ApiTags('sales-orders')
 @Controller()
 export class OrdersController {
-  constructor(private readonly orders: OrdersService) {}
+  constructor(
+    private readonly orders: OrdersService,
+    private readonly orderCosts: OrderCostService,
+  ) {}
 
   @Get('sales-orders')
   @RequirePermissions(PERMISSIONS.SALES_ORDER_READ)
@@ -48,6 +53,20 @@ export class OrdersController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<SalesOrderDto> {
     return this.orders.get(user.organizationId, id);
+  }
+
+  @Get('sales-orders/:id/costs')
+  @RequirePermissions(PERMISSIONS.SALES_ORDER_READ, PERMISSIONS.QUOTE_VIEW_COST)
+  @ApiOperation({
+    summary: 'Quoted against actual cost for an order',
+    description:
+      'Price, quoted cost, cost so far (stock issued, labour, machine and overhead, bought-in) and the margin left, in base currency.',
+  })
+  costs(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<OrderJobCostDto> {
+    return this.orderCosts.forOrder(user.organizationId, id);
   }
 
   @Get('quotes/:id/sales-order')

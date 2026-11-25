@@ -42,4 +42,17 @@ export class CostingPolicy extends BaseEntity {
 
   @Column({ type: 'boolean', default: false })
   enforce: boolean;
+
+  /** How far a job's actual cost may pass its quoted cost before it is flagged, as a fraction (0.1 = 10%). */
+  @Column({
+    name: 'over_budget_alert_pct',
+    type: 'numeric',
+    precision: 5,
+    scale: 4,
+    // A raw default: TypeORM compares a fractional number default as '0.1',
+    // which Postgres never reports back, so it would read as drift.
+    default: () => '0.1',
+    transformer: numericTransformer,
+  })
+  overBudgetAlertPct: number;
 }

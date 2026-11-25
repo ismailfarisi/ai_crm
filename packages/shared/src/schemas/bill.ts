@@ -47,6 +47,8 @@ export const createBillSchema = z.object({
   /** How the tax is reported. Defaults from the supplier's country via the purchase tax rules. */
   taxCodeId: z.string().uuid().nullish().transform((v) => v ?? null),
   notes: optionalText(2000),
+  /** The customer order this bill is for. A bill against a purchase order takes the order's job instead. */
+  salesOrderId: z.string().uuid().nullish().transform((v) => v ?? null),
   lines: z.array(billLineSchema).min(1, 'A bill needs at least one line'),
 });
 

@@ -96,7 +96,7 @@ const QUERY_KEYS = [
   'purchaseOrders', 'purchaseOrder', 'purchaseOrderGuardrails', 'purchasePolicy',
   'stock', 'stockLocations', 'reorderSuggestions', 'stockReconcile', 'goodsReceipts',
   'bills', 'bill', 'billMatch', 'billPayments', 'billAging', 'billableLines',
-  'salesOrders', 'salesOrder', 'quoteSalesOrder',
+  'salesOrders', 'salesOrder', 'salesOrderCosts', 'quoteSalesOrder',
   'workOrders', 'workOrder', 'workOrderVariance', 'boardColumns',
   'creditNotes', 'creditNoteRefunds', 'deliveryNotes', 'taxCodes', 'uaeVatStatus', 'taxRules', 'taxReport',
   'notifications', 'billingPlans', 'subscription', 'currencySettings', 'fxRates', 'financialReport',

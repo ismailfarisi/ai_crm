@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type {
+  UpdateCostingPolicyPayload,
   CatalogItemDto,
   PriceBreaksPayload,
   ProductTemplateDto,
@@ -81,6 +82,21 @@ export function useCostingPolicy() {
   });
 
   return { policy: data, isLoading };
+}
+
+export function useUpdateCostingPolicy() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: UpdateCostingPolicyPayload) => api.catalog.updatePolicy(payload),
+    onSuccess: (policy) => {
+      queryClient.setQueryData(queryKeys.costingPolicy, policy);
+      // Order cost cards read the over-budget line from here.
+      void queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
+      toast.success('Costing rules saved');
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'Could not save the costing rules'),
+  });
 }
 
 /**

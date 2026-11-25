@@ -293,6 +293,8 @@ export const updateCostingPolicySchema = z.object({
   maxDiscountPct: z.coerce.number().min(0).max(100).optional(),
   requireKnownCost: z.boolean().optional(),
   enforce: z.boolean().optional(),
+  /** 0.1 = warn when a job's actual cost is 10% past its quoted cost. Up to 5 (500%). */
+  overBudgetAlertPct: z.coerce.number().min(0).max(5).optional(),
 });
 
 export const catalogSearchSchema = z.object({

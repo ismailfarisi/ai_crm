@@ -6,6 +6,10 @@ import { useSuppliers } from '@/hooks/use-suppliers';
 import { useMaterials } from '@/hooks/use-catalog-admin';
 import { useCreatePurchaseOrder } from '@/hooks/use-purchase-orders';
 
+vi.mock('@/hooks/use-sales-orders', () => ({
+  useSalesOrders: () => ({ data: [], isLoading: false }),
+  useSetJobLink: () => ({ mutate: vi.fn(), isPending: false }),
+}));
 vi.mock('@/hooks/use-suppliers', () => ({ useSuppliers: vi.fn() }));
 vi.mock('@/hooks/use-catalog-admin', () => ({ useMaterials: vi.fn() }));
 vi.mock('@/hooks/use-purchase-orders', () => ({ useCreatePurchaseOrder: vi.fn() }));

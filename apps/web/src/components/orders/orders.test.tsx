@@ -13,6 +13,7 @@ const NEXT_ACTION = 'Start production';
 
 vi.mock('@/hooks/use-sales-orders', () => ({
   useSalesOrder: () => ({ data: order, isPending: false, isError: false, error: null }),
+  useSalesOrderCosts: () => ({ data: undefined, isPending: false, isError: true }),
   useInvoiceStage: () => ({ mutateAsync: vi.fn(), isPending: false, variables: undefined }),
   useSalesOrderAction: () => ({ mutateAsync: setStatus, mutate: vi.fn(), isPending: false, variables: undefined }),
 }));

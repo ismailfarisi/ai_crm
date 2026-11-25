@@ -360,6 +360,8 @@ export interface SupplierBillDto {
   supplierId: string;
   supplierName: string;
   purchaseOrderId: string | null;
+  /** The customer order this bill counts against: its own, or its purchase order's. */
+  salesOrderId?: string | null;
   status: BillStatus;
   matchStatus: BillMatchStatus;
   currency: string;

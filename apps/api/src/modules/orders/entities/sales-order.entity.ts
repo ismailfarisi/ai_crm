@@ -98,6 +98,14 @@ export class SalesOrder extends BaseEntity {
 
   @Column({ name: 'cancel_reason', type: 'text', nullable: true })
   cancelReason: string | null;
+
+  /** When the job was last flagged as over budget; cleared once it is back under. */
+  @Column({
+    name: 'over_budget_alerted_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  overBudgetAlertedAt: Date | null;
 }
 
 @Entity('sales_order_lines')

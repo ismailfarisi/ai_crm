@@ -14,6 +14,7 @@ import { PurchaseOrderLine } from './purchase-order-line.entity';
  */
 @Entity('purchase_orders')
 @Index('idx_purchase_orders_tenant', ['tenantId'])
+@Index('idx_purchase_orders_sales_order', ['salesOrderId'])
 @Index('uq_purchase_orders_tenant_number', ['tenantId', 'poNumber'], {
   unique: true,
   where: '"deletedAt" IS NULL',
@@ -162,6 +163,10 @@ export class PurchaseOrder extends SoftDeletableEntity {
   /** The quote whose demand caused this order, when it was raised from one. */
   @Column({ name: 'source_quote_id', type: 'uuid', nullable: true })
   sourceQuoteId: string | null;
+
+  /** The customer order this purchase is for, so its cost counts against that job. */
+  @Column({ name: 'sales_order_id', type: 'uuid', nullable: true })
+  salesOrderId: string | null;
 
   @OneToMany(() => PurchaseOrderLine, (line) => line.purchaseOrder, {
     cascade: ['insert'],

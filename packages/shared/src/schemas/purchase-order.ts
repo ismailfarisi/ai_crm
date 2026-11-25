@@ -30,7 +30,15 @@ export const createPurchaseOrderSchema = z.object({
   /** At least one: an order with nothing on it cannot be sent to anybody. */
   lines: z.array(createPurchaseOrderLineSchema).min(1, 'Add at least one line'),
   sourceQuoteId: z.string().uuid().nullish().transform((v) => v ?? null),
+  /** The customer order this purchase is for; its cost then counts against that job. */
+  salesOrderId: z.string().uuid().nullish().transform((v) => v ?? null),
 });
+
+/** Links a purchase order, bill or expense claim to a customer order, or unlinks it with null. */
+export const setJobLinkSchema = z.object({
+  salesOrderId: z.string().uuid().nullable(),
+});
+export type SetJobLinkPayload = z.output<typeof setJobLinkSchema>;
 
 export const purchaseOrderQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),

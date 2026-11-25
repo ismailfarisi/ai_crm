@@ -134,7 +134,7 @@ export class ShopEventsService {
       case 'proof':
         return this.proofPayload(manager, eventType, tenantId, entityId);
       case 'sales_order':
-        return this.orderPayload(manager, eventType, tenantId, entityId);
+        return this.orderPayload(manager, eventType, tenantId, entityId, extra);
       case 'work_order':
         return this.workOrderPayload(manager, eventType, tenantId, entityId);
       case 'deposit':
@@ -276,6 +276,7 @@ export class ShopEventsService {
     eventType: ShopEventType,
     tenantId: string,
     orderId: string,
+    extra: Payload = {},
   ): Promise<Payload | null> {
     const order = await manager
       .getRepository(SalesOrder)
@@ -287,6 +288,15 @@ export class ShopEventsService {
     };
     if (eventType === 'sales_order.cancelled') {
       return { ...base, cancelReason: order.cancelReason ?? null };
+    }
+    if (eventType === 'sales_order.over_budget') {
+      return {
+        ...base,
+        quotedCost: num(extra.quotedCost),
+        actualCost: num(extra.actualCost),
+        overByPct: num(extra.overByPct),
+        alertPct: num(extra.alertPct),
+      };
     }
     if (eventType === 'sales_order.ready') {
       const jobsFinished = await manager.getRepository(WorkOrder).count({

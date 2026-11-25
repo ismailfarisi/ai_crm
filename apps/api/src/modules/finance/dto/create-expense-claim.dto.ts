@@ -18,5 +18,7 @@ export class CreateExpenseClaimDto {
   taxAmount?: number | null;
   /** The supplier's tax number (TRN) from the receipt. */
   supplierTaxId?: string | null;
+  /** The customer order this expense was for; its cost then counts against that job. */
+  salesOrderId?: string | null;
   status?: ExpenseStatus;
 }

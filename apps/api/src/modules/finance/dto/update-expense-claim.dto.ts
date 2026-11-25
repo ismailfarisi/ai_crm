@@ -18,5 +18,7 @@ export class UpdateExpenseClaimDto {
   taxAmount?: number | null;
   /** The supplier's tax number (TRN) from the receipt. */
   supplierTaxId?: string | null;
+  /** The customer order this expense was for; null unlinks it. Allowed after posting: it is management costing. */
+  salesOrderId?: string | null;
   status?: ExpenseStatus;
 }

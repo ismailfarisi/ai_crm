@@ -163,6 +163,7 @@ export class RecurringBillingService {
           dueDate: null,
           taxAmount: round2((Number(row.amount) * tax.rate) / 100),
           taxCodeId: tax.code?.id ?? null,
+          salesOrderId: null,
           notes: `Generated from recurring expense "${row.vendorName}" for ${period.start} – ${period.end}`,
           lines: [
             {

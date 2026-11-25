@@ -5,6 +5,7 @@ import type {
   QuoteDto,
   QuoteProofsSummaryDto,
   SendQuoteInput,
+  OrderJobCostDto,
   SalesOrderDto,
   SalesOrderStatus,
   WorkOrderProofDto,
@@ -20,6 +21,8 @@ export const ordersEndpoints = {
     list: (params: SalesOrderListParams = {}) =>
       apiFetch<SalesOrderDto[]>('/sales-orders', { query: params }),
     get: (id: string) => apiFetch<SalesOrderDto>(`/sales-orders/${id}`),
+    /** Quoted against actual cost. Needs quote:view_cost as well as order read. */
+    costs: (id: string) => apiFetch<OrderJobCostDto>(`/sales-orders/${id}/costs`),
     forQuote: (quoteId: string) =>
       apiFetch<{ order: SalesOrderDto | null }>(`/quotes/${quoteId}/sales-order`),
     invoiceStage: (id: string, stageId: string) =>
@@ -69,5 +72,6 @@ export const ordersEndpoints = {
 export const ordersKeys = {
   salesOrders: (params: SalesOrderListParams = {}) => ['sales-orders', params] as const,
   salesOrder: (id: string) => ['sales-orders', id] as const,
+  salesOrderCosts: (id: string) => ['sales-orders', id, 'costs'] as const,
   quoteSalesOrder: (quoteId: string) => ['sales-orders', 'quote', quoteId] as const,
 };

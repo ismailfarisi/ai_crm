@@ -7,6 +7,10 @@ import { BillDetail } from './bill-detail';
 let bill: SupplierBillDto;
 let variances: (LineVariance & { lineIndex: number })[] = [];
 
+vi.mock('@/hooks/use-sales-orders', () => ({
+  useSalesOrders: () => ({ data: [], isLoading: false }),
+  useSetJobLink: () => ({ mutate: vi.fn(), isPending: false }),
+}));
 vi.mock('@/lib/session-context', () => ({
   useSession: () => ({ check: () => true }),
   useCan: () => true,

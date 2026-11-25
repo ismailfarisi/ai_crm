@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { JobLinkControl } from '@/components/orders/job-link-control';
+import { useCan } from '@/lib/session-context';
 import Link from 'next/link';
 import { AlertTriangle, Ban, Banknote, PauseCircle, ShieldCheck, Undo2 } from 'lucide-react';
 import { PERMISSIONS, canTransitionBill, paymentDateProblem, utcDay } from '@saas/shared';
@@ -28,6 +30,7 @@ const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits
 
 export function BillDetail({ id }: { id: string }) {
   const { data: bill, isPending, isError, error } = useBill(id);
+  const canSetJob = useCan({ permission: PERMISSIONS.BILL_CREATE });
   const { data: match } = useBillMatch(id, bill?.status === 'DRAFT');
   const { data: payments = [] } = useBillPayments(id);
   const { data: accounts = [] } = useFinanceAccounts();
@@ -154,6 +157,14 @@ export function BillDetail({ id }: { id: string }) {
           </div>
         ))}
       </dl>
+
+      <JobLinkControl
+        kind="bill"
+        id={bill.id}
+        salesOrderId={bill.salesOrderId}
+        canEdit={canSetJob && bill.status !== 'CANCELLED'}
+        lockedReason={bill.purchaseOrderId ? 'follows its purchase order' : undefined}
+      />
 
       {bill.purchaseOrderId && (
         <p className="mb-3 text-sm text-ink-muted">

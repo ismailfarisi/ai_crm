@@ -47,6 +47,7 @@ import {
   formatTenantSequenceNumber,
 } from '@/database/tenant-sequence.util';
 import { LedgerService } from '../finance/ledger.service';
+import { resolveJobOrder } from '../orders/job-link';
 import { ExpenseClaim } from '../finance/entities/expense-claim.entity';
 import { FinanceAccount } from '../finance/entities/finance-account.entity';
 import { JournalEntry } from '../finance/entities/journal-entry.entity';
@@ -394,6 +395,12 @@ export class PayablesService {
       });
       if (!supplier) throw new NotFoundException('Supplier not found');
 
+      // A bill against a purchase order is for whatever job the order is for.
+      let salesOrderId = await resolveJobOrder(
+        manager,
+        tenantId,
+        input.salesOrderId,
+      );
       if (input.purchaseOrderId) {
         const order = await manager.getRepository(PurchaseOrder).findOne({
           where: { id: input.purchaseOrderId, tenantId, deletedAt: IsNull() },
@@ -404,6 +411,12 @@ export class PayablesService {
             `${order.poNumber} was placed with ${order.supplierName}, not ${supplier.companyName}`,
           );
         }
+        if (salesOrderId && order.salesOrderId !== salesOrderId) {
+          throw new BadRequestException(
+            `This bill is for ${order.poNumber}, so it goes on that order's job. Change the job on ${order.poNumber} instead.`,
+          );
+        }
+        salesOrderId = order.salesOrderId ?? null;
       }
 
       const duplicate = await manager.getRepository(SupplierBill).findOne({
@@ -467,6 +480,7 @@ export class PayablesService {
           supplierId: supplier.id,
           supplierName: supplier.companyName,
           purchaseOrderId: input.purchaseOrderId,
+          salesOrderId,
           status: 'DRAFT',
           matchStatus: matched.status,
           currency: supplier.currency ?? 'USD',
@@ -752,6 +766,37 @@ export class PayablesService {
       bill.approvedById = actor.userId;
       bill.journalEntryId = entry.id;
       return manager.getRepository(SupplierBill).save(bill);
+    });
+  }
+
+  /**
+   * Marks which customer order a bill without a purchase order is for. A bill
+   * against a purchase order follows the order's job. Posting is untouched:
+   * this is management costing, not a change to the books.
+   */
+  async setJob(
+    tenantId: string,
+    id: string,
+    salesOrderId: string | null,
+  ): Promise<SupplierBill> {
+    return this.dataSource.transaction(async (manager) => {
+      const bill = await manager.getRepository(SupplierBill).findOne({
+        where: { id, tenantId, deletedAt: IsNull() },
+      });
+      if (!bill) throw new NotFoundException('Bill not found');
+      if (bill.purchaseOrderId) {
+        throw new BadRequestException(
+          'This bill is for a purchase order, so it goes on that order’s job. Change the job on the purchase order instead.',
+        );
+      }
+      const job = await resolveJobOrder(manager, tenantId, salesOrderId);
+      await manager
+        .getRepository(SupplierBill)
+        .update({ id, tenantId }, { salesOrderId: job });
+      return manager.getRepository(SupplierBill).findOneOrFail({
+        where: { id, tenantId },
+        relations: { lines: true },
+      });
     });
   }
 

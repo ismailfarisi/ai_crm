@@ -381,6 +381,7 @@ export class BillFromDocumentSkill implements ChannelSkill<ResolvedBillFromDocum
           : null,
         taxAmount: resolved.taxAmount,
         taxCodeId: null,
+        salesOrderId: null,
         notes: `Read from ${resolved.media.filename ?? 'a photo'} sent on chat.`,
         lines: resolved.lines.map((l) => ({
           ...l,

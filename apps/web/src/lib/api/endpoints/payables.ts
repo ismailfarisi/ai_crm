@@ -31,6 +31,9 @@ export const payablesEndpoints = {
     list: (params: BillListParams = {}) =>
       apiFetch<PaginatedResult<SupplierBillDto>>('/bills', { query: params }),
     get: (id: string) => apiFetch<SupplierBillDto>(`/bills/${id}`),
+    /** Which customer order a bill with no purchase order is for; null unlinks it. */
+    setJob: (id: string, salesOrderId: string | null) =>
+      apiFetch<SupplierBillDto>(`/bills/${id}/job`, { method: 'POST', body: { salesOrderId } }),
     match: (id: string) => apiFetch<BillMatchDto>(`/bills/${id}/match`),
     payments: (id: string) => apiFetch<BillPaymentDto[]>(`/bills/${id}/payments`),
     /** As of today, or of `asOf` (YYYY-MM-DD) for what was owed on a past day. */

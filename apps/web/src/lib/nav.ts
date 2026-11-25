@@ -9,6 +9,7 @@ import {
   History,
   Factory,
   Building2,
+  Calculator,
   FileText,
   FileUp,
   Landmark,
@@ -265,6 +266,13 @@ export const SETTINGS_SECTIONS: NavSection[] = [
         icon: Building2,
         rule: { permission: PERMISSIONS.ORG_READ },
         hint: 'Name, address, tax number and logo',
+      },
+      {
+        href: '/settings/costing',
+        label: 'Costing rules',
+        icon: Calculator,
+        rule: { permission: PERMISSIONS.CATALOG_READ },
+        hint: 'Margin floor, discount cap and over-budget warning',
       },
       {
         href: '/settings/branches',

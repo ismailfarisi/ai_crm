@@ -81,6 +81,11 @@ export class ExpenseClaim {
   @Column({ type: 'jsonb', default: [] })
   items: ExpenseItemDto[];
 
+  /** The customer order this expense was for, so it counts against that job. */
+  @Column({ type: 'uuid', nullable: true })
+  @Index('idx_expense_claims_sales_order')
+  salesOrderId: string | null;
+
   /**
    * The purchase tax code for the VAT on the receipt. Null means no VAT: the
    * whole amount is cost, as on every claim from before claims carried tax.

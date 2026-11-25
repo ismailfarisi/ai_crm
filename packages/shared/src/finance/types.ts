@@ -57,6 +57,8 @@ export interface ExpenseClaimDto {
   reimbursedAt?: string | null;
   temporalWorkflowId?: string | null;
   items: ExpenseItemDto[];
+  /** The customer order this expense was for, if any. */
+  salesOrderId?: string | null;
   /** The purchase tax code for the VAT on the receipt. Null means no VAT. */
   taxCodeId?: string | null;
   /** The VAT inside `amount`, as the receipt shows it. */
@@ -285,6 +287,8 @@ export interface CreateExpenseClaimPayload {
   /** The VAT inside `amount`. Left out, it is worked out from the code's rate. */
   taxAmount?: number | null;
   supplierTaxId?: string | null;
+  /** The customer order this expense was for. */
+  salesOrderId?: string | null;
   status?: ExpenseStatus;
 }
 
@@ -300,6 +304,8 @@ export interface UpdateExpenseClaimPayload {
   notes?: string | null;
   rejectionReason?: string | null;
   items?: ExpenseItemDto[];
+  /** The customer order this expense was for; null unlinks it. */
+  salesOrderId?: string | null;
   /** A purchase tax code; null or left out means no VAT. */
   taxCodeId?: string | null;
   /** The VAT inside `amount`. Left out, it is worked out from the code's rate. */
