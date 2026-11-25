@@ -401,21 +401,56 @@ export class CatalogService {
     operations?: TemplateOperation[];
     tooling?: TemplateTooling[];
   }): void {
-    const seen = new Set<string>(['quantity']);
-
-    const claim = (key: string, what: string): void => {
-      if (seen.has(key)) {
+    // Formulas see parameters and derived variables by their own key, and
+    // each costed line through suffixed names (`board_units`, `diecut_minutes`).
+    // So a "ribbon" parameter and a "ribbon" material line can live side by
+    // side; two lines that would write the same name cannot.
+    const names = new Map<string, string>([['quantity', 'the order quantity']]);
+    const claimName = (name: string, owner: string): void => {
+      const holder = names.get(name);
+      if (holder) {
         throw new BadRequestException(
-          key === 'quantity'
-            ? `${what} "${key}" collides with the built-in order quantity`
-            : `${what} "${key}" is declared more than once`,
+          name === 'quantity'
+            ? `${owner} collides with the built-in order quantity`
+            : `${owner} clashes with ${holder}: both use the name "${name}"`,
         );
       }
-      seen.add(key);
+      names.set(name, owner);
+    };
+    const uniqueWithin = (keys: string[], what: string): void => {
+      const seen = new Set<string>();
+      for (const key of keys) {
+        if (seen.has(key)) {
+          throw new BadRequestException(
+            `${what} "${key}" is declared more than once`,
+          );
+        }
+        seen.add(key);
+      }
     };
 
+    uniqueWithin(
+      [
+        ...(model.parameters ?? []).map((p) => p.key),
+        ...(model.derived ?? []).map((d) => d.key),
+      ],
+      'Parameter or derived variable',
+    );
+    uniqueWithin(
+      (model.materials ?? []).map((m) => m.key),
+      'Material line',
+    );
+    uniqueWithin(
+      (model.operations ?? []).map((o) => o.key),
+      'Operation',
+    );
+    uniqueWithin(
+      (model.tooling ?? []).map((t) => t.key),
+      'Tooling line',
+    );
+
     for (const parameter of model.parameters ?? []) {
-      claim(parameter.key, 'Parameter');
+      claimName(parameter.key, `Parameter "${parameter.key}"`);
       if (parameter.type === 'ENUM' && !(parameter.options ?? []).length) {
         throw new BadRequestException(
           `Parameter "${parameter.key}" is an enum with no options`,
@@ -423,12 +458,19 @@ export class CatalogService {
       }
     }
     for (const derived of model.derived ?? [])
-      claim(derived.key, 'Derived variable');
-    for (const material of model.materials ?? [])
-      claim(material.key, 'Material line');
-    for (const operation of model.operations ?? [])
-      claim(operation.key, 'Operation');
-    for (const tool of model.tooling ?? []) claim(tool.key, 'Tooling line');
+      claimName(derived.key, `Derived variable "${derived.key}"`);
+    for (const material of model.materials ?? []) {
+      const owner = `Material line "${material.key}"`;
+      claimName(`${material.key}_units`, owner);
+      claimName(`${material.key}_cost`, owner);
+      if (material.mode === 'SHEET_NEST')
+        claimName(`${material.key}_per_sheet`, owner);
+    }
+    for (const operation of model.operations ?? []) {
+      const owner = `Operation "${operation.key}"`;
+      claimName(`${operation.key}_minutes`, owner);
+      claimName(`${operation.key}_cost`, owner);
+    }
 
     const check = (formula: string | null | undefined, where: string): void => {
       if (!formula) return;
