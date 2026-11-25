@@ -48,9 +48,9 @@ export function MaterialCostPanel({ currency }: { currency: string | undefined }
             Costs against what you pay
           </h2>
           <p className="max-w-2xl text-sm text-ink-muted">
-            Quotes are priced from the cost typed into the catalog. Kerf checks it against your latest goods receipt,
-            the average cost of what is in stock and your supplier&rsquo;s price, and lists any that are 2% or more
-            apart.
+            Quotes are priced from the cost typed into the catalog. Kerf checks it against the last price you paid on a
+            goods receipt (or, with no receipt yet, the average cost of your stock, then your supplier&rsquo;s price) and
+            lists any that are 2% or more apart.
           </p>
         </div>
 
@@ -68,7 +68,7 @@ export function MaterialCostPanel({ currency }: { currency: string | undefined }
             description={
               data.checked === 0
                 ? 'No receipts, stock or supplier prices yet to compare against.'
-                : `${data.checked} material${data.checked === 1 ? '' : 's'} checked; none is 2% or more away.`
+                : `${data.checked} material${data.checked === 1 ? '' : 's'} checked; none is 2% or more away from what you last paid.`
             }
           />
         ) : (
