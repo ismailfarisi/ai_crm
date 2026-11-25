@@ -1610,6 +1610,11 @@ inputs in `quickCost`.
   centre are enough to create work orders later (one operation per hours
   row, planned minutes = hours × 60), which would also give actual-versus-
   quoted per line. Not built.
+- **Costs are not converted for a quote in another currency — open, as on
+  master for template lines.** Catalog rates are in the shop's base currency
+  and are put on the line as they are, so an AED quote in a USD-base shop
+  carries USD-sized costs, and the job cost card then converts them again at
+  the quote's rate. Shops quoting in their own base currency are unaffected.
 - **In the margins report by template, quick-costed lines share one row,
   "One-off jobs (quick costing)".** Typed lines with no costing are still left
   out of that view, as before.

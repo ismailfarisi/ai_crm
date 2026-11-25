@@ -215,7 +215,7 @@ function QuickCostForm({ line, currency, onClose, onApply }: QuickCostDialogProp
                     onChange={(e) =>
                       setMaterials((prev) => prev.map((m) => (m.key === row.key ? { ...m, materialId: e.target.value } : m)))
                     }
-                    className={cn(CONTROL, 'min-w-0 flex-1')}
+                    className={cn(CONTROL, 'min-w-0 flex-1 basis-full sm:basis-auto')}
                   >
                     <option value="">Choose a material</option>
                     {(options?.materials ?? []).map((m) => (
@@ -273,7 +273,7 @@ function QuickCostForm({ line, currency, onClose, onApply }: QuickCostDialogProp
                     onChange={(e) =>
                       setHours((prev) => prev.map((h) => (h.key === row.key ? { ...h, workCenterId: e.target.value } : h)))
                     }
-                    className={cn(CONTROL, 'min-w-0 flex-1')}
+                    className={cn(CONTROL, 'min-w-0 flex-1 basis-full sm:basis-auto')}
                   >
                     <option value="">Choose a machine or work centre</option>
                     {(options?.workCenters ?? []).map((w) => (
@@ -338,7 +338,7 @@ function QuickCostForm({ line, currency, onClose, onApply }: QuickCostDialogProp
                   onChange={(e) =>
                     setBoughtIn((prev) => prev.map((b) => (b.key === row.key ? { ...b, description: e.target.value } : b)))
                   }
-                  className={cn(CONTROL, 'min-w-0 flex-1')}
+                  className={cn(CONTROL, 'min-w-0 flex-1 basis-full sm:basis-auto')}
                 />
                 <input
                   aria-label="What it costs you"
@@ -534,7 +534,7 @@ function Row({
 }) {
   return (
     <div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
         {children}
         <button
           type="button"
