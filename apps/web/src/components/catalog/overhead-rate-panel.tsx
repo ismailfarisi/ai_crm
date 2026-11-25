@@ -57,10 +57,10 @@ export function OverheadRatePanel({
   const canManage = useCan({ permission: PERMISSIONS.CATALOG_MANAGE });
   const canSeeCost = useCan({ permission: PERMISSIONS.QUOTE_VIEW_COST });
   const { policy, isLoading } = useCostingPolicy();
-  const [showHidden, setShowHidden] = useState(false);
+  const unhide = useUpdateOverheadPolicy();
 
   if (isLoading || !policy) return <Skeleton className="h-64" />;
-  const hidden = policy.defaultOverhead?.suggestionHidden && !showHidden;
+  const hidden = policy.defaultOverhead?.suggestionHidden;
 
   return (
     <div className="space-y-6">
@@ -88,7 +88,8 @@ export function OverheadRatePanel({
             <Button
               size="sm"
               variant="outline"
-              onClick={() => setShowHidden(true)}
+              loading={unhide.isPending}
+              onClick={() => unhide.mutate({ overheadSuggestionHidden: false })}
             >
               Show it again
             </Button>
