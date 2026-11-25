@@ -1577,6 +1577,50 @@ months.
 
 ---
 
+## Quick costing on typed lines
+
+A typed, one-off line can be costed without a template: materials from the
+catalog, hours on each machine or work centre, bought-in items and an
+overhead %. The cost is stored on the quote line as source `QUICK`, with the
+inputs in `quickCost`.
+
+- **Materials and hours are costed on the server, at catalog rates, every
+  save — by design.** The browser sends ids, amounts and hours; a material
+  that is later removed leaves the line uncosted ("Costing needs checking"),
+  with the inputs kept. The rate used is today's catalog rate, so re-saving an
+  old quote re-costs it at current rates, as template lines already do.
+- **Bought-in amounts are taken as typed — by design.** They are the one cost
+  figure a person enters. They can only add cost, so they make the margin
+  floor harder to clear, never easier.
+- **Each hours and bought-in row is "each piece" or "whole job"; only
+  per-piece rows grow with the quantity.** Hours default to each piece,
+  bought-in to whole job (a delivery, an installer's day). Costings saved
+  before the choice existed read with those defaults. Materials are entered
+  for the whole line and still scale with the quantity — there is no fixed
+  material allowance. A work centre's minimum charge applies to the line's
+  total hours on it.
+- **Overhead starts at the shop overhead rate — by design.** A new quick
+  costing pre-fills Catalog → Overhead rate (0% until the owner sets one); the
+  estimator can change it per line, and a saved costing keeps its own %.
+- **The suggested price aims for the costing policy's margin floor
+  (`minMarginPct`), even when enforcement is off.** There is no separate
+  target margin setting.
+- **A quick-costed line still cannot go into production — by design for now.**
+  It has no template, so no routing and no work order. The hours per work
+  centre are enough to create work orders later (one operation per hours
+  row, planned minutes = hours × 60), which would also give actual-versus-
+  quoted per line. Not built.
+- **In the margins report by template, quick-costed lines share one row,
+  "One-off jobs (quick costing)".** Typed lines with no costing are still left
+  out of that view, as before.
+- **Without `quote:view_cost`, quote responses carry no line `cost` or
+  `quickCost`, and the guardrail preview shows no cost or margin figures.**
+  Saving a quote as such a person keeps each line's stored quick costing (by
+  line id) and re-costs it on the server, so they can change the price, words
+  or quantity without wiping it. They cannot add or change a costing.
+
+---
+
 ## Smaller things found on the way
 
 - **A malformed quote body returns 500, not 400.** `POST /quotes` with a badly

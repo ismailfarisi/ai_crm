@@ -1,6 +1,7 @@
 import type { GuardrailViolation } from '../quotes/guardrails';
 import type { QuoteLineItem, QuoteTotals } from '../quotes/types';
 import type { GrainDirection } from './nesting';
+import type { QuickCostBreakdown } from './quick';
 import type {
   BlankPreviewKind,
   DerivedVariable,
@@ -128,4 +129,33 @@ export interface TemplatePriceBreaksDto {
 export interface QuoteGuardrailsDto {
   violations: GuardrailViolation[];
   totals: QuoteTotals;
+}
+
+/** A material or machine a quick costing can name, with the rate it is costed at. */
+export interface QuickCostOptionsDto {
+  materials: Array<Pick<MaterialDto, 'id' | 'sku' | 'name' | 'uom' | 'costPerUom' | 'wastePct'>>;
+  workCenters: Array<{
+    id: string;
+    name: string;
+    /** Machine plus labour, per hour. */
+    ratePerHour: number;
+    minChargeMinutes: number;
+  }>;
+  /** Overhead % a new quick costing starts with, 0-1. */
+  defaultOverheadPct: number;
+  /** The margin the suggested price aims for, 0-1: the shop's margin floor. */
+  targetMarginPct: number;
+  /** Whether the floor is switched on, so the editor can say "floor" or "target". */
+  floorEnforced: boolean;
+}
+
+export interface QuickCostPreviewDto {
+  breakdown: QuickCostBreakdown;
+  /** Margin at the price on the line, as a fraction of its subtotal; null with no price. */
+  marginPct: number | null;
+  marginAmount: number | null;
+  subtotal: number;
+  targetMarginPct: number;
+  /** Lowest unit price that keeps the target margin after the line's discount. */
+  suggestedUnitPrice: number | null;
 }

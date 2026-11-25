@@ -247,7 +247,9 @@ export class ReportsService {
       if (cents(outstanding) === 0) continue;
       const outstandingBase = toBase(outstanding, invoice.fxRate ?? 1);
       const isCredit = outstanding < 0;
-      const bucket = isCredit ? 'CURRENT' : agingBucket(invoice.dueDate, utcDay(asOf));
+      const bucket = isCredit
+        ? 'CURRENT'
+        : agingBucket(invoice.dueDate, utcDay(asOf));
       if (isCredit) {
         customerCredits = round2(customerCredits - outstandingBase);
       } else {
@@ -398,7 +400,9 @@ export class ReportsService {
         const item = line.quoteLineId
           ? quoteItems.get(line.quoteLineId)
           : undefined;
-        if (by === 'template' && !item?.templateId) continue;
+        // A quick-costed one-off has no template; its lines share one row.
+        const oneOff = !item?.templateId && item?.cost?.source === 'QUICK';
+        if (by === 'template' && !item?.templateId && !oneOff) continue;
         const share = orderNet > 0 ? Number(line.lineTotal) / orderNet : 0;
         const wo = workOrders.find((w) => w.salesOrderLineId === line.id);
         const measuredCost = wo?.actualCost?.total ?? null;
@@ -410,12 +414,14 @@ export class ReportsService {
                 order.customerId ?? `name:${order.customerName}`,
                 order.customerName,
               )
-            : group(
-                item!.templateId as string,
-                (quote?.items ?? []).find(
-                  (i) => i.templateId === item!.templateId,
-                )?.description ?? 'Template',
-              );
+            : oneOff
+              ? group(ONE_OFF_GROUP_KEY, 'One-off jobs (quick costing)')
+              : group(
+                  item!.templateId as string,
+                  (quote?.items ?? []).find(
+                    (i) => i.templateId === item!.templateId,
+                  )?.description ?? 'Template',
+                );
         g.revenue = round2(g.revenue + revenue * share);
         g.cost = round2(g.cost + cost);
         if (measuredCost != null)
@@ -445,6 +451,9 @@ export class ReportsService {
     return { ...empty, rows };
   }
 }
+
+/** The template-report row for typed lines costed with a quick costing. */
+export const ONE_OFF_GROUP_KEY = 'one-off';
 
 /** Minimal RFC 4180 CSV: quotes a field only when it has to. */
 export function toCsv(

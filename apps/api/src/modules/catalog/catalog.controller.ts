@@ -20,6 +20,7 @@ import {
   createWorkCenterSchema,
   PERMISSIONS,
   priceBreaksSchema,
+  quickCostPreviewSchema,
   resolveLinesSchema,
   stripLineCosts,
   stripTotalsCosts,
@@ -36,6 +37,9 @@ import {
   type CreateToolingPayload,
   type CreateWorkCenterPayload,
   type PriceBreaksPayload,
+  type QuickCostOptionsDto,
+  type QuickCostPreviewDto,
+  type QuickCostPreviewPayload,
   type ResolveLinesPayload,
   type CostingPolicy,
   type UpdateCatalogItemPayload,
@@ -448,6 +452,34 @@ export class CatalogController {
       lines: stripLineCosts(resolved.lines),
       totals: stripTotalsCosts(resolved.totals),
     };
+  }
+
+  /* ---------------- Quick costing on a typed line ---------------- */
+
+  @Get('catalog/quick-cost/options')
+  @RequirePermissions(PERMISSIONS.CATALOG_READ, PERMISSIONS.QUOTE_VIEW_COST)
+  @ApiOperation({
+    summary: 'Materials and machines a quick costing can use, with their rates',
+  })
+  async quickCostOptions(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<QuickCostOptionsDto> {
+    return this.costingService.quickCostOptions(user.organizationId);
+  }
+
+  @Post('catalog/quick-cost')
+  @RequirePermissions(PERMISSIONS.CATALOG_READ, PERMISSIONS.QUOTE_VIEW_COST)
+  @ApiOperation({
+    summary:
+      'Cost a typed quote line from materials, hours and bought-in items',
+    description:
+      'Materials and hours are costed at catalog rates here; only bought-in amounts are taken as typed. Returns the cost, the margin at the line price and the price that keeps the margin floor. Nothing is saved; the quote re-costs the same inputs on save.',
+  })
+  async quickCost(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(zodBody(quickCostPreviewSchema)) dto: QuickCostPreviewPayload,
+  ): Promise<QuickCostPreviewDto> {
+    return this.costingService.previewQuickCost(user.organizationId, dto);
   }
 
   @Post('catalog/templates/:id/price-breaks')

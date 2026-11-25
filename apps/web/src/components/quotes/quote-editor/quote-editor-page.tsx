@@ -31,6 +31,7 @@ import {
   depositSchedule,
   evaluateGuardrails,
   PERMISSIONS,
+  quoteLineSubtotal,
 } from '@saas/shared';
 import { useCostingPolicy } from '@/hooks/use-catalog';
 import { useTaxCodes } from '@/hooks/use-credits';
@@ -59,6 +60,7 @@ import { QuoteActionMenu, type QuoteMenuAction } from './quote-action-menu';
 import { lineMargin, linesWithoutCost, marginStatus } from './margin-status';
 import { thirtyDaysFromToday } from './format';
 import { useLiveRecost } from './use-live-recost';
+import { QuickCostDialog, type QuickCostResult } from './quick-cost-dialog';
 import { AttachmentsPanel } from '@/components/platform/attachments-panel';
 import { QuoteProofsPanel } from '@/components/quotes/quote-proofs-panel';
 import { ActivityTimeline } from '@/components/platform/activity-timeline';
@@ -411,6 +413,23 @@ export function QuoteEditorPage({
 
   // The typed line a catalog pick will replace, when the picker was opened from one.
   const [replacingLineId, setReplacingLineId] = useState<string | null>(null);
+  // The typed line whose quick costing is open.
+  const [quickCostLineId, setQuickCostLineId] = useState<string | null>(null);
+
+  const handleApplyQuickCost = useCallback((lineId: string, result: QuickCostResult) => {
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== lineId) return item;
+        const next: QuoteLineItem = { ...item, quickCost: result.quickCost, cost: result.cost };
+        if (result.unitPrice !== undefined) {
+          next.unitPrice = result.unitPrice;
+          next.subtotal = quoteLineSubtotal(next);
+        }
+        return next;
+      }),
+    );
+    setQuickCostLineId(null);
+  }, []);
 
   const handleAddLines = useCallback(
     (lines: QuoteLineItem[]) => {
@@ -925,6 +944,7 @@ export function QuoteEditorPage({
             setReplacingLineId(lineId);
             setIsAddLineOpen(true);
           }}
+          onQuickCost={canSeeCost ? setQuickCostLineId : undefined}
           catalogShortcut={shortcut}
         />
       </div>
@@ -1179,6 +1199,14 @@ export function QuoteEditorPage({
         onClose={() => setIsAddLineOpen(false)}
         onAddLines={handleAddLines}
         currency={currency}
+      />
+
+      {/* What a typed, one-off line costs, without building a template */}
+      <QuickCostDialog
+        line={quickCostLineId ? (items.find((item) => item.id === quickCostLineId) ?? null) : null}
+        currency={currency}
+        onClose={() => setQuickCostLineId(null)}
+        onApply={handleApplyQuickCost}
       />
 
       {/* Lines read from a pasted or typed enquiry */}

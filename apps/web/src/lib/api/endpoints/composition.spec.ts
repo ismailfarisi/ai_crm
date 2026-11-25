@@ -84,7 +84,7 @@ const QUERY_KEYS = [
   'materialCosts',
   'quoteCostChanges',
   'quoteCostCheck', 'catalogWorkCenters', 'catalogTooling',
-  'catalogTemplates', 'catalogTemplate', 'catalogStarterTemplates', 'costingPolicy', 'quoteGuardrails',
+  'catalogTemplates', 'catalogTemplate', 'catalogStarterTemplates', 'costingPolicy', 'quickCostOptions', 'quoteGuardrails',
   'channels', 'aiConfigs', 'channelIdentities', 'channelMessages',
   'automations', 'automationSettings', 'automationAgentOptions', 'automation', 'automationExecutions', 'automationExecution', 'automationApprovals', 'automationApprovalCount',
   'financeOverview', 'financeAccounts', 'financeBudgets', 'financeSubscriptions',

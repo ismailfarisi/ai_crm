@@ -3,6 +3,7 @@ import { Repository } from 'typeorm';
 import {
   PERMISSIONS,
   RIGID_BOX_TEMPLATE,
+  type QuoteLineItem,
   type ResolveLinesPayload,
 } from '@saas/shared';
 import { CostingService } from './costing.service';
@@ -538,6 +539,158 @@ describe('CostingService', () => {
           ],
         }),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('quick-costed typed lines', () => {
+    // Quick costings are parsed, and the parser wants real (v4) uuids.
+    const greyboard = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+    const assembly = '8f14e45f-ceea-467f-a0e6-7d5b4f8c9a11';
+    beforeEach(() => {
+      const swap = <T extends { id: string }>(
+        rows: T[],
+        from: string,
+        to: string,
+      ) => rows.map((row) => (row.id === from ? { ...row, id: to } : row));
+      materials.find = jest
+        .fn()
+        .mockResolvedValue(
+          swap(materialRows(), uuidFor('greyboard-2mm'), greyboard),
+        );
+      workCenters.find = jest
+        .fn()
+        .mockResolvedValue(
+          swap(workCenterRows(), uuidFor('assembly'), assembly),
+        );
+    });
+    const quickCost = {
+      materials: [{ materialId: greyboard, quantity: 10 }],
+      hours: [{ workCenterId: assembly, hours: 2, per: 'job' as const }],
+      boughtIn: [{ description: 'Magnets', amount: 50, per: 'job' as const }],
+      overheadPct: 0.2,
+      costedForQuantity: 4,
+    };
+    const typedLine = (extra: Partial<QuoteLineItem> = {}): QuoteLineItem => ({
+      id: 'line-1',
+      type: 'product',
+      description: 'Display box, one-off',
+      quantity: 4,
+      unitPrice: 40,
+      discount: 0,
+      taxRate: 5,
+      subtotal: 160,
+      ...extra,
+    });
+
+    it('keeps the cost on save, worked out again at catalog rates', async () => {
+      const {
+        items: [line],
+        totals,
+      } = await service.recostLines(tenantId, [
+        typedLine({
+          quickCost,
+          // Whatever the browser claims is replaced.
+          cost: { unitCost: 1, totalCost: 4, source: 'QUICK' },
+        }),
+      ]);
+
+      // 10 sheets + 3% waste, bought whole: 11 × 1.85. 2h × 15. Magnets 50.
+      expect(line.cost).toEqual({
+        unitCost: 30.105,
+        totalCost: 120.42,
+        source: 'QUICK',
+        materialCost: 20.35,
+        machineCost: 0,
+        laborCost: 30,
+        boughtInCost: 50,
+        overheadCost: 20.07,
+      });
+      expect(line.quickCost).toEqual(quickCost);
+      expect(totals.hasCompleteCost).toBe(true);
+    });
+
+    it('still drops a cost the browser typed with no costing behind it', async () => {
+      const {
+        items: [line],
+      } = await service.recostLines(tenantId, [
+        typedLine({ cost: { unitCost: 1, totalCost: 4, source: 'MANUAL' } }),
+      ]);
+      expect(line.cost).toBeUndefined();
+    });
+
+    it('marks the line uncosted, keeping the inputs, once a material is removed', async () => {
+      materials.find = jest.fn().mockResolvedValue([]);
+      const {
+        items: [line],
+        staleLineIds,
+      } = await service.recostLines(tenantId, [typedLine({ quickCost })]);
+      expect(line.cost).toBeUndefined();
+      expect(line.quickCost).toEqual(quickCost);
+      expect(staleLineIds).toEqual(['line-1']);
+    });
+
+    it('rejects a malformed costing as a 400', async () => {
+      await expect(
+        service.recostLines(tenantId, [
+          typedLine({
+            quickCost: {
+              ...quickCost,
+              hours: [{ workCenterId: assembly, hours: -3 }],
+            },
+          }),
+        ]),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('keeps the margin floor meaningful for a quick-costed line', async () => {
+      policies.findOne = jest.fn().mockResolvedValue({
+        tenantId,
+        minMarginPct: 0.3,
+        maxDiscountPct: 20,
+        requireKnownCost: true,
+        enforce: true,
+      });
+      const { violations } = await service.recostLines(tenantId, [
+        typedLine({ quickCost }),
+      ]);
+      expect(violations.map((v) => v.code)).toEqual(['MARGIN_BELOW_FLOOR']);
+    });
+
+    it('previews the cost, the margin and the price that keeps the floor', async () => {
+      const preview = await service.previewQuickCost(tenantId, {
+        quickCost,
+        quantity: 4,
+        unitPrice: 40,
+        discount: 0,
+      });
+      expect(preview.breakdown.totalCost).toBe(120.42);
+      expect(preview.marginAmount).toBe(39.58);
+      expect(preview.marginPct).toBe(0.2474);
+      expect(preview.targetMarginPct).toBe(0.2);
+      expect(preview.suggestedUnitPrice).toBe(37.64);
+    });
+
+    it('turns a costing that adds up to nothing into a 400', async () => {
+      await expect(
+        service.previewQuickCost(tenantId, {
+          quickCost: { ...quickCost, materials: [], hours: [], boughtIn: [] },
+          quantity: 1,
+          unitPrice: 10,
+          discount: 0,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('offers active materials and machines with their hourly rate', async () => {
+      const options = await service.quickCostOptions(tenantId);
+      expect(materials.find).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { tenantId, isActive: true } }),
+      );
+      expect(
+        options.workCenters.find((w) => w.id === assembly)?.ratePerHour,
+      ).toBe(15);
+      expect(options.defaultOverheadPct).toBe(0);
+      expect(options.targetMarginPct).toBe(0.2);
     });
   });
 

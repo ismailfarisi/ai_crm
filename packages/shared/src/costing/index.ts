@@ -8,3 +8,4 @@ export * from './overhead';
 export * from './templates/rigid-box';
 export * from './templates/starters';
 export * from './material-costs';
+export * from './quick';

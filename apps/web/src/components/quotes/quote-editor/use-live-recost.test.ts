@@ -5,7 +5,7 @@ import { api } from '@/lib/api/endpoints';
 import { useLiveRecost } from './use-live-recost';
 
 vi.mock('@/lib/api/endpoints', () => ({
-  api: { catalog: { resolveLines: vi.fn() } },
+  api: { catalog: { resolveLines: vi.fn(), quickCost: vi.fn() } },
 }));
 
 vi.mock('sonner', () => ({ toast: { warning: vi.fn() } }));
@@ -85,5 +85,40 @@ describe('useLiveRecost', () => {
     });
     expect(items[0].cost?.totalCost).toBe(750);
     expect(result.current.recosting.size).toBe(0);
+  });
+
+  it('asks the server to re-cost a quick-costed line at its new quantity', async () => {
+    const quickCost = {
+      materials: [{ materialId: '33333333-3333-4333-8333-333333333333', quantity: 2 }],
+      hours: [],
+      boughtIn: [],
+      overheadPct: 0,
+      costedForQuantity: 1,
+    };
+    const typed: QuoteLineItem = {
+      ...catalogLine,
+      id: 'line-3',
+      catalogItemId: null,
+      quickCost,
+      cost: { unitCost: 50, totalCost: 50, source: 'QUICK' },
+    };
+    let items = [typed];
+    const setItems = vi.fn((update: QuoteLineItem[] | ((prev: QuoteLineItem[]) => QuoteLineItem[])) => {
+      items = typeof update === 'function' ? update(items) : update;
+    });
+    vi.mocked(api.catalog.quickCost).mockResolvedValue({
+      breakdown: { unitCost: 48, totalCost: 144, materialCost: 144, machineCost: 0, laborCost: 0, boughtInCost: 0, overheadCost: 0 },
+    } as never);
+    const { result } = renderHook(() => useLiveRecost(setItems));
+
+    act(() => {
+      items = result.current.apply(items, [{ ...typed, quantity: 3 }]);
+    });
+    expect(result.current.recosting.has('line-3')).toBe(true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    expect(api.catalog.quickCost).toHaveBeenCalledWith(expect.objectContaining({ quickCost, quantity: 3 }));
+    expect(items[0].cost).toMatchObject({ totalCost: 144, source: 'QUICK' });
   });
 });

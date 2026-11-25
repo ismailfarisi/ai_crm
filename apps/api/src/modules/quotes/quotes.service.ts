@@ -23,6 +23,7 @@ import {
   type BillingStage,
   UpdateQuotePayload,
   type GuardrailViolation,
+  keepStoredQuickCosts,
   type Permission,
   type QuoteLineItem,
 } from '@saas/shared';
@@ -57,6 +58,15 @@ import {
   formatTenantSequenceNumber,
   peekNextSequenceValue,
 } from '../../database/tenant-sequence.util';
+
+/**
+ * Whether the person saving was sent costs. `false` means they were sent the
+ * lines stripped, so what they send cannot carry or clear a costing. Callers
+ * other than a person (chat skills, agents) leave it unset.
+ */
+export interface CostVisibility {
+  canSeeCost?: boolean;
+}
 
 @Injectable()
 export class QuotesService {
@@ -250,10 +260,13 @@ export class QuotesService {
   async createQuote(
     tenantId: string,
     payload: CreateQuotePayload,
+    options: CostVisibility = {},
   ): Promise<Quote> {
     const { items } = await this.recost(
       tenantId,
-      payload.items || [],
+      options.canSeeCost === false
+        ? keepStoredQuickCosts(payload.items || [], [])
+        : payload.items || [],
       payload.customerId || null,
     );
     const totals = calculateQuoteTotals(items);
@@ -379,6 +392,7 @@ export class QuotesService {
     id: string,
     payload: UpdateQuotePayload,
     actorUserId: string | null = null,
+    options: CostVisibility = {},
   ): Promise<Quote> {
     const { saved, beforeSnapshot, submittedForApproval } =
       await this.quoteRepository.manager.transaction(async (manager) => {
@@ -477,9 +491,15 @@ export class QuotesService {
         // A new customer can mean a new tax treatment, so the lines are re-taxed
         // even when the items themselves were not sent.
         if (payload.items !== undefined || payload.customerId !== undefined) {
+          // Someone who cannot see costs was sent the lines without their
+          // costing, so their save must not wipe it.
+          const sent =
+            payload.items !== undefined && options.canSeeCost === false
+              ? keepStoredQuickCosts(payload.items, quote.items)
+              : payload.items;
           const { items } = await this.recost(
             tenantId,
-            payload.items ?? quote.items ?? [],
+            sent ?? quote.items ?? [],
             quote.customerId,
           );
           quote.items = items;

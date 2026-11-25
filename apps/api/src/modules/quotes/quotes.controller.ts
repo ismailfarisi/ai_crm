@@ -22,6 +22,8 @@ import {
   QuoteLineItem,
   QuoteStatus as SharedQuoteStatus,
   RecordInvoicePaymentPayload,
+  stripLineCosts,
+  stripTotalsCosts,
   markQuoteAcceptedSchema,
   type MarkQuoteAcceptedPayload,
   sendQuoteSchema,
@@ -185,7 +187,12 @@ export class QuotesController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateQuoteDto,
   ): Promise<Quote> {
-    return this.quotesService.createQuote(user.organizationId, dto);
+    return withCostsFor(
+      user,
+      await this.quotesService.createQuote(user.organizationId, dto, {
+        canSeeCost: canSeeCost(user),
+      }),
+    );
   }
 
   @Get('quotes')
@@ -197,7 +204,8 @@ export class QuotesController {
   async findAllQuotes(
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<Quote[]> {
-    return this.quotesService.findAllQuotes(user.organizationId);
+    const quotes = await this.quotesService.findAllQuotes(user.organizationId);
+    return quotes.map((quote) => withCostsFor(user, quote));
   }
 
   @Get('quotes/:id')
@@ -210,7 +218,10 @@ export class QuotesController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<Quote> {
-    return this.quotesService.findQuoteById(user.organizationId, id);
+    return withCostsFor(
+      user,
+      await this.quotesService.findQuoteById(user.organizationId, id),
+    );
   }
 
   @Patch('quotes/:id')
@@ -224,11 +235,17 @@ export class QuotesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateQuoteDto,
   ): Promise<Quote> {
-    return this.quotesService.updateQuote(
-      user.organizationId,
-      id,
-      dto,
-      user.id,
+    return withCostsFor(
+      user,
+      await this.quotesService.updateQuote(
+        user.organizationId,
+        id,
+        dto,
+        user.id,
+        {
+          canSeeCost: canSeeCost(user),
+        },
+      ),
     );
   }
 
@@ -243,12 +260,15 @@ export class QuotesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SignalQuoteDto,
   ): Promise<Quote> {
-    return this.quotesService.sendSignal(
-      user.organizationId,
-      id,
-      dto.action,
-      dto.payload,
-      user.id,
+    return withCostsFor(
+      user,
+      await this.quotesService.sendSignal(
+        user.organizationId,
+        id,
+        dto.action,
+        dto.payload,
+        user.id,
+      ),
     );
   }
 
@@ -293,7 +313,10 @@ export class QuotesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body(zodBody(markQuoteAcceptedSchema)) input: MarkQuoteAcceptedPayload,
   ): Promise<Quote> {
-    return this.acceptance.markAccepted(user.organizationId, id, input.name);
+    return withCostsFor(
+      user,
+      await this.acceptance.markAccepted(user.organizationId, id, input.name),
+    );
   }
 
   @Post('quotes/:id/revise')
@@ -307,7 +330,10 @@ export class QuotesController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<Quote> {
-    return this.quotesService.reviseQuote(user.organizationId, id);
+    return withCostsFor(
+      user,
+      await this.quotesService.reviseQuote(user.organizationId, id),
+    );
   }
 
   @Get('quotes/:id/guardrails')
@@ -321,7 +347,25 @@ export class QuotesController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    return this.quotesService.evaluateQuote(user.organizationId, id);
+    const result = await this.quotesService.evaluateQuote(
+      user.organizationId,
+      id,
+    );
+    if (canSeeCost(user)) return result;
+    return {
+      totals: stripTotalsCosts(result.totals),
+      violations: result.violations.map((violation) =>
+        violation.code === 'MARGIN_BELOW_FLOOR'
+          ? {
+              ...violation,
+              message:
+                'The margin is below the floor. Someone who can see costs needs to approve it.',
+              actual: 0,
+              limit: 0,
+            }
+          : violation,
+      ),
+    };
   }
 
   @Get('invoices')
@@ -472,4 +516,21 @@ export class QuotesController {
     });
     return new StreamableFile(buffer);
   }
+}
+
+/**
+ * Permissions are resolved per request and live on `req.user`, never in the
+ * JWT — see `RbacService.resolveAccess`.
+ */
+function canSeeCost(user: AuthenticatedUser): boolean {
+  return (user.permissions ?? []).includes(PERMISSIONS.QUOTE_VIEW_COST);
+}
+
+/**
+ * A quote as this person may see it: without `quote:view_cost` its lines lose
+ * their cost, cost breakdown and quick costing before they leave the server.
+ */
+function withCostsFor(user: AuthenticatedUser, quote: Quote): Quote {
+  if (canSeeCost(user)) return quote;
+  return { ...quote, items: stripLineCosts(quote.items ?? []) };
 }

@@ -8,6 +8,16 @@ import { In, Repository } from 'typeorm';
 import {
   calculateQuoteTotals,
   calculatePriceBreaks,
+  costQuickLine,
+  hasQuickCostInputs,
+  priceForMargin,
+  QuickCostError,
+  quickCostSnapshot,
+  quickCostInputSchema,
+  type QuickCostBreakdown,
+  type QuickCostOptionsDto,
+  type QuickCostPreviewDto,
+  type QuickCostPreviewPayload,
   costTemplate,
   CostingError,
   DEFAULT_COSTING_POLICY,
@@ -427,6 +437,37 @@ export class CostingService {
         continue;
       }
 
+      if (hasQuickCostInputs(item.quickCost)) {
+        // The browser sends ids, amounts and hours, never a rate: parse them
+        // so a malformed costing is a clear 400, not a NaN cost.
+        const parsed = quickCostInputSchema.safeParse(item.quickCost);
+        if (!parsed.success) {
+          throw new BadRequestException(
+            `The costing on "${item.description || 'a typed line'}" is not valid: ${parsed.error.issues[0]?.message ?? 'check the amounts'}`,
+          );
+        }
+        const quickCost = parsed.data;
+        try {
+          const breakdown = costQuickLine(
+            quickCost,
+            catalog,
+            Number(item.quantity) || 0,
+          );
+          recosted.push({
+            ...item,
+            quickCost,
+            cost: quickCostSnapshot(breakdown),
+          });
+        } catch (error) {
+          if (!(error instanceof QuickCostError)) throw error;
+          // A material or machine it named has been removed. Keep what the
+          // estimator entered so they can fix it, but no longer claim a cost.
+          staleLineIds.push(item.id);
+          recosted.push(this.asManualLine(item));
+        }
+        continue;
+      }
+
       recosted.push(this.asManualLine(item));
     }
 
@@ -447,9 +488,9 @@ export class CostingService {
   }
 
   /**
-   * A hand-typed line. The cost is dropped rather than kept, because an
-   * unverifiable number is worse than an admitted gap — `hasCompleteCost`
-   * goes false and the margin stops claiming to be fact.
+   * A hand-typed line with no quick costing. The cost is dropped rather than
+   * kept, because an unverifiable number is worse than an admitted gap —
+   * `hasCompleteCost` goes false and the margin stops claiming to be fact.
    */
   private asManualLine(item: QuoteLineItem): QuoteLineItem {
     const { cost: _discarded, ...rest } = item;
@@ -518,6 +559,91 @@ export class CostingService {
         { ...context, shopOverheadPct: catalog.shopOverheadPct },
       ),
     );
+  }
+
+  /** The overhead a new quick costing starts with: the shop-wide rate. */
+  async quickCostDefaultOverheadPct(tenantId: string): Promise<number> {
+    return (await this.getPolicy(tenantId)).defaultOverheadPct ?? 0;
+  }
+
+  /** The materials and machines a quick costing can name, at their rates. */
+  async quickCostOptions(tenantId: string): Promise<QuickCostOptionsDto> {
+    const [materials, workCenters, policy, defaultOverheadPct] =
+      await Promise.all([
+        this.materials.find({
+          where: { tenantId, isActive: true },
+          order: { name: 'ASC' },
+        }),
+        this.workCenters.find({
+          where: { tenantId, isActive: true },
+          order: { name: 'ASC' },
+        }),
+        this.getPolicy(tenantId),
+        this.quickCostDefaultOverheadPct(tenantId),
+      ]);
+    return {
+      materials: materials.map((row) => ({
+        id: row.id,
+        sku: row.sku,
+        name: row.name,
+        uom: row.uom,
+        costPerUom: row.costPerUom,
+        wastePct: row.wastePct,
+      })),
+      workCenters: workCenters.map((row) => ({
+        id: row.id,
+        name: row.name,
+        ratePerHour: round2(row.machineCostPerHour + row.laborCostPerHour),
+        minChargeMinutes: row.minChargeMinutes,
+      })),
+      defaultOverheadPct,
+      targetMarginPct: policy.minMarginPct,
+      floorEnforced: policy.enforce,
+    };
+  }
+
+  /**
+   * Costs a quick costing without saving it, for the editor to show the cost,
+   * the margin at the line's price and the price that keeps the shop's margin
+   * floor. The same figures are recomputed from scratch when the quote saves.
+   */
+  async previewQuickCost(
+    tenantId: string,
+    dto: QuickCostPreviewPayload,
+  ): Promise<QuickCostPreviewDto> {
+    const [catalog, policy] = await Promise.all([
+      this.loadCostingCatalog(tenantId),
+      this.getPolicy(tenantId),
+    ]);
+    let breakdown: QuickCostBreakdown;
+    try {
+      breakdown = costQuickLine(dto.quickCost, catalog, dto.quantity);
+    } catch (error) {
+      if (error instanceof QuickCostError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
+    const subtotal = round2(
+      dto.unitPrice * dto.quantity * (1 - dto.discount / 100),
+    );
+    const marginAmount =
+      subtotal > 0 ? round2(subtotal - breakdown.totalCost) : null;
+    return {
+      breakdown,
+      subtotal,
+      marginAmount,
+      marginPct:
+        marginAmount === null
+          ? null
+          : Math.round((marginAmount / subtotal) * 10000) / 10000,
+      targetMarginPct: policy.minMarginPct,
+      suggestedUnitPrice: priceForMargin(
+        breakdown.unitCost,
+        policy.minMarginPct,
+        dto.discount,
+      ),
+    };
   }
 
   /**
