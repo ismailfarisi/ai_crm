@@ -1,6 +1,9 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { DataSource, Repository } from 'typeorm';
-import type { CreateProductTemplatePayload } from '@saas/shared';
+import {
+  STARTER_TEMPLATES,
+  type CreateProductTemplatePayload,
+} from '@saas/shared';
 import { CatalogService } from './catalog.service';
 import { CatalogItem } from './entities/catalog-item.entity';
 import { Material } from './entities/material.entity';
@@ -198,6 +201,91 @@ describe('CatalogService', () => {
         ),
       ).rejects.toThrow(/collides with the built-in order quantity/);
     });
+
+    // A "ribbon" switch and the "ribbon" material it turns on never meet in a
+    // formula: the line is only visible as ribbon_units / ribbon_cost.
+    it('accepts a line that shares its key with a parameter', async () => {
+      await expect(
+        service.createTemplate(
+          tenantId,
+          validTemplate({
+            parameters: [
+              ...validTemplate().parameters,
+              {
+                key: 'die',
+                label: 'Die',
+                type: 'BOOLEAN',
+                defaultValue: false,
+              },
+              { key: 'diecut', label: 'Die-cut', type: 'BOOLEAN' },
+              { key: 'board', label: 'Board', type: 'BOOLEAN' },
+            ] as CreateProductTemplatePayload['parameters'],
+          }),
+          userId,
+        ),
+      ).resolves.toMatchObject({ version: 1 });
+    });
+
+    it('rejects two material lines with the same key', async () => {
+      const board = validTemplate().materials[0];
+      await expect(
+        service.createTemplate(
+          tenantId,
+          validTemplate({ materials: [board, board] }),
+          userId,
+        ),
+      ).rejects.toThrow(/Material line "board" is declared more than once/);
+    });
+
+    it('rejects a material and an operation that would both set the same cost', async () => {
+      await expect(
+        service.createTemplate(
+          tenantId,
+          validTemplate({
+            operations: [{ ...validTemplate().operations[0], key: 'board' }],
+          }),
+          userId,
+        ),
+      ).rejects.toThrow(/Operation "board" clashes with Material line "board"/);
+    });
+
+    it('rejects a derived variable that hides a line total', async () => {
+      await expect(
+        service.createTemplate(
+          tenantId,
+          validTemplate({
+            derived: [
+              ...(validTemplate().derived ?? []),
+              { key: 'board_cost', formula: '1' },
+            ] as CreateProductTemplatePayload['derived'],
+          }),
+          userId,
+        ),
+      ).rejects.toThrow(/clashes with Derived variable "board_cost"/);
+    });
+
+    // Every starter must survive a re-save from the editor unchanged.
+    it.each(STARTER_TEMPLATES.map((s) => [s.key, s] as const))(
+      'publishes the %s starter again unchanged',
+      async (_key, starter) => {
+        templates.findOne!.mockResolvedValue({
+          ...starter.template,
+          id: 'starter',
+          tenantId,
+          version: 1,
+        });
+        const echo = jest
+          .fn()
+          .mockImplementation(async (where: { id: string }[]) => where);
+        materials.findBy!.mockImplementation(echo);
+        workCenters.findBy!.mockImplementation(echo);
+        tooling.findBy!.mockImplementation(echo);
+
+        await expect(
+          service.publishTemplateVersion(tenantId, 'starter', {}, userId),
+        ).resolves.toMatchObject({ version: 2 });
+      },
+    );
 
     it('rejects a sheet-nest material with no blank dimensions', async () => {
       await expect(
