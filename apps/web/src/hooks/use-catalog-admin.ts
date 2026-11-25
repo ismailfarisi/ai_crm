@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type {
   AcceptOverheadSuggestionPayload,
@@ -335,6 +335,8 @@ export function useOverheadSuggestion(months: number, exclude: string[], enabled
     queryKey: ['catalog', 'overhead-suggestion', months, [...exclude].sort().join(',')] as const,
     queryFn: () => api.catalog.overheadSuggestion(months, exclude),
     enabled,
+    // Ticking an account keeps the old figures on screen until the new ones land.
+    placeholderData: keepPreviousData,
   });
 }
 
