@@ -190,7 +190,9 @@ describe('QuotesService', () => {
       computeChangedFields: jest.fn((before, after) => {
         const b = before ?? {};
         const a = after ?? {};
-        const allKeys = Array.from(new Set([...Object.keys(b), ...Object.keys(a)]));
+        const allKeys = Array.from(
+          new Set([...Object.keys(b), ...Object.keys(a)]),
+        );
         return allKeys.filter((k) => b[k] !== a[k]).sort();
       }),
     };
@@ -318,8 +320,7 @@ describe('QuotesService', () => {
         ],
       });
 
-      const stored = (quoteRepo.create as jest.Mock).mock
-        .calls[0][0] as Quote;
+      const stored = (quoteRepo.create as jest.Mock).mock.calls[0][0] as Quote;
       expect(
         stored.items.map((i: QuoteLineItem) => [i.id, i.type, i.subtotal]),
       ).toEqual([
@@ -381,7 +382,9 @@ describe('QuotesService', () => {
     });
 
     it('does not swallow other database errors', async () => {
-      quoteRepo.save = jest.fn().mockRejectedValue(new Error('connection lost'));
+      quoteRepo.save = jest
+        .fn()
+        .mockRejectedValue(new Error('connection lost'));
 
       await expect(
         service.createQuote(tenantId, { title: 'x', items: [] }),
@@ -443,7 +446,11 @@ describe('QuotesService', () => {
           }),
         }),
         // Written in the same transaction as the quote.
-        { manager: expect.objectContaining({ getRepository: expect.any(Function) }) },
+        {
+          manager: expect.objectContaining({
+            getRepository: expect.any(Function),
+          }),
+        },
       );
     });
   });
@@ -501,6 +508,59 @@ describe('QuotesService', () => {
         }),
       );
       expect(updated.title).toBe('Updated Title');
+    });
+
+    it('keeps the stored quick costing when someone who cannot see costs saves', async () => {
+      const quickCost = {
+        materials: [],
+        hours: [],
+        boughtIn: [{ description: 'LED modules', amount: 120, per: 'job' }],
+        overheadPct: 0,
+        costedForQuantity: 1,
+      } as QuoteLineItem['quickCost'];
+      const stored: QuoteLineItem = {
+        id: 'line-1',
+        type: 'product',
+        description: 'Shop sign',
+        quantity: 1,
+        unitPrice: 900,
+        discount: 0,
+        subtotal: 900,
+        quickCost,
+        cost: { unitCost: 120, totalCost: 120, source: 'QUICK' },
+      };
+      quoteRepo.findOne = jest.fn().mockResolvedValue({
+        id: quoteId,
+        tenantId,
+        quoteNumber: 'QT-2026-0001',
+        items: [stored],
+        status: QuoteStatus.DRAFT,
+      });
+      const sentByRep = {
+        id: 'line-1',
+        type: 'product' as const,
+        description: 'Shop sign, lit',
+        quantity: 1,
+        unitPrice: 950,
+        discount: 0,
+        subtotal: 950,
+        // A rep cannot set a costing, whatever they send.
+        quickCost: { ...quickCost!, boughtIn: [] },
+      };
+
+      await service.updateQuote(
+        tenantId,
+        quoteId,
+        { items: [sentByRep] },
+        'rep-1',
+        { canSeeCost: false },
+      );
+
+      const [recosted] = (costingService.recostLines as jest.Mock).mock
+        .calls[0][1] as QuoteLineItem[];
+      expect(recosted.description).toBe('Shop sign, lit');
+      expect(recosted.unitPrice).toBe(950);
+      expect(recosted.quickCost).toEqual(quickCost);
     });
 
     it('updates fields without changing totals when items are not provided', async () => {
@@ -566,7 +626,11 @@ describe('QuotesService', () => {
           }),
         }),
         // Written in the update's own transaction.
-        { manager: expect.objectContaining({ getRepository: expect.any(Function) }) },
+        {
+          manager: expect.objectContaining({
+            getRepository: expect.any(Function),
+          }),
+        },
       );
     });
 
@@ -849,7 +913,9 @@ describe('QuotesService', () => {
           .mockResolvedValue(pending({ acceptedAt: new Date() }));
         invoicesService.createFromQuote = jest
           .fn()
-          .mockRejectedValue(new BadRequestException('Billing schedule invalid'));
+          .mockRejectedValue(
+            new BadRequestException('Billing schedule invalid'),
+          );
 
         await expect(
           service.sendSignal(tenantId, quoteId, 'APPROVE'),
@@ -932,9 +998,11 @@ describe('QuotesService', () => {
       });
 
       it('fills in a missing order when an approved, accepted quote is approved again', async () => {
-        quoteRepo.findOne = jest.fn().mockResolvedValue(
-          pending({ status: QuoteStatus.APPROVED, acceptedAt: new Date() }),
-        );
+        quoteRepo.findOne = jest
+          .fn()
+          .mockResolvedValue(
+            pending({ status: QuoteStatus.APPROVED, acceptedAt: new Date() }),
+          );
 
         await service.sendSignal(tenantId, quoteId, 'APPROVE');
 
@@ -944,9 +1012,11 @@ describe('QuotesService', () => {
 
       describe('provisionAcceptedQuote', () => {
         it('raises the order once the quote is both approved and accepted', async () => {
-          quoteRepo.findOne = jest.fn().mockResolvedValue(
-            pending({ status: QuoteStatus.APPROVED, acceptedAt: new Date() }),
-          );
+          quoteRepo.findOne = jest
+            .fn()
+            .mockResolvedValue(
+              pending({ status: QuoteStatus.APPROVED, acceptedAt: new Date() }),
+            );
 
           await expect(
             service.provisionAcceptedQuote(tenantId, quoteId),

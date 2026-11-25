@@ -307,6 +307,8 @@ export const quickCostInputSchema = z.object({
       z.object({
         workCenterId: z.uuid(),
         hours: z.coerce.number().positive('Enter the hours').max(100_000),
+        // Left out on costings saved before rows had it: see QUICK_COST_DEFAULT_PER.
+        per: z.enum(['piece', 'job']).optional(),
       }),
     )
     .max(50)
@@ -316,6 +318,7 @@ export const quickCostInputSchema = z.object({
       z.object({
         description: z.string().trim().min(1, 'Say what is bought in').max(200),
         amount: z.coerce.number().positive('Enter what it costs you').max(100_000_000),
+        per: z.enum(['piece', 'job']).optional(),
       }),
     )
     .max(50)

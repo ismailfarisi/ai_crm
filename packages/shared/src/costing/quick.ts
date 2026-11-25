@@ -16,16 +16,28 @@ export interface QuickCostMaterialInput {
   quantity: number;
 }
 
+/**
+ * Whether an hours or bought-in amount is for each piece on the line (it grows
+ * with the quantity) or once for the whole job (setup, a delivery, an
+ * installer's day).
+ */
+export type QuickCostPer = 'piece' | 'job';
+
+/** Hours rows are per piece unless said otherwise; bought-in rows are for the whole job. */
+export const QUICK_COST_DEFAULT_PER = { hours: 'piece', boughtIn: 'job' } as const;
+
 export interface QuickCostHoursInput {
   workCenterId: string;
-  /** Hours on this machine or work centre for the whole line, setup included. */
+  /** Hours on this machine or work centre: for each piece, or once for the whole job. */
   hours: number;
+  per?: QuickCostPer;
 }
 
 export interface QuickCostBoughtInInput {
   description: string;
-  /** What the shop pays for it, for the whole line. Typed by a person. */
+  /** What the shop pays for it: for each piece, or once for the whole job. Typed by a person. */
   amount: number;
+  per?: QuickCostPer;
 }
 
 export interface QuickCostInput {
@@ -35,10 +47,9 @@ export interface QuickCostInput {
   /** Burden on the direct cost, 0-1. */
   overheadPct: number;
   /**
-   * The line quantity the amounts were worked out for. When the quantity on
-   * the line changes later, every amount scales with it (twice the pieces,
-   * twice the material, hours and bought-in), which overstates fixed setup
-   * time; the editor says so and offers to re-check the costing.
+   * The line quantity the material amounts were entered for. Materials are
+   * for the whole line and scale when its quantity changes; per-piece hours
+   * and bought-in follow the quantity directly, whole-job ones never change.
    */
   costedForQuantity: number;
 }
@@ -58,6 +69,10 @@ export interface QuickCostMaterialLine {
 export interface QuickCostHoursLine {
   workCenterId: string;
   name: string;
+  per: QuickCostPer;
+  /** As entered: for each piece, or for the whole job. */
+  hoursEach: number;
+  /** For the whole line. */
   hours: number;
   /** After the work centre's minimum charge. */
   chargedHours: number;
@@ -67,10 +82,19 @@ export interface QuickCostHoursLine {
   cost: number;
 }
 
+export interface QuickCostBoughtInLine {
+  description: string;
+  per: QuickCostPer;
+  /** As entered: for each piece, or for the whole job. */
+  amountEach: number;
+  /** For the whole line. */
+  amount: number;
+}
+
 export interface QuickCostBreakdown {
   materials: QuickCostMaterialLine[];
   hours: QuickCostHoursLine[];
-  boughtIn: QuickCostBoughtInInput[];
+  boughtIn: QuickCostBoughtInLine[];
   materialCost: number;
   machineCost: number;
   laborCost: number;
@@ -82,7 +106,7 @@ export interface QuickCostBreakdown {
   /** `totalCost` over the line quantity. */
   unitCost: number;
   quantity: number;
-  /** Line quantity over `costedForQuantity`: 1 unless the quantity changed since. */
+  /** Line quantity over `costedForQuantity`, applied to materials: 1 unless the quantity changed since. */
   scale: number;
 }
 
@@ -142,14 +166,18 @@ export function costQuickLine(
   const hours = (input.hours ?? []).map((row): QuickCostHoursLine => {
     const centre = catalog.workCenters[row.workCenterId];
     if (!centre) throw new QuickCostError('A machine or work centre in this costing has been removed');
+    const per = row.per ?? QUICK_COST_DEFAULT_PER.hours;
+    const lineHours = per === 'piece' ? row.hours * quantity : row.hours;
     const minHours = (centre.minChargeMinutes ?? 0) / 60;
-    const chargedHours = Math.max(row.hours * scale, minHours);
+    const chargedHours = Math.max(lineHours, minHours);
     const machineCost = cost4(chargedHours * centre.machineCostPerHour);
     const laborCost = cost4(chargedHours * centre.laborCostPerHour);
     return {
       workCenterId: centre.id,
       name: centre.name,
-      hours: row.hours * scale,
+      per,
+      hoursEach: row.hours,
+      hours: Math.round(lineHours * 1000) / 1000,
       chargedHours: Math.round(chargedHours * 1000) / 1000,
       ratePerHour: centre.machineCostPerHour + centre.laborCostPerHour,
       machineCost,
@@ -158,10 +186,15 @@ export function costQuickLine(
     };
   });
 
-  const boughtIn = (input.boughtIn ?? []).map((row) => ({
-    description: row.description,
-    amount: money(row.amount * scale),
-  }));
+  const boughtIn = (input.boughtIn ?? []).map((row): QuickCostBoughtInLine => {
+    const per = row.per ?? QUICK_COST_DEFAULT_PER.boughtIn;
+    return {
+      description: row.description,
+      per,
+      amountEach: row.amount,
+      amount: money(per === 'piece' ? row.amount * quantity : row.amount),
+    };
+  });
 
   const materialCost = materials.reduce((sum, line) => sum + line.cost, 0);
   const machineCost = hours.reduce((sum, line) => sum + line.machineCost, 0);

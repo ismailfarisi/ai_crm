@@ -1525,10 +1525,13 @@ inputs in `quickCost`.
 - **Bought-in amounts are taken as typed — by design.** They are the one cost
   figure a person enters. They can only add cost, so they make the margin
   floor harder to clear, never easier.
-- **Amounts are for the whole line and scale with its quantity.** Doubling the
-  quantity doubles material, hours and bought-in, which overstates a one-off
-  setup. The editor says so when a costing is reopened at a new quantity.
-  Fixed versus per-piece hours is not modelled — open.
+- **Each hours and bought-in row is "each piece" or "whole job"; only
+  per-piece rows grow with the quantity.** Hours default to each piece,
+  bought-in to whole job (a delivery, an installer's day). Costings saved
+  before the choice existed read with those defaults. Materials are entered
+  for the whole line and still scale with the quantity — there is no fixed
+  material allowance. A work centre's minimum charge applies to the line's
+  total hours on it.
 - **Overhead starts at 0% — open.** There is no shop-wide overhead rate on
   master yet. When there is, return it from
   `CostingService.quickCostDefaultOverheadPct`; the editor pre-fills it.
@@ -1543,10 +1546,11 @@ inputs in `quickCost`.
 - **In the margins report by template, quick-costed lines share one row,
   "One-off jobs (quick costing)".** Typed lines with no costing are still left
   out of that view, as before.
-- **The quote API still returns line costs to anyone with `quote:read` —
-  pre-existing, not changed here.** The quick costing endpoints need
-  `quote:view_cost`, and the editor only shows costs with it, but `GET
-  /quotes/:id` does not strip `cost` or `quickCost`.
+- **Without `quote:view_cost`, quote responses carry no line `cost` or
+  `quickCost`, and the guardrail preview shows no cost or margin figures.**
+  Saving a quote as such a person keeps each line's stored quick costing (by
+  line id) and re-costs it on the server, so they can change the price, words
+  or quantity without wiping it. They cannot add or change a costing.
 
 ---
 

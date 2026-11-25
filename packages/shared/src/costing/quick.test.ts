@@ -22,8 +22,8 @@ describe('costQuickLine', () => {
           { materialId: 'vinyl', quantity: 4 },
         ],
         hours: [
-          { workCenterId: 'router', hours: 0.5 },
-          { workCenterId: 'bench', hours: 3 },
+          { workCenterId: 'router', hours: 0.25 },
+          { workCenterId: 'bench', hours: 3, per: 'job' },
         ],
         boughtIn: [{ description: 'LED modules', amount: 240 }],
         overheadPct: 0.1,
@@ -35,8 +35,10 @@ describe('costQuickLine', () => {
     // 2 sheets + 10% = 2.2, bought whole: 3 sheets.
     expect(result.materials[0].purchaseUnits).toBe(3);
     expect(result.materialCost).toBe(540 + 50);
-    // The router charges its one-hour minimum.
+    // 0.25 h per piece × 2 = 0.5 h; the router charges its one-hour minimum.
+    expect(result.hours[0].hours).toBe(0.5);
     expect(result.hours[0].chargedHours).toBe(1);
+    expect(result.hours[1]).toMatchObject({ per: 'job', hoursEach: 3, hours: 3 });
     expect(result.machineCost).toBe(60);
     expect(result.laborCost).toBe(40 + 105);
     expect(result.boughtInCost).toBe(240);
@@ -46,21 +48,45 @@ describe('costQuickLine', () => {
     expect(result.unitCost).toBe(569.25);
   });
 
-  it('scales the amounts when the line quantity changes', () => {
+  it('grows materials and per-piece amounts with the quantity, not whole-job ones', () => {
+    const input = {
+      materials: [{ materialId: 'vinyl', quantity: 2 }],
+      hours: [
+        { workCenterId: 'bench', hours: 2, per: 'job' as const },
+        { workCenterId: 'bench', hours: 0.5, per: 'piece' as const },
+      ],
+      boughtIn: [
+        { description: 'Delivery', amount: 150, per: 'job' as const },
+        { description: 'Fixings', amount: 3, per: 'piece' as const },
+      ],
+      overheadPct: 0,
+      costedForQuantity: 5,
+    };
+    const atFive = costQuickLine(input, catalog, 5);
+    // 2 m vinyl; 2 h setup + 2.5 h; delivery + 5 × 3.
+    expect(atFive.totalCost).toBe(25 + 70 + 87.5 + 150 + 15);
+    const atTen = costQuickLine(input, catalog, 10);
+    expect(atTen.scale).toBe(2);
+    // 4 m vinyl; the setup and delivery stay; 5 h and 10 × 3.
+    expect(atTen.totalCost).toBe(50 + 70 + 175 + 150 + 30);
+    expect(atTen.hours.map((h) => h.hours)).toEqual([2, 5]);
+    expect(atTen.boughtIn.map((b) => b.amount)).toEqual([150, 30]);
+  });
+
+  it('treats hours as per piece and bought-in as whole job when not said', () => {
     const result = costQuickLine(
       {
-        materials: [{ materialId: 'vinyl', quantity: 2 }],
+        materials: [],
         hours: [{ workCenterId: 'bench', hours: 1 }],
-        boughtIn: [{ description: 'Fixings', amount: 10 }],
+        boughtIn: [{ description: 'Installer', amount: 400 }],
         overheadPct: 0,
-        costedForQuantity: 5,
+        costedForQuantity: 1,
       },
       catalog,
-      10,
+      3,
     );
-    expect(result.scale).toBe(2);
-    expect(result.totalCost).toBe(50 + 70 + 20);
-    expect(result.unitCost).toBe(14);
+    expect(result.hours[0]).toMatchObject({ per: 'piece', hours: 3 });
+    expect(result.boughtIn[0]).toMatchObject({ per: 'job', amount: 400 });
   });
 
   it('does not round a whole sheet up on a float', () => {

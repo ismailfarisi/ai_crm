@@ -107,6 +107,70 @@ describe('QuickCostDialog', () => {
     );
   });
 
+  it('starts hours at each piece and bought-in at whole job, and sends the choice', async () => {
+    renderDialog();
+    fireEvent.click(await screen.findByRole('button', { name: /add hours/i }));
+    fireEvent.click(screen.getByRole('button', { name: /add bought-in/i }));
+    expect((screen.getByLabelText('Hours for') as HTMLSelectElement).value).toBe('piece');
+    expect((screen.getByLabelText('Cost for') as HTMLSelectElement).value).toBe('job');
+
+    fireEvent.change(screen.getByLabelText('Machine or work centre'), { target: { value: ROUTER } });
+    fireEvent.change(screen.getByLabelText('Hours'), { target: { value: '1.5' } });
+    fireEvent.change(screen.getByLabelText('Hours for'), { target: { value: 'job' } });
+    fireEvent.change(screen.getByLabelText('What is bought in'), { target: { value: 'Installer day' } });
+    fireEvent.change(screen.getByLabelText('What it costs you'), { target: { value: '400' } });
+
+    await waitFor(() =>
+      expect(api.catalog.quickCost).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          quickCost: expect.objectContaining({
+            hours: [{ workCenterId: ROUTER, hours: 1.5, per: 'job' }],
+            boughtIn: [{ description: 'Installer day', amount: 400, per: 'job' }],
+          }),
+        }),
+      ),
+    );
+  });
+
+  it('reopens at a new quantity without changing whole-job or per-piece entries', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <QuickCostDialog
+          line={{
+            ...line,
+            quantity: 4,
+            quickCost: {
+              materials: [{ materialId: ACRYLIC, quantity: 2 }],
+              hours: [{ workCenterId: ROUTER, hours: 1 }],
+              boughtIn: [{ description: 'Delivery', amount: 150 }],
+              overheadPct: 0,
+              costedForQuantity: 2,
+            },
+          }}
+          currency="AED"
+          onClose={() => {}}
+          onApply={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(api.catalog.quickCost).toHaveBeenCalledWith(
+        expect.objectContaining({
+          quantity: 4,
+          quickCost: {
+            materials: [{ materialId: ACRYLIC, quantity: 4 }],
+            hours: [{ workCenterId: ROUTER, hours: 1, per: 'piece' }],
+            boughtIn: [{ description: 'Delivery', amount: 150, per: 'job' }],
+            overheadPct: 0,
+            costedForQuantity: 4,
+          },
+        }),
+      ),
+    );
+    expect(screen.queryByText(/scaled to match/)).toBeNull();
+  });
+
   it('asks for an input before it shows a cost', async () => {
     renderDialog();
     expect(await screen.findByText(/Add a material, some hours or a bought-in item/)).toBeTruthy();

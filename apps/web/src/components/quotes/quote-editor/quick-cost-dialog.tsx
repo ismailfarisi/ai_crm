@@ -7,6 +7,8 @@ import {
   quickCostSnapshot,
   type MaterialUom,
   type QuickCostInput,
+  type QuickCostPer,
+  QUICK_COST_DEFAULT_PER,
   type QuickCostPreviewDto,
   type QuoteLineCostSnapshot,
   type QuoteLineItem,
@@ -32,8 +34,8 @@ const CONTROL =
   'h-9 rounded-lg border border-border bg-surface px-2.5 text-sm text-ink focus:border-ink focus:outline-none';
 
 interface MaterialRow { key: string; materialId: string; quantity: string }
-interface HoursRow { key: string; workCenterId: string; hours: string }
-interface BoughtInRow { key: string; description: string; amount: string }
+interface HoursRow { key: string; workCenterId: string; hours: string; per: QuickCostPer }
+interface BoughtInRow { key: string; description: string; amount: string; per: QuickCostPer }
 
 let nextKey = 0;
 const key = () => `r${++nextKey}`;
@@ -72,27 +74,31 @@ function QuickCostForm({ line, currency, onClose, onApply }: QuickCostDialogProp
   });
   const quantity = Number(line.quantity) || 1;
   const existing = line.quickCost;
-  // A costing entered for another quantity opens scaled to this one, and is
-  // saved for this one: what is on screen is always for the whole line.
-  const [scaledFrom] = useState(() =>
-    existing && existing.costedForQuantity > 0 && existing.costedForQuantity !== quantity
-      ? existing.costedForQuantity
-      : null,
+  // Materials are for the whole line, so a costing entered for another
+  // quantity opens with them scaled to this one. Hours and bought-in are
+  // per piece or whole job and open exactly as entered.
+  const [scale] = useState(() =>
+    existing && existing.costedForQuantity > 0 ? quantity / existing.costedForQuantity : 1,
   );
-  const scale = scaledFrom ? quantity / scaledFrom : 1;
   const scaled = (value: number) => num(value * scale);
 
   const [materials, setMaterials] = useState<MaterialRow[]>(() =>
     (existing?.materials ?? []).map((m) => ({ key: key(), materialId: m.materialId, quantity: scaled(m.quantity) })),
   );
   const [hours, setHours] = useState<HoursRow[]>(() =>
-    (existing?.hours ?? []).map((h) => ({ key: key(), workCenterId: h.workCenterId, hours: scaled(h.hours) })),
+    (existing?.hours ?? []).map((h) => ({
+      key: key(),
+      workCenterId: h.workCenterId,
+      hours: num(h.hours),
+      per: h.per ?? QUICK_COST_DEFAULT_PER.hours,
+    })),
   );
   const [boughtIn, setBoughtIn] = useState<BoughtInRow[]>(() =>
     (existing?.boughtIn ?? []).map((b) => ({
       key: key(),
       description: b.description,
-      amount: String(Number((b.amount * scale).toFixed(2))),
+      amount: String(b.amount),
+      per: b.per ?? QUICK_COST_DEFAULT_PER.boughtIn,
     })),
   );
   const [overhead, setOverhead] = useState<string | null>(() =>
@@ -109,10 +115,10 @@ function QuickCostForm({ line, currency, onClose, onApply }: QuickCostDialogProp
         .map((m) => ({ materialId: m.materialId, quantity: Number(m.quantity) })),
       hours: hours
         .filter((h) => h.workCenterId && positive(h.hours))
-        .map((h) => ({ workCenterId: h.workCenterId, hours: Number(h.hours) })),
+        .map((h) => ({ workCenterId: h.workCenterId, hours: Number(h.hours), per: h.per })),
       boughtIn: boughtIn
         .filter((b) => b.description.trim() && positive(b.amount))
-        .map((b) => ({ description: b.description.trim(), amount: Number(b.amount) })),
+        .map((b) => ({ description: b.description.trim(), amount: Number(b.amount), per: b.per })),
       overheadPct: Math.min(1, Math.max(0, (Number(overheadText) || 0) / 100)),
       costedForQuantity: quantity,
     };
@@ -143,6 +149,13 @@ function QuickCostForm({ line, currency, onClose, onApply }: QuickCostDialogProp
       : null;
   const isPricing = settled !== input || previewQuery.isFetching;
 
+  // Breakdown rows come back in the order of the complete rows sent.
+  const completeHours = hours
+    .filter((h) => h.workCenterId && Number(h.hours) > 0)
+    .map((h) => h.key);
+  const completeBoughtIn = boughtIn
+    .filter((b) => b.description.trim() && Number(b.amount) > 0)
+    .map((b) => b.key);
   const materialById = useMemo(() => new Map((options?.materials ?? []).map((m) => [m.id, m])), [options]);
   const centreById = useMemo(() => new Map((options?.workCenters ?? []).map((w) => [w.id, w])), [options]);
   const breakdown = preview?.breakdown;
@@ -179,14 +192,7 @@ function QuickCostForm({ line, currency, onClose, onApply }: QuickCostDialogProp
         <p className="text-sm text-danger">Could not load your materials and machines.</p>
       ) : (
         <div className="space-y-5">
-          {scaledFrom && (
-            <p className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-ink">
-              This costing was for {num(scaledFrom)}. The line is now {num(quantity)}, so every amount below was
-              scaled to match. Check the hours if part of them is a one-off setup.
-            </p>
-          )}
-
-          <Section title="Materials from stock" hint="How much the whole job uses. Waste from the catalog is added.">
+          <Section title="Materials from stock" hint="How much the whole job uses; it grows if the quantity changes. Waste from the catalog is added.">
             {materials.map((row) => {
               const material = materialById.get(row.materialId);
               const costed = breakdown?.materials.find((m) => m.materialId === row.materialId);
@@ -241,10 +247,13 @@ function QuickCostForm({ line, currency, onClose, onApply }: QuickCostDialogProp
             </AddButton>
           </Section>
 
-          <Section title="Machine and labour hours" hint="Hours on each machine or work centre, setup included.">
+          <Section
+            title="Machine and labour hours"
+            hint="Hours on each machine or work centre. Each piece grows with the quantity; whole job is once, like setup."
+          >
             {hours.map((row) => {
               const centre = centreById.get(row.workCenterId);
-              const costed = breakdown?.hours.find((h) => h.workCenterId === row.workCenterId);
+              const costed = breakdown?.hours[completeHours.indexOf(row.key)];
               return (
                 <Row
                   key={row.key}
@@ -252,7 +261,7 @@ function QuickCostForm({ line, currency, onClose, onApply }: QuickCostDialogProp
                   removeLabel="Remove hours"
                   explain={
                     costed
-                      ? `${num(costed.chargedHours)} h${costed.chargedHours > costed.hours ? ' (minimum charge)' : ''} × ${money(costed.ratePerHour)} an hour = ${money(costed.cost)}`
+                      ? `${costed.per === 'piece' ? `${num(costed.hoursEach)} h × ${num(quantity)} = ` : ''}${num(costed.chargedHours)} h${costed.chargedHours > costed.hours ? ' (minimum charge)' : ''} × ${money(costed.ratePerHour)} an hour = ${money(costed.cost)}`
                       : centre
                         ? `${money(centre.ratePerHour)} an hour, machine and labour`
                         : undefined
@@ -283,24 +292,44 @@ function QuickCostForm({ line, currency, onClose, onApply }: QuickCostDialogProp
                     }
                     className={cn(CONTROL, 'w-24 text-right tabular-nums')}
                   />
-                  <span className="w-14 text-xs text-ink-muted">hours</span>
+                  <PerSelect
+                    label="Hours for"
+                    unit="h"
+                    value={row.per}
+                    onChange={(per) => setHours((prev) => prev.map((h) => (h.key === row.key ? { ...h, per } : h)))}
+                  />
                 </Row>
               );
             })}
             <AddButton
-              onClick={() => setHours((prev) => [...prev, { key: key(), workCenterId: '', hours: '' }])}
+              onClick={() =>
+                setHours((prev) => [
+                  ...prev,
+                  { key: key(), workCenterId: '', hours: '', per: QUICK_COST_DEFAULT_PER.hours },
+                ])
+              }
               disabled={!options?.workCenters.length}
             >
               {options?.workCenters.length ? 'Add hours' : 'No work centres set up yet'}
             </AddButton>
           </Section>
 
-          <Section title="Bought in" hint="What you pay a supplier for this job, for example LED modules or installation.">
-            {boughtIn.map((row) => (
+          <Section
+            title="Bought in"
+            hint="What you pay a supplier: once for the whole job (a delivery, an installer's day) or for each piece."
+          >
+            {boughtIn.map((row) => {
+              const costed = breakdown?.boughtIn[completeBoughtIn.indexOf(row.key)];
+              return (
               <Row
                 key={row.key}
                 onRemove={() => setBoughtIn((prev) => prev.filter((b) => b.key !== row.key))}
                 removeLabel="Remove bought-in item"
+                explain={
+                  costed?.per === 'piece'
+                    ? `${money(costed.amountEach)} × ${num(quantity)} = ${money(costed.amount)}`
+                    : undefined
+                }
               >
                 <input
                   aria-label="What is bought in"
@@ -321,10 +350,25 @@ function QuickCostForm({ line, currency, onClose, onApply }: QuickCostDialogProp
                   }
                   className={cn(CONTROL, 'w-24 text-right tabular-nums')}
                 />
-                <span className="w-14 text-xs text-ink-muted">{currency.toUpperCase()}</span>
+                <PerSelect
+                  label="Cost for"
+                  unit={currency.toUpperCase()}
+                  value={row.per}
+                  onChange={(per) =>
+                    setBoughtIn((prev) => prev.map((b) => (b.key === row.key ? { ...b, per } : b)))
+                  }
+                />
               </Row>
-            ))}
-            <AddButton onClick={() => setBoughtIn((prev) => [...prev, { key: key(), description: '', amount: '' }])}>
+              );
+            })}
+            <AddButton
+              onClick={() =>
+                setBoughtIn((prev) => [
+                  ...prev,
+                  { key: key(), description: '', amount: '', per: QUICK_COST_DEFAULT_PER.boughtIn },
+                ])
+              }
+            >
               Add bought-in item
             </AddButton>
           </Section>
@@ -503,6 +547,30 @@ function Row({
       </div>
       {explain && <p className="mt-0.5 text-xs text-ink-muted tabular-nums">{explain}</p>}
     </div>
+  );
+}
+
+function PerSelect({
+  label,
+  unit,
+  value,
+  onChange,
+}: {
+  label: string;
+  unit: string;
+  value: QuickCostPer;
+  onChange: (per: QuickCostPer) => void;
+}) {
+  return (
+    <select
+      aria-label={label}
+      value={value}
+      onChange={(e) => onChange(e.target.value as QuickCostPer)}
+      className={cn(CONTROL, 'w-36 text-xs')}
+    >
+      <option value="piece">{unit} each piece</option>
+      <option value="job">{unit} whole job</option>
+    </select>
   );
 }
 

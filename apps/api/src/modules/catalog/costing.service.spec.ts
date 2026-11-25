@@ -565,8 +565,8 @@ describe('CostingService', () => {
     });
     const quickCost = {
       materials: [{ materialId: greyboard, quantity: 10 }],
-      hours: [{ workCenterId: assembly, hours: 2 }],
-      boughtIn: [{ description: 'Magnets', amount: 50 }],
+      hours: [{ workCenterId: assembly, hours: 2, per: 'job' as const }],
+      boughtIn: [{ description: 'Magnets', amount: 50, per: 'job' as const }],
       overheadPct: 0.2,
       costedForQuantity: 4,
     };

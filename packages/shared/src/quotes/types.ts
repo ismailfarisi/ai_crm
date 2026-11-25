@@ -239,6 +239,24 @@ export function stripLineCosts(items: QuoteLineItem[]): QuoteLineItem[] {
 }
 
 /**
+ * For a save by an actor without `quote:view_cost`, who was sent the lines
+ * with their costing stripped: whatever quick costing they send is ignored and
+ * each line keeps the one already stored under its id, so editing a price or
+ * a description does not wipe the estimator's costing. The cost itself is
+ * worked out again on the server from that costing.
+ */
+export function keepStoredQuickCosts(
+  incoming: QuoteLineItem[],
+  stored: QuoteLineItem[] | null | undefined,
+): QuoteLineItem[] {
+  const storedById = new Map((stored ?? []).map((item) => [item.id, item.quickCost]));
+  return (incoming || []).map(({ quickCost: _sent, ...item }) => {
+    const kept = storedById.get(item.id);
+    return kept ? { ...item, quickCost: kept } : item;
+  });
+}
+
+/**
  * The tax lines a printed quote or invoice shows, one per rate, from its
  * product lines and its stored tax. See `documentTaxLines`.
  */
