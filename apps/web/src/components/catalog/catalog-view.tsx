@@ -204,7 +204,7 @@ export function CatalogView() {
         accessorKey: 'standardCost',
         header: ({ column }) => <DataTableColumnHeader column={column} title="Cost" />,
         cell: ({ row }) => (
-          <span className="tabular-nums text-ink-muted">{formatMoney(row.original.standardCost, currency)}</span>
+          <span className="tabular-nums text-ink-muted">{formatMoney(row.original.standardCost, currency, { decimals: 4 })}</span>
         ),
       },
       {
@@ -269,7 +269,7 @@ export function CatalogView() {
         accessorKey: 'costPerUom',
         header: ({ column }) => <DataTableColumnHeader column={column} title="Cost" />,
         cell: ({ row }) => (
-          <span className="tabular-nums text-ink">{formatMoney(row.original.costPerUom, currency)}</span>
+          <span className="tabular-nums text-ink">{formatMoney(row.original.costPerUom, currency, { decimals: 4 })}</span>
         ),
       },
       {

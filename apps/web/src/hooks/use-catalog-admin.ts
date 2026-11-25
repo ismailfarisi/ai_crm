@@ -343,6 +343,9 @@ export function useQuoteCostChanges(enabled = true) {
   return useQuery({
     queryKey: queryKeys.quoteCostChanges,
     queryFn: () => api.quotes.costChanges(),
+    // Acceptance and edits elsewhere change the answer; always ask again on open.
+    staleTime: 0,
+    refetchOnMount: 'always',
     enabled,
   });
 }
@@ -351,6 +354,9 @@ export function useQuoteCostCheck(id: string | undefined, enabled = true) {
   return useQuery({
     queryKey: queryKeys.quoteCostCheck(id ?? ''),
     queryFn: () => api.quotes.costCheck(id!),
+    // Acceptance and edits elsewhere change the answer; always ask again on open.
+    staleTime: 0,
+    refetchOnMount: 'always',
     enabled: Boolean(id) && enabled,
   });
 }

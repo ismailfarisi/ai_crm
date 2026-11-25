@@ -54,12 +54,12 @@ const stale = {
 
 describe('MaterialCostPanel', () => {
   const apply = vi.fn();
-  const recost = vi.fn();
+  const recost = vi.fn().mockResolvedValue({ id: 'q1' });
   beforeEach(() => {
     vi.mocked(hooks.useMaterialCosts).mockReturnValue({ data: review, isPending: false, isError: false } as never);
     vi.mocked(hooks.useQuoteCostChanges).mockReturnValue({ data: [stale], isPending: false } as never);
     vi.mocked(hooks.useApplyMaterialCost).mockReturnValue({ mutate: apply, isPending: false } as never);
-    vi.mocked(hooks.useRecostQuote).mockReturnValue({ mutate: recost, isPending: false } as never);
+    vi.mocked(hooks.useRecostQuote).mockReturnValue({ mutateAsync: recost, isPending: false } as never);
   });
 
   it('shows the gap and sends only the chosen figure, never an amount', () => {
@@ -79,6 +79,6 @@ describe('MaterialCostPanel', () => {
     expect(screen.getByText(/QT-2026-0001 · Gulf Fresh Dates LLC/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Re-cost' }));
     fireEvent.click(screen.getByRole('button', { name: 'Update costs, keep prices' }));
-    expect(recost).toHaveBeenCalledWith({ id: 'q1', mode: 'COSTS' }, expect.anything());
+    expect(recost).toHaveBeenCalledWith({ id: 'q1', mode: 'COSTS' });
   });
 });

@@ -260,16 +260,18 @@ export function RecostDialog({
   onDone?: (quote: QuoteDto) => void;
 }) {
   const recost = useRecostQuote();
-  const run = (mode: QuoteRecostMode) =>
-    recost.mutate(
-      { id: q.quoteId, mode },
-      {
-        onSuccess: (quote) => {
-          onDone?.(quote);
-          onClose();
-        },
-      },
-    );
+  // mutateAsync, not mutate's callbacks: the banner that opened this dialog
+  // unmounts once the re-cost clears the warning, and mutate's per-call
+  // callbacks never fire for an unmounted caller.
+  const run = async (mode: QuoteRecostMode) => {
+    try {
+      const quote = await recost.mutateAsync({ id: q.quoteId, mode });
+      onDone?.(quote);
+      onClose();
+    } catch {
+      // The hook already shows the error.
+    }
+  };
   return (
     <Dialog
       open
