@@ -4,6 +4,7 @@ import { In, IsNull, Repository } from 'typeorm';
 import {
   calculateQuoteTotals,
   costMoved,
+  hasQuickCostInputs,
   type QuoteCostCheck,
   type QuoteLineItem,
   type QuoteRecostMode,
@@ -131,7 +132,11 @@ export class QuoteCostCheckService {
     const stale = new Set(today.staleLineIds);
 
     const lines = items
-      .filter((l) => l.type === 'product' && (l.templateId || l.catalogItemId))
+      .filter(
+        (l) =>
+          l.type === 'product' &&
+          (l.templateId || l.catalogItemId || hasQuickCostInputs(l.quickCost)),
+      )
       .map((l) => {
         const now = byId.get(l.id);
         return {

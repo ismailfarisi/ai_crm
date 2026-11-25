@@ -453,6 +453,7 @@ export class CostingService {
             catalog,
             Number(item.quantity) || 0,
           );
+          noteMove(item, breakdown.totalCost);
           recosted.push({
             ...item,
             quickCost,

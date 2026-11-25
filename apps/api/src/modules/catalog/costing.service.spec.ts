@@ -609,6 +609,19 @@ describe('CostingService', () => {
       expect(totals.hasCompleteCost).toBe(true);
     });
 
+    it('flags a quick costing whose catalog rates have moved since it was saved', async () => {
+      const saved = { unitCost: 30.105, totalCost: 120.42, source: 'QUICK' as const };
+      const same = await service.recostLines(tenantId, [
+        typedLine({ quickCost, cost: saved }),
+      ]);
+      expect(same.movedLineIds).toEqual([]);
+
+      const moved = await service.recostLines(tenantId, [
+        typedLine({ quickCost, cost: { ...saved, totalCost: 100 } }),
+      ]);
+      expect(moved.movedLineIds).toEqual(['line-1']);
+    });
+
     it('still drops a cost the browser typed with no costing behind it', async () => {
       const {
         items: [line],
