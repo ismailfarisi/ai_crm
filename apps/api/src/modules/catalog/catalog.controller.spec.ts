@@ -85,6 +85,13 @@ describe('CatalogController', () => {
     };
     costingService = {
       resolveLines: jest.fn().mockResolvedValue(RESOLVED),
+      updatePolicy: jest.fn().mockResolvedValue({
+        minMarginPct: 0.2,
+        maxDiscountPct: 0.15,
+        requireKnownCost: false,
+        enforce: false,
+        defaultOverheadPct: 0.25,
+      }),
       priceBreaks: jest.fn().mockResolvedValue({
         templateId: 'template-1',
         templateVersion: 3,
@@ -259,5 +266,37 @@ describe('CatalogController', () => {
       tenantId,
       resolvePayload,
     );
+  });
+
+  describe('updatePolicy', () => {
+    const MANAGER = actor([PERMISSIONS.CATALOG_MANAGE]);
+    const MANAGER_WITH_COST = actor([
+      PERMISSIONS.CATALOG_MANAGE,
+      PERMISSIONS.QUOTE_VIEW_COST,
+    ]);
+
+    it('lets a manager without cost rights change the margin floor', async () => {
+      await controller.updatePolicy(MANAGER, { minMarginPct: 0.2 });
+      expect(costingService.updatePolicy).toHaveBeenCalled();
+    });
+
+    it.each([
+      { defaultOverheadPct: 0.3 },
+      { overheadSuggestionHidden: true },
+    ])('refuses overhead changes without cost rights (%o)', async (dto) => {
+      await expect(controller.updatePolicy(MANAGER, dto)).rejects.toThrow(
+        'needs permission to see costs',
+      );
+      expect(costingService.updatePolicy).not.toHaveBeenCalled();
+    });
+
+    it('lets a manager with cost rights set the overhead rate', async () => {
+      await controller.updatePolicy(MANAGER_WITH_COST, {
+        defaultOverheadPct: 0.3,
+      });
+      expect(costingService.updatePolicy).toHaveBeenCalledWith(tenantId, {
+        defaultOverheadPct: 0.3,
+      });
+    });
   });
 });

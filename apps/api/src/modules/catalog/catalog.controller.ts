@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Param,
   ParseUUIDPipe,
@@ -402,6 +403,16 @@ export class CatalogController {
     @CurrentUser() user: AuthenticatedUser,
     @Body(zodBody(updateCostingPolicySchema)) dto: UpdateCostingPolicyPayload,
   ): Promise<CostingPolicy> {
+    // Templates hide their overhead from people without cost rights, so the
+    // shop-wide rate follows the same rule.
+    const touchesOverhead =
+      dto.defaultOverheadPct !== undefined ||
+      dto.overheadSuggestionHidden !== undefined;
+    if (touchesOverhead && !canSeeCost(user)) {
+      throw new ForbiddenException(
+        'Changing the overhead rate needs permission to see costs',
+      );
+    }
     const policy = await this.costingService.updatePolicy(
       user.organizationId,
       dto,

@@ -76,7 +76,7 @@ export function OverheadRatePanel({
         key={policy.defaultOverheadPct}
         policy={policy}
         currency={canSeeCost ? currency : undefined}
-        canEdit={canManage}
+        canEdit={canManage && canSeeCost}
       />
 
       {canManage && canSeeCost ? (
