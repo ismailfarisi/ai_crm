@@ -4,5 +4,6 @@ export * from './types';
 export * from './engine';
 export * from './dto';
 export * from './review';
+export * from './overhead';
 export * from './templates/rigid-box';
 export * from './templates/starters';

@@ -1,3 +1,4 @@
+import type { OverheadRateBasis } from '../costing/overhead';
 import type { QuoteLineItem, QuoteTotals } from './types';
 
 /**
@@ -18,6 +19,25 @@ export interface CostingPolicy {
    */
   requireKnownCost: boolean;
   enforce: boolean;
+  /**
+   * The shop-wide overhead rate on direct cost, 0-1. Templates that do not
+   * set their own overhead use it, and so should any other costing that adds
+   * overhead (quick costing of hand-typed lines). 0 until the owner sets it.
+   */
+  defaultOverheadPct: number;
+  /** Where the shop rate came from; absent for callers that only need the floors. */
+  defaultOverhead?: ShopOverheadRateInfo;
+}
+
+/** How the shop-wide overhead rate was set, so it can explain itself. */
+export interface ShopOverheadRateInfo {
+  /** `BOOKS`: accepted from the suggestion. `TYPED`: entered by hand. `null`: never set. */
+  source: 'BOOKS' | 'TYPED' | null;
+  setAt: string | null;
+  /** The figures behind a rate accepted from the books. */
+  basis: OverheadRateBasis | null;
+  /** The owner chose to ignore the suggestion from the books. */
+  suggestionHidden: boolean;
 }
 
 export const DEFAULT_COSTING_POLICY: CostingPolicy = {
@@ -25,6 +45,7 @@ export const DEFAULT_COSTING_POLICY: CostingPolicy = {
   maxDiscountPct: 20,
   requireKnownCost: false,
   enforce: false,
+  defaultOverheadPct: 0,
 };
 
 export type GuardrailCode = 'MARGIN_BELOW_FLOOR' | 'DISCOUNT_ABOVE_CAP' | 'COST_UNKNOWN';

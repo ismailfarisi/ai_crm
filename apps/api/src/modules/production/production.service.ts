@@ -377,7 +377,9 @@ export class ProductionService {
         parameters: (p.item.parameters ?? {}) as Record<string, unknown>,
         qty: p.qty,
         dueDate: p.dueDate,
-        overheadPct: template.pricing?.overheadPct ?? 0,
+        // The rate the estimate used — the template's own or the shop rate
+        // at the time — so later changes to either leave this job alone.
+        overheadPct: breakdown.overheadPct,
         quotedUnitCost: p.item.cost?.unitCost ?? null,
         estimatedCost: estimated,
         createdById: p.actorId,

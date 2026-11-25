@@ -25,6 +25,8 @@ import {
   type QuoteLineItem,
   type QuoteTotals,
   type CostingPolicy as CostingPolicySpec,
+  type OverheadRateBasis,
+  type UpdateCostingPolicyPayload,
   type GuardrailViolation,
   type ResolveLineInput,
   type ResolveLinesPayload,
@@ -102,35 +104,54 @@ export class CostingService {
     private readonly policies: Repository<CostingPolicy>,
   ) {}
 
-  /** The tenant's floors, falling back to the shared defaults before setup. */
+  /** The tenant's floors and shop rate, falling back to the shared defaults before setup. */
   async getPolicy(tenantId: string): Promise<CostingPolicySpec> {
     const row = await this.policies.findOne({ where: { tenantId } });
-    if (!row) return { ...DEFAULT_COSTING_POLICY };
-    return {
-      minMarginPct: row.minMarginPct,
-      maxDiscountPct: row.maxDiscountPct,
-      requireKnownCost: row.requireKnownCost,
-      enforce: row.enforce,
-    };
+    return toPolicySpec(row);
   }
 
   async updatePolicy(
     tenantId: string,
-    patch: Partial<CostingPolicySpec>,
+    patch: UpdateCostingPolicyPayload,
   ): Promise<CostingPolicySpec> {
-    const row =
+    const row = await this.policyRow(tenantId);
+    const { defaultOverheadPct, overheadSuggestionHidden, ...floors } = patch;
+    Object.assign(row, floors);
+    if (overheadSuggestionHidden !== undefined) {
+      row.overheadSuggestionHidden = overheadSuggestionHidden;
+    }
+    if (
+      defaultOverheadPct !== undefined &&
+      defaultOverheadPct !== row.defaultOverheadPct
+    ) {
+      row.defaultOverheadPct = defaultOverheadPct;
+      row.defaultOverheadSource = 'TYPED';
+      row.defaultOverheadSetAt = new Date();
+      row.defaultOverheadBasis = null;
+    }
+    return toPolicySpec(await this.policies.save(row));
+  }
+
+  /** Sets the shop rate from figures the server worked out from the books. */
+  async setOverheadFromBooks(
+    tenantId: string,
+    pct: number,
+    basis: OverheadRateBasis,
+  ): Promise<CostingPolicySpec> {
+    const row = await this.policyRow(tenantId);
+    row.defaultOverheadPct = pct;
+    row.defaultOverheadSource = 'BOOKS';
+    row.defaultOverheadSetAt = new Date();
+    row.defaultOverheadBasis = basis;
+    row.overheadSuggestionHidden = false;
+    return toPolicySpec(await this.policies.save(row));
+  }
+
+  private async policyRow(tenantId: string): Promise<CostingPolicy> {
+    return (
       (await this.policies.findOne({ where: { tenantId } })) ??
-      this.policies.create({ tenantId, ...DEFAULT_COSTING_POLICY });
-
-    Object.assign(row, patch);
-    const saved = await this.policies.save(row);
-
-    return {
-      minMarginPct: saved.minMarginPct,
-      maxDiscountPct: saved.maxDiscountPct,
-      requireKnownCost: saved.requireKnownCost,
-      enforce: saved.enforce,
-    };
+      this.policies.create({ tenantId, ...DEFAULT_COSTING_POLICY })
+    );
   }
 
   async resolveLines(
@@ -432,6 +453,7 @@ export class CostingService {
     const breaks = this.guard(() =>
       calculatePriceBreaks(spec, catalog, parameters, payload.quantities, {
         toolingAlreadyOwned: payload.toolingAlreadyOwned,
+        shopOverheadPct: catalog.shopOverheadPct,
       }),
     );
 
@@ -461,7 +483,7 @@ export class CostingService {
 
   private runCosting(
     entity: ProductTemplate,
-    catalog: CostingCatalog,
+    catalog: TenantCostingCatalog,
     parameters: Record<string, unknown>,
     quantity: number,
     context: { toolingAlreadyOwned?: string[] },
@@ -472,7 +494,7 @@ export class CostingService {
         catalog,
         parameters as Record<string, ExprValue>,
         quantity,
-        context,
+        { ...context, shopOverheadPct: catalog.shopOverheadPct },
       ),
     );
   }
@@ -611,14 +633,16 @@ export class CostingService {
    * one query beats N round trips inside a costing loop that also runs for
    * every quantity in a price break table.
    */
-  async loadCostingCatalog(tenantId: string): Promise<CostingCatalog> {
-    const [materials, workCenters, tools] = await Promise.all([
+  async loadCostingCatalog(tenantId: string): Promise<TenantCostingCatalog> {
+    const [materials, workCenters, tools, policy] = await Promise.all([
       this.materials.find({ where: { tenantId } }),
       this.workCenters.find({ where: { tenantId } }),
       this.tooling.find({ where: { tenantId } }),
+      this.policies.findOne({ where: { tenantId } }),
     ]);
 
     return {
+      shopOverheadPct: policy?.defaultOverheadPct ?? 0,
       materials: Object.fromEntries(
         materials.map((row): [string, MaterialSpec] => [
           row.id,
@@ -676,3 +700,33 @@ export class CostingService {
 }
 
 const round2 = (value: number): number => Math.round(value * 100) / 100;
+
+/** The catalog plus the shop-wide overhead rate templates fall back to. */
+export type TenantCostingCatalog = CostingCatalog & { shopOverheadPct: number };
+
+function toPolicySpec(row: CostingPolicy | null): CostingPolicySpec {
+  if (!row) {
+    return {
+      ...DEFAULT_COSTING_POLICY,
+      defaultOverhead: {
+        source: null,
+        setAt: null,
+        basis: null,
+        suggestionHidden: false,
+      },
+    };
+  }
+  return {
+    minMarginPct: row.minMarginPct,
+    maxDiscountPct: row.maxDiscountPct,
+    requireKnownCost: row.requireKnownCost,
+    enforce: row.enforce,
+    defaultOverheadPct: row.defaultOverheadPct,
+    defaultOverhead: {
+      source: row.defaultOverheadSource,
+      setAt: row.defaultOverheadSetAt?.toISOString() ?? null,
+      basis: row.defaultOverheadBasis,
+      suggestionHidden: row.overheadSuggestionHidden,
+    },
+  };
+}

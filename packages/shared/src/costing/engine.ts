@@ -35,6 +35,8 @@ export class CostingError extends Error {
 export interface CostingContext {
   /** Tooling the customer already paid for on a previous order — not re-charged. */
   toolingAlreadyOwned?: string[];
+  /** The shop-wide overhead rate, 0-1, used when the template has none of its own. */
+  shopOverheadPct?: number;
 }
 
 /**
@@ -427,7 +429,10 @@ export function costTemplate(
     .reduce((sum, line) => sum + line.cost, 0);
 
   const directCost = materialCost + machineCost + laborCost + amortizedToolingCost;
-  const overheadCost = directCost * (template.pricing.overheadPct ?? 0);
+  const ownOverhead = template.pricing.overheadPct;
+  const overheadFrom = ownOverhead == null ? 'SHOP' : 'TEMPLATE';
+  const overheadPct = Math.max(0, (ownOverhead ?? context.shopOverheadPct ?? 0) || 0);
+  const overheadCost = directCost * overheadPct;
   const totalCost = directCost + overheadCost;
 
   const price = applyPricing(template, totalCost, separateToolingCost, quantity);
@@ -448,6 +453,8 @@ export function costTemplate(
     amortizedToolingCost: money(amortizedToolingCost),
     separateToolingCost: money(separateToolingCost),
     directCost: money(directCost),
+    overheadPct,
+    overheadFrom,
     overheadCost: money(overheadCost),
     totalCost: money(totalCost),
     unitCost: cost4(totalCost / quantity),

@@ -381,13 +381,20 @@ export class CatalogController {
   async getPolicy(
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<CostingPolicy> {
-    return this.costingService.getPolicy(user.organizationId);
+    const policy = await this.costingService.getPolicy(user.organizationId);
+    // The rate is a percentage like the margin floor; the totals behind it
+    // are what the shop spends.
+    if (canSeeCost(user) || !policy.defaultOverhead) return policy;
+    return {
+      ...policy,
+      defaultOverhead: { ...policy.defaultOverhead, basis: null },
+    };
   }
 
   @Patch('catalog/policy')
   @RequirePermissions(PERMISSIONS.CATALOG_MANAGE)
   @ApiOperation({
-    summary: 'Update the commercial floors',
+    summary: 'Update the commercial floors and the shop-wide overhead rate',
     description:
       'Enforcement is off until switched on, so enabling the costing engine does not retroactively block quotes that were acceptable before',
   })
@@ -395,7 +402,15 @@ export class CatalogController {
     @CurrentUser() user: AuthenticatedUser,
     @Body(zodBody(updateCostingPolicySchema)) dto: UpdateCostingPolicyPayload,
   ): Promise<CostingPolicy> {
-    return this.costingService.updatePolicy(user.organizationId, dto);
+    const policy = await this.costingService.updatePolicy(
+      user.organizationId,
+      dto,
+    );
+    if (canSeeCost(user) || !policy.defaultOverhead) return policy;
+    return {
+      ...policy,
+      defaultOverhead: { ...policy.defaultOverhead, basis: null },
+    };
   }
 
   /* ---------------- Resolver ---------------- */
@@ -479,6 +494,6 @@ function withoutCostModel(template: ProductTemplate): ProductTemplate {
     materials: [],
     operations: [],
     tooling: [],
-    pricing: { method: 'MARGIN', rate: 0, overheadPct: 0 },
+    pricing: { method: 'MARGIN', rate: 0, overheadPct: null },
   };
 }
