@@ -151,6 +151,8 @@ function makeWorld() {
         machineCost: 40,
         laborCost: 38,
         amortizedToolingCost: 12,
+        overheadPct: 0.1,
+        overheadFrom: 'TEMPLATE',
         overheadCost: 14,
         totalCost: 154,
         unitCost: 1.54,

@@ -596,4 +596,118 @@ describe('CostingService', () => {
     // Guards the constant against a rename that would silently open cost up.
     expect(PERMISSIONS.QUOTE_VIEW_COST).toBe('quote:view_cost');
   });
+  describe('shop-wide overhead rate', () => {
+    const policyRow = (overrides: Partial<CostingPolicy> = {}) =>
+      ({
+        tenantId,
+        minMarginPct: 0.2,
+        maxDiscountPct: 20,
+        requireKnownCost: false,
+        enforce: false,
+        defaultOverheadPct: 0.25,
+        defaultOverheadSource: 'BOOKS',
+        defaultOverheadSetAt: new Date('2026-11-01T00:00:00Z'),
+        defaultOverheadBasis: null,
+        overheadSuggestionHidden: false,
+        ...overrides,
+      }) as CostingPolicy;
+
+    const withOverhead = (overheadPct: number | null) => {
+      const row = templateRow();
+      templates.findOne = jest.fn().mockResolvedValue({
+        ...row,
+        pricing: { ...row.pricing, overheadPct },
+      });
+    };
+
+    it('costs a template with no rate of its own at the shop rate', async () => {
+      policies.findOne = jest.fn().mockResolvedValue(policyRow());
+      withOverhead(null);
+      const { breakdown } = await service.breakdownForTemplate(
+        tenantId,
+        templateId,
+        BOX_PARAMS,
+        500,
+      );
+      expect(breakdown.overheadFrom).toBe('SHOP');
+      expect(breakdown.overheadPct).toBe(0.25);
+      expect(breakdown.overheadCost).toBeCloseTo(
+        breakdown.directCost * 0.25,
+        1,
+      );
+    });
+
+    it('leaves a template with its own rate alone', async () => {
+      policies.findOne = jest.fn().mockResolvedValue(policyRow());
+      withOverhead(0.12);
+      const { breakdown } = await service.breakdownForTemplate(
+        tenantId,
+        templateId,
+        BOX_PARAMS,
+        500,
+      );
+      expect(breakdown.overheadFrom).toBe('TEMPLATE');
+      expect(breakdown.overheadPct).toBe(0.12);
+    });
+
+    it('adds no overhead before the shop rate is set', async () => {
+      withOverhead(null);
+      const { breakdown } = await service.breakdownForTemplate(
+        tenantId,
+        templateId,
+        BOX_PARAMS,
+        500,
+      );
+      expect(breakdown.overheadCost).toBe(0);
+    });
+
+    it('reports where the shop rate came from', async () => {
+      policies.findOne = jest.fn().mockResolvedValue(policyRow());
+      const policy = await service.getPolicy(tenantId);
+      expect(policy.defaultOverheadPct).toBe(0.25);
+      expect(policy.defaultOverhead).toMatchObject({
+        source: 'BOOKS',
+        setAt: '2026-11-01T00:00:00.000Z',
+        suggestionHidden: false,
+      });
+    });
+
+    it('marks a typed rate as typed and drops the old basis', async () => {
+      const row = policyRow({
+        defaultOverheadBasis: {
+          from: '2026-05-01',
+          to: '2026-10-31',
+          months: [],
+          overheadTotal: 1,
+          directTotal: 4,
+          excludedAccountCodes: [],
+          currency: 'AED',
+        },
+      });
+      policies.findOne = jest.fn().mockResolvedValue(row);
+      policies.save = jest
+        .fn()
+        .mockImplementation(async (r) => r as CostingPolicy);
+      const policy = await service.updatePolicy(tenantId, {
+        defaultOverheadPct: 0.3,
+      });
+      expect(policy.defaultOverheadPct).toBe(0.3);
+      expect(policy.defaultOverhead).toMatchObject({
+        source: 'TYPED',
+        basis: null,
+      });
+    });
+
+    it('does not touch the rate when only the floors change', async () => {
+      policies.findOne = jest.fn().mockResolvedValue(policyRow());
+      policies.save = jest
+        .fn()
+        .mockImplementation(async (r) => r as CostingPolicy);
+      const policy = await service.updatePolicy(tenantId, {
+        minMarginPct: 0.3,
+      });
+      expect(policy.defaultOverhead?.source).toBe('BOOKS');
+      expect(policy.minMarginPct).toBe(0.3);
+    });
+  });
 });

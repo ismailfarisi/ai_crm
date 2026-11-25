@@ -1,5 +1,6 @@
 import { Column, Entity, Index } from 'typeorm';
 import { BaseEntity } from '@/common/entities/base.entity';
+import type { OverheadRateBasis } from '@saas/shared';
 import { numericTransformer } from '../../finance/entities/finance-account.entity';
 
 /**
@@ -55,4 +56,47 @@ export class CostingPolicy extends BaseEntity {
     transformer: numericTransformer,
   })
   overBudgetAlertPct: number;
+
+  /**
+   * The shop-wide overhead rate on direct cost, 0-1. Templates whose own
+   * overhead is null use it. 0 until the owner sets it, so nothing changes
+   * on the day this ships.
+   */
+  @Column({
+    name: 'default_overhead_pct',
+    type: 'numeric',
+    precision: 5,
+    scale: 4,
+    default: 0,
+    transformer: numericTransformer,
+  })
+  defaultOverheadPct: number;
+
+  /** `BOOKS` when accepted from the suggestion, `TYPED` when entered by hand. */
+  @Column({
+    name: 'default_overhead_source',
+    type: 'varchar',
+    length: 10,
+    nullable: true,
+  })
+  defaultOverheadSource: 'BOOKS' | 'TYPED' | null;
+
+  @Column({
+    name: 'default_overhead_set_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  defaultOverheadSetAt: Date | null;
+
+  /** The months, accounts and totals behind a rate taken from the books. */
+  @Column({ name: 'default_overhead_basis', type: 'jsonb', nullable: true })
+  defaultOverheadBasis: OverheadRateBasis | null;
+
+  /** The owner chose to ignore the suggestion from the books. */
+  @Column({
+    name: 'overhead_suggestion_hidden',
+    type: 'boolean',
+    default: false,
+  })
+  overheadSuggestionHidden: boolean;
 }

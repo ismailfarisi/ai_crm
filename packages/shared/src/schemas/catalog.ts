@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { patchOf } from './patch';
+import { OVERHEAD_DEFAULT_MONTHS, OVERHEAD_MAX_MONTHS, OVERHEAD_MIN_MONTHS } from '../costing/overhead';
 
 /**
  * Validation for the costing catalog and the quote-line resolver.
@@ -207,7 +208,8 @@ export const templatePricingSchema = z
   .object({
     method: z.enum(['MARGIN', 'MARKUP']),
     rate: z.coerce.number().min(0).max(100),
-    overheadPct: fraction.default(0),
+    // null: use the shop-wide rate from the costing policy.
+    overheadPct: fraction.nullable().default(null),
     minCharge: money.optional(),
     roundUnitPriceTo: z.coerce.number().min(0).max(1000).optional(),
   })
@@ -295,6 +297,39 @@ export const updateCostingPolicySchema = z.object({
   enforce: z.boolean().optional(),
   /** 0.1 = warn when a job's actual cost is 10% past its quoted cost. Up to 5 (500%). */
   overBudgetAlertPct: z.coerce.number().min(0).max(5).optional(),
+  /** Typed by hand. To take the figure from the books, accept the suggestion instead. */
+  defaultOverheadPct: fraction.optional(),
+  overheadSuggestionHidden: z.boolean().optional(),
+});
+
+const overheadMonths = z.coerce
+  .number()
+  .int()
+  .min(OVERHEAD_MIN_MONTHS)
+  .max(OVERHEAD_MAX_MONTHS)
+  .default(OVERHEAD_DEFAULT_MONTHS);
+const ledgerCode = z.string().trim().min(1).max(20);
+
+/** `?months=6&exclude=6700,6500` — accounts the owner unticked. */
+export const overheadSuggestionQuerySchema = z.object({
+  months: overheadMonths,
+  exclude: z
+    .string()
+    .max(1000)
+    .optional()
+    .transform((value) =>
+      (value ?? '')
+        .split(',')
+        .map((code) => code.trim())
+        .filter(Boolean),
+    )
+    .pipe(z.array(ledgerCode).max(100)),
+});
+
+/** The server works the rate out again; the browser only says which months and accounts. */
+export const acceptOverheadSuggestionSchema = z.object({
+  months: overheadMonths,
+  excludeAccountCodes: z.array(ledgerCode).max(100).default([]),
 });
 
 export const catalogSearchSchema = z.object({
@@ -322,3 +357,5 @@ export type ResolveLinesPayload = z.output<typeof resolveLinesSchema>;
 export type PriceBreaksPayload = z.output<typeof priceBreaksSchema>;
 export type CatalogSearchPayload = z.output<typeof catalogSearchSchema>;
 export type UpdateCostingPolicyPayload = z.output<typeof updateCostingPolicySchema>;
+export type OverheadSuggestionQuery = z.output<typeof overheadSuggestionQuerySchema>;
+export type AcceptOverheadSuggestionPayload = z.input<typeof acceptOverheadSuggestionSchema>;

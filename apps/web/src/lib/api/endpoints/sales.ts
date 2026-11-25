@@ -30,6 +30,8 @@ import type {
   MaterialCostReview,
   QuoteCostCheck,
   QuoteRecostMode,
+  OverheadSuggestionDto,
+  AcceptOverheadSuggestionPayload,
   UpdateCostingPolicyPayload,
   ResolveLinesPayload,
   ResolvedLinesDto,
@@ -174,6 +176,17 @@ export const salesEndpoints = {
     getPolicy: () => apiFetch<CostingPolicy>('/catalog/policy'),
     updatePolicy: (payload: UpdateCostingPolicyPayload) =>
       apiFetch<CostingPolicy>('/catalog/policy', { method: 'PATCH', body: payload }),
+    /** A shop-wide overhead rate worked out from the books. Reads only. */
+    overheadSuggestion: (months: number, exclude: string[]) =>
+      apiFetch<OverheadSuggestionDto>('/catalog/policy/overhead-suggestion', {
+        query: { months, ...(exclude.length ? { exclude: exclude.join(',') } : {}) },
+      }),
+    /** The server works the rate out again; only the months and unticked accounts go up. */
+    acceptOverheadSuggestion: (payload: AcceptOverheadSuggestionPayload) =>
+      apiFetch<CostingPolicy>('/catalog/policy/overhead-suggestion/accept', {
+        method: 'POST',
+        body: payload,
+      }),
   },
   invoices: {
     list: () => apiFetch<InvoiceDto[]>('/invoices'),

@@ -23,6 +23,7 @@ import {
   useTooling,
   useWorkCenters,
 } from '@/hooks/use-catalog-admin';
+import { useCostingPolicy } from '@/hooks/use-catalog';
 import { Button } from '@/components/ui/button';
 import { Input, Select, Textarea } from '@/components/ui/field';
 import { Card, CardBody, CardHeader, CardTitle, Skeleton } from '@/components/ui/primitives';
@@ -57,6 +58,7 @@ export function TemplateEditor({
   const save = useSaveTemplate();
 
   const [form, setForm] = useState<TemplateForm>(EMPTY_FORM);
+  const { policy } = useCostingPolicy();
   const [errors, setErrors] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -631,14 +633,39 @@ export function TemplateEditor({
               patch({ pricing: { ...form.pricing, rate: event.target.value } })
             }
           />
-          <Input
+          <Select
             label="Overhead"
-            hint="Burden on direct cost, as a fraction."
-            value={form.pricing.overheadPct}
+            hint={
+              form.pricing.overheadMode === 'SHOP'
+                ? policy
+                  ? `Follows the shop rate, now ${Math.round(policy.defaultOverheadPct * 1000) / 10}%. Set it under Catalog → Overhead rate.`
+                  : 'Follows the shop rate set under Catalog → Overhead rate.'
+                : 'This template keeps its own rate whatever the shop rate is.'
+            }
+            value={form.pricing.overheadMode}
+            options={[
+              { value: 'SHOP', label: 'Use the shop rate' },
+              { value: 'OWN', label: 'Its own rate' },
+            ]}
             onChange={(event) =>
-              patch({ pricing: { ...form.pricing, overheadPct: event.target.value } })
+              patch({
+                pricing: {
+                  ...form.pricing,
+                  overheadMode: event.target.value as TemplateForm['pricing']['overheadMode'],
+                },
+              })
             }
           />
+          {form.pricing.overheadMode === 'OWN' && (
+            <Input
+              label="Own overhead rate"
+              hint="As a fraction: 0.12 is 12% on top of direct cost."
+              value={form.pricing.overheadPct}
+              onChange={(event) =>
+                patch({ pricing: { ...form.pricing, overheadPct: event.target.value } })
+              }
+            />
+          )}
           <Input
             label="Minimum charge"
             value={form.pricing.minCharge}
@@ -770,6 +797,8 @@ interface ToolingForm {
 interface PricingForm {
   method: TemplatePricing['method'];
   rate: string;
+  /** `SHOP`: follow the costing policy's shop-wide rate. */
+  overheadMode: 'SHOP' | 'OWN';
   overheadPct: string;
   minCharge: string;
   roundUnitPriceTo: string;
@@ -800,7 +829,14 @@ const EMPTY_FORM: TemplateForm = {
   materials: [],
   operations: [],
   tooling: [],
-  pricing: { method: 'MARGIN', rate: '0.35', overheadPct: '0', minCharge: '', roundUnitPriceTo: '' },
+  pricing: {
+    method: 'MARGIN',
+    rate: '0.35',
+    overheadMode: 'SHOP',
+    overheadPct: '',
+    minCharge: '',
+    roundUnitPriceTo: '',
+  },
 };
 
 const blankParameter = (index: number): ParameterForm => ({
@@ -929,7 +965,8 @@ function toPayload(form: TemplateForm): unknown {
     pricing: {
       method: form.pricing.method,
       rate: num(form.pricing.rate) ?? 0,
-      overheadPct: num(form.pricing.overheadPct) ?? 0,
+      overheadPct:
+        form.pricing.overheadMode === 'SHOP' ? null : (num(form.pricing.overheadPct) ?? 0),
       minCharge: num(form.pricing.minCharge),
       roundUnitPriceTo: num(form.pricing.roundUnitPriceTo),
     },
@@ -992,6 +1029,7 @@ function fromDto(template: ProductTemplateDto): TemplateForm {
     pricing: {
       method: template.pricing.method,
       rate: str(template.pricing.rate),
+      overheadMode: template.pricing.overheadPct == null ? 'SHOP' : 'OWN',
       overheadPct: str(template.pricing.overheadPct),
       minCharge: str(template.pricing.minCharge),
       roundUnitPriceTo: str(template.pricing.roundUnitPriceTo),

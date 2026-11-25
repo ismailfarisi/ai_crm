@@ -9,6 +9,7 @@ import {
   Gauge,
   Package,
   Pencil,
+  Percent,
   Plus,
   Ruler,
   Sparkles,
@@ -52,9 +53,10 @@ import { WorkCenterFormDialog } from './work-center-form-dialog';
 import { ToolingFormDialog } from './tooling-form-dialog';
 import { CostingReviewPanel } from './costing-review-panel';
 import { MaterialCostPanel } from './material-cost-panel';
+import { OverheadRatePanel } from './overhead-rate-panel';
 import { StarterTemplatePicker } from './starter-template-picker';
 
-type Tab = 'products' | 'templates' | 'materials' | 'work-centers' | 'tooling' | 'accuracy';
+type Tab = 'products' | 'templates' | 'materials' | 'work-centers' | 'tooling' | 'overhead' | 'accuracy';
 
 const IMPORTABLE: Partial<Record<Tab, ImportEntity>> = {
   products: 'products',
@@ -68,6 +70,7 @@ const TABS: Array<{ id: Tab; label: string; icon: typeof Package }> = [
   { id: 'materials', label: 'Materials', icon: Boxes },
   { id: 'work-centers', label: 'Work centres', icon: Factory },
   { id: 'tooling', label: 'Tooling', icon: Wrench },
+  { id: 'overhead', label: 'Overhead rate', icon: Percent },
   { id: 'accuracy', label: 'Costing accuracy', icon: Gauge },
 ];
 
@@ -481,7 +484,7 @@ export function CatalogView() {
           <Can permission={PERMISSIONS.CATALOG_MANAGE}>
             {tab in IMPORTABLE && <ImportLink entity={IMPORTABLE[tab] as ImportEntity} />}
             {/* A template is too big for a dialog, so it has a page of its own. */}
-            {tab === 'accuracy' ? null : tab === 'templates' ? (
+            {tab === 'accuracy' || tab === 'overhead' ? null : tab === 'templates' ? (
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" onClick={() => setPickingStarter(true)}>
                   <Sparkles className="size-4" />
@@ -531,6 +534,8 @@ export function CatalogView() {
           {canSeeCost && <MaterialCostPanel currency={currency} />}
           <CostingReviewPanel currency={currency} />
         </div>
+      ) : tab === 'overhead' ? (
+        <OverheadRatePanel currency={currency} />
       ) : query.isError ? (
         <EmptyState
           title={`Couldn't load ${active.label.toLowerCase()}`}

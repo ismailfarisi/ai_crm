@@ -20,6 +20,7 @@ import { StockItem } from '../inventory/entities/stock-item.entity';
 import { ProductTemplate } from '../catalog/entities/product-template.entity';
 import { Material } from '../catalog/entities/material.entity';
 import { CatalogItem } from '../catalog/entities/catalog-item.entity';
+import { CostingPolicy } from '../catalog/entities/costing-policy.entity';
 import { User } from '../users/entities/user.entity';
 import { Employee } from '../payroll/entities/employee.entity';
 import { PayrollRun } from '../payroll/entities/payroll-run.entity';
@@ -83,6 +84,11 @@ export const AUDIT_SUBJECTS: Record<string, AuditSubject> = {
   'catalog/materials': { subject: 'MATERIAL', entity: Material },
   'catalog/items': { subject: 'CATALOG_ITEM', entity: CatalogItem },
   // The installed template, so the trail shows what a starter created.
+  'catalog/policy': {
+    subject: 'COSTING_POLICY',
+    entity: CostingPolicy,
+    singleton: true,
+  },
   'catalog/starter-templates': {
     subject: 'PRODUCT_TEMPLATE',
     entity: ProductTemplate,

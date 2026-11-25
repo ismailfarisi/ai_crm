@@ -1,9 +1,11 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type {
+  AcceptOverheadSuggestionPayload,
   CatalogItemDto,
+  UpdateCostingPolicyPayload,
   CostingProposal,
   MaterialCostRow,
   MaterialCostBasis,
@@ -394,3 +396,49 @@ export function useRecostQuote() {
     onError: (error) => toast.error(describe(error, 'Could not re-cost the quote')),
   });
 }
+
+/* ------------------------------------------------------------------ *
+ * Shop-wide overhead rate
+ * ------------------------------------------------------------------ */
+
+export function useOverheadSuggestion(months: number, exclude: string[], enabled = true) {
+  return useQuery({
+    // Under ['catalog'], so saving the rate refreshes the suggestion with it.
+    queryKey: ['catalog', 'overhead-suggestion', months, [...exclude].sort().join(',')] as const,
+    queryFn: () => api.catalog.overheadSuggestion(months, exclude),
+    enabled,
+    // Ticking an account keeps the old figures on screen until the new ones land.
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useAcceptOverheadSuggestion() {
+  const invalidate = useInvalidateCatalog();
+  return useMutation({
+    mutationFn: (payload: AcceptOverheadSuggestionPayload) => api.catalog.acceptOverheadSuggestion(payload),
+    onSuccess: async (policy) => {
+      await invalidate();
+      toast.success(
+        `Shop overhead rate set to ${Math.round(policy.defaultOverheadPct * 1000) / 10}%. New quotes use it from now on.`,
+      );
+    },
+    onError: (error) => toast.error(describe(error, 'Could not set the overhead rate')),
+  });
+}
+
+export function useUpdateOverheadPolicy() {
+  const invalidate = useInvalidateCatalog();
+  return useMutation({
+    mutationFn: (payload: UpdateCostingPolicyPayload) => api.catalog.updatePolicy(payload),
+    onSuccess: async (_policy, payload) => {
+      await invalidate();
+      if (payload.defaultOverheadPct !== undefined) {
+        toast.success(
+          `Shop overhead rate set to ${Math.round(payload.defaultOverheadPct * 1000) / 10}%. New quotes use it from now on.`,
+        );
+      }
+    },
+    onError: (error) => toast.error(describe(error, 'Could not save the overhead rate')),
+  });
+}
+

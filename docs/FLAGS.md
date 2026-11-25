@@ -1539,6 +1539,44 @@ blank drawing for the RSC carton (it would need a second net kind).
 
 ---
 
+## Shop overhead rate
+
+One overhead % for the whole shop, suggested from the books (Catalog →
+Overhead rate). Running costs (6xxx operating expense, net of 6390 labour
+absorbed) divided by cost of sales (5xxx), over the last 3, 6 or 12 full
+months.
+
+- **Existing templates keep their own percentage — by design.** The migration
+  writes `0` into any template that had no overhead key, so no live price moves
+  on deploy. Only new templates, and ones switched to "Use the shop rate" in the
+  editor, follow the shop rate. The shop rate starts at 0% until the owner sets
+  it.
+- **Accepting re-runs the sum on the server — by design.** The browser sends
+  only the months and the unticked accounts, never the percentage. The basis
+  (months, totals, unticked accounts) is stored with the rate so the screen can
+  say where it came from; typing a rate by hand clears it.
+- **Partial months are left out, and three full months are the minimum — by
+  design.** The month the books start in and the current month are skipped, so
+  a new shop sees "not enough history" with the date a suggestion will be
+  ready.
+- **Classification is by account role and code range — open.** A custom
+  account outside 5xxx/6xxx, or a production salary booked to 6300 without
+  payroll labour absorption, is counted as it sits. The owner can untick
+  overhead accounts; cost-of-sales accounts cannot be unticked. Exchange
+  differences and bank charges count only if they are under 6xxx.
+- **Cost of sales only fills when jobs are invoiced through Kerf — open.** A
+  shop that books purchases straight to 6xxx, or keeps job costs outside Kerf,
+  gets "nothing reached cost of sales" or a rate over 100%, which cannot be
+  accepted; it has to type a rate.
+- **Changing the rate does not reprice anything already made — by design.**
+  Sent quotes keep their stored prices and work orders snapshot the rate at
+  creation. Draft quotes pick it up the next time a line is priced.
+- **One rate, not one per work centre or product family — open.** A shop with
+  very different overhead loads per line still sets its own rate on those
+  templates.
+
+---
+
 ## Smaller things found on the way
 
 - **A malformed quote body returns 500, not 400.** `POST /quotes` with a badly

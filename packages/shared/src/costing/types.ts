@@ -145,8 +145,11 @@ export interface TemplatePricing {
    */
   method: 'MARGIN' | 'MARKUP';
   rate: number;
-  /** Burden on direct cost, 0-1. */
-  overheadPct?: number;
+  /**
+   * Burden on direct cost, 0-1. `null` (or absent) means "use the shop-wide
+   * rate" from the costing policy (`CostingPolicy.defaultOverheadPct`).
+   */
+  overheadPct?: number | null;
   /** Floor on the order total, before separately-billed tooling. */
   minCharge?: number;
   /** Round the unit price up to this increment, e.g. 0.05. */
@@ -253,6 +256,10 @@ export interface CostBreakdown {
   separateToolingCost: number;
 
   directCost: number;
+  /** The overhead rate actually applied, 0-1. */
+  overheadPct: number;
+  /** Whether that rate is the template's own or the shop-wide one. */
+  overheadFrom: 'TEMPLATE' | 'SHOP';
   overheadCost: number;
   totalCost: number;
   unitCost: number;

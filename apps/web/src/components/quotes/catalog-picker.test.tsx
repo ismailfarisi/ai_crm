@@ -157,7 +157,7 @@ describe('CatalogPicker', () => {
 });
 
 describe('QuoteMarginCard', () => {
-  const floor20 = { minMarginPct: 0.2, maxDiscountPct: 20, requireKnownCost: false, enforce: true };
+  const floor20 = { minMarginPct: 0.2, maxDiscountPct: 20, requireKnownCost: false, enforce: true, defaultOverheadPct: 0 };
   const healthy = {
     subtotalAmount: 2000,
     discountAmount: 0,
@@ -231,7 +231,7 @@ describe('QuoteMarginCard', () => {
 });
 
 describe('marginStatus', () => {
-  const policy = { minMarginPct: 0.2, maxDiscountPct: 20, requireKnownCost: false, enforce: true };
+  const policy = { minMarginPct: 0.2, maxDiscountPct: 20, requireKnownCost: false, enforce: true, defaultOverheadPct: 0 };
   const at = (marginPct: number, subtotalAmount = 1000) => ({ marginPct, subtotalAmount });
 
   it('reads the margin against the floor', () => {

@@ -14,7 +14,11 @@ import {
   WorkOrderMaterial,
   WorkOrderOperation,
 } from '../production/entities/work-order.entity';
+import { JournalEntry } from '../finance/entities/journal-entry.entity';
+import { LedgerAccount } from '../finance/entities/ledger-account.entity';
 import { CostingReviewController } from './costing-review.controller';
+import { OverheadRateController } from './overhead-rate.controller';
+import { OverheadRateService } from './overhead-rate.service';
 import { CostingReviewService } from './costing-review.service';
 import { MaterialCostsService } from './material-costs.service';
 import { GoodsReceiptLine } from '../inventory/entities/goods-receipt.entity';
@@ -42,11 +46,15 @@ import { StarterTemplatesService } from './starter-templates.service';
       StockItem,
       SupplierMaterial,
       Supplier,
+      // Read by the overhead rate suggestion; owned by finance.
+      JournalEntry,
+      LedgerAccount,
     ]),
   ],
   controllers: [
     CatalogController,
     CostingReviewController,
+    OverheadRateController,
     StarterTemplatesController,
   ],
   providers: [
@@ -54,6 +62,7 @@ import { StarterTemplatesService } from './starter-templates.service';
     CostingService,
     CostingReviewService,
     MaterialCostsService,
+    OverheadRateService,
     StarterTemplatesService,
   ],
   // QuotesModule consumes CostingService to re-cost lines on save, so the

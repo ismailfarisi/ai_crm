@@ -254,3 +254,38 @@ describe('explainability', () => {
     expect(result.scope.wrap_units).toBeUndefined();
   });
 });
+
+describe('costTemplate — shop-wide overhead rate', () => {
+  const inherit: ProductTemplate = {
+    ...RIGID_BOX_TEMPLATE,
+    pricing: { ...RIGID_BOX_TEMPLATE.pricing, overheadPct: null },
+  };
+  const params = BOX as Record<string, string | number | boolean>;
+
+  it('uses the shop rate when the template has none of its own', () => {
+    const result = costTemplate(inherit, SAMPLE_CATALOG, params, 500, { shopOverheadPct: 0.2 });
+    expect(result.overheadFrom).toBe('SHOP');
+    expect(result.overheadPct).toBe(0.2);
+    expect(result.overheadCost).toBeCloseTo(result.directCost * 0.2, 1);
+  });
+
+  it("keeps the template's own rate whatever the shop rate is", () => {
+    const result = costTemplate(RIGID_BOX_TEMPLATE, SAMPLE_CATALOG, params, 500, { shopOverheadPct: 0.5 });
+    expect(result.overheadFrom).toBe('TEMPLATE');
+    expect(result.overheadPct).toBe(RIGID_BOX_TEMPLATE.pricing.overheadPct);
+  });
+
+  it('treats an explicit 0% as the template’s own choice', () => {
+    const zero = { ...RIGID_BOX_TEMPLATE, pricing: { ...RIGID_BOX_TEMPLATE.pricing, overheadPct: 0 } };
+    const result = costTemplate(zero, SAMPLE_CATALOG, params, 500, { shopOverheadPct: 0.3 });
+    expect(result.overheadFrom).toBe('TEMPLATE');
+    expect(result.overheadCost).toBe(0);
+  });
+
+  it('adds no overhead when neither is set', () => {
+    const result = costTemplate(inherit, SAMPLE_CATALOG, params, 500);
+    expect(result.overheadPct).toBe(0);
+    expect(result.overheadCost).toBe(0);
+  });
+});
+
