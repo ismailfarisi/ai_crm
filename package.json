@@ -24,6 +24,7 @@
     "migration:revert": "pnpm --filter api migration:revert",
     "seed": "pnpm --filter api seed",
     "check:drift": "node scripts/check-drift.mjs",
+    "check:migrations": "pnpm --filter shared build && pnpm --filter api build && node scripts/check-migration-roundtrip.mjs",
     "check:books": "pnpm --filter api exec node dist/database/check-trial-balance.js",
     "dev:marketing": "pnpm --filter marketing dev",
     "local:deploy": "node scripts/local-deploy.mjs"
