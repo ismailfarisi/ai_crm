@@ -218,18 +218,27 @@ export class CreatePurchasingAndChannelConversations1786400000000 implements Mig
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "organizationId" uuid NOT NULL,
         "userId" uuid NOT NULL,
-        "provider" character varying NOT NULL,
+        "provider" "public"."pending_channel_commands_provider_enum" NOT NULL,
         "senderIdentifier" character varying(255) NOT NULL,
         "action" "pending_channel_commands_action_enum" NOT NULL,
         "quoteId" uuid NOT NULL,
         "status" "pending_channel_commands_status_enum" NOT NULL DEFAULT 'PENDING',
-        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+        "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
         "expiresAt" TIMESTAMP WITH TIME ZONE NOT NULL,
         "resolvedAt" TIMESTAMP WITH TIME ZONE,
-        CONSTRAINT "PK_pending_channel_commands" PRIMARY KEY ("id")
+        CONSTRAINT "PK_pending_channel_commands_id" PRIMARY KEY ("id")
       )`);
     await queryRunner.query(
       `CREATE INDEX "idx_pending_channel_commands_lookup" ON "pending_channel_commands" ("organizationId", "provider", "senderIdentifier", "status")`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "pending_channel_commands" ADD CONSTRAINT "FK_pending_channel_commands_organization_id" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "pending_channel_commands" ADD CONSTRAINT "FK_pending_channel_commands_user_id" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "pending_channel_commands" ADD CONSTRAINT "FK_pending_channel_commands_quote_id" FOREIGN KEY ("quoteId") REFERENCES "quotes"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
     );
 
     await queryRunner.query(`DROP TABLE "channel_conversations"`);
